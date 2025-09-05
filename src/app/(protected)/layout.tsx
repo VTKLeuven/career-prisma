@@ -50,7 +50,7 @@ export default async function WithSidebarLayout({ children }: { children: React.
                 </BreadcrumbList>
               </Breadcrumb>
             </div>
-            <Button variant="link"><Link href="/admin">Admin Panel</Link></Button>
+            {user.admin && <Button variant="link"><Link href="/admin">Admin Panel</Link></Button>}
           </div>
         </header>
         <div className="flex flex-col gap-6 px-4">

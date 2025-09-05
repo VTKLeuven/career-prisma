@@ -7,7 +7,7 @@ import { DirectusUser } from "@directus/sdk";
 
 const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
 
-function formatAddress(c: any) {
+function formatAddress(c: Company) {
   const parts = [
     [c.address_street, c.address_number].filter(Boolean).join(" ").trim(),
     [c.address_zip, c.address_city].filter(Boolean).join(" ").trim(),
