@@ -1,7 +1,9 @@
 // app/actions/companies.ts
 "use server";
-import { listCompanies } from "@/lib/repos/company";
+import { listCompanies, createCompany } from "@/lib/repos/company";
+import { createRep } from "@/lib/repos/users";
 import { Company } from "@/lib/schema";
+import { DirectusUser } from "@directus/sdk";
 
 const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
 
@@ -31,4 +33,10 @@ export async function fetchCompaniesAction() {
           c.salesperson.id
         : "Not set",
   }));
+}
+
+export async function createCompanyAction(companyPayload: Partial<Company>, repPayload: Partial<DirectusUser>) {
+  await createCompany(companyPayload);
+  await createRep(repPayload);
+  return
 }

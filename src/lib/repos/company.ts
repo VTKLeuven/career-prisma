@@ -58,6 +58,17 @@ export async function getCompanyById(id: string) {
   ) as unknown as Company;
 }
 
+export async function getCompanyByName(name: string) {
+  const directus = await getDirectusWithToken();
+  if (!directus) return null;
+  
+  return directus.request(
+    readItem("company", name, {
+      fields: COMPANY_FIELDS as unknown as string[],
+    })
+  ) as unknown as Company;
+}
+
 // Optional create/update helpers (if your role allows it)
 export async function createCompany(payload: Partial<Company>) {
   const directus = await getDirectusWithToken();
@@ -72,3 +83,5 @@ export async function updateCompany(id: string, payload: Partial<Company>) {
 
   return directus.request(updateItem("company", id, payload));
 }
+
+
