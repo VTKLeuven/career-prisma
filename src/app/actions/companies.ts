@@ -36,7 +36,18 @@ export async function fetchCompaniesAction() {
 }
 
 export async function createCompanyAction(companyPayload: Partial<Company>, repPayload: Partial<DirectusUser>) {
-  await createCompany(companyPayload);
-  await createRep(repPayload);
-  return
+  const createdRep = await createRep(repPayload);
+  // Ensure representatives is an array, then add the new rep's ID
+  if (!companyPayload.representatives) {
+    companyPayload.representatives = [];
+  }
+
+  // If it's a string (single ID), convert it to array
+  if (typeof companyPayload.representatives === "string") {
+    companyPayload.representatives = [companyPayload.representatives];
+  }
+
+  // Add the new rep
+  companyPayload.representatives.push(createdRep.id);
+  return await createCompany(companyPayload);
 }

@@ -21,6 +21,10 @@ export type Company = {
   address_city?: string | null;
   address_country?: string | null;
   address: string;
+  representatives?: Array<
+    | { id: string; first_name: string | null; last_name: string | null } 
+    | string
+  >
   // salesperson can be a user relation (expand fields when requesting)
 };
 
