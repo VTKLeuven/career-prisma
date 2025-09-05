@@ -2,7 +2,7 @@
 import "server-only";
 import { readMe } from "@directus/sdk";
 import { getDirectusWithToken } from "./directus";
-import { DirectusUser } from "@/lib/schema";
+import { DirectusRole, DirectusUser } from "@/lib/schema";
 
 export async function getUserFromCookies(): Promise<DirectusUser | undefined> {
   try {
@@ -24,8 +24,8 @@ export async function getUserFromCookies(): Promise<DirectusUser | undefined> {
           ? `${me.first_name ?? ""} ${me.last_name ?? ""}`.trim()
           : me.email) ?? "",
       email: me.email ?? "",
-      tel: (me as any).tel ?? "not set",
-      role: (me.role as any)?.name ?? "Unknown",
+      tel: me?.tel ?? "not set",
+      role: (me.role as DirectusRole)?.name ?? "Unknown",
       admin: isAdmin,
     };
   } catch {

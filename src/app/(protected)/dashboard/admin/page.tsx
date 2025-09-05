@@ -357,7 +357,7 @@ function CompanyFormDialog({ onCreate }: { onCreate: (row: CompanyRow) => void }
       salesperson,
     };
 
-    // TODO: call a server action to persist (create Company + create User and relate)
+    // TODO MATTHIJS: call a server action to persist (create Company + create User and relate)
     // await createCompanyAction({...})
 
     onCreate(newRow);
@@ -549,6 +549,7 @@ function EventsSection() {
     fetchEventsAction()
       .then((rows) => {
         if (!alive) return;
+        console.log(rows)
         setEvents(rows ?? []);
       })
       .catch((err) => console.error(err))

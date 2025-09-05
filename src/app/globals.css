@@ -42,6 +42,11 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --color-vtk-blue: #0B4D8C;
+  --color-vtk-blue-dark: #083B6A;
+  --color-vtk-light: #E8F1FF;
+  --color-vtk-yellow: #FFD200;
+  --color-vtk-bg: #F9FBFF;
 }
 
 :root {
@@ -117,6 +122,7 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }

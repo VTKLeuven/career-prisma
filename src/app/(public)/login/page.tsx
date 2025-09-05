@@ -31,9 +31,9 @@ export default function LoginPage() {
         setError(data?.error ?? "Login failed.");
       } else {
         router.refresh()
-        router.replace("/")
+        router.replace("/dashboard")
       }
-    } catch (err) {
+    } catch (_) {
       setError("Network error.");
     } finally {
       setLoading(false);
