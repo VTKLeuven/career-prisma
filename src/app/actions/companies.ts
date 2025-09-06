@@ -1,7 +1,7 @@
 // app/actions/companies.ts
 "use server";
 import { listCompanies, createCompany } from "@/lib/repos/company";
-import { createRep } from "@/lib/repos/users";
+import { createRep, updateRep } from "@/lib/repos/users";
 import { Company } from "@/lib/schema";
 import { DirectusUser } from "@directus/sdk";
 
@@ -36,7 +36,11 @@ export async function fetchCompaniesAction() {
 }
 
 export async function createCompanyAction(companyPayload: Partial<Company>, repPayload: Partial<DirectusUser>) {
-  const createdRep = await createRep(repPayload);
+  const newRep = await createRep(repPayload);
+  const updatedRep = await updateRep(newRep.id, {
+    first_name: repPayload.first_name,
+    last_name: repPayload.last_name,
+  });
   // Ensure representatives is an array, then add the new rep's ID
   if (!companyPayload.representatives) {
     companyPayload.representatives = [];
@@ -48,6 +52,6 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
   }
 
   // Add the new rep
-  companyPayload.representatives.push(createdRep.id);
+  companyPayload.representatives.push(updatedRep.id);
   return await createCompany(companyPayload);
 }
