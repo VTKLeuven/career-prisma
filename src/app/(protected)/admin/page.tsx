@@ -3,6 +3,7 @@
 import * as React from "react";
 import { fetchCompaniesAction, createCompanyAction } from "@/app/actions/companies";
 import { fetchEventsAction } from "@/app/actions/events";
+import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import {
   ColumnDef,
@@ -333,6 +334,14 @@ function CompanyFormDialog({ onCreate }: { onCreate: (row: CompanyRow) => void }
   const [salesperson, setSalesperson] = React.useState<string>("");
   const [salespersons, setSalespersons] = React.useState<DirectusUser[]>([]);
 
+  React.useEffect(() => {
+    async function fetchSalespersons() {
+      const users = await fetchSalespersonsAction();
+      if (users) setSalespersons(users);
+    }
+    fetchSalespersons();
+  }, []);
+
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -422,8 +431,11 @@ function CompanyFormDialog({ onCreate }: { onCreate: (row: CompanyRow) => void }
                 <SelectValue placeholder="Select a salesperson" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="96fcf7de-9d56-4d18-9a7d-4f3dd1fe3d26">Alexander</SelectItem>
-                <SelectItem value="803f8126-3d21-4d74-abf6-787b7b9f0aa8">Matthijs</SelectItem>
+                {salespersons.map((user) => (
+                  <SelectItem key={user.id} value={user.id}>
+                    {user.first_name} {user.last_name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

@@ -89,3 +89,52 @@ export async function updateRep(userId: string, updates: Partial<DirectusUser>) 
     return null;
   }
 }
+
+export async function listSalespersons(opts?: {
+  search?: string;
+  limit?: number;
+  page?: number;        // 1-based
+  sort?: string;        // e.g. "-date_created" or "first_name"
+}) {
+  const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
+  const cookieStore = await cookies();
+  const token = cookieStore.get(ACCESS_COOKIE)?.value;
+
+  if (!token) throw new Error("No token available");
+
+  const { search, limit = 25, page = 1, sort = "first_name" } = opts ?? {};
+
+  try {
+    const params = new URLSearchParams({
+      fields: USER_FIELDS.join(","),     // list of fields you want
+      limit: String(limit),
+      page: String(page),
+      sort,
+      filter: JSON.stringify({
+        role: { _eq: "7b128ef4-f530-47d2-8f4c-ef82518eb313" }, // sales role UUID
+      }),
+    });
+
+    if (search) {
+      params.set("search", search);
+    }
+
+    const res = await fetch(`${process.env.DIRECTUS_URL}users?${params}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!res.ok) {
+      const error = await res.json();
+      console.error("Failed to fetch salespersons:", error);
+      return [];
+    }
+
+    const json = await res.json();
+    return json.data as DirectusUser[];
+  } catch (err: any) {
+    console.error("Failed to fetch salespersons:", err.message);
+    return [];
+  }
+}
