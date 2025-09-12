@@ -1,7 +1,9 @@
 // app/actions/companies.ts
 "use server";
-import { listCompanies } from "@/lib/repos/company";
+import { listCompanies, createCompany } from "@/lib/repos/company";
+import { createRep, updateRep } from "@/lib/repos/users";
 import { Company } from "@/lib/schema";
+import { DirectusUser } from "@directus/sdk";
 
 const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
 
@@ -31,4 +33,25 @@ export async function fetchCompaniesAction() {
           c.salesperson.id
         : "Not set",
   }));
+}
+
+export async function createCompanyAction(companyPayload: Partial<Company>, repPayload: Partial<DirectusUser>) {
+  const newRep = await createRep(repPayload);
+  const updatedRep = await updateRep(newRep.id, {
+    first_name: repPayload.first_name,
+    last_name: repPayload.last_name,
+  });
+  // Ensure representatives is an array, then add the new rep's ID
+  if (!companyPayload.representatives) {
+    companyPayload.representatives = [];
+  }
+
+  // If it's a string (single ID), convert it to array
+  if (typeof companyPayload.representatives === "string") {
+    companyPayload.representatives = [companyPayload.representatives];
+  }
+
+  // Add the new rep
+  companyPayload.representatives.push(updatedRep.id);
+  return await createCompany(companyPayload);
 }

@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { fetchCompaniesAction } from "@/app/actions/companies";
+import { fetchCompaniesAction, createCompanyAction } from "@/app/actions/companies";
 import { fetchEventsAction } from "@/app/actions/events";
+import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import {
   ColumnDef,
@@ -59,6 +60,7 @@ import { Label } from "@/components/ui/label";
 import { IconBuilding, IconColumns, IconMail, IconPlus, IconTaxEuro } from "@tabler/icons-react";
 import type { CareerEvent, Company } from "@/lib/schema";
 import { useUser } from "@/providers/UserProvider";
+import { DirectusUser } from "@directus/sdk";
 
 /** ------------------------------------------------------------------
  * Companies section
@@ -330,6 +332,15 @@ function CompanyFormDialog({ onCreate }: { onCreate: (row: CompanyRow) => void }
   const [open, setOpen] = React.useState(false);
   // Because shadcn Select is not a native select, keep a local state so it lands in FormData-equivalent
   const [salesperson, setSalesperson] = React.useState<string>("");
+  const [salespersons, setSalespersons] = React.useState<DirectusUser[]>([]);
+
+  React.useEffect(() => {
+    async function fetchSalespersons() {
+      const users = await fetchSalespersonsAction();
+      if (users) setSalespersons(users);
+    }
+    fetchSalespersons();
+  }, []);
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -357,8 +368,27 @@ function CompanyFormDialog({ onCreate }: { onCreate: (row: CompanyRow) => void }
       salesperson,
     };
 
-    // TODO: call a server action to persist (create Company + create User and relate)
-    // await createCompanyAction({...})
+    const newCompany: Partial<Company> = {
+      name: companyName,
+      salesperson: salesperson,
+      VAT: vat,
+      address_street: street,
+      address_number: number,
+      address_zip: zip,
+      address_city: city,
+      address_country: country,
+    }
+
+    const newRep: Partial<DirectusUser> = {
+      first_name: firstName,
+      last_name: lastName,
+      email: email,
+      role: "d5475bf4-a77f-48de-b06c-fac199b0f631",
+      status: "invited"
+    }
+
+    // TODO MATTHIJS: call a server action to persist (create Company + create User and relate)
+    createCompanyAction(newCompany, newRep)
 
     onCreate(newRow);
     setOpen(false);
@@ -401,9 +431,11 @@ function CompanyFormDialog({ onCreate }: { onCreate: (row: CompanyRow) => void }
                 <SelectValue placeholder="Select a salesperson" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Alexander">Alexander</SelectItem>
-                <SelectItem value="Matthijs">Matthijs</SelectItem>
-                <SelectItem value="Marie">Marie</SelectItem>
+                {salespersons.map((user) => (
+                  <SelectItem key={user.id} value={user.id}>
+                    {user.first_name} {user.last_name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
