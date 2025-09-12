@@ -3,6 +3,7 @@
 
 "use server";
 import { listEvents } from "@/lib/repos/event";
+import { listEventPages } from "@/lib/repos/event";
 import DOMPurify from 'isomorphic-dompurify';
 
 export async function fetchEventsAction() {
@@ -19,4 +20,20 @@ export async function fetchEventsAction() {
         })
     })
     return events
+}
+
+export async function fetchEventPagesAction() {
+    const pages = await listEventPages({ limit: 50, sort: "name" }) ?? [];
+    pages.map(page => {
+        page.event.start_hour = page.event.start_hour.slice(0, -3)
+        page.event.end_hour = page.event.end_hour.slice(0, -3)
+
+        page.event.description = DOMPurify.sanitize(page.event.description as string, {
+            ADD_ATTR: ['target', 'rel', 'allow', 'allowfullscreen', 'frameborder'],
+            FORBID_TAGS: ['iframe', 'video', 'source', 'p'],
+            // Example: only allow https: URLs
+            ALLOWED_URI_REGEXP: /^(?:(?:https?):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
+        })
+    })
+    return pages
 }

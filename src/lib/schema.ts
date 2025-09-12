@@ -32,6 +32,7 @@ export type CareerEvent = {
   id: string;
   name: string;
   description: string;
+  image: string;
   location: string;
   date: string;
   start_hour: string;
@@ -46,6 +47,12 @@ export type CareerEventOption = {
   name: string;
   description: string;
   price: string;
+}
+
+export type CareerEventPage = {
+  id: string;
+  event: CareerEvent;
+  shout: string
 }
 
 // Optional: Full Directus Schema map (only collections you use)

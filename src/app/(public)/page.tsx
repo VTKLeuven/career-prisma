@@ -2,13 +2,16 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { ArrowRight, Calendar, Users, ChevronDown, Sparkles, Search, ShoppingCart, Globe } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { fetchEventPagesAction } from "@/app/actions/events";
+import { getDirectusImageUrl } from "@/lib/repos/directus";
+import { CareerEventPage } from '@/lib/schema'
 
 /**
  * Uses semantic sections requested: Header, Hero, Upcoming Events (3 cards), Team overview, Footer
@@ -19,38 +22,6 @@ import { useRouter } from 'next/navigation'
  *  - vtk.yellow      #FFD200
  *  - vtk.bg          #F9FBFF
  */
-
-const EVENTS = [
-    {
-        title: 'BR Launch',
-        date: 'Oct 2, 2025',
-        location: 'Quadrivium, Campus Arenberg',
-        href: '#',
-        img: 'https://directustest.vtk.be/assets/d8d61544-4c89-4eba-ba52-ae337fb5778f.jpg',
-        shout: "Kick-Off The Year"
-    },
-    {
-        title: 'Sector Night Construction & Architecture',
-        date: 'Oct 10, 2025',
-        location: 'Quadrivium, Campus Arenberg',
-        href: '#',
-        img: 'https://directustest.vtk.be/assets/a1c0e6ec-c517-4ff6-88ee-7dd5fa50ba65.jpg',
-    },
-    {
-        title: 'Internship Fair',
-        date: 'Nov 29, 2025',
-        location: 'OHL Business Seats',
-        href: '#',
-        img: 'https://directustest.vtk.be/assets/8b282af3-9c94-4e5d-bbb4-6571e7715e3d.jpg',
-    },
-    {
-        title: 'VTK Jobfair Leuven',
-        date: 'Mar 12, 2026',
-        location: 'Brabanthal, Leuven',
-        href: '#',
-        img: 'https://directustest.vtk.be/assets/1be725c7-bc66-47ba-b956-e7ae59978983.jpg',
-    },
-]
 
 export default function HomePage() {
     return (
@@ -68,6 +39,11 @@ export default function HomePage() {
 function Header() {
   const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
   const router = useRouter()
+  const [EVENTS, setEvents] = useState<any[]>([]);
+
+    useEffect(() => {
+        fetchEventPagesAction().then(setEvents);
+    }, []);
 
   return (
     <header
@@ -152,11 +128,11 @@ function Header() {
                       </Button>
                     </div>
                     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {EVENTS.slice(0, 8).map((ev) => (
-                        <li key={ev.title} className="rounded-xl border p-3 hover:bg-vtk-light/40">
-                          <Link href={ev.href} className="block">
-                            <div className="text-sm font-medium text-neutral-900">{ev.title}</div>
-                            <div className="mt-0.5 text-xs text-neutral-600">{ev.date} · {ev.location}</div>
+                      {EVENTS.slice(0, 8).map((page) => (
+                        <li key={page.event.name} className="rounded-xl border p-3 hover:bg-vtk-light/40">
+                          <Link href={page.event.name} className="block">
+                            <div className="text-sm font-medium text-neutral-900">{page.event.name}</div>
+                            <div className="mt-0.5 text-xs text-neutral-600">{page.event.date} · {page.event.location}</div>
                           </Link>
                         </li>
                       ))}
@@ -240,6 +216,33 @@ function Hero() {
 
 
 function UpcomingEvents() {
+    const [EVENTS, setEvents] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+    let alive = true;
+
+    fetchEventPagesAction()
+      .then((rows) => {
+        if (!alive) return;
+        setEvents(rows ?? []);
+      })
+      .catch((err) => console.error("Error fetching events:", err))
+      .finally(() => setLoading(false));
+
+    return () => {
+      alive = false;
+    };
+    }, []);
+
+    if (loading) {
+        return (
+        <section id="events" className="py-16 text-center">
+            <p className="text-sm text-muted-foreground">Loading events…</p>
+        </section>
+        );
+    }
+
     return (
         <section id="events" className="relative border-t bg-white">
             {/* playful background pattern */}
@@ -254,10 +257,10 @@ function UpcomingEvents() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                    {EVENTS.slice(0, 3).map((ev, i) => (
+                    {EVENTS.slice(0, 3).map((page, i) => (
                         <motion.a
-                            key={ev.title}
-                            href={ev.href}
+                            key={page.event.name}
+                            href={page.event.name}
                             whileHover={{ y: -8, rotate: i % 2 ? -1 : 1 }}
                             transition={{ type: 'spring', stiffness: 260, damping: 18 }}
                             className="group relative block"
@@ -266,16 +269,16 @@ function UpcomingEvents() {
                             <div className="rounded-[28px] bg-white/90 p-3 shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md">
                                 <div className="relative overflow-hidden rounded-[20px]">
                                     <div className="aspect-[4/3]">
-                                        <Image src={ev.img} alt={ev.title} fill className="object-cover transition-transform duration-300 group-hover:scale-105" />
+                                        <Image src= {getDirectusImageUrl(page.event.image)} alt={page.event.name} fill className="object-cover transition-transform duration-300 group-hover:scale-105" />
                                     </div>
                                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-                                    {ev.shout ? <span className="absolute left-3 top-3 rounded-full bg-vtk-yellow px-2 py-0.5 text-xs font-bold text-black shadow-sm">{ev.shout}</span> : null}
+                                    {page.shout ? <span className="absolute left-3 top-3 rounded-full bg-vtk-yellow px-2 py-0.5 text-xs font-bold text-black shadow-sm">{page.shout}</span> : null}
                                 </div>
                                 <div className="px-2 pb-2 pt-3">
-                                    <div className="text-base font-semibold tracking-tight text-neutral-900">{ev.title}</div>
+                                    <div className="text-base font-semibold tracking-tight text-neutral-900">{page.event.name}</div>
                                     <div className="mt-1 flex items-center gap-2 text-sm text-neutral-700">
                                         <Calendar className="h-4 w-4 text-vtk-blue" />
-                                        <span>{ev.date} · {ev.location}</span>
+                                        <span>{page.event.date} · {page.event.location}</span>
                                     </div>
                                 </div>
                             </div>
