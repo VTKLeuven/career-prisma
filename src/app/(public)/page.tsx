@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation'
 import { fetchEventPagesAction } from "@/app/actions/events";
 import { getDirectusImageUrl } from "@/lib/repos/directus";
 import { CareerEventPage } from '@/lib/schema'
+import { captureRejectionSymbol } from 'events'
 
 /**
  * Uses semantic sections requested: Header, Hero, Upcoming Events (3 cards), Team overview, Footer
@@ -130,7 +131,7 @@ function Header() {
                     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       {EVENTS.slice(0, 8).map((page) => (
                         <li key={page.event.name} className="rounded-xl border p-3 hover:bg-vtk-light/40">
-                          <Link href={page.event.name} className="block">
+                          <Link href={page.href} className="block">
                             <div className="text-sm font-medium text-neutral-900">{page.event.name}</div>
                             <div className="mt-0.5 text-xs text-neutral-600">{page.event.date} · {page.event.location}</div>
                           </Link>
@@ -260,7 +261,7 @@ function UpcomingEvents() {
                     {EVENTS.slice(0, 3).map((page, i) => (
                         <motion.a
                             key={page.event.name}
-                            href={page.event.name}
+                            href={page.href}
                             whileHover={{ y: -8, rotate: i % 2 ? -1 : 1 }}
                             transition={{ type: 'spring', stiffness: 260, damping: 18 }}
                             className="group relative block"

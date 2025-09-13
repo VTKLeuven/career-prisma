@@ -34,6 +34,7 @@ export async function fetchEventPagesAction() {
             // Example: only allow https: URLs
             ALLOWED_URI_REGEXP: /^(?:(?:https?):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
         })
+        page.href = `/event?${new URLSearchParams({ name: page.event.name }).toString()}`;
     })
     return pages
 }

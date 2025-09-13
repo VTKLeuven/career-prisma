@@ -52,7 +52,8 @@ export type CareerEventOption = {
 export type CareerEventPage = {
   id: string;
   event: CareerEvent;
-  shout: string
+  shout: string;
+  href?: string;
 }
 
 // Optional: Full Directus Schema map (only collections you use)
