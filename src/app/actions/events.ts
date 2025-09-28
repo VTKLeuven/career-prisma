@@ -22,8 +22,8 @@ export async function fetchEventsAction() {
     return events
 }
 
-export async function fetchEventPagesAction() {
-    const pages = await listEventPages({ limit: 50, sort: "name" }) ?? [];
+export async function fetchEventPagesAction(lim = 50) {
+    const pages = await listEventPages({ limit: lim, sort: "date" }) ?? [];
     pages.map(page => {
         page.event.start_hour = page.event.start_hour.slice(0, -3)
         page.event.end_hour = page.event.end_hour.slice(0, -3)
