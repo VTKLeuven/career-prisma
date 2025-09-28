@@ -5,7 +5,6 @@ import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { ArrowRight, Calendar, Users, ChevronDown, Sparkles, Search, ShoppingCart, Globe } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -35,7 +34,6 @@ export default function HomePage() {
         </main>
     )
 }
-
 
 function Header() {
   const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
@@ -158,7 +156,6 @@ function Header() {
     </header>
   )
 }
-
 
 
 function Hero() {
@@ -398,7 +395,7 @@ function Footer() {
     )
 }
 
-function ScrollCue() {
+export function ScrollCue() {
     return (
         <div className="pointer-events-none absolute inset-x-0 bottom-6 flex items-center justify-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs text-white/90 animate-bounce">
