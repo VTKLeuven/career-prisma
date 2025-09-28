@@ -2,8 +2,8 @@
 "use server"
 
 import { readItems, readItem, createItem, updateItem } from "@directus/sdk";
-import { getDirectusWithToken } from "@/lib/directus";
-import type { CareerEvent } from "@/lib/schema";
+import { directus, getDirectusWithToken } from "@/lib/directus";
+import type { CareerEvent, CareerEventPage } from "@/lib/schema";
 
 export async function listEvents(opts?: {
   search?: string;
@@ -27,6 +27,32 @@ export async function listEvents(opts?: {
           : {}),
       })
     ) as unknown as CareerEvent[];
+  } catch (error) {
+    console.log(error);
+  }
+}
+
+export async function listEventPages(opts?: {
+  search?: string;
+  limit?: number;
+  page?: number;        // 1-based
+  sort?: string;        // e.g. "-date_created" or "name"
+}) {
+  try {
+
+    const { search, limit = 25, page = 1 } = opts ?? {};
+    const list =  directus.request(
+      readItems("career_event_page", {
+        fields: ["*", "*.*"],
+        limit,
+        page,
+        ...(search
+          ? { search } // Directus full-text search (if enabled)
+          : {}),
+      })
+    ) as unknown as CareerEventPage[];
+    console.log(list)
+    return list
   } catch (error) {
     console.log(error);
   }
