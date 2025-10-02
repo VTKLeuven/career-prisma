@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator'
 import { ArrowRight, Calendar, Users, ChevronDown, Sparkles, Search, ShoppingCart, Globe } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { fetchEventPagesAction } from "@/app/actions/events";
+import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { getDirectusImageUrl } from "@/lib/repos/directus";
 import { CareerEventPage } from '@/lib/schema'
 import { captureRejectionSymbol } from 'events'
@@ -267,7 +268,13 @@ function UpcomingEvents() {
                             <div className="rounded-[28px] bg-white/90 p-3 shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md">
                                 <div className="relative overflow-hidden rounded-[20px]">
                                     <div className="aspect-[4/3]">
-                                        <Image src= {getDirectusImageUrl(page.event.image)} alt={page.event.name} fill className="object-cover transition-transform duration-300 group-hover:scale-105" />
+                                      {page.event.image && (
+                                      <Image
+                                      src={getDirectusImageUrl(page.event.image)!} // assert non-null if you trust the data
+                                      alt={page.event.name}
+                                      fill className="object-cover transition-transform duration-300 group-hover:scale-105"
+                                      />
+                                      )}
                                     </div>
                                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
                                     {page.shout ? <span className="absolute left-3 top-3 rounded-full bg-vtk-yellow px-2 py-0.5 text-xs font-bold text-black shadow-sm">{page.shout}</span> : null}
@@ -294,11 +301,33 @@ function UpcomingEvents() {
 
 
 function TeamOverview() {
-    const team = [
-        { name: 'Alexander Dubois', role: 'Team Leader', img: 'https://directustest.vtk.be/assets/658ce7ac-4d5d-4ccc-b25b-b1a804990043.webp' },
-        { name: 'Marie Lampaert', role: 'Salesperson', img: 'https://directustest.vtk.be/assets/c844d2f3-2032-452b-b664-40b5e953d659.webp' },
-        { name: 'Matthijs De Haeck', role: 'IT & Organization', img: 'https://directustest.vtk.be/assets/c2aca4c4-6a46-47af-8c2c-0cb71fdf3c73.webp' },
-    ]
+    const [team, setTeam] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+      let alive = true;
+
+      fetchSalespersonsAction()
+        .then((rows) => {
+          if (!alive) return;
+          setTeam(rows ?? []);
+          console.log(rows?.[0]?.avatar); // <- inspect the fetched data, not state
+        })
+        .catch((err) => console.error("Error fetching salespersons:", err))
+        .finally(() => setLoading(false));
+
+      return () => {
+        alive = false;
+        };
+    }, []);
+
+    if (loading) {
+        return (
+        <section id="events" className="py-16 text-center">
+            <p className="text-sm text-muted-foreground">Loading salespersons</p>
+        </section>
+        );
+    }
 
     return (
         <section id="team" className="relative border-t bg-white">
@@ -312,30 +341,50 @@ function TeamOverview() {
                 </div>
 
                 <motion.ul
-                    initial="hidden"
-                    whileInView="show"
-                    viewport={{ once: true, margin: "-100px" }}
-                    variants={{ hidden: {}, show: { transition: { staggerChildren: 0.06 } } }}
-                    className="mt-8 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-3"
+                  initial="hidden"
+                  whileInView="show"
+                  viewport={{ once: true, margin: "-100px" }}
+                  variants={{ hidden: {}, show: { transition: { staggerChildren: 0.06 } } }}
+                  className="mt-8 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-3"
                 >
-                    {team.map((m, i) => (
-                        <motion.li
-                            key={m.name}
-                            variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}
-                            whileHover={{ y: -4, rotate: i % 2 ? -0.8 : 0.8 }}
-                            className="group relative"
-                        >
-                            <div className="rounded-[28px] bg-white/90 p-5 text-center shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md">
-                                <div className="mx-auto h-24 w-24 overflow-hidden rounded-full ring-4 ring-vtk-light transition-transform duration-300 group-hover:scale-105">
-                                    <Image src={m.img} alt={m.name} width={96} height={96} className="h-full w-full object-cover" />
-                                </div>
-                                <div className="mt-3 text-base font-semibold tracking-tight text-neutral-900">{m.name}</div>
-                                <div className="mt-1 text-xs font-medium text-vtk-blue/90">{m.role}</div>
-                            </div>
-                            <div aria-hidden className="absolute inset-x-8 -bottom-3 h-6 rounded-full bg-black/10 blur-md opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-                        </motion.li>
-                    ))}
-                </motion.ul>
+                {team.map((m, i) => (
+                  <motion.li
+                    key={m.id} // safer than first_name
+                    variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}
+                    whileHover={{ y: -4, rotate: i % 2 ? -0.8 : 0.8 }}
+                    className="group relative cursor-pointer"
+                    onClick={() => {
+                      if (m.description) {
+                        // open LinkedIn in a new tab
+                        window.open(m.description, "_blank");
+                        }
+                      }}
+                    >
+                  <div className="rounded-[28px] bg-white/90 p-5 text-center shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md hover:shadow-lg transition-shadow duration-200">
+                  <div className="mx-auto h-24 w-24 overflow-hidden rounded-full ring-4 ring-vtk-light transition-transform duration-300 group-hover:scale-105">
+                  {m.avatar && (
+                    <Image
+                    src={getDirectusImageUrl(m.avatar)!}
+                    alt={`${m.first_name} ${m.last_name}`}
+                    width={96}
+                    height={96}
+                    className="h-full w-full object-cover"
+                  />
+                  )}
+                  </div>
+                  <div className="mt-3 text-base font-semibold tracking-tight text-neutral-900">
+                  {m.first_name} {m.last_name}
+                  </div>
+                  <div className="mt-1 text-xs font-medium text-vtk-blue/90">{m.title}</div>
+                </div>
+                <div
+                aria-hidden
+                className="absolute inset-x-8 -bottom-3 h-6 rounded-full bg-black/10 blur-md opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                />
+            </motion.li>
+            ))}
+            </motion.ul>
+
             </div>
         </section>
     )
