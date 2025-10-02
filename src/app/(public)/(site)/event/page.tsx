@@ -12,38 +12,6 @@ import { fetchEventPagesAction } from "@/app/actions/events"
 import { getDirectusImageUrl } from "@/lib/repos/directus"
 import { CareerEventPage } from '@/lib/schema'
 
-const EVENTS = [
-    {
-        title: 'BR Launch',
-        date: 'Oct 2, 2025',
-        location: 'Quadrivium, Campus Arenberg',
-        href: '#',
-        img: 'https://directustest.vtk.be/assets/d8d61544-4c89-4eba-ba52-ae337fb5778f.jpg',
-        shout: "Kick-Off The Year"
-    },
-    {
-        title: 'Sector Night Construction & Architecture',
-        date: 'Oct 10, 2025',
-        location: 'Quadrivium, Campus Arenberg',
-        href: '#',
-        img: 'https://directustest.vtk.be/assets/a1c0e6ec-c517-4ff6-88ee-7dd5fa50ba65.jpg',
-    },
-    {
-        title: 'Internship Fair',
-        date: 'Nov 29, 2025',
-        location: 'OHL Business Seats',
-        href: '#',
-        img: 'https://directustest.vtk.be/assets/8b282af3-9c94-4e5d-bbb4-6571e7715e3d.jpg',
-    },
-    {
-        title: 'VTK Jobfair Leuven',
-        date: 'Mar 12, 2026',
-        location: 'Brabanthal, Leuven',
-        href: '#',
-        img: 'https://directustest.vtk.be/assets/1be725c7-bc66-47ba-b956-e7ae59978983.jpg',
-    },
-]
-
 export default function EventPage() {
     return <>
         <Hero />

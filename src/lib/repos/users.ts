@@ -11,6 +11,9 @@ const USER_FIELDS = [
   "first_name",
   "last_name",
   "email",
+  "avatar",
+  "title",
+  "description"
 ] as const;
 
 // --- Invite new rep (sends invitation email) ---
