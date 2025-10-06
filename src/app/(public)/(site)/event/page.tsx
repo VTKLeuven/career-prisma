@@ -49,6 +49,17 @@ function Hero({ page }: { page?: CareerEventPage }) {
     });
     const y = useTransform(scrollYProgress, [0, 1], ["-8%", "8%"]);
 
+    const [message, setMessage] = useState("");
+
+    const handleRegisterClick = (e: React.MouseEvent<HTMLAnchorElement, MouseEvent>) => {
+      if (!page?.registration_link) {
+        e.preventDefault();
+        setMessage("Registration is not open yet. Please check back soon!");
+
+        setTimeout(() => setMessage(""), 3000);
+      }
+    };
+
     return (
         <section
             ref={ref}
@@ -98,13 +109,34 @@ function Hero({ page }: { page?: CareerEventPage }) {
                     <h1 className="text-3xl text-white">Loading event...</h1>
                 )}
 
-                <div className="mt-10 flex flex-wrap items-center gap-3">
-                    <Button asChild variant="ghost" className="rounded-full bg-vtk-yellow text-black hover:brightness-95">
-                    <Link href="#events">Register</Link>
-                    </Button>
-                    <Button asChild variant="ghost" className="rounded-full bg-vtk-blue-dark text-white hover:brightness-95">
+                <div className="relative mt-10 flex flex-wrap items-center gap-3">
+                  {/* Floating popup message */}
+                  {message && (
+                    <div className="absolute -top-80 left-1/2 transform -translate-x-1/2 rounded-md bg-vtk-blue text-white px-4 py-2 shadow-lg animate-fadeIn z-50">
+                      {message}
+                    </div>
+                  )}
+
+                  <Button
+                    asChild
+                    variant="ghost"
+                    className="rounded-full bg-vtk-yellow text-black hover:brightness-95"
+                  >
+                    <a
+                      href={page?.registration_link || "#"}
+                      onClick={handleRegisterClick}
+                    >
+                      Register
+                    </a>
+                  </Button>
+
+                  <Button
+                    asChild
+                    variant="ghost"
+                    className="rounded-full bg-vtk-blue-dark text-white hover:brightness-95"
+                  >
                     <Link href="#team">Explore companies</Link>
-                    </Button>
+                  </Button>
                 </div>
                 </motion.div>
             </div>
