@@ -3,7 +3,7 @@
 
 import { readItems, readItem, createItem, updateItem } from "@directus/sdk";
 import { directus, getDirectusWithToken } from "@/lib/directus";
-import type { CareerEvent, CareerEventPage } from "@/lib/schema";
+import type { CareerEvent, CareerEventPage, TimeSlot } from "@/lib/schema";
 
 export async function listEvents(opts?: {
   search?: string;
@@ -35,25 +35,29 @@ export async function listEvents(opts?: {
 export async function listEventPages(opts?: {
   search?: string;
   limit?: number;
-  page?: number;        // 1-based
-  sort?: string;        // e.g. "-date_created" or "name"
+  page?: number;
+  sort?: string;
 }) {
   try {
-
     const { search, limit = 25, page = 1 } = opts ?? {};
-    const list =  directus.request(
+
+    const list = await directus.request(
       readItems("career_event_page", {
-        fields: ["*", "*.*"],
+        fields: [
+          "*",
+          "*.*",
+          "timetable.timetable_id.*", // ✅ get all timetable items from M2M
+        ],
         limit,
         page,
-        ...(search
-          ? { search } // Directus full-text search (if enabled)
-          : {}),
+        ...(search ? { search } : {}),
       })
     ) as unknown as CareerEventPage[];
-    console.log(list)
-    return list
+
+    console.log("Fetched event pages:", list);
+    return list;
   } catch (error) {
-    console.log(error);
+    console.error("Error fetching event pages:", error);
+    return [];
   }
 }

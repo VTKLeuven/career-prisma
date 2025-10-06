@@ -52,8 +52,21 @@ export type CareerEventOption = {
 export type CareerEventPage = {
   id: string;
   event: CareerEvent;
+  description_EN: string;
   shout: string;
   href?: string;
+  tagline?: string;
+  timetable?: TimeSlot[];
+}
+
+export type TimeSlot = {
+  id: string;
+  title: string;
+  events?: CareerEventPage[];
+  description?: string;
+  start_time: string;
+  end_time: string;
+  icon?: string
 }
 
 // Optional: Full Directus Schema map (only collections you use)
