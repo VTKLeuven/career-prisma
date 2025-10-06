@@ -57,7 +57,13 @@ export type CareerEventPage = {
   href?: string;
   tagline?: string;
   timetable?: TimeSlot[];
-}
+  address?: string;
+  parking?: string;
+  location?: {
+    type: "Point";
+    coordinates: [number, number]; // [lng, lat]
+  };
+};
 
 export type TimeSlot = {
   id: string;

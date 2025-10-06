@@ -12,6 +12,11 @@ import { useSearchParams } from "next/navigation"
 import { fetchEventPagesAction } from "@/app/actions/events"
 import { getDirectusImageUrl } from "@/lib/repos/directus"
 import { CareerEventPage } from '@/lib/schema'
+import dynamic from "next/dynamic";
+
+const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.EventMap), {
+  ssr: false, // ensures this component is only rendered on the client
+});
 
 export default function EventPage() {
   const [EVENTS, setEVENTS] = useState<any[]>([]);
@@ -112,6 +117,8 @@ function Hero({ page }: { page?: CareerEventPage }) {
 }
 
 function PracticalInformation({ page }: { page?: CareerEventPage }) {
+  const lat = page?.location?.coordinates?.[1]; // latitude is second
+  const lng = page?.location?.coordinates?.[0]; // longitude is first
   return (
     <section id="events" className="relative border-t bg-white">
       <div className="relative mx-auto max-w-7xl px-4 py-16">
@@ -122,17 +129,30 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
 
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
             {/* Location */}
-            <div>
+            <div className="flex flex-col gap-4">
               <h2 className="text-2xl font-semibold tracking-tight mb-4">Location</h2>
-              <p className="text-neutral-700 mb-2">
-                VTK Headquarters, Leuven, Belgium
-              </p>
-              <p className="text-neutral-700 mb-2">
-                Address: Example Street 123, 3000 Leuven
-              </p>
-              <p className="text-neutral-700">
-                Public transport: Take bus X or train Y to Leuven Central Station.
-              </p>
+
+              <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 shadow-sm flex flex-col gap-2">
+                {page?.event.location && (
+                  <h3 className="font-semibold text-neutral-900">{page?.event.location}</h3>
+                )}
+                {page?.address && (
+                  <p className="text-neutral-700 flex items-center gap-2">
+                    📍 Address: {page?.address}
+                  </p>
+                )}
+                {page?.parking && (
+                  <p className="text-neutral-700 flex items-center gap-2">
+                    🅿️ Parking: {page?.parking}
+                  </p>
+                )}
+              </div>
+              
+              {lat && lng && (
+                <div className="rounded-lg border border-neutral-200 overflow-hidden shadow-sm mt-4">
+                  <EventMap lat={lat} lng={lng} />
+                </div>
+              )}
             </div>
 
             {/* Timetable / Timeline */}
