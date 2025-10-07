@@ -76,7 +76,7 @@ function Hero({
   const handleRegisterClick = (e: React.MouseEvent<HTMLElement, MouseEvent>) => {
     if (!page?.registration_link) {
       e.preventDefault();
-      showPopupMessage("Registration is not open yet. Please check back soon! 😊");
+      showPopupMessage("Registration is not open yet. Please check back soon!");
     } else {
       window.open(page.registration_link, "_blank");
     }
@@ -135,7 +135,7 @@ function Hero({
             {page?.event ? (
               <>
                 <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs text-white">
-                  {page.tagline ?? "Biggest engineering jobfair in the BeNeLux for students"}
+                  {page.tagline}
                 </div>
                 <h1 className="text-balance text-4xl md:text-6xl lg:text-7xl font-semibold leading-[1.05] tracking-tight text-white">
                   {page.event.name}
@@ -187,19 +187,9 @@ function CompanyPopup({ companies, rows }: { companies: Company[]; rows: Company
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
 
   if (selectedCompany) {
-    const logoUrl = selectedCompany.logo ? getDirectusImageUrl(selectedCompany.logo) : undefined
     return (
       <div className="flex flex-col items-center justify-center gap-4 text-center px-6 py-4">
         <div className="flex items-center justify-center gap-2">
-          {logoUrl && (
-            <Image
-              src={logoUrl}
-              alt={selectedCompany.name ?? "Company logo"}
-              width={30}
-              height={30}
-              className="object-contain"
-            />
-          )}
           <h2 className="text-2xl font-semibold text-vtk-blue">{selectedCompany.name}</h2>
         </div>
 

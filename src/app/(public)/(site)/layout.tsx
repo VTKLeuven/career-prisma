@@ -1,43 +1,13 @@
 "use client"
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { ChevronDown } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { fetchEventPagesAction } from "@/app/actions/events";
 
-const EVENTS = [
-    {
-        title: 'BR Launch',
-        date: 'Oct 2, 2025',
-        location: 'Quadrivium, Campus Arenberg',
-        href: '#',
-        img: 'https://directustest.vtk.be/assets/d8d61544-4c89-4eba-ba52-ae337fb5778f.jpg',
-        shout: "Kick-Off The Year"
-    },
-    {
-        title: 'Sector Night Construction & Architecture',
-        date: 'Oct 10, 2025',
-        location: 'Quadrivium, Campus Arenberg',
-        href: '#',
-        img: 'https://directustest.vtk.be/assets/a1c0e6ec-c517-4ff6-88ee-7dd5fa50ba65.jpg',
-    },
-    {
-        title: 'Internship Fair',
-        date: 'Nov 29, 2025',
-        location: 'OHL Business Seats',
-        href: '#',
-        img: 'https://directustest.vtk.be/assets/8b282af3-9c94-4e5d-bbb4-6571e7715e3d.jpg',
-    },
-    {
-        title: 'VTK Jobfair Leuven',
-        date: 'Mar 12, 2026',
-        location: 'Brabanthal, Leuven',
-        href: '/event',
-        img: 'https://directustest.vtk.be/assets/1be725c7-bc66-47ba-b956-e7ae59978983.jpg',
-    },
-]
 
 export default function NoSidebarLayout({ children }: { children: React.ReactNode }) {
     // simple shell without sidebar/header
@@ -46,9 +16,15 @@ export default function NoSidebarLayout({ children }: { children: React.ReactNod
         {children}</main>
 }
 
+
 function Header() {
   const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
   const router = useRouter()
+  const [EVENTS, setEvents] = useState<any[]>([]);
+
+    useEffect(() => {
+        fetchEventPagesAction().then(setEvents);
+    }, []);
 
   return (
     <header
@@ -67,7 +43,7 @@ function Header() {
 
           {/* Middle: primary nav */}
           <nav className="hidden items-center gap-2 md:flex">
-            <Link href="/" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">Home</Link>
+            <Link href="#" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">Home</Link>
 
             {/* Events mega trigger */}
             <div className="relative">
@@ -133,11 +109,11 @@ function Header() {
                       </Button>
                     </div>
                     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {EVENTS.slice(0, 8).map((ev) => (
-                        <li key={ev.title} className="rounded-xl border p-3 hover:bg-vtk-light/40">
-                          <Link href={ev.href} className="block">
-                            <div className="text-sm font-medium text-neutral-900">{ev.title}</div>
-                            <div className="mt-0.5 text-xs text-neutral-600">{ev.date} · {ev.location}</div>
+                      {EVENTS.slice(0, 8).map((page) => (
+                        <li key={page.event.name} className="rounded-xl border p-3 hover:bg-vtk-light/40">
+                          <Link href={page.href} className="block">
+                            <div className="text-sm font-medium text-neutral-900">{page.event.name}</div>
+                            <div className="mt-0.5 text-xs text-neutral-600">{page.event.date} · {page.event.location}</div>
                           </Link>
                         </li>
                       ))}
