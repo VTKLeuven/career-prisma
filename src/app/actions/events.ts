@@ -37,6 +37,12 @@ export async function fetchEventPagesAction(lim = 50) {
       return slot;
     }) ?? [];
 
+    page.companies = page.companies?.map((item: any) => {
+      const company = item.company_id;
+
+      return company;
+    }) ?? [];
+
     // ✅ Clean up event times
     if (page.event?.start_hour) page.event.start_hour = page.event.start_hour.slice(0, -3);
     if (page.event?.end_hour) page.event.end_hour = page.event.end_hour.slice(0, -3);

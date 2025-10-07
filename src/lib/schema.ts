@@ -14,6 +14,8 @@ export type Company = {
   id: string;
   name: string;
   salesperson?: { id: string; first_name: string | null; last_name: string | null } | string | null;
+  logo?: string;
+  short_description?: string;
   VAT?: string | null;
   address_street?: string | null;
   address_number?: string | null;
@@ -64,6 +66,7 @@ export type CareerEventPage = {
     type: "Point";
     coordinates: [number, number]; // [lng, lat]
   };
+  companies?: Company[];
 };
 
 export type TimeSlot = {

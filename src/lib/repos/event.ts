@@ -47,6 +47,7 @@ export async function listEventPages(opts?: {
           "*",
           "*.*",
           "timetable.timetable_id.*", // ✅ get all timetable items from M2M
+          "companies.company_id.*",
         ],
         limit,
         page,
