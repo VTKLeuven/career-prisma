@@ -27,7 +27,7 @@ export type Company = {
     | { id: string; first_name: string | null; last_name: string | null } 
     | string
   >
-  category?: { id: string; name: string; short_name: string; logo: string }
+  category?: Master[]
 };
 
 export type CareerEvent = {
@@ -93,6 +93,13 @@ export type Booth = {
   coords: { x_pct: number; y_pct: number; width_pct: number; height_pct: number };
   Floorplan: Floorplan;
   company?: Company;
+}
+
+export type Master = {
+  id: string;
+  name: string;
+  short_name: string;
+  logo: string
 }
 
 // Optional: Full Directus Schema map (only collections you use)
