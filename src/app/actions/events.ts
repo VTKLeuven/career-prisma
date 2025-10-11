@@ -57,9 +57,8 @@ export async function fetchEventPagesAction(lim = 50) {
     }
 
     // ✅ Build href
-    page.href = `/event?${new URLSearchParams({ name: page.event.name }).toString()}`;
+    page.href = `/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}`;
   });
 
   return pages;
 }
-

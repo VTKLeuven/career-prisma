@@ -4,9 +4,10 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { motion, useScroll, useTransform } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { ScrollCue } from '../page'
+import { ScrollCue } from '../../page'
 import { useEffect, useRef, useState } from 'react'
-import { useSearchParams } from "next/navigation"
+import { useRouter } from 'next/navigation'
+import { useParams, usePathname } from "next/navigation"
 import { fetchEventPagesAction } from "@/app/actions/events"
 import { getDirectusImageUrl } from "@/lib/repos/directus"
 import { CareerEventPage, Company } from '@/lib/schema'
@@ -18,19 +19,28 @@ const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.E
 
 export default function EventPage() {
   const [EVENTS, setEVENTS] = useState<CareerEventPage[]>([])
-  const searchParams = useSearchParams()
-  const eventName = searchParams.get("name")
-
+  const [page, setPage] = useState<CareerEventPage | null>(null)
   const [popupMessage, setPopupMessage] = useState<string>("")
   const [popupContent, setPopupContent] = useState<React.ReactNode>(null)
 
-  useEffect(() => {
-    fetchEventPagesAction().then(setEVENTS)
-  }, [])
+  const params = useParams()
+  const eventName = Array.isArray(params.eventName)
+  ? params.eventName[0]
+  : params.eventName
 
-  const page = EVENTS.find(
-    (p) => p.event?.name?.toLowerCase() === eventName?.toLowerCase()
-  )
+  // Fetch events and find the correct page
+  useEffect(() => {
+    async function load() {
+      const events = await fetchEventPagesAction()
+      setEVENTS(events)
+      if (!eventName) return
+      const found = events.find(
+        (p) => p.event?.name && p.event.name.toLowerCase().replace(/\s+/g, "-") === eventName
+      )
+      setPage(found ?? null)
+    }
+    load()
+  }, [eventName])
 
   const showPopupMessage = (msg: string) => {
     setPopupMessage(msg)
@@ -47,12 +57,76 @@ export default function EventPage() {
     setPopupContent(null)
   }
 
+  const includesFair = page?.event?.name?.toLowerCase().includes("fair")
+
   return (
     <>
-      <Hero page={page} showPopupMessage={showPopupMessage} showPopupContent={showPopupContent} />
-      <PracticalInformation page={page} />
-      <Popup message={popupMessage} content={popupContent} onClose={closePopup} />
+      {includesFair && page && <Header page={page} />}
+
+      <Hero
+        page={page ?? undefined}
+        showPopupMessage={showPopupMessage}
+        showPopupContent={showPopupContent}
+      />
+
+      <PracticalInformation page={page ?? undefined} />
+
+      <Popup
+        message={popupMessage}
+        content={popupContent}
+        onClose={closePopup}
+      />
     </>
+  )
+}
+
+function Header({ page }: { page?: CareerEventPage }) {
+
+  return (
+    <header className="fixed top-4 inset-x-0 z-50 w-full">
+      <div className="mx-auto max-w-7xl px-4">
+        <div className="flex items-center justify-between gap-3 rounded-2xl -mx-8 border bg-white/85 px-3 py-2 shadow-md md:px-5 md:py-3">
+
+          {/* Logo */}
+          <Link href="/" className="flex shrink-0 items-center gap-2 rounded-full px-2">
+            <span className="hidden text-sm font-semibold tracking-tight text-vtk-blue sm:block">VTK Career</span>
+          </Link>
+
+          {/* Nav */}
+          <nav className="hidden items-center gap-2 md:flex">
+            <Link href="/" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">
+              Home
+            </Link>
+            {page && (
+              <>
+                <Link
+                  href={`/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}/floorplan`}
+                  className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
+                >
+                  Floorplan
+                </Link>
+                <Link
+                  href={`/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}/matching-software`}
+                  className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
+                >
+                  Matching Software
+                </Link>
+              </>
+            )}
+          </nav>
+
+          {/* Right buttons */}
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="outline" className="hidden md:inline-flex cursor-pointer" onClick={() => alert("Dashboard")}>
+              Company Dashboard
+            </Button>
+            <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">
+              <Link href="#contact">Contact Us</Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+    </header>
   )
 }
 

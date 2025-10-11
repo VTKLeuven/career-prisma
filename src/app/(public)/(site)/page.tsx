@@ -158,7 +158,6 @@ function Header() {
   )
 }
 
-
 function Hero() {
     const ref = useRef<HTMLElement | null>(null)
     const { scrollYProgress } = useScroll({

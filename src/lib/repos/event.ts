@@ -1,9 +1,9 @@
-// lib/repos/company.ts
+// lib/repos/event.ts
 "use server"
 
 import { readItems, readItem, createItem, updateItem } from "@directus/sdk";
 import { directus, getDirectusWithToken } from "@/lib/directus";
-import type { CareerEvent, CareerEventPage, TimeSlot } from "@/lib/schema";
+import type { CareerEvent, CareerEventPage, TimeSlot, Floorplan } from "@/lib/schema";
 
 export async function listEvents(opts?: {
   search?: string;

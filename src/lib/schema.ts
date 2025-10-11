@@ -27,7 +27,7 @@ export type Company = {
     | { id: string; first_name: string | null; last_name: string | null } 
     | string
   >
-  // salesperson can be a user relation (expand fields when requesting)
+  category?: { id: string; name: string; short_name: string; logo: string }
 };
 
 export type CareerEvent = {
@@ -67,6 +67,7 @@ export type CareerEventPage = {
     coordinates: [number, number]; // [lng, lat]
   };
   companies?: Company[];
+  floorplan?: Floorplan;
 };
 
 export type TimeSlot = {
@@ -79,8 +80,24 @@ export type TimeSlot = {
   icon?: string
 }
 
+export type Floorplan = {
+  id: string;
+  name: string;
+  svg_file: string;
+  year: string;
+}
+
+export type Booth = {
+  id: string;
+  booth_number: string;
+  coords: { x_pct: number; y_pct: number; width_pct: number; height_pct: number };
+  Floorplan: Floorplan;
+  company?: Company;
+}
+
 // Optional: Full Directus Schema map (only collections you use)
 export type Schema = {
   directus_users: DirectusUser;
   company: Company; // collection key should match your collection name
+  booths: Booth
 };
