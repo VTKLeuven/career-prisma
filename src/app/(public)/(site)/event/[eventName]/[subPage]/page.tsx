@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useParams, usePathname } from "next/navigation"
 import Link from "next/link"
 import { fetchEventPagesAction } from "@/app/actions/events"
@@ -14,6 +14,9 @@ export default function SubPage() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [allCategories, setAllCategories] = useState<Master[]>([])
   const [popupCompany, setPopupCompany] = useState<Company | null>(null)
+  const [booths, setBooths] = useState<Booth[]>([])
+  const [flickerCompanyId, setFlickerCompanyId] = useState<string | null>(null)
+  const [flickerState, setFlickerState] = useState(false)
 
   const params = useParams()
   const pathname = usePathname()
@@ -39,6 +42,28 @@ export default function SubPage() {
     load()
   }, [eventName])
 
+  // Flicker effect
+  const flickerIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  const triggerFlicker = (companyId: string) => {
+    if (flickerIntervalRef.current) clearInterval(flickerIntervalRef.current)
+
+    setFlickerCompanyId(companyId)
+    setFlickerState(true)
+    let count = 0
+
+    flickerIntervalRef.current = setInterval(() => {
+      setFlickerState(prev => !prev)
+      count++
+      if (count >= 6) { // 3 seconds, toggling every 0.5s
+        clearInterval(flickerIntervalRef.current!)
+        setFlickerState(false)
+        setFlickerCompanyId(null)
+        flickerIntervalRef.current = null
+      }
+    }, 500)
+  }
+
   return (
     <main className="min-h-svh bg-vtk-bg text-neutral-900">
       {isFloorplanPage && page && (
@@ -47,12 +72,17 @@ export default function SubPage() {
             categories={allCategories}
             selectedCategories={selectedCategories}
             setSelectedCategories={setSelectedCategories}
+            booths={booths}
+            triggerFlicker={triggerFlicker}
             eventName={page?.event?.name || ''}
           />
           <Floorplan
             page={page}
             selectedCategories={selectedCategories}
             onBoothClick={setPopupCompany}
+            setBooths={setBooths}
+            flickerCompanyId={flickerCompanyId}
+            flickerState={flickerState}
           />
         </>
       )}
@@ -78,11 +108,15 @@ function Header({
   categories,
   selectedCategories,
   setSelectedCategories,
+  booths,
+  triggerFlicker,
   eventName,
 }: {
   categories: Master[]
   selectedCategories: string[]
   setSelectedCategories: (cats: string[]) => void
+  booths: Booth[]
+  triggerFlicker: (companyId: string) => void
   eventName: string
 }) {
   const toggleCategory = (short_name: string) => {
@@ -92,6 +126,19 @@ function Header({
       setSelectedCategories([...selectedCategories, short_name])
     }
   }
+
+  const [searchTerm, setSearchTerm] = useState("")
+  const [isFocused, setIsFocused] = useState(false)
+
+  const matchingCompanies = isFocused
+    ? booths.filter(b => b.company)
+      .filter(b =>
+        searchTerm
+          ? b.company!.name.toLowerCase().includes(searchTerm.toLowerCase())
+          : true
+      )
+      .sort((a, b) => (a.booth_number || "").localeCompare(b.booth_number || ""))
+    : []
 
   return (
     <header className="fixed top-4 inset-x-0 z-50 w-full">
@@ -113,6 +160,37 @@ function Header({
             >
               {eventName}
             </Link>
+          </div>
+
+          {/* Middle: Search bar */}
+          <div className="relative flex-1 max-w-xs">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setTimeout(() => setIsFocused(false), 200)}
+              placeholder="Search company..."
+              className="w-full rounded-full border border-gray-300 px-4 py-2 text-sm"
+            />
+            {matchingCompanies.length > 0 && (
+              <ul className="absolute top-full left-0 w-full mt-1 max-h-60 overflow-auto rounded-lg border bg-white shadow-lg z-50">
+                {matchingCompanies.map(b => (
+                  <li
+                    key={b.company!.id}
+                    className="px-4 py-2 hover:bg-vtk-blue/10 cursor-pointer flex justify-between"
+                    onClick={() => {
+                      triggerFlicker(b.company!.id)
+                      setSearchTerm("")
+                      setIsFocused(false)
+                    }}
+                  >
+                    <span>{b.company!.name}</span>
+                    <span className="text-gray-500">{b.booth_number}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {/* Right: Category logos */}
@@ -150,14 +228,20 @@ function Floorplan({
   page,
   selectedCategories,
   onBoothClick,
+  setBooths,
+  flickerCompanyId,
+  flickerState,
 }: {
   page: CareerEventPage
   selectedCategories: string[]
   onBoothClick: (company: Company) => void
+  setBooths: (b: Booth[]) => void
+  flickerCompanyId: string | null
+  flickerState: boolean
 }) {
-  const [booths, setBooths] = useState<Booth[]>([])
+  const [boothsLocal, setBoothsLocal] = useState<Booth[]>([])
   const [svgContent, setSvgContent] = useState<string>("")
-  const [viewBox, setViewBox] = useState<string>("0 0 1000 600") // default
+  const [viewBox, setViewBox] = useState<string>("0 0 1000 600")
 
   useEffect(() => {
     const loadData = async () => {
@@ -166,10 +250,10 @@ function Floorplan({
       if (!data) return
 
       const boothsData = (data.booths || []).filter((b): b is Booth => b !== null)
+      setBoothsLocal(boothsData)
       setBooths(boothsData)
       setSvgContent(data.svg || "")
 
-      // Extract viewBox
       const parser = new DOMParser()
       const svgDoc = parser.parseFromString(data.svg || "", "image/svg+xml")
       const vb = svgDoc.documentElement.getAttribute("viewBox")
@@ -177,7 +261,7 @@ function Floorplan({
     }
 
     loadData()
-  }, [page])
+  }, [page, setBooths])
 
   if (!svgContent) return <p>Loading floorplan...</p>
 
@@ -188,22 +272,24 @@ function Floorplan({
         className="w-full h-auto"
         xmlns="http://www.w3.org/2000/svg"
       >
-        {/* Original SVG elements */}
         <g dangerouslySetInnerHTML={{ __html: svgContent }} />
 
-        {/* Booth overlays */}
-        {booths.map((booth, i) => {
+        {boothsLocal.map((booth, i) => {
           if (!booth.coords || !booth.company) return null
 
           const boothCats: Master[] = Array.isArray(booth.company.category)
             ? booth.company.category.filter((c): c is Master => c !== null)
             : []
 
-          const isSelected =
+          const isCategorySelected =
             selectedCategories.length > 0 &&
             selectedCategories.every(cat =>
               boothCats.map(c => c.short_name).includes(cat)
             )
+
+          const isFlicker = flickerCompanyId === booth.company.id && flickerState
+
+          const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
 
           return (
             <rect
@@ -225,7 +311,6 @@ function Floorplan({
   )
 }
 
-
 // ---------------- Popup ----------------
 function Popup({ company, onClose }: { company: Company; onClose: () => void }) {
   return (
@@ -244,7 +329,6 @@ function Popup({ company, onClose }: { company: Company; onClose: () => void }) 
           ✕
         </button>
 
-        {/* Logo */}
         {company.logo && (
           <div className="flex justify-center mb-4">
             <img
@@ -255,12 +339,10 @@ function Popup({ company, onClose }: { company: Company; onClose: () => void }) 
           </div>
         )}
 
-        {/* Company Name */}
         <h2 className="text-2xl font-semibold text-vtk-blue text-center mb-2">
           {company.name}
         </h2>
 
-        {/* Company Description */}
         {company.short_description && (
           <div className="text-center">
             <div
