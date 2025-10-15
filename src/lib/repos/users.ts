@@ -99,12 +99,6 @@ export async function listSalespersons(opts?: {
   page?: number;        // 1-based
   sort?: string;        // e.g. "-date_created" or "first_name"
 }) {
-  const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
-  const cookieStore = await cookies();
-  const token = cookieStore.get(ACCESS_COOKIE)?.value;
-
-  if (!token) throw new Error("No token available");
-
   const { search, limit = 25, page = 1, sort = "first_name" } = opts ?? {};
 
   try {
@@ -122,22 +116,23 @@ export async function listSalespersons(opts?: {
       params.set("search", search);
     }
 
+    // Public (no auth header)
     const res = await fetch(`${process.env.DIRECTUS_URL}users?${params}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      // No Authorization header — public access
+      next: { revalidate: 60 }, // optional caching (Next.js)
     });
 
     if (!res.ok) {
-      const error = await res.json();
-      console.error("Failed to fetch salespersons:", error);
+      const error = await res.json().catch(() => ({}));
+      console.error("Failed to fetch public salespersons:", error);
       return [];
     }
 
     const json = await res.json();
     return json.data as DirectusUser[];
   } catch (err: any) {
-    console.error("Failed to fetch salespersons:", err.message);
+    console.error("Failed to fetch public salespersons:", err.message);
     return [];
   }
 }
+
