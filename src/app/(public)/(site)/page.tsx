@@ -2,13 +2,17 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { ArrowRight, Calendar, Users, ChevronDown, Sparkles, Search, ShoppingCart, Globe } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { fetchEventPagesAction } from "@/app/actions/events";
+import { fetchSalespersonsAction } from "@/app/actions/salespeople";
+import { getDirectusImageUrl } from "@/lib/repos/directus";
+import { CareerEventPage } from '@/lib/schema'
+import { captureRejectionSymbol } from 'events'
 
 /**
  * Uses semantic sections requested: Header, Hero, Upcoming Events (3 cards), Team overview, Footer
@@ -19,38 +23,6 @@ import { useRouter } from 'next/navigation'
  *  - vtk.yellow      #FFD200
  *  - vtk.bg          #F9FBFF
  */
-
-const EVENTS = [
-    {
-        title: 'BR Launch',
-        date: 'Oct 2, 2025',
-        location: 'Quadrivium, Campus Arenberg',
-        href: '#',
-        img: 'https://directustest.vtk.be/assets/d8d61544-4c89-4eba-ba52-ae337fb5778f.jpg',
-        shout: "Kick-Off The Year"
-    },
-    {
-        title: 'Sector Night Construction & Architecture',
-        date: 'Oct 10, 2025',
-        location: 'Quadrivium, Campus Arenberg',
-        href: '#',
-        img: 'https://directustest.vtk.be/assets/a1c0e6ec-c517-4ff6-88ee-7dd5fa50ba65.jpg',
-    },
-    {
-        title: 'Internship Fair',
-        date: 'Nov 29, 2025',
-        location: 'OHL Business Seats',
-        href: '#',
-        img: 'https://directustest.vtk.be/assets/8b282af3-9c94-4e5d-bbb4-6571e7715e3d.jpg',
-    },
-    {
-        title: 'VTK Jobfair Leuven',
-        date: 'Mar 12, 2026',
-        location: 'Brabanthal, Leuven',
-        href: '#',
-        img: 'https://directustest.vtk.be/assets/1be725c7-bc66-47ba-b956-e7ae59978983.jpg',
-    },
-]
 
 export default function HomePage() {
     return (
@@ -64,10 +36,14 @@ export default function HomePage() {
     )
 }
 
-
 function Header() {
   const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
   const router = useRouter()
+  const [EVENTS, setEvents] = useState<any[]>([]);
+
+    useEffect(() => {
+        fetchEventPagesAction().then(setEvents);
+    }, []);
 
   return (
     <header
@@ -152,11 +128,11 @@ function Header() {
                       </Button>
                     </div>
                     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {EVENTS.slice(0, 8).map((ev) => (
-                        <li key={ev.title} className="rounded-xl border p-3 hover:bg-vtk-light/40">
-                          <Link href={ev.href} className="block">
-                            <div className="text-sm font-medium text-neutral-900">{ev.title}</div>
-                            <div className="mt-0.5 text-xs text-neutral-600">{ev.date} · {ev.location}</div>
+                      {EVENTS.slice(0, 8).map((page) => (
+                        <li key={page.event.name} className="rounded-xl border p-3 hover:bg-vtk-light/40">
+                          <Link href={page.href} className="block">
+                            <div className="text-sm font-medium text-neutral-900">{page.event.name}</div>
+                            <div className="mt-0.5 text-xs text-neutral-600">{page.event.date} · {page.event.location}</div>
                           </Link>
                         </li>
                       ))}
@@ -181,8 +157,6 @@ function Header() {
     </header>
   )
 }
-
-
 
 function Hero() {
     const ref = useRef<HTMLElement | null>(null)
@@ -240,6 +214,33 @@ function Hero() {
 
 
 function UpcomingEvents() {
+    const [EVENTS, setEvents] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+    let alive = true;
+
+    fetchEventPagesAction()
+      .then((rows) => {
+        if (!alive) return;
+        setEvents(rows ?? []);
+      })
+      .catch((err) => console.error("Error fetching events:", err))
+      .finally(() => setLoading(false));
+
+    return () => {
+      alive = false;
+    };
+    }, []);
+
+    if (loading) {
+        return (
+        <section id="events" className="py-16 text-center">
+            <p className="text-sm text-muted-foreground">Loading events…</p>
+        </section>
+        );
+    }
+
     return (
         <section id="events" className="relative border-t bg-white">
             {/* playful background pattern */}
@@ -254,10 +255,10 @@ function UpcomingEvents() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                    {EVENTS.slice(0, 3).map((ev, i) => (
+                    {EVENTS.slice(0, 3).map((page, i) => (
                         <motion.a
-                            key={ev.title}
-                            href={ev.href}
+                            key={page.event.name}
+                            href={page.href}
                             whileHover={{ y: -8, rotate: i % 2 ? -1 : 1 }}
                             transition={{ type: 'spring', stiffness: 260, damping: 18 }}
                             className="group relative block"
@@ -266,16 +267,22 @@ function UpcomingEvents() {
                             <div className="rounded-[28px] bg-white/90 p-3 shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md">
                                 <div className="relative overflow-hidden rounded-[20px]">
                                     <div className="aspect-[4/3]">
-                                        <Image src={ev.img} alt={ev.title} fill className="object-cover transition-transform duration-300 group-hover:scale-105" />
+                                      {page.event.image && (
+                                      <Image
+                                      src={getDirectusImageUrl(page.event.image)!} // assert non-null if you trust the data
+                                      alt={page.event.name}
+                                      fill className="object-cover transition-transform duration-300 group-hover:scale-105"
+                                      />
+                                      )}
                                     </div>
                                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-                                    {ev.shout ? <span className="absolute left-3 top-3 rounded-full bg-vtk-yellow px-2 py-0.5 text-xs font-bold text-black shadow-sm">{ev.shout}</span> : null}
+                                    {page.shout ? <span className="absolute left-3 top-3 rounded-full bg-vtk-yellow px-2 py-0.5 text-xs font-bold text-black shadow-sm">{page.shout}</span> : null}
                                 </div>
                                 <div className="px-2 pb-2 pt-3">
-                                    <div className="text-base font-semibold tracking-tight text-neutral-900">{ev.title}</div>
+                                    <div className="text-base font-semibold tracking-tight text-neutral-900">{page.event.name}</div>
                                     <div className="mt-1 flex items-center gap-2 text-sm text-neutral-700">
                                         <Calendar className="h-4 w-4 text-vtk-blue" />
-                                        <span>{ev.date} · {ev.location}</span>
+                                        <span>{page.event.date} · {page.event.location}</span>
                                     </div>
                                 </div>
                             </div>
@@ -293,11 +300,33 @@ function UpcomingEvents() {
 
 
 function TeamOverview() {
-    const team = [
-        { name: 'Alexander Dubois', role: 'Team Leader', img: 'https://directustest.vtk.be/assets/658ce7ac-4d5d-4ccc-b25b-b1a804990043.webp' },
-        { name: 'Marie Lampaert', role: 'Salesperson', img: 'https://directustest.vtk.be/assets/c844d2f3-2032-452b-b664-40b5e953d659.webp' },
-        { name: 'Matthijs De Haeck', role: 'IT & Organization', img: 'https://directustest.vtk.be/assets/c2aca4c4-6a46-47af-8c2c-0cb71fdf3c73.webp' },
-    ]
+    const [team, setTeam] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+      let alive = true;
+
+      fetchSalespersonsAction()
+        .then((rows) => {
+          if (!alive) return;
+          setTeam(rows ?? []);
+          console.log(rows?.[0]?.avatar); // <- inspect the fetched data, not state
+        })
+        .catch((err) => console.error("Error fetching salespersons:", err))
+        .finally(() => setLoading(false));
+
+      return () => {
+        alive = false;
+        };
+    }, []);
+
+    if (loading) {
+        return (
+        <section id="events" className="py-16 text-center">
+            <p className="text-sm text-muted-foreground">Loading salespersons</p>
+        </section>
+        );
+    }
 
     return (
         <section id="team" className="relative border-t bg-white">
@@ -311,30 +340,50 @@ function TeamOverview() {
                 </div>
 
                 <motion.ul
-                    initial="hidden"
-                    whileInView="show"
-                    viewport={{ once: true, margin: "-100px" }}
-                    variants={{ hidden: {}, show: { transition: { staggerChildren: 0.06 } } }}
-                    className="mt-8 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-3"
+                  initial="hidden"
+                  whileInView="show"
+                  viewport={{ once: true, margin: "-100px" }}
+                  variants={{ hidden: {}, show: { transition: { staggerChildren: 0.06 } } }}
+                  className="mt-8 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-3"
                 >
-                    {team.map((m, i) => (
-                        <motion.li
-                            key={m.name}
-                            variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}
-                            whileHover={{ y: -4, rotate: i % 2 ? -0.8 : 0.8 }}
-                            className="group relative"
-                        >
-                            <div className="rounded-[28px] bg-white/90 p-5 text-center shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md">
-                                <div className="mx-auto h-24 w-24 overflow-hidden rounded-full ring-4 ring-vtk-light transition-transform duration-300 group-hover:scale-105">
-                                    <Image src={m.img} alt={m.name} width={96} height={96} className="h-full w-full object-cover" />
-                                </div>
-                                <div className="mt-3 text-base font-semibold tracking-tight text-neutral-900">{m.name}</div>
-                                <div className="mt-1 text-xs font-medium text-vtk-blue/90">{m.role}</div>
-                            </div>
-                            <div aria-hidden className="absolute inset-x-8 -bottom-3 h-6 rounded-full bg-black/10 blur-md opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-                        </motion.li>
-                    ))}
-                </motion.ul>
+                {team.map((m, i) => (
+                  <motion.li
+                    key={m.id} // safer than first_name
+                    variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}
+                    whileHover={{ y: -4, rotate: i % 2 ? -0.8 : 0.8 }}
+                    className="group relative cursor-pointer"
+                    onClick={() => {
+                      if (m.description) {
+                        // open LinkedIn in a new tab
+                        window.open(m.description, "_blank");
+                        }
+                      }}
+                    >
+                  <div className="rounded-[28px] bg-white/90 p-5 text-center shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md hover:shadow-lg transition-shadow duration-200">
+                  <div className="mx-auto h-24 w-24 overflow-hidden rounded-full ring-4 ring-vtk-light transition-transform duration-300 group-hover:scale-105">
+                  {m.avatar && (
+                    <Image
+                    src={getDirectusImageUrl(m.avatar)!}
+                    alt={`${m.first_name} ${m.last_name}`}
+                    width={96}
+                    height={96}
+                    className="h-full w-full object-cover"
+                  />
+                  )}
+                  </div>
+                  <div className="mt-3 text-base font-semibold tracking-tight text-neutral-900">
+                  {m.first_name} {m.last_name}
+                  </div>
+                  <div className="mt-1 text-xs font-medium text-vtk-blue/90">{m.title}</div>
+                </div>
+                <div
+                aria-hidden
+                className="absolute inset-x-8 -bottom-3 h-6 rounded-full bg-black/10 blur-md opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                />
+            </motion.li>
+            ))}
+            </motion.ul>
+
             </div>
         </section>
     )
@@ -394,7 +443,7 @@ function Footer() {
     )
 }
 
-function ScrollCue() {
+export function ScrollCue() {
     return (
         <div className="pointer-events-none absolute inset-x-0 bottom-6 flex items-center justify-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs text-white/90 animate-bounce">
