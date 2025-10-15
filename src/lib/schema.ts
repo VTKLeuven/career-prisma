@@ -55,6 +55,7 @@ export type CareerEventPage = {
   id: string;
   event: CareerEvent;
   description_EN: string;
+  image: string;
   registration_link?: string;
   shout: string;
   href?: string;

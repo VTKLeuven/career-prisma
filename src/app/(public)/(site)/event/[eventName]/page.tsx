@@ -11,6 +11,7 @@ import { useParams, usePathname } from "next/navigation"
 import { fetchEventPagesAction } from "@/app/actions/events"
 import { getDirectusImageUrl } from "@/lib/repos/directus"
 import { CareerEventPage, Company } from '@/lib/schema'
+import { Icon } from '@iconify/react';
 import dynamic from "next/dynamic"
 
 const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.EventMap), {
@@ -187,7 +188,7 @@ function Hero({
       <motion.div aria-hidden className="absolute inset-0" style={{ y }}>
         <Image
           src={
-            getDirectusImageUrl(page?.event.image) ??
+            getDirectusImageUrl(page?.image) ??
             "https://directustest.vtk.be/assets/1be725c7-bc66-47ba-b956-e7ae59978983.jpg"
           }
           alt={page?.event.name ?? "VTK Career events crowd"}
@@ -400,7 +401,14 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
                 {page?.timetable?.map((item, index) => (
                   <div key={index} className="relative mb-10 last:mb-0">
                     <span className="absolute -left-7 top-2 flex h-10 w-10 items-center justify-center rounded-full bg-vtk-yellow text-xl shadow-md">
-                      {item.icon || "⭐"}
+                      {item.icon ? (
+                        <Icon
+                          icon={`material-symbols-outlined:${item.icon}`} // automatically adds prefix
+                          width={24}
+                          height={24}
+                          className="text-neutral-900"
+                        />
+                      ) : "⭐"}
                     </span>
                     <div className="flex items-center gap-3 mb-1 ml-6">
                       <span className="text-sm font-medium text-vtk-blue">{item.start_time} - {item.end_time}</span>

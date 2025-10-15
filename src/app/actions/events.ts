@@ -7,7 +7,7 @@ import { listEventPages } from "@/lib/repos/event";
 import DOMPurify from 'isomorphic-dompurify';
 
 export async function fetchEventsAction() {
-    const events = await listEvents({ limit: 50, sort: "name" }) ?? [];
+    const events = await listEvents({ limit: 50, sort: "date" }) ?? [];
     events.map(el => {
         el.start_hour = el.start_hour.slice(0, -3)
         el.end_hour = el.end_hour.slice(0, -3)
@@ -23,7 +23,7 @@ export async function fetchEventsAction() {
 }
 
 export async function fetchEventPagesAction(lim = 50) {
-  const pages = await listEventPages({ limit: lim, sort: "date" }) ?? [];
+  const pages = await listEventPages({ limit: lim, sort: "event.date" }) ?? [];
 
   pages.map(page => {
     // ✅ Flatten timetable relation
