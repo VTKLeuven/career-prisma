@@ -11,7 +11,7 @@ export async function getUserFromCookies(): Promise<DirectusUser | undefined> {
 
     const me = await directus.request(
       readMe({
-        fields: ["id", "first_name", "last_name", "email", "tel", "role.id", "role.name"],
+        fields: ["*", "*.*"],
       })
     );
 
@@ -27,6 +27,7 @@ export async function getUserFromCookies(): Promise<DirectusUser | undefined> {
       tel: me?.tel ?? "not set",
       role: (me.role as DirectusRole)?.name ?? "Unknown",
       admin: isAdmin,
+      company: me.company
     };
   } catch {
     return undefined;

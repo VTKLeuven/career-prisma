@@ -7,7 +7,8 @@ export type DirectusUser = {
   email: string;
   tel?: string | null;
   role?: string | DirectusRole | null;
-  admin: boolean
+  admin: boolean;
+  company: Company
 } | null;
 
 export type Company = {

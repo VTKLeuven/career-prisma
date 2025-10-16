@@ -6,7 +6,7 @@ import { motion, useScroll, useTransform } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { ScrollCue } from '../../page'
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+// import { useRouter } from 'next/navigation'
 import { useParams, usePathname } from "next/navigation"
 import { fetchEventPagesAction } from "@/app/actions/events"
 import { getDirectusImageUrl } from "@/lib/repos/directus"
