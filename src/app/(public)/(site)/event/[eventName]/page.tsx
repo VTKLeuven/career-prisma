@@ -13,6 +13,7 @@ import { getDirectusImageUrl } from "@/lib/repos/directus"
 import { CareerEventPage, Company } from '@/lib/schema'
 import { Icon } from '@iconify/react';
 import dynamic from "next/dynamic"
+import HeroiconDynamic from "@/components/HeroiconDynamic"
 
 const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.EventMap), {
   ssr: false,
@@ -400,15 +401,18 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
               <div className="relative border-l-2 border-vtk-blue/30 pl-12">
                 {page?.timetable?.map((item, index) => (
                   <div key={index} className="relative mb-10 last:mb-0">
-                    <span className="absolute -left-7 top-2 flex h-10 w-10 items-center justify-center rounded-full bg-vtk-yellow text-xl shadow-md">
+                    <span className="absolute -left-7 top-2 flex h-10 w-10 items-center justify-center rounded-full bg-vtk-yellow shadow-md">
                       {item.icon ? (
-                        <Icon
-                          icon={`material-symbols-outlined:${item.icon}`} // automatically adds prefix
-                          width={24}
-                          height={24}
-                          className="text-neutral-900"
+                        <HeroiconDynamic
+                          name={item.icon}
+                          className="w-5 h-5 text-black" // smaller + black
                         />
-                      ) : "⭐"}
+                      ) : (
+                        <HeroiconDynamic
+                          name={"star"}
+                          className="w-5 h-5 text-black" // smaller + black
+                        />
+                      )}
                     </span>
                     <div className="flex items-center gap-3 mb-1 ml-6">
                       <span className="text-sm font-medium text-vtk-blue">{item.start_time} - {item.end_time}</span>
@@ -429,3 +433,4 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
     </section>
   )
 }
+

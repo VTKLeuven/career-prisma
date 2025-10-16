@@ -12,38 +12,33 @@ import { fetchEventPagesAction } from "@/app/actions/events";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { getDirectusImageUrl } from "@/lib/repos/directus";
 import { CareerEventPage } from '@/lib/schema'
-import { captureRejectionSymbol } from 'events'
-
-/**
- * Uses semantic sections requested: Header, Hero, Upcoming Events (3 cards), Team overview, Footer
- * Colors use Tailwind theme tokens (see tailwind.config.js snippet in chat):
- *  - vtk.blue        #0B4D8C
- *  - vtk.blueDark    #083B6A
- *  - vtk.light       #E8F1FF
- *  - vtk.yellow      #FFD200
- *  - vtk.bg          #F9FBFF
- */
 
 export default function HomePage() {
+    const [viewAllEvents, setViewAllEvents] = useState(false);
+
     return (
         <main className="min-h-svh bg-vtk-bg text-neutral-900">
-            <Header />
+            <Header onViewAll={() => setViewAllEvents(true)} />
             <Hero />
-            <UpcomingEvents />
+            {viewAllEvents ? (
+                <AllEvents onBack={() => setViewAllEvents(false)} />
+            ) : (
+                <UpcomingEvents onViewAll={() => setViewAllEvents(true)} />
+            )}
             <TeamOverview />
             <Footer />
         </main>
     )
 }
 
-function Header() {
+function Header({ onViewAll }: { onViewAll?: () => void }) {
   const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
   const router = useRouter()
   const [EVENTS, setEvents] = useState<any[]>([]);
 
-    useEffect(() => {
-        fetchEventPagesAction().then(setEvents);
-    }, []);
+  useEffect(() => {
+      fetchEventPagesAction().then(setEvents);
+  }, []);
 
   return (
     <header
@@ -52,19 +47,14 @@ function Header() {
       aria-label="Site navigation"
     >
       <div className="mx-auto max-w-7xl px-4">
-        {/* Floating island */}
         <div className="flex items-center justify-between gap-3 rounded-2xl -mx-8 border bg-white/85 px-3 py-2 shadow-[0_12px_40px_rgba(0,0,0,0.10)] ring-1 ring-black/5 backdrop-blur-md md:px-5 md:py-3">
-          {/* Left: logo */}
           <Link href="/" className="flex shrink-0 items-center gap-2 rounded-full px-2">
-            {/* <div className="relative h-9 w-9 overflow-hidden rounded-full border bg-vtk-light" /> */}
             <span className="hidden text-sm font-semibold tracking-tight text-vtk-blue sm:block">VTK Career</span>
           </Link>
 
-          {/* Middle: primary nav */}
           <nav className="hidden items-center gap-2 md:flex">
             <Link href="#" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">Home</Link>
 
-            {/* Events mega trigger */}
             <div className="relative">
               <button
                 type="button"
@@ -82,27 +72,13 @@ function Header() {
             <Link href="#students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Services</Link>
           </nav>
 
-          {/* Right cluster */}
           <div className="ml-auto flex items-center gap-2">
-            {/* icon pills */}
-            {/* <button className="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-white text-neutral-700 hover:bg-neutral-100">
-              <ShoppingCart className="h-5 w-5" />
-            </button>
-            <button className="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-white text-neutral-700 hover:bg-neutral-100">
-              <Search className="h-5 w-5" />
-            </button> */}
-
-            {/* <div className="hidden items-center gap-2 rounded-full border bg-white px-3 py-2 text-sm text-neutral-700 lg:flex">
-              <Globe className="h-4 w-4" /> English (US) <ChevronDown className="h-4 w-4" />
-            </div> */}
-
             <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => router.push("/dashboard")}>Company Dashboard</Button>
             <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark"><Link href="#contact">Contact Us</Link></Button>
           </div>
         </div>
       </div>
 
-      {/* FULL-WIDTH mega panel anchored to the header, not the nav item */}
       <AnimatePresence>
         {openMenu === 'events' && (
           <motion.div
@@ -116,15 +92,22 @@ function Header() {
             onMouseEnter={() => setOpenMenu('events')}
             onMouseLeave={() => setOpenMenu(null)}
           >
-            {/* center the panel and make its background match the island width only */}
             <div className="mx-auto max-w-7xl px-4">
               <div className="rounded-2xl border bg-white/85 backdrop-blur-md shadow-xl -mx-8">
                 <div className="grid grid-cols-1 gap-8 px-4 py-8 md:grid-cols-3">
                   <div className="md:col-span-2">
                     <div className="mb-4 flex items-center justify-between">
                       <h3 className="text-sm font-medium text-neutral-900">Upcoming events</h3>
-                      <Button asChild size="sm" variant="outline" className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5">
-                        <Link href="#">View all</Link>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5"
+                        onClick={() => {
+                          setOpenMenu(null);
+                          onViewAll?.();
+                        }}
+                      >
+                        View all
                       </Button>
                     </div>
                     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -164,11 +147,10 @@ function Hero() {
         target: ref,
         offset: ["start end", "end start"],
     });
-    const y = useTransform(scrollYProgress, [0, 1], ["-8%", "8%"]) // subtle parallax
+    const y = useTransform(scrollYProgress, [0, 1], ["-8%", "8%"])
 
     return (
         <section ref={ref} className="relative isolate overflow-hidden border-b min-h-[72vh] md:min-h-[82vh] -mt-2">
-            {/* background image with parallax */}
             <motion.div aria-hidden className="absolute inset-0" style={{ y }}>
                 <Image
                     src="https://directustest.vtk.be/assets/1be725c7-bc66-47ba-b956-e7ae59978983.jpg"
@@ -178,7 +160,6 @@ function Hero() {
                     className="object-cover"
                 />
             </motion.div>
-            {/* readability + brand tint */}
             <div className="absolute inset-0 bg-gradient-to-b from-black/65 via-black/45 to-black/25" />
             <div className="pointer-events-none absolute -left-16 top-24 h-24 w-24 -rotate-6 rounded-2xl bg-vtk-yellow/70 blur-xl" />
             <div className="pointer-events-none absolute right-[-30px] bottom-20 h-28 w-28 rotate-6 rounded-2xl bg-vtk-light/80 blur-xl" />
@@ -205,53 +186,37 @@ function Hero() {
                 </motion.div>
             </div>
 
-            {/* playful scroll cue */}
             <ScrollCue />
         </section>
     )
 }
 
-
-
-function UpcomingEvents() {
+function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
     const [EVENTS, setEvents] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-    let alive = true;
-
-    fetchEventPagesAction()
-      .then((rows) => {
-        if (!alive) return;
-        setEvents(rows ?? []);
-      })
-      .catch((err) => console.error("Error fetching events:", err))
-      .finally(() => setLoading(false));
-
-    return () => {
-      alive = false;
-    };
+        let alive = true;
+        fetchEventPagesAction()
+          .then((rows) => { if (!alive) return; setEvents(rows ?? []); })
+          .catch((err) => console.error("Error fetching events:", err))
+          .finally(() => setLoading(false));
+        return () => { alive = false; };
     }, []);
 
-    if (loading) {
-        return (
-        <section id="events" className="py-16 text-center">
-            <p className="text-sm text-muted-foreground">Loading events…</p>
-        </section>
-        );
-    }
+    if (loading) return <section id="events" className="py-16 text-center"><p className="text-sm text-muted-foreground">Loading events…</p></section>;
 
     return (
         <section id="events" className="relative border-t bg-white">
-            {/* playful background pattern */}
             <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(40%_30%_at_10%_10%,rgba(14,77,140,0.05),transparent),radial-gradient(40%_30%_at_90%_20%,rgba(255,210,0,0.08),transparent)]" />
-
             <div className="relative mx-auto max-w-7xl px-4 py-16">
                 <div className="mb-6 flex items-end justify-between gap-6">
                     <div>
                         <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Upcoming events</h2>
                     </div>
-                    <Button asChild variant="outline" className="hidden rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5 md:inline-flex"><Link href="#">All events</Link></Button>
+                    <Button variant="outline" className="hidden rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5 md:inline-flex" onClick={onViewAll}>
+                        All events
+                    </Button>
                 </div>
 
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
@@ -263,15 +228,14 @@ function UpcomingEvents() {
                             transition={{ type: 'spring', stiffness: 260, damping: 18 }}
                             className="group relative block"
                         >
-                            {/* polaroid-style tile */}
                             <div className="rounded-[28px] bg-white/90 p-3 shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md">
                                 <div className="relative overflow-hidden rounded-[20px]">
                                     <div className="aspect-[4/3]">
                                       {page.event.image && (
                                       <Image
-                                      src={getDirectusImageUrl(page.event.image)!} // assert non-null if you trust the data
-                                      alt={page.event.name}
-                                      fill className="object-cover transition-transform duration-300 group-hover:scale-105"
+                                        src={getDirectusImageUrl(page.event.image)!}
+                                        alt={page.event.name}
+                                        fill className="object-cover transition-transform duration-300 group-hover:scale-105"
                                       />
                                       )}
                                     </div>
@@ -286,7 +250,6 @@ function UpcomingEvents() {
                                     </div>
                                 </div>
                             </div>
-                            {/* playful shadow blob */}
                             <div aria-hidden className="absolute inset-x-6 -bottom-3 h-6 rounded-full bg-black/10 blur-md opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
                         </motion.a>
                     ))}
@@ -296,8 +259,43 @@ function UpcomingEvents() {
     )
 }
 
+function AllEvents({ onBack }: { onBack?: () => void }) {
+  const [events, setEvents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    fetchEventPagesAction()
+      .then((rows) => setEvents(rows ?? []))
+      .catch((err) => console.error("Error fetching events:", err))
+      .finally(() => setLoading(false));
+  }, []);
 
+  if (loading) return <section className="py-16 text-center"><p className="text-sm text-muted-foreground">Loading all events…</p></section>;
+
+  return (
+    <section className="relative border-t bg-white">
+      <div className="relative mx-auto max-w-7xl px-4 py-16">
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">All Events</h2>
+          <Button variant="outline" className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5" onClick={onBack}>
+            Back
+          </Button>
+        </div>
+
+        <ul className="divide-y divide-neutral-200 border rounded-2xl bg-white/90 shadow-sm">
+          {events.map((page) => (
+            <li key={page.event.name}>
+              <Link href={page.href} className="block px-5 py-4 hover:bg-vtk-light/40 transition">
+                <div className="font-medium text-neutral-900">{page.event.name}</div>
+                <div className="text-sm text-neutral-600">{page.event.date} · {page.event.location}</div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  )
+}
 
 function TeamOverview() {
     const [team, setTeam] = useState<any[]>([]);
@@ -305,32 +303,17 @@ function TeamOverview() {
 
     useEffect(() => {
       let alive = true;
-
       fetchSalespersonsAction()
-        .then((rows) => {
-          if (!alive) return;
-          setTeam(rows ?? []);
-          console.log(rows?.[0]?.avatar); // <- inspect the fetched data, not state
-        })
+        .then((rows) => { if (!alive) return; setTeam(rows ?? []); })
         .catch((err) => console.error("Error fetching salespersons:", err))
         .finally(() => setLoading(false));
-
-      return () => {
-        alive = false;
-        };
+      return () => { alive = false; };
     }, []);
 
-    if (loading) {
-        return (
-        <section id="events" className="py-16 text-center">
-            <p className="text-sm text-muted-foreground">Loading salespersons</p>
-        </section>
-        );
-    }
+    if (loading) return <section id="events" className="py-16 text-center"><p className="text-sm text-muted-foreground">Loading salespersons</p></section>;
 
     return (
         <section id="team" className="relative border-t bg-white">
-            {/* confetti-ish tint */}
             <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(40%_30%_at_10%_90%,rgba(255,210,0,0.08),transparent),radial-gradient(40%_30%_at_90%_10%,rgba(14,77,140,0.06),transparent)]" />
 
             <div className="relative mx-auto max-w-7xl px-4 py-16">
@@ -348,17 +331,12 @@ function TeamOverview() {
                 >
                 {team.map((m, i) => (
                   <motion.li
-                    key={m.id} // safer than first_name
+                    key={m.id}
                     variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}
                     whileHover={{ y: -4, rotate: i % 2 ? -0.8 : 0.8 }}
                     className="group relative cursor-pointer"
-                    onClick={() => {
-                      if (m.description) {
-                        // open LinkedIn in a new tab
-                        window.open(m.description, "_blank");
-                        }
-                      }}
-                    >
+                    onClick={() => { if (m.description) window.open(m.description, "_blank"); }}
+                  >
                   <div className="rounded-[28px] bg-white/90 p-5 text-center shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md hover:shadow-lg transition-shadow duration-200">
                   <div className="mx-auto h-24 w-24 overflow-hidden rounded-full ring-4 ring-vtk-light transition-transform duration-300 group-hover:scale-105">
                   {m.avatar && (
@@ -388,8 +366,6 @@ function TeamOverview() {
         </section>
     )
 }
-
-
 
 function Footer() {
     return (
