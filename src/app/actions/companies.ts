@@ -1,8 +1,8 @@
 // app/actions/companies.ts
 "use server";
-import { listCompanies, createCompany } from "@/lib/repos/company";
+import { listCompanies, getCompanyById, createCompany } from "@/lib/repos/company";
 import { createRep, updateRep } from "@/lib/repos/users";
-import { Company } from "@/lib/schema";
+import { CareerEventOption, Company } from "@/lib/schema";
 import { DirectusUser } from "@directus/sdk";
 
 const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
@@ -20,7 +20,7 @@ function formatAddress(c: Company) {
 }
 
 export async function fetchCompaniesAction() {
-  const companies = await listCompanies({ limit: 50, sort: "name" }) ?? [];
+  const companies = (await listCompanies({ limit: 50, sort: "name" })) ?? [];
 
   return companies.map((c: Company) => ({
     id: c.id,
@@ -32,7 +32,35 @@ export async function fetchCompaniesAction() {
         ? `${c.salesperson.first_name ?? ""} ${c.salesperson.last_name ?? ""}`.trim() ||
           c.salesperson.id
         : "Not set",
+
+    // Include options so you can access events
+    options: c.options ?? [],
   }));
+}
+
+export async function fetchCompanyByIdAction(company_id: string) {
+  const company = (await getCompanyById(company_id)) ?? null;
+
+  if (!company) return null;
+
+  return {
+    id: company.id,
+    name: company.name,
+    address: formatAddress(company),
+    VAT: company.VAT ?? "Not set",
+    salesperson:
+      typeof company.salesperson === "object" && company.salesperson
+        ? `${company.salesperson.first_name ?? ""} ${company.salesperson.last_name ?? ""}`.trim() ||
+          company.salesperson.id
+        : "Not set",
+
+    // Include options so you can access events
+    options: company.options?.map((item: any) => {
+      const option = item.career_event_option_id;
+
+      return option;
+    }) ?? []
+  };
 }
 
 export async function createCompanyAction(companyPayload: Partial<Company>, repPayload: Partial<DirectusUser>) {

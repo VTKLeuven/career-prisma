@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { ArrowRight, Calendar, Users, ChevronDown, Sparkles, Search, ShoppingCart, Globe } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { fetchEventPagesAction } from "@/app/actions/events";
+import { fetchEventsAction } from "@/app/actions/events";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { getDirectusImageUrl } from "@/lib/repos/directus";
 import { CareerEventPage } from '@/lib/schema'
@@ -37,7 +37,7 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
   const [EVENTS, setEvents] = useState<any[]>([]);
 
   useEffect(() => {
-      fetchEventPagesAction().then(setEvents);
+      fetchEventsAction().then(setEvents);
   }, []);
 
   return (
@@ -111,11 +111,11 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
                       </Button>
                     </div>
                     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {EVENTS.slice(0, 8).map((page) => (
-                        <li key={page.event.name} className="rounded-xl border p-3 hover:bg-vtk-light/40">
-                          <Link href={page.href} className="block">
-                            <div className="text-sm font-medium text-neutral-900">{page.event.name}</div>
-                            <div className="mt-0.5 text-xs text-neutral-600">{page.event.date} · {page.event.location}</div>
+                      {EVENTS.slice(0, 8).map((event) => (
+                        <li key={event.name} className="rounded-xl border p-3 hover:bg-vtk-light/40">
+                          <Link href={event.href} className="block">
+                            <div className="text-sm font-medium text-neutral-900">{event.name}</div>
+                            <div className="mt-0.5 text-xs text-neutral-600">{event.date} · {event.location}</div>
                           </Link>
                         </li>
                       ))}
@@ -197,7 +197,7 @@ function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
 
     useEffect(() => {
         let alive = true;
-        fetchEventPagesAction()
+        fetchEventsAction()
           .then((rows) => { if (!alive) return; setEvents(rows ?? []); })
           .catch((err) => console.error("Error fetching events:", err))
           .finally(() => setLoading(false));
@@ -220,10 +220,10 @@ function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
                 </div>
 
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                    {EVENTS.slice(0, 3).map((page, i) => (
+                    {EVENTS.slice(0, 3).map((event, i) => (
                         <motion.a
-                            key={page.event.name}
-                            href={page.href}
+                            key={event.name}
+                            href={event.href}
                             whileHover={{ y: -8, rotate: i % 2 ? -1 : 1 }}
                             transition={{ type: 'spring', stiffness: 260, damping: 18 }}
                             className="group relative block"
@@ -231,22 +231,22 @@ function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
                             <div className="rounded-[28px] bg-white/90 p-3 shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md">
                                 <div className="relative overflow-hidden rounded-[20px]">
                                     <div className="aspect-[4/3]">
-                                      {page.event.image && (
+                                      {event.image && (
                                       <Image
-                                        src={getDirectusImageUrl(page.event.image)!}
-                                        alt={page.event.name}
+                                        src={getDirectusImageUrl(event.image)!}
+                                        alt={event.name}
                                         fill className="object-cover transition-transform duration-300 group-hover:scale-105"
                                       />
                                       )}
                                     </div>
                                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-                                    {page.shout ? <span className="absolute left-3 top-3 rounded-full bg-vtk-yellow px-2 py-0.5 text-xs font-bold text-black shadow-sm">{page.shout}</span> : null}
+                                    {event.shout ? <span className="absolute left-3 top-3 rounded-full bg-vtk-yellow px-2 py-0.5 text-xs font-bold text-black shadow-sm">{event.shout}</span> : null}
                                 </div>
                                 <div className="px-2 pb-2 pt-3">
-                                    <div className="text-base font-semibold tracking-tight text-neutral-900">{page.event.name}</div>
+                                    <div className="text-base font-semibold tracking-tight text-neutral-900">{event.name}</div>
                                     <div className="mt-1 flex items-center gap-2 text-sm text-neutral-700">
                                         <Calendar className="h-4 w-4 text-vtk-blue" />
-                                        <span>{page.event.date} · {page.event.location}</span>
+                                        <span>{event.date} · {event.location}</span>
                                     </div>
                                 </div>
                             </div>
@@ -264,7 +264,7 @@ function AllEvents({ onBack }: { onBack?: () => void }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchEventPagesAction()
+    fetchEventsAction()
       .then((rows) => setEvents(rows ?? []))
       .catch((err) => console.error("Error fetching events:", err))
       .finally(() => setLoading(false));
@@ -283,11 +283,11 @@ function AllEvents({ onBack }: { onBack?: () => void }) {
         </div>
 
         <ul className="divide-y divide-neutral-200 border rounded-2xl bg-white/90 shadow-sm">
-          {events.map((page) => (
-            <li key={page.event.name}>
-              <Link href={page.href} className="block px-5 py-4 hover:bg-vtk-light/40 transition">
-                <div className="font-medium text-neutral-900">{page.event.name}</div>
-                <div className="text-sm text-neutral-600">{page.event.date} · {page.event.location}</div>
+          {events.map((event) => (
+            <li key={event.name}>
+              <Link href={event.href} className="block px-5 py-4 hover:bg-vtk-light/40 transition">
+                <div className="font-medium text-neutral-900">{event.name}</div>
+                <div className="text-sm text-neutral-600">{event.date} · {event.location}</div>
               </Link>
             </li>
           ))}

@@ -29,6 +29,7 @@ export type Company = {
     | string
   >
   category?: Master[]
+  options?: CareerEventOption[]
 };
 
 export type CareerEvent = {
@@ -36,13 +37,15 @@ export type CareerEvent = {
   name: string;
   description: string;
   image: string;
+  shout: string;
   location: string;
   date: string;
   start_hour: string;
   end_hour: string;
   max_companies: number;
   num_of_students: number;
-  options: CareerEvent[]
+  options: CareerEventOption[];
+  href?: string;
 }
 
 export type CareerEventOption = {
@@ -50,6 +53,7 @@ export type CareerEventOption = {
   name: string;
   description: string;
   price: string;
+  event: CareerEvent;
 }
 
 export type CareerEventPage = {
@@ -58,8 +62,6 @@ export type CareerEventPage = {
   description_EN: string;
   image: string;
   registration_link?: string;
-  shout: string;
-  href?: string;
   tagline?: string;
   timetable?: TimeSlot[];
   address?: string;
