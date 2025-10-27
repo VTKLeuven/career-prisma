@@ -16,7 +16,10 @@ export type Company = {
   name: string;
   salesperson?: { id: string; first_name: string | null; last_name: string | null } | string | null;
   logo?: string;
+  website?: string;
   short_description?: string;
+  long_description?: string;
+  location?: string;
   VAT?: string | null;
   address_street?: string | null;
   address_number?: string | null;

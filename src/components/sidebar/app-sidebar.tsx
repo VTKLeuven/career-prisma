@@ -29,7 +29,7 @@ const data = {
   navMain: [
     {
       title: "Events",
-      url: "#",
+      url: "/dashboard",
       icon: IconCalendarEvent,
       isActive: true,
     },
@@ -75,7 +75,7 @@ const data = {
       items: [
         {
           title: "Company Information",
-          url: "#",
+          url: "dashboard/settings/information",
         },
         {
           title: "Users",
