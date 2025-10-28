@@ -74,5 +74,3 @@ export async function updateCompany(id: string, payload: Partial<Company>) {
 
   return directus.request(updateItem("company", id, payload));
 }
-
-

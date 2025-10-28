@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Image from 'next/image'
-import { getDirectusImageUrl } from "@/lib/repos/directus";
+import { getDirectusImageUrl } from "@/components/Images";
 import { fetchCompaniesAction, fetchCompanyByIdAction } from "@/app/actions/companies";
 import { fetchEventsAction } from "@/app/actions/events";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";

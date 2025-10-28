@@ -6,7 +6,7 @@ import Link from "next/link"
 import { fetchEventPagesAction } from "@/app/actions/events"
 import { fetchFloorplanAction, fetchMastersAction } from "@/app/actions/features"
 import type { CareerEventPage, Booth, Master, Company } from '@/lib/schema'
-import { getDirectusImageUrl } from "@/lib/repos/directus"
+import { getDirectusImageUrl } from "@/components/Images";
 
 export default function SubPage() {
   const [EVENTS, setEVENTS] = useState<CareerEventPage[]>([])

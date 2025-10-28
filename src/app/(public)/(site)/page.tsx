@@ -10,7 +10,7 @@ import { ArrowRight, Calendar, Users, ChevronDown, Sparkles, Search, ShoppingCar
 import { useRouter } from 'next/navigation'
 import { fetchEventsAction } from "@/app/actions/events";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
-import { getDirectusImageUrl } from "@/lib/repos/directus";
+import { getDirectusImageUrl } from "@/components/Images";
 import { CareerEventPage } from '@/lib/schema'
 
 export default function HomePage() {

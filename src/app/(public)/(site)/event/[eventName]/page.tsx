@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useParams, usePathname } from "next/navigation"
 import { fetchEventPagesAction } from "@/app/actions/events"
-import { getDirectusImageUrl } from "@/lib/repos/directus"
+import { getDirectusImageUrl } from "@/components/Images";
 import { CareerEventPage, Company } from '@/lib/schema'
 import { Icon } from '@iconify/react';
 import dynamic from "next/dynamic"

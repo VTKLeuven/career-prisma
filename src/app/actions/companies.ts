@@ -1,9 +1,11 @@
 // app/actions/companies.ts
 "use server";
-import { listCompanies, getCompanyById, createCompany } from "@/lib/repos/company";
+import { listCompanies, getCompanyById, createCompany, updateCompany } from "@/lib/repos/company";
 import { createRep, updateRep } from "@/lib/repos/users";
 import { CareerEventOption, Company } from "@/lib/schema";
 import { DirectusUser } from "@directus/sdk";
+import { uploadDirectusFile } from "@/lib/repos/directus";
+
 
 const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
 
@@ -43,24 +45,7 @@ export async function fetchCompanyByIdAction(company_id: string) {
 
   if (!company) return null;
 
-  return {
-    id: company.id,
-    name: company.name,
-    address: formatAddress(company),
-    VAT: company.VAT ?? "Not set",
-    salesperson:
-      typeof company.salesperson === "object" && company.salesperson
-        ? `${company.salesperson.first_name ?? ""} ${company.salesperson.last_name ?? ""}`.trim() ||
-          company.salesperson.id
-        : "Not set",
-
-    // Include options so you can access events
-    options: company.options?.map((item: any) => {
-      const option = item.career_event_option_id;
-
-      return option;
-    }) ?? []
-  };
+  return company
 }
 
 export async function createCompanyAction(companyPayload: Partial<Company>, repPayload: Partial<DirectusUser>) {
@@ -82,4 +67,16 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
   // Add the new rep
   companyPayload.representatives.push(updatedRep.id);
   return await createCompany(companyPayload);
+}
+
+export async function updateCompanyAction(
+  id: string,
+  payload: Partial<Company>
+): Promise<Company | null> {
+  const res = await updateCompany(id, payload);
+  return res as Company | null;
+}
+
+export async function uploadCompanyLogo(file: File) {
+  return await uploadDirectusFile(file);
 }

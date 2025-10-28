@@ -9,7 +9,7 @@ import { Calendar } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from "next/navigation"
 import { fetchEventPagesAction } from "@/app/actions/events"
-import { getDirectusImageUrl } from "@/lib/repos/directus"
+import { getDirectusImageUrl } from "@/components/Images";
 import { CareerEventPage } from '@/lib/schema'
 
 export default function EventPage() {
