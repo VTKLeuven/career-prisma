@@ -6,10 +6,10 @@ import { motion, useScroll, useTransform } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { ScrollCue } from '../../page'
 import { useEffect, useRef, useState } from 'react'
-// import { useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useParams, usePathname } from "next/navigation"
 import { fetchEventPagesAction } from "@/app/actions/events"
-import { getDirectusImageUrl } from "@/lib/repos/directus"
+import { getDirectusImageUrl } from "@/components/Images";
 import { CareerEventPage, Company } from '@/lib/schema'
 import { Icon } from '@iconify/react';
 import dynamic from "next/dynamic"
@@ -83,7 +83,7 @@ export default function EventPage() {
 }
 
 function Header({ page }: { page?: CareerEventPage }) {
-
+  const router = useRouter()
   return (
     <header className="fixed top-4 inset-x-0 z-50 w-full">
       <div className="mx-auto max-w-7xl px-4">
@@ -117,14 +117,22 @@ function Header({ page }: { page?: CareerEventPage }) {
             )}
           </nav>
 
-          {/* Right buttons */}
+          {/* Right cluster */}
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" className="hidden md:inline-flex cursor-pointer" onClick={() => alert("Dashboard")}>
-              Company Dashboard
-            </Button>
-            <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">
-              <Link href="#contact">Contact Us</Link>
-            </Button>
+            {/* icon pills */}
+            {/* <button className="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-white text-neutral-700 hover:bg-neutral-100">
+              <ShoppingCart className="h-5 w-5" />
+            </button>
+            <button className="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-white text-neutral-700 hover:bg-neutral-100">
+              <Search className="h-5 w-5" />
+            </button> */}
+
+            {/* <div className="hidden items-center gap-2 rounded-full border bg-white px-3 py-2 text-sm text-neutral-700 lg:flex">
+              <Globe className="h-4 w-4" /> English (US) <ChevronDown className="h-4 w-4" />
+            </div> */}
+
+            <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => router.push("/dashboard")}>Company Dashboard</Button>
+            <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark"><Link href="#contact">Contact Us</Link></Button>
           </div>
         </div>
       </div>

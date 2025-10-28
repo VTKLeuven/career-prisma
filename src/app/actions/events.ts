@@ -9,6 +9,7 @@ import DOMPurify from 'isomorphic-dompurify';
 export async function fetchEventsAction() {
     const events = await listEvents({ limit: 50, sort: "date" }) ?? [];
     events.map(el => {
+        el.href = `/event/${el.name.toLowerCase().replace(/\s+/g, "-")}`;
         el.start_hour = el.start_hour.slice(0, -3)
         el.end_hour = el.end_hour.slice(0, -3)
 
@@ -57,7 +58,7 @@ export async function fetchEventPagesAction(lim = 50) {
     }
 
     // ✅ Build href
-    page.href = `/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}`;
+    page.event.href = `/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}`;
   });
 
   return pages;

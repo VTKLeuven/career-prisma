@@ -27,6 +27,7 @@ export default async function WithSidebarLayout({ children }: { children: React.
       </div>
     );
   }
+  console.log(user)
 
   return (
     <UserProvider key={user?.id ?? "anon"} initialUser={user}>

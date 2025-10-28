@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { ChevronDown } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { fetchEventPagesAction } from "@/app/actions/events";
+import { fetchEventsAction } from "@/app/actions/events";
 
 
 export default function NoSidebarLayout({ children }: { children: React.ReactNode }) {
@@ -23,7 +23,7 @@ function Header() {
   const [EVENTS, setEvents] = useState<any[]>([]);
 
     useEffect(() => {
-        fetchEventPagesAction().then(setEvents);
+        fetchEventsAction().then(setEvents);
     }, []);
 
   return (
@@ -109,11 +109,11 @@ function Header() {
                       </Button>
                     </div>
                     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {EVENTS.slice(0, 8).map((page) => (
-                        <li key={page.event.name} className="rounded-xl border p-3 hover:bg-vtk-light/40">
-                          <Link href={page.href} className="block">
-                            <div className="text-sm font-medium text-neutral-900">{page.event.name}</div>
-                            <div className="mt-0.5 text-xs text-neutral-600">{page.event.date} · {page.event.location}</div>
+                      {EVENTS.slice(0, 8).map((event) => (
+                        <li key={event.name} className="rounded-xl border p-3 hover:bg-vtk-light/40">
+                          <Link href={event.href} className="block">
+                            <div className="text-sm font-medium text-neutral-900">{event.name}</div>
+                            <div className="mt-0.5 text-xs text-neutral-600">{event.date} · {event.location}</div>
                           </Link>
                         </li>
                       ))}
