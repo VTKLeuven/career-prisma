@@ -1,358 +1,293 @@
-'use client'
+"use client";
 
-import { useEffect, useState, useRef } from "react"
-import { useParams, usePathname } from "next/navigation"
-import Link from "next/link"
-import { fetchEventPagesAction } from "@/app/actions/events"
-import { fetchFloorplanAction, fetchMastersAction } from "@/app/actions/features"
-import type { CareerEventPage, Booth, Master, Company } from '@/lib/schema'
+import React, { useState, useEffect, useCallback } from "react";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { IconCheck, IconRefresh } from "@tabler/icons-react";
+import type { Company, Master } from "@/lib/schema";
+import { fetchMastersAction } from "@/app/actions/features";
+import { updateCompanyAction, fetchCompanyByIdAction, uploadCompanyLogo } from "@/app/actions/companies";
+import { useUser } from "@/providers/UserProvider";
 import { getDirectusImageUrl } from "@/components/Images";
 
-export default function SubPage() {
-  const [EVENTS, setEVENTS] = useState<CareerEventPage[]>([])
-  const [page, setPage] = useState<CareerEventPage | null>(null)
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
-  const [allCategories, setAllCategories] = useState<Master[]>([])
-  const [popupCompany, setPopupCompany] = useState<Company | null>(null)
-  const [booths, setBooths] = useState<Booth[]>([])
-  const [flickerCompanyId, setFlickerCompanyId] = useState<string | null>(null)
-  const [flickerState, setFlickerState] = useState(false)
+function isFileLike(value: any): value is File {
+  return typeof value === "object" && value !== null && "name" in value;
+}
 
-  const params = useParams()
-  const pathname = usePathname()
-  const eventName = Array.isArray(params.eventName) ? params.eventName[0] : params.eventName
-  const isFloorplanPage = pathname.endsWith("/floorplan")
+// Convert plain text to clean HTML paragraphs
+function toCleanHTML(text?: string): string {
+  if (!text) return "";
+  return text
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .map(line => `<p>${line}</p>`)
+    .join("");
+}
 
+// Compare two companies for changes
+function isCompanyEqual(a: Company, b: Company) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function CompanyHeaderCard({ company }: { company: Company | null }) {
+  if (!company) {
+    return (
+      <Card className="rounded-2xl shadow-md bg-slate-700 text-white">
+        <CardHeader>
+          <CardTitle>Company Profile</CardTitle>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  const logoSrc =
+    isFileLike(company.logo)
+      ? URL.createObjectURL(company.logo)
+      : getDirectusImageUrl(company.logo);
+
+  return (
+    <Card className="rounded-2xl shadow-md bg-slate-700 text-white">
+      <CardHeader className="flex items-center gap-4">
+        {logoSrc && (
+          <img src={logoSrc} alt={company.name || "logo"} className="h-12 w-12 object-contain rounded-lg" />
+        )}
+        <div>
+          <CardTitle>{company.name || "Company Profile"}</CardTitle>
+          {company.address_city && <CardDescription>{company.address_city}</CardDescription>}
+        </div>
+      </CardHeader>
+    </Card>
+  );
+}
+
+export default function CompanyForm() {
+  const { user } = useUser();
+  const [company, setCompany] = useState<Company | null>(null);
+  const [initialCompany, setInitialCompany] = useState<Company | null>(null);
+  const [selectedMasters, setSelectedMasters] = useState<string[]>([]);
+  const [masters, setMasters] = useState<Master[]>([]);
+  const [submittedJson, setSubmittedJson] = useState<string | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+
+  const emptyCompany: Company = {
+    id: "",
+    name: "",
+    logo: "",
+    short_description: "",
+    long_description: "",
+    category: [],
+    location: "",
+    website: "",
+    VAT: "",
+    address_street: "",
+    address_number: "",
+    address_zip: "",
+    address_city: "",
+    address_country: "",
+    address: "",
+  };
+
+  const formCompany = company || emptyCompany;
+
+  // Load Masters
   useEffect(() => {
-    async function load() {
-      const events = await fetchEventPagesAction()
-      setEVENTS(events)
-
-      if (!eventName) return
-      const found = events.find(
-        (p) =>
-          p.event?.name &&
-          p.event.name.toLowerCase().replace(/\s+/g, "-") === eventName
-      )
-      setPage(found ?? null)
-
-      const categories = await fetchMastersAction()
-      setAllCategories(categories)
-    }
-    load()
-  }, [eventName])
-
-  // Flicker effect
-  const flickerIntervalRef = useRef<NodeJS.Timeout | null>(null)
-
-  const triggerFlicker = (companyId: string) => {
-    if (flickerIntervalRef.current) clearInterval(flickerIntervalRef.current)
-
-    setFlickerCompanyId(companyId)
-    setFlickerState(true)
-    let count = 0
-
-    flickerIntervalRef.current = setInterval(() => {
-      setFlickerState(prev => !prev)
-      count++
-      if (count >= 6) { // 3 seconds, toggling every 0.5s
-        clearInterval(flickerIntervalRef.current!)
-        setFlickerState(false)
-        setFlickerCompanyId(null)
-        flickerIntervalRef.current = null
+    async function loadMasters() {
+      try {
+        const data = await fetchMastersAction();
+        setMasters(data);
+      } catch (err) {
+        console.error("Error loading masters:", err);
       }
-    }, 500)
-  }
-
-  return (
-    <main className="min-h-svh bg-vtk-bg text-neutral-900">
-      {isFloorplanPage && page && (
-        <>
-          <Header
-            categories={allCategories}
-            selectedCategories={selectedCategories}
-            setSelectedCategories={setSelectedCategories}
-            booths={booths}
-            triggerFlicker={triggerFlicker}
-            eventName={page?.event?.name || ''}
-          />
-          <Floorplan
-            page={page}
-            selectedCategories={selectedCategories}
-            onBoothClick={setPopupCompany}
-            setBooths={setBooths}
-            flickerCompanyId={flickerCompanyId}
-            flickerState={flickerState}
-          />
-        </>
-      )}
-
-      {!isFloorplanPage && (
-        <div className="p-10 text-center text-neutral-700">
-          <h1 className="text-2xl font-semibold">Subpage</h1>
-          <p className="mt-2 text-sm text-neutral-500">
-            (This section is under construction.)
-          </p>
-        </div>
-      )}
-
-      {popupCompany && (
-        <Popup company={popupCompany} onClose={() => setPopupCompany(null)} />
-      )}
-    </main>
-  )
-}
-
-// ---------------- Header ----------------
-function Header({
-  categories,
-  selectedCategories,
-  setSelectedCategories,
-  booths,
-  triggerFlicker,
-  eventName,
-}: {
-  categories: Master[]
-  selectedCategories: string[]
-  setSelectedCategories: (cats: string[]) => void
-  booths: Booth[]
-  triggerFlicker: (companyId: string) => void
-  eventName: string
-}) {
-  const toggleCategory = (short_name: string) => {
-    if (selectedCategories.includes(short_name)) {
-      setSelectedCategories(selectedCategories.filter(c => c !== short_name))
-    } else {
-      setSelectedCategories([...selectedCategories, short_name])
     }
-  }
+    loadMasters();
+  }, []);
 
-  const [searchTerm, setSearchTerm] = useState("")
-  const [isFocused, setIsFocused] = useState(false)
-
-  const matchingCompanies = isFocused
-    ? booths.filter(b => b.company)
-      .filter(b =>
-        searchTerm
-          ? b.company!.name.toLowerCase().includes(searchTerm.toLowerCase())
-          : true
-      )
-      .sort((a, b) => (a.booth_number || "").localeCompare(b.booth_number || ""))
-    : []
-
-  return (
-    <header className="fixed top-4 inset-x-0 z-50 w-full">
-      <div className="mx-auto max-w-7xl px-4">
-        <div className="flex items-center justify-between gap-3 rounded-2xl -mx-8 border bg-white/85 px-3 py-2 shadow-md ring-1 ring-black/5 backdrop-blur-md md:px-5 md:py-3">
-          
-          {/* Left: Floorplan + Home + Event */}
-          <div className="flex items-center gap-4">
-            <span className="text-sm font-semibold text-neutral-800">Floorplan</span>
-            <Link
-              href="/"
-              className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white cursor-pointer"
-            >
-              Home
-            </Link>
-            <Link
-              href={`/event/${eventName.toLowerCase().replace(/\s+/g, "-")}`}
-              className="text-sm font-semibold text-neutral-800 hover:text-vtk-blue cursor-pointer transition-colors"
-            >
-              {eventName}
-            </Link>
-          </div>
-
-          {/* Middle: Search bar */}
-          <div className="relative flex-1 max-w-xs">
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => setTimeout(() => setIsFocused(false), 200)}
-              placeholder="Search company..."
-              className="w-full rounded-full border border-gray-300 px-4 py-2 text-sm"
-            />
-            {matchingCompanies.length > 0 && (
-              <ul className="absolute top-full left-0 w-full mt-1 max-h-60 overflow-auto rounded-lg border bg-white shadow-lg z-50">
-                {matchingCompanies.map(b => (
-                  <li
-                    key={b.company!.id}
-                    className="px-4 py-2 hover:bg-vtk-blue/10 cursor-pointer flex justify-between"
-                    onClick={() => {
-                      triggerFlicker(b.company!.id)
-                      setSearchTerm("")
-                      setIsFocused(false)
-                    }}
-                  >
-                    <span>{b.company!.name}</span>
-                    <span className="text-gray-500">{b.booth_number}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {/* Right: Category logos */}
-          <div className="flex flex-wrap items-center gap-2">
-            {categories.map(cat => {
-              const isSelected = selectedCategories.includes(cat.short_name)
-              return (
-                <button
-                  key={cat.short_name}
-                  onClick={() => toggleCategory(cat.short_name)}
-                  className="relative w-10 h-10 rounded-full overflow-hidden border transition-all duration-200 cursor-pointer flex items-center justify-center"
-                  style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
-                >
-                  <img
-                    src={getDirectusImageUrl(cat.logo)}
-                    alt={cat.short_name}
-                    className={`w-8 h-8 object-contain transition-all duration-200 transform ${
-                      isSelected
-                        ? 'scale-110 grayscale-0 opacity-100'
-                        : 'scale-90 grayscale-[50%] opacity-70'
-                    }`}
-                  />
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      </div>
-    </header>
-  )
-}
-
-// ---------------- Floorplan ----------------
-function Floorplan({
-  page,
-  selectedCategories,
-  onBoothClick,
-  setBooths,
-  flickerCompanyId,
-  flickerState,
-}: {
-  page: CareerEventPage
-  selectedCategories: string[]
-  onBoothClick: (company: Company) => void
-  setBooths: (b: Booth[]) => void
-  flickerCompanyId: string | null
-  flickerState: boolean
-}) {
-  const [boothsLocal, setBoothsLocal] = useState<Booth[]>([])
-  const [svgContent, setSvgContent] = useState<string>("")
-  const [viewBox, setViewBox] = useState<string>("0 0 1000 600")
-
+  // Load Company
   useEffect(() => {
-    const loadData = async () => {
-      if (!page) return
-      const data = await fetchFloorplanAction(page)
-      if (!data) return
+    async function loadCompany() {
+      if (!user?.company) return;
+      try {
+        const fetchedCompany = await fetchCompanyByIdAction(user.company.id);
+        if (fetchedCompany) {
+          setCompany(fetchedCompany);
+          setInitialCompany(fetchedCompany); // snapshot for comparison
+          setSelectedMasters(fetchedCompany.category?.map((c: any) => c.id) || []);
+          setLogoPreview(typeof fetchedCompany.logo === "string" ? getDirectusImageUrl(fetchedCompany.logo) ?? null : null);
+        }
+      } catch (err) {
+        console.error("Error fetching company:", err);
+      }
+    }
+    loadCompany();
+  }, [user?.company]);
 
-      const boothsData = (data.booths || []).filter((b): b is Booth => b !== null)
-      setBoothsLocal(boothsData)
-      setBooths(boothsData)
-      setSvgContent(data.svg || "")
+  function updateField<K extends keyof Company>(field: K, value: Company[K]) {
+    setCompany(prev => (prev ? { ...prev, [field]: value } : { ...emptyCompany, [field]: value }));
+  }
 
-      const parser = new DOMParser()
-      const svgDoc = parser.parseFromString(data.svg || "", "image/svg+xml")
-      const vb = svgDoc.documentElement.getAttribute("viewBox")
-      if (vb) setViewBox(vb)
+  function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type !== "image/png") {
+      alert("Only PNG files are allowed");
+      e.target.value = "";
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setLogoPreview(url);
+    updateField("logo", file as any);
+  }
+
+  function toggleMaster(id: string) {
+    setSelectedMasters(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  }
+
+  const isDirty = useCallback(() => {
+    if (!company || !initialCompany) return false;
+
+    const currentPayload = {
+      ...company,
+      category: masters.filter(m => selectedMasters.includes(m.id)),
+      short_description: toCleanHTML(company.short_description),
+      long_description: toCleanHTML(company.long_description),
+    };
+    return !isCompanyEqual(currentPayload, initialCompany);
+  }, [company, initialCompany, selectedMasters, masters]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!company) return;
+
+    let logoId: string | undefined = undefined;
+    if (isFileLike(company.logo)) {
+      const uploaded = await uploadCompanyLogo(company.logo);
+      logoId = uploaded ?? undefined;
+    } else if (typeof company.logo === "string") {
+      logoId = company.logo;
     }
 
-    loadData()
-  }, [page, setBooths])
+    const payload: Partial<Company> = {
+      ...company,
+      short_description: toCleanHTML(company.short_description),
+      long_description: toCleanHTML(company.long_description),
+      category: masters.filter(m => selectedMasters.includes(m.id)),
+      logo: logoId,
+    };
 
-  if (!svgContent) return <p>Loading floorplan...</p>
+    try {
+      const updated = await updateCompanyAction(company.id, payload);
+      setCompany(updated);
+      setInitialCompany(updated); // reset snapshot
+      setSubmittedJson(JSON.stringify(updated, null, 2));
+    } catch (err) {
+      console.error("Error updating company:", err);
+      alert("Failed to update company.");
+    }
+  }
+
+  function handleReset() {
+    if (!initialCompany) return;
+    setCompany({ ...initialCompany });
+    setSelectedMasters(initialCompany.category?.map((c: any) => c.id) || []);
+    setLogoPreview(typeof initialCompany.logo === "string" ? getDirectusImageUrl(initialCompany.logo) ?? null : null);
+    setSubmittedJson(null);
+  }
 
   return (
-    <div className="pt-[90px] flex justify-center w-full max-w-7xl px-4">
-      <svg
-        viewBox={viewBox}
-        className="w-full h-auto"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <g dangerouslySetInnerHTML={{ __html: svgContent }} />
+    <div className="w-full gap-4 flex flex-col">
+      <CompanyHeaderCard company={company} />
 
-        {boothsLocal.map((booth, i) => {
-          if (!booth.coords || !booth.company) return null
+      <Card className="rounded-2xl shadow-md">
+        <CardHeader>
+          <CardTitle className="text-xl">Company Information</CardTitle>
+          <CardDescription>
+            Provide general company details. This information will be visible on your profile and used for events.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <Label>Company Name</Label>
+                <Input value={formCompany.name ?? ""} onChange={e => updateField("name", e.target.value)} />
+              </div>
 
-          const boothCats: Master[] = Array.isArray(booth.company.category)
-            ? booth.company.category.filter((c): c is Master => c !== null)
-            : []
+              <div className="space-y-3">
+                <Label>Company Logo (PNG)</Label>
+                <Input type="file" accept=".png" onChange={handleLogoUpload} />
+                {logoPreview && <img src={logoPreview} alt="Logo Preview" className="h-12 mt-2 object-contain" />}
+              </div>
 
-          const isCategorySelected =
-            selectedCategories.length > 0 &&
-            selectedCategories.every(cat =>
-              boothCats.map(c => c.short_name).includes(cat)
-            )
+              <div className="space-y-3 md:col-span-2">
+                <Label>Short Description</Label>
+                <Textarea value={formCompany.short_description ?? ""} onChange={e => updateField("short_description", e.target.value)} />
+              </div>
 
-          const isFlicker = flickerCompanyId === booth.company.id && flickerState
+              <div className="space-y-3 md:col-span-2">
+                <Label>Long Description</Label>
+                <Textarea value={formCompany.long_description ?? ""} onChange={e => updateField("long_description", e.target.value)} />
+              </div>
 
-          const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
+              <div className="space-y-3">
+                <Label>Location</Label>
+                <Input value={formCompany.location ?? ""} onChange={e => updateField("location", e.target.value)} />
+              </div>
 
-          return (
-            <rect
-              key={i}
-              x={booth.coords.x_pct + "%"}
-              y={booth.coords.y_pct + "%"}
-              width={booth.coords.width_pct + "%"}
-              height={booth.coords.height_pct + "%"}
-              fill={isSelected ? "rgba(0,51,102,0.35)" : "transparent"}
-              stroke={isSelected ? "#003366" : "transparent"}
-              strokeWidth={isSelected ? 1 : 0}
-              style={{ cursor: "pointer" }}
-              onClick={() => onBoothClick(booth.company!)}
-            />
-          )
-        })}
-      </svg>
+              <div className="space-y-3">
+                <Label>Website</Label>
+                <Input type="url" value={formCompany.website ?? ""} onChange={e => updateField("website", e.target.value)} />
+              </div>
+
+              <div className="md:col-span-2">
+                <Label>Interested Master Categories</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 mt-4">
+                  {masters.map(opt => {
+                    const selected = selectedMasters.includes(opt.id);
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => toggleMaster(opt.id)}
+                        className={`w-full py-2 rounded-lg border transition text-center ${
+                          selected ? "bg-slate-700 text-white border-slate-700" : "bg-white text-black border-gray-300"
+                        } hover:opacity-90`}
+                      >
+                        {opt.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <Button type="submit" className={`flex items-center gap-2 ${!isDirty() ? "bg-green-600" : ""}`}>
+                <IconCheck size={18} /> {!isDirty() ? "Saved" : "Save Company Info"}
+              </Button>
+              <Button type="button" variant="ghost" onClick={handleReset}>
+                <IconRefresh size={18} /> Reset
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      {submittedJson && (
+        <Card className="rounded-2xl shadow-md">
+          <CardHeader>
+            <CardTitle>Submitted Data (demo)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <pre className="mt-2 p-3 rounded-lg bg-muted text-sm overflow-auto">{submittedJson}</pre>
+          </CardContent>
+        </Card>
+      )}
     </div>
-  )
-}
-
-// ---------------- Popup ----------------
-function Popup({ company, onClose }: { company: Company; onClose: () => void }) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-      onClick={onClose}
-    >
-      <div
-        className="relative rounded-2xl bg-white text-neutral-900 px-8 py-6 shadow-2xl max-w-3xl w-full mx-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          className="absolute top-3 right-3 text-neutral-500 hover:text-neutral-800"
-          onClick={onClose}
-        >
-          ✕
-        </button>
-
-        {company.logo && (
-          <div className="flex justify-center mb-4">
-            <img
-              src={getDirectusImageUrl(company.logo)}
-              alt={company.name}
-              className="object-contain max-h-20"
-            />
-          </div>
-        )}
-
-        <h2 className="text-2xl font-semibold text-vtk-blue text-center mb-2">
-          {company.name}
-        </h2>
-
-        {company.short_description && (
-          <div className="text-center">
-            <div
-              className="text-neutral-800 mt-2 prose prose-sm mx-auto"
-              style={{ display: "inline-block", textAlign: "center" }}
-              dangerouslySetInnerHTML={{ __html: company.short_description }}
-            />
-          </div>
-        )}
-      </div>
-    </div>
-  )
+  );
 }

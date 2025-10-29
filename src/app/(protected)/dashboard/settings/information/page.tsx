@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import dynamic from "next/dynamic";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { IconCheck, IconRefresh } from "@tabler/icons-react";
@@ -13,10 +13,21 @@ import { updateCompanyAction, fetchCompanyByIdAction, uploadCompanyLogo } from "
 import { useUser } from "@/providers/UserProvider";
 import { getDirectusImageUrl } from "@/components/Images";
 
+// --- Tiptap ---
+import { useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+
+const EditorContent = dynamic(
+  () => import("@tiptap/react").then((mod) => mod.EditorContent),
+  { ssr: false }
+);
+
+// --- Helpers ---
 function isFileLike(value: any): value is File {
   return typeof value === "object" && value !== null && "name" in value;
 }
 
+// --- Company Header ---
 function CompanyHeaderCard({ company }: { company: Company | null }) {
   if (!company) {
     return (
@@ -48,6 +59,7 @@ function CompanyHeaderCard({ company }: { company: Company | null }) {
   );
 }
 
+// --- Main Form ---
 export default function CompanyForm() {
   const { user } = useUser();
   const [company, setCompany] = useState<Company | null>(null);
@@ -56,15 +68,20 @@ export default function CompanyForm() {
   const [submittedJson, setSubmittedJson] = useState<string | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
+  const [savedSnapshot, setSavedSnapshot] = useState<{
+    company: Company;
+    selectedMasters: string[];
+  } | null>(null);
+
   const emptyCompany: Company = {
     id: "",
-    name: "",
+    name: "New Company",
     logo: "",
     short_description: "",
     long_description: "",
     category: [],
-    location: "",
-    website: "",
+    location: "City, Country",
+    website: "https://example.com",
     VAT: "",
     address_street: "",
     address_number: "",
@@ -76,6 +93,7 @@ export default function CompanyForm() {
 
   const formCompany = company || emptyCompany;
 
+  // --- Load Masters ---
   useEffect(() => {
     async function loadMasters() {
       try {
@@ -88,6 +106,7 @@ export default function CompanyForm() {
     loadMasters();
   }, []);
 
+  // --- Load Company ---
   useEffect(() => {
     async function loadCompany() {
       if (!user?.company) return;
@@ -97,30 +116,37 @@ export default function CompanyForm() {
           setCompany(fetchedCompany);
           setSelectedMasters(fetchedCompany.category?.map((c: any) => c.id) || []);
           setLogoPreview(typeof fetchedCompany.logo === "string" ? getDirectusImageUrl(fetchedCompany.logo) ?? null : null);
+          setSavedSnapshot({
+            company: fetchedCompany,
+            selectedMasters: fetchedCompany.category?.map((c: any) => c.id) || [],
+          });
         } else {
           setCompany(null);
           setSelectedMasters([]);
           setLogoPreview(null);
+          setSavedSnapshot(null);
         }
       } catch (err) {
         console.error("Error fetching company:", err);
         setCompany(null);
         setSelectedMasters([]);
         setLogoPreview(null);
+        setSavedSnapshot(null);
       }
     }
     loadCompany();
   }, [user?.company]);
 
+  // --- Update Form Field ---
   function updateField<K extends keyof Company>(field: K, value: Company[K]) {
     setCompany((prev) => (prev ? { ...prev, [field]: value } : { ...emptyCompany, [field]: value }));
   }
 
+  // --- Logo Upload ---
   function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.type !== "image/png") {
-      alert("Only PNG files are allowed");
       e.target.value = "";
       return;
     }
@@ -129,31 +155,82 @@ export default function CompanyForm() {
     updateField("logo", file as any);
   }
 
+  // --- Toggle Masters ---
   function toggleMaster(id: string) {
     setSelectedMasters((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   }
 
+  // --- Dirty Check ---
+  const isDirty = useMemo(() => {
+    if (!company || !savedSnapshot) return false;
+    const current = { ...company, category: selectedMasters };
+    const saved = { ...savedSnapshot.company, category: savedSnapshot.selectedMasters };
+    return JSON.stringify(current) !== JSON.stringify(saved);
+  }, [company, selectedMasters, savedSnapshot]);
+
+  // --- Editor Classes ---
+  const editorClasses = "border rounded-md p-2 bg-white text-sm text-gray-900 min-h-[80px] focus:outline-none focus:ring-1 focus:ring-slate-400";
+
+  // --- Tiptap Editors with placeholder ---
+  const shortDescEditor = useEditor({
+    extensions: [StarterKit],
+    content: formCompany.short_description,
+    onUpdate({ editor }) {
+      updateField("short_description", editor.getHTML());
+    },
+    editorProps: {
+      attributes: {
+        class: editorClasses,
+        "data-placeholder": "Enter a brief description of your company...",
+      },
+    },
+    immediatelyRender: false,
+  });
+
+  const longDescEditor = useEditor({
+    extensions: [StarterKit],
+    content: formCompany.long_description,
+    onUpdate({ editor }) {
+      updateField("long_description", editor.getHTML());
+    },
+    editorProps: {
+      attributes: {
+        class: editorClasses + " min-h-[120px]",
+        "data-placeholder": "Enter a more detailed description about your company, mission, and activities...",
+      },
+    },
+    immediatelyRender: false,
+  });
+
+  // --- Set initial content when company loads ---
+  useEffect(() => {
+    if (company) {
+      shortDescEditor?.commands.setContent(company.short_description || "");
+      longDescEditor?.commands.setContent(company.long_description || "");
+    }
+  }, [company, shortDescEditor, longDescEditor]);
+
+  // --- Submit ---
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!company) return;
 
     let logoId: string | undefined = undefined;
 
-    // If a new file is uploaded
     if (isFileLike(company.logo)) {
       const uploaded = await uploadCompanyLogo(company.logo);
-      logoId = uploaded ?? undefined; // convert null -> undefined
+      logoId = uploaded ?? undefined;
     } else if (typeof company.logo === "string") {
-      logoId = company.logo; // keep existing
+      logoId = company.logo;
     }
 
     const payload: Partial<Company> = {
       name: company.name,
       short_description: company.short_description,
       long_description: company.long_description,
-      category: masters.filter((m) => selectedMasters.includes(m.id)), // Master[]
+      category: masters.filter((m) => selectedMasters.includes(m.id)),
       location: company.location,
       website: company.website,
       VAT: company.VAT,
@@ -163,28 +240,46 @@ export default function CompanyForm() {
       address_city: company.address_city,
       address_country: company.address_country,
       address: company.address,
-      logo: logoId, // safe assignment
+      logo: logoId,
     };
 
     try {
       const updated = await updateCompanyAction(company.id, payload);
-      setCompany(updated);
-      setSubmittedJson(JSON.stringify(updated, null, 2));
-      alert("Company updated successfully!");
+      if (updated) {
+        const persistedMasters = [...selectedMasters];
+        setSavedSnapshot({
+          company: updated,
+          selectedMasters: persistedMasters,
+        });
+        setCompany({
+          ...updated,
+          category: masters.filter((m) => persistedMasters.includes(m.id)),
+        });
+        setSelectedMasters(persistedMasters);
+        setLogoPreview(
+          typeof updated.logo === "string"
+            ? getDirectusImageUrl(updated.logo) ?? null
+            : null
+        );
+        setSubmittedJson(JSON.stringify(updated, null, 2));
+      }
     } catch (err) {
       console.error("Error updating company:", err);
-      alert("Failed to update company.");
     }
   }
 
+  // --- Reset ---
   function handleReset() {
-    if (!company) return;
-    setCompany({ ...company });
-    setSelectedMasters(company.category?.map((c: any) => c.id) || []);
-    setLogoPreview(typeof company.logo === "string" ? getDirectusImageUrl(company.logo) ?? null : null);
+    if (!savedSnapshot) return;
+    setCompany({ ...savedSnapshot.company });
+    setSelectedMasters([...savedSnapshot.selectedMasters]);
+    setLogoPreview(typeof savedSnapshot.company.logo === "string" ? getDirectusImageUrl(savedSnapshot.company.logo) ?? null : null);
     setSubmittedJson(null);
+    shortDescEditor?.commands.setContent(savedSnapshot.company.short_description || "");
+    longDescEditor?.commands.setContent(savedSnapshot.company.long_description || "");
   }
 
+  // --- Render ---
   return (
     <div className="w-full gap-4 flex flex-col">
       <CompanyHeaderCard company={company} />
@@ -200,6 +295,7 @@ export default function CompanyForm() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Company Name */}
               <div className="space-y-3">
                 <Label htmlFor="company-name">Company Name</Label>
                 <Input
@@ -209,29 +305,78 @@ export default function CompanyForm() {
                   onChange={(e) => updateField("name", e.target.value)}
                 />
               </div>
+
+              {/* Logo */}
               <div className="space-y-3">
-                <Label htmlFor="company-logo">Company Logo (PNG)</Label>
-                <Input type="file" accept=".png" onChange={handleLogoUpload} />
-                {logoPreview && (
-                  <img src={logoPreview} alt="Logo Preview" className="h-12 mt-2 object-contain" />
-                )}
+                <Label>Company Logo (PNG)</Label>
+                <div className="flex flex-col items-center gap-2">
+                  {logoPreview ? (
+                    <img
+                      src={logoPreview}
+                      alt="Company Logo"
+                      className="h-12 w-12 object-contain rounded-md"
+                    />
+                  ) : formCompany.logo ? (
+                    <img
+                      src={getDirectusImageUrl(formCompany.logo) ?? ""}
+                      alt="Company Logo"
+                      className="h-12 w-12 object-contain rounded-md"
+                    />
+                  ) : (
+                    <div className="h-12 w-12 flex items-center justify-center rounded-md bg-gray-100 text-gray-500 text-sm whitespace-nowrap">
+                      No logo
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="cursor-pointer"
+                      onClick={() =>
+                        document.getElementById("hidden-logo-input")?.click()
+                      }
+                    >
+                      {logoPreview || formCompany.logo ? "Change Logo" : "Upload Logo"}
+                    </Button>
+                    {(logoPreview || formCompany.logo) && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="cursor-pointer"
+                        onClick={() => {
+                          setLogoPreview(null);
+                          updateField("logo", "");
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <input
+                  id="hidden-logo-input"
+                  type="file"
+                  accept=".png"
+                  className="hidden"
+                  onChange={handleLogoUpload}
+                />
               </div>
+
+              {/* Short Description */}
               <div className="space-y-3 md:col-span-2">
                 <Label htmlFor="short-description">Short Description</Label>
-                <Input
-                  placeholder="Brief company description"
-                  value={formCompany.short_description ?? ""}
-                  onChange={(e) => updateField("short_description", e.target.value)}
-                />
+                <EditorContent editor={shortDescEditor} />
               </div>
+
+              {/* Long Description */}
               <div className="space-y-3 md:col-span-2">
                 <Label htmlFor="long-description">Long Description</Label>
-                <Textarea
-                  placeholder="Provide a detailed company description..."
-                  value={formCompany.long_description ?? ""}
-                  onChange={(e) => updateField("long_description", e.target.value)}
-                />
+                <EditorContent editor={longDescEditor} />
               </div>
+
+              {/* Location */}
               <div className="space-y-3">
                 <Label htmlFor="location">Location</Label>
                 <Input
@@ -240,6 +385,8 @@ export default function CompanyForm() {
                   onChange={(e) => updateField("location", e.target.value)}
                 />
               </div>
+
+              {/* Website */}
               <div className="space-y-3">
                 <Label htmlFor="website">Website</Label>
                 <Input
@@ -249,6 +396,8 @@ export default function CompanyForm() {
                   onChange={(e) => updateField("website", e.target.value)}
                 />
               </div>
+
+              {/* Interested Masters */}
               <div className="md:col-span-2">
                 <Label>Interested Master Categories</Label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 mt-4">
@@ -259,7 +408,7 @@ export default function CompanyForm() {
                         key={opt.id}
                         type="button"
                         onClick={() => toggleMaster(opt.id)}
-                        className={`w-full py-2 rounded-lg border transition text-center ${
+                        className={`w-full py-2 rounded-lg border transition text-center cursor-pointer ${
                           selected
                             ? "bg-slate-700 text-white border-slate-700"
                             : "bg-white text-black border-gray-300"
@@ -272,11 +421,17 @@ export default function CompanyForm() {
                 </div>
               </div>
             </div>
+
+            {/* Submit / Reset */}
             <div className="flex gap-2 justify-end">
-              <Button type="submit" className="flex items-center gap-2">
-                <IconCheck size={18} /> Save Company Info
+              <Button
+                type="submit"
+                className={`flex items-center gap-2 cursor-pointer ${!isDirty ? "bg-green-600 text-white disabled:bg-green-600 disabled:text-white" : ""}`}
+                disabled={!isDirty}
+              >
+                <IconCheck size={18} /> {!isDirty ? "Saved" : "Save Company Info"}
               </Button>
-              <Button type="button" variant="ghost" onClick={handleReset}>
+              <Button type="button" variant="ghost" onClick={handleReset} className="cursor-pointer">
                 <IconRefresh size={18} /> Reset
               </Button>
             </div>
@@ -343,10 +498,14 @@ export default function CompanyForm() {
               </div>
             </div>
             <div className="flex gap-2 justify-end">
-              <Button type="submit" className="flex items-center gap-2">
-                <IconCheck size={18} /> Save Billing Info
+              <Button
+                type="submit"
+                className={`flex items-center gap-2 cursor-pointer ${!isDirty ? "bg-green-600 text-white" : ""}`}
+                disabled={!isDirty}
+              >
+                <IconCheck size={18} /> {!isDirty ? "Saved" : "Save Billing Info"}
               </Button>
-              <Button type="button" variant="ghost" onClick={handleReset}>
+              <Button type="button" variant="ghost" onClick={handleReset} className="cursor-pointer">
                 <IconRefresh size={18} /> Reset
               </Button>
             </div>
