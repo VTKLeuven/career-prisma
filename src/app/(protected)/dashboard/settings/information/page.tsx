@@ -137,6 +137,8 @@ export default function CompanyForm() {
     loadCompany();
   }, [user?.company]);
 
+  console.log(selectedMasters)
+
   // --- Update Form Field ---
   function updateField<K extends keyof Company>(field: K, value: Company[K]) {
     setCompany((prev) => (prev ? { ...prev, [field]: value } : { ...emptyCompany, [field]: value }));
@@ -226,11 +228,16 @@ export default function CompanyForm() {
       logoId = company.logo;
     }
 
+    console.log("test", masters)
+    console.log("test2", selectedMasters)
+    console.log("payload", masters.filter((m) => selectedMasters.includes(m.id)))
+
+
     const payload: Partial<Company> = {
       name: company.name,
       short_description: company.short_description,
       long_description: company.long_description,
-      category: masters.filter((m) => selectedMasters.includes(m.id)),
+      category: masters.filter((m) => selectedMasters.includes(m.id)).map((m) => ({ master_id: m.id })),
       location: company.location,
       website: company.website,
       VAT: company.VAT,

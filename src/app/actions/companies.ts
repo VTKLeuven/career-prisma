@@ -45,15 +45,15 @@ export async function fetchCompanyByIdAction(company_id: string) {
 
   if (!company) return null;
 
-    company.options = company.options?.map((item: any) => {
-      const option = item.career_event_option_id;
-      return option;
-    }) ?? [];
+  company.options = company.options?.map((item: any) => {
+    const option = item.career_event_option_id;
+    return option;
+  }) ?? [];
 
-    company.category = company.category?.map((item: any) => {
-      const cat = item.master_id;
-      return cat;
-    }) ?? [];
+  company.category = company.category?.map((item: any) => {
+    const cat = item.master_id;
+    return cat;
+  }) ?? [];
 
   return company
 }

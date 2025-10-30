@@ -31,7 +31,7 @@ export type Company = {
     | { id: string; first_name: string | null; last_name: string | null } 
     | string
   >
-  category?: Master[]
+  category?: Master[] | { master_id: string; }[]
   options?: CareerEventOption[]
 };
 
