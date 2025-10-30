@@ -12,8 +12,6 @@ export async function listEvents(opts?: {
   sort?: string;        // e.g. "-date_created" or "name"
 }) {
   try {
-    const directus = await getDirectusWithToken();
-    if (! directus) return null;
 
     const { search, limit = 25, page = 1, sort = "date" } = opts ?? {};
     return directus.request(

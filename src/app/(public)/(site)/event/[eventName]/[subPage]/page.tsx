@@ -7,7 +7,7 @@ import NextImage from "next/image"
 import { fetchEventPagesAction } from "@/app/actions/events"
 import { fetchFloorplanAction, fetchMastersAction } from "@/app/actions/features"
 import type { CareerEventPage, Booth, Master, Company } from '@/lib/schema'
-import { getDirectusImageUrl } from "@/components/Images";
+import { getDirectusImageUrl } from "@/components/Images"
 
 export default function SubPage() {
   const [page, setPage] = useState<CareerEventPage | null>(null)
