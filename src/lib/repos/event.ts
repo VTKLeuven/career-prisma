@@ -2,7 +2,7 @@
 "use server"
 
 import { readItems } from "@directus/sdk";
-import { directus, getDirectusWithToken } from "@/lib/directus";
+import { directus } from "@/lib/directus";
 import type { CareerEvent, CareerEventPage } from "@/lib/schema";
 
 export async function listEvents(opts?: {
