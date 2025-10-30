@@ -1,9 +1,9 @@
 // lib/repos/event.ts
 "use server"
 
-import { readItems, readItem, createItem, updateItem } from "@directus/sdk";
+import { readItems } from "@directus/sdk";
 import { directus, getDirectusWithToken } from "@/lib/directus";
-import type { CareerEvent, CareerEventPage, TimeSlot, Floorplan } from "@/lib/schema";
+import type { CareerEvent, CareerEventPage } from "@/lib/schema";
 
 export async function listEvents(opts?: {
   search?: string;
@@ -63,14 +63,14 @@ export async function listEventPages(opts?: {
       const fieldPath = desc ? sort.slice(1) : sort; // e.g. "event.date"
 
       sortedList = list.sort((a, b) => {
-        const getField = (obj: any, path: string) =>
-          path.split(".").reduce((o, key) => o?.[key], obj);
+        const getField = (obj: Record<string, unknown>, path: string): unknown =>
+          path.split(".").reduce((o, key) => o?.[key] as Record<string, unknown>, obj as Record<string, unknown>);
 
-        const valA = getField(a, fieldPath);
-        const valB = getField(b, fieldPath);
+        const valA = getField(a as unknown as Record<string, unknown>, fieldPath);
+        const valB = getField(b as unknown as Record<string, unknown>, fieldPath);
 
-        const timeA = valA ? new Date(valA).getTime() : 0;
-        const timeB = valB ? new Date(valB).getTime() : 0;
+        const timeA = valA ? new Date(valA as string | number).getTime() : 0;
+        const timeB = valB ? new Date(valB as string | number).getTime() : 0;
 
         return desc ? timeB - timeA : timeA - timeB;
       });

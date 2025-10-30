@@ -5,23 +5,6 @@ import { readItems, readItem, createItem, updateItem } from "@directus/sdk";
 import { getDirectusWithToken } from "@/lib/directus";
 import type { Company } from "@/lib/schema";
 
-const COMPANY_FIELDS = [
-  "id",
-  "name",
-  "salesperson.id",
-  "salesperson.first_name",
-  "salesperson.last_name",
-  "salesperson.email",
-  "VAT",
-  "address_street",
-  "address_number",
-  "address_zip",
-  "address_city",
-  "address_country",
-  "category.master_id.*",
-  "options.option_id.*"
-] as const;
-
 export async function listCompanies(opts?: {
   search?: string;
   limit?: number;

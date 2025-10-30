@@ -1,5 +1,5 @@
 // lib/repos/features.ts
-import { directus, getDirectusWithToken } from "@/lib/directus"
+import { directus } from "@/lib/directus"
 import type { Floorplan, Booth, Master } from "@/lib/schema"
 import { readItems } from "@directus/sdk"
 

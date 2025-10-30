@@ -6,12 +6,14 @@ import { useEffect, useRef, useState } from 'react'
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { ArrowRight, Calendar, Users, ChevronDown, Sparkles, Search, ShoppingCart, Globe } from 'lucide-react'
+import { Calendar, ChevronDown, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { fetchEventsAction } from "@/app/actions/events";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { getDirectusImageUrl } from "@/components/Images";
-import { CareerEventPage } from '@/lib/schema'
+import { CareerEvent } from '@/lib/schema'
+import { DirectusUser } from "@directus/sdk";
+import { ScrollCue } from '@/components/ScrollCue';
 
 export default function HomePage() {
     const [viewAllEvents, setViewAllEvents] = useState(false);
@@ -34,7 +36,7 @@ export default function HomePage() {
 function Header({ onViewAll }: { onViewAll?: () => void }) {
   const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
   const router = useRouter()
-  const [EVENTS, setEvents] = useState<any[]>([]);
+  const [EVENTS, setEvents] = useState<CareerEvent[]>([]);
 
   useEffect(() => {
       fetchEventsAction().then(setEvents);
@@ -113,7 +115,7 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
                     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       {EVENTS.slice(0, 8).map((event) => (
                         <li key={event.name} className="rounded-xl border p-3 hover:bg-vtk-light/40">
-                          <Link href={event.href} className="block">
+                          <Link href={event.href ?? '#'} className="block">
                             <div className="text-sm font-medium text-neutral-900">{event.name}</div>
                             <div className="mt-0.5 text-xs text-neutral-600">{event.date} · {event.location}</div>
                           </Link>
@@ -192,7 +194,7 @@ function Hero() {
 }
 
 function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
-    const [EVENTS, setEvents] = useState<any[]>([]);
+    const [EVENTS, setEvents] = useState<CareerEvent[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -223,7 +225,7 @@ function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
                     {EVENTS.slice(0, 3).map((event, i) => (
                         <motion.a
                             key={event.name}
-                            href={event.href}
+                            href={event.href ?? '#'}
                             whileHover={{ y: -8, rotate: i % 2 ? -1 : 1 }}
                             transition={{ type: 'spring', stiffness: 260, damping: 18 }}
                             className="group relative block"
@@ -260,7 +262,7 @@ function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
 }
 
 function AllEvents({ onBack }: { onBack?: () => void }) {
-  const [events, setEvents] = useState<any[]>([]);
+  const [events, setEvents] = useState<CareerEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -285,7 +287,7 @@ function AllEvents({ onBack }: { onBack?: () => void }) {
         <ul className="divide-y divide-neutral-200 border rounded-2xl bg-white/90 shadow-sm">
           {events.map((event) => (
             <li key={event.name}>
-              <Link href={event.href} className="block px-5 py-4 hover:bg-vtk-light/40 transition">
+              <Link href={event.href ?? '#'} className="block px-5 py-4 hover:bg-vtk-light/40 transition">
                 <div className="font-medium text-neutral-900">{event.name}</div>
                 <div className="text-sm text-neutral-600">{event.date} · {event.location}</div>
               </Link>
@@ -298,7 +300,7 @@ function AllEvents({ onBack }: { onBack?: () => void }) {
 }
 
 function TeamOverview() {
-    const [team, setTeam] = useState<any[]>([]);
+    const [team, setTeam] = useState<DirectusUser[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -419,13 +421,3 @@ function Footer() {
     )
 }
 
-export function ScrollCue() {
-    return (
-        <div className="pointer-events-none absolute inset-x-0 bottom-6 flex items-center justify-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs text-white/90 animate-bounce">
-                <ChevronDown className="h-4 w-4" />
-                <span>Scroll</span>
-            </div>
-        </div>
-    )
-}

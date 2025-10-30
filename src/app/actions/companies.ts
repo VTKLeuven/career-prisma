@@ -2,12 +2,11 @@
 "use server";
 import { listCompanies, getCompanyById, createCompany, updateCompany } from "@/lib/repos/company";
 import { createRep, updateRep } from "@/lib/repos/users";
-import { CareerEventOption, Company } from "@/lib/schema";
+import { Company } from "@/lib/schema";
 import { DirectusUser } from "@directus/sdk";
 import { uploadDirectusFile } from "@/lib/repos/directus";
 
 
-const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
 
 function formatAddress(c: Company) {
   const parts = [

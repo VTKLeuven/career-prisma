@@ -1,15 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
 import { motion, useScroll, useTransform } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { ScrollCue } from '../page'
-import { Calendar } from 'lucide-react'
+import { ScrollCue } from '@/components/ScrollCue'
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from "next/navigation"
 import { fetchEventPagesAction } from "@/app/actions/events"
-import { getDirectusImageUrl } from "@/components/Images";
 import { CareerEventPage } from '@/lib/schema'
 
 export default function EventPage() {
@@ -27,7 +24,7 @@ function Hero() {
     });
     const y = useTransform(scrollYProgress, [0, 1], ["-8%", "8%"]);
 
-    const [EVENTS, setEvents] = useState<any[]>([]);
+    const [EVENTS, setEvents] = useState<CareerEventPage[]>([]);
     const searchParams = useSearchParams();
     const eventName = searchParams.get("name");
 
@@ -72,7 +69,7 @@ function Hero() {
                         {page?.event ? (
                             <>
                                 <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs text-white">
-                                    {page.event.tagline ??
+                                    {page.tagline ??
                                         "Biggest engineering jobfair in the BeNeLux for students"}
                                 </div>
                                 <h1 className="text-balance text-4xl md:text-6xl lg:text-7xl font-semibold leading-[1.05] tracking-tight text-white">

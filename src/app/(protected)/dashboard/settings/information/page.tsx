@@ -12,8 +12,9 @@ import { fetchMastersAction } from "@/app/actions/features";
 import { updateCompanyAction, fetchCompanyByIdAction, uploadCompanyLogo } from "@/app/actions/companies";
 import { useUser } from "@/providers/UserProvider";
 import { getDirectusImageUrl } from "@/components/Images";
+import NextImage from "next/image";
 
-function isFileLike(value: any): value is File {
+function isFileLike(value: unknown): value is File {
   return typeof value === "object" && value !== null && "name" in value;
 }
 
@@ -37,7 +38,7 @@ function CompanyHeaderCard({ company }: { company: Company | null }) {
     <Card className="rounded-2xl shadow-md bg-slate-700 text-white">
       <CardHeader className="flex items-center gap-4">
         {logoSrc && (
-          <img src={logoSrc} alt={company.name || "logo"} className="h-12 w-12 object-contain rounded-lg" />
+          <NextImage src={logoSrc} alt={company.name || "logo"} width={48} height={48} className="object-contain rounded-lg" />
         )}
         <div>
           <CardTitle>{company.name || "Company Profile"}</CardTitle>
@@ -53,7 +54,6 @@ export default function CompanyForm() {
   const [company, setCompany] = useState<Company | null>(null);
   const [selectedMasters, setSelectedMasters] = useState<string[]>([]);
   const [masters, setMasters] = useState<Master[]>([]);
-  const [submittedJson, setSubmittedJson] = useState<string | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   const emptyCompany: Company = {
@@ -95,7 +95,7 @@ export default function CompanyForm() {
         const fetchedCompany = await fetchCompanyByIdAction(user.company.id);
         if (fetchedCompany) {
           setCompany(fetchedCompany);
-          setSelectedMasters(fetchedCompany.category?.map((c: any) => c.id) || []);
+          setSelectedMasters(fetchedCompany.category?.map((c: Master) => c.id) || []);
           setLogoPreview(typeof fetchedCompany.logo === "string" ? getDirectusImageUrl(fetchedCompany.logo) ?? null : null);
         } else {
           setCompany(null);
@@ -126,7 +126,7 @@ export default function CompanyForm() {
     }
     const url = URL.createObjectURL(file);
     setLogoPreview(url);
-    updateField("logo", file as any);
+    updateField("logo", file as unknown as string);
   }
 
   function toggleMaster(id: string) {
@@ -169,7 +169,6 @@ export default function CompanyForm() {
     try {
       const updated = await updateCompanyAction(company.id, payload);
       setCompany(updated);
-      setSubmittedJson(JSON.stringify(updated, null, 2));
       alert("Company updated successfully!");
     } catch (err) {
       console.error("Error updating company:", err);
@@ -180,9 +179,8 @@ export default function CompanyForm() {
   function handleReset() {
     if (!company) return;
     setCompany({ ...company });
-    setSelectedMasters(company.category?.map((c: any) => c.id) || []);
+    setSelectedMasters(company.category?.map((c: Master) => c.id) || []);
     setLogoPreview(typeof company.logo === "string" ? getDirectusImageUrl(company.logo) ?? null : null);
-    setSubmittedJson(null);
   }
 
   return (
@@ -213,7 +211,7 @@ export default function CompanyForm() {
                 <Label htmlFor="company-logo">Company Logo (PNG)</Label>
                 <Input type="file" accept=".png" onChange={handleLogoUpload} />
                 {logoPreview && (
-                  <img src={logoPreview} alt="Logo Preview" className="h-12 mt-2 object-contain" />
+                  <NextImage src={logoPreview} alt="Logo Preview" width={48} height={48} className="mt-2 object-contain" />
                 )}
               </div>
               <div className="space-y-3 md:col-span-2">
@@ -288,7 +286,7 @@ export default function CompanyForm() {
       <Card className="rounded-2xl shadow-md">
         <CardHeader>
           <CardTitle className="text-xl">Billing Information</CardTitle>
-          <CardDescription>Provide your company's billing and address details.</CardDescription>
+          <CardDescription>Provide your company&apos;s billing and address details.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-8">

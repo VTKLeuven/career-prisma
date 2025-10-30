@@ -105,7 +105,7 @@ export async function POST(req: Request) {
     });
 
     return res;
-  } catch (err) {
+  } catch {
     // Body parse errors, network issues, unexpected shapes, etc.
     return NextResponse.json({ error: "Unexpected error during login." }, { status: 500 });
   }
