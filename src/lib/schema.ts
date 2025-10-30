@@ -3,7 +3,9 @@ export type DirectusRole = { id: string; name: string };
 
 export type DirectusUser = {
   id: string;
-  name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  title?: string;
   email: string;
   tel?: string | null;
   role?: string | DirectusRole | null;
@@ -27,10 +29,7 @@ export type Company = {
   address_city?: string | null;
   address_country?: string | null;
   address: string;
-  representatives?: Array<
-    | { id: string; first_name: string | null; last_name: string | null } 
-    | string
-  >
+  representatives?: DirectusUser[]
   category?: Master[] | { master_id: string; }[]
   options?: CareerEventOption[]
 };

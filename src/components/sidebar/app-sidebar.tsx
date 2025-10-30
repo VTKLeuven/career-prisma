@@ -75,15 +75,15 @@ const data = {
       items: [
         {
           title: "Company Information",
-          url: "dashboard/settings/information",
+          url: "/dashboard/settings/information",
         },
         {
           title: "Users",
-          url: "#",
+          url: "/dashboard/settings/users",
         },
         {
           title: "Billing",
-          url: "#",
+          url: "/dashboard/settings/information",
         },
       ],
     },

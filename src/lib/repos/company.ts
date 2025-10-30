@@ -55,7 +55,7 @@ export async function getCompanyById(id: string) {
   
   return directus.request(
     readItem("company", id, {
-      fields: ["*", "category.master_id.*", "options.option_id.*"],
+      fields: ["*", "representatives.*", "category.master_id.*", "options.option_id.*"],
     })
   ) as unknown as Company;
 }

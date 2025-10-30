@@ -137,8 +137,6 @@ export default function CompanyForm() {
     loadCompany();
   }, [user?.company]);
 
-  console.log(selectedMasters)
-
   // --- Update Form Field ---
   function updateField<K extends keyof Company>(field: K, value: Company[K]) {
     setCompany((prev) => (prev ? { ...prev, [field]: value } : { ...emptyCompany, [field]: value }));

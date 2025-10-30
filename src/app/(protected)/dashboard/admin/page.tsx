@@ -1,3 +1,5 @@
+// i think this page is useless
+
 "use client";
 
 import * as React from "react";
