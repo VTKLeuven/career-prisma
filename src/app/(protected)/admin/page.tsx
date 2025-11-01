@@ -61,6 +61,7 @@ import { IconBuilding, IconColumns, IconMail, IconPlus, IconTaxEuro } from "@tab
 import type { CareerEvent, Company } from "@/lib/schema";
 import { useUser } from "@/providers/UserProvider";
 import { DirectusUser } from "@directus/sdk";
+import { CompanyRep } from "@/lib/schema";
 
 /** ------------------------------------------------------------------
  * Companies section
@@ -379,7 +380,7 @@ function CompanyFormDialog({ onCreate }: { onCreate: (row: CompanyRow) => void }
       address_country: country,
     }
 
-    const newRep: Partial<DirectusUser> = {
+    const newRep: Partial<CompanyRep> = {
       first_name: firstName,
       last_name: lastName,
       email: email,

@@ -1,9 +1,8 @@
 // app/actions/companies.ts
 "use server";
 import { listCompanies, getCompanyById, createCompany, updateCompany } from "@/lib/repos/company";
-import { createRep, updateRep } from "@/lib/repos/users";
-import { CareerEventOption, Company } from "@/lib/schema";
-import { DirectusUser } from "@directus/sdk";
+import { createRep, updateRep, waitForApproval } from "@/lib/repos/users";
+import { CareerEventOption, Company, CompanyRep } from "@/lib/schema";
 import { uploadDirectusFile } from "@/lib/repos/directus";
 
 
@@ -29,11 +28,7 @@ export async function fetchCompaniesAction() {
     name: c.name,
     address: formatAddress(c),
     VAT: c.VAT ?? "Not set",
-    salesperson:
-      typeof c.salesperson === "object" && c.salesperson
-        ? `${c.salesperson.first_name ?? ""} ${c.salesperson.last_name ?? ""}`.trim() ||
-          c.salesperson.id
-        : "Not set",
+    salesperson: c.salesperson,
 
     // Include options so you can access events
     options: c.options ?? [],
@@ -58,25 +53,58 @@ export async function fetchCompanyByIdAction(company_id: string) {
   return company
 }
 
-export async function createCompanyAction(companyPayload: Partial<Company>, repPayload: Partial<DirectusUser>) {
+export async function createCompanyAction(companyPayload: Partial<Company>, repPayload: Partial<CompanyRep>) {
+  if (repPayload) {
+    const newRep = await createRep(repPayload);
+    const updatedRep = await updateRep(newRep.id, {
+      first_name: repPayload.first_name,
+      last_name: repPayload.last_name,
+    });
+    // Ensure representatives is an array, then add the new rep's ID
+    if (!companyPayload.representatives) {
+      companyPayload.representatives = [];
+    }
+
+    // If it's a string (single ID), convert it to array
+    if (typeof companyPayload.representatives === "string") {
+      companyPayload.representatives = [companyPayload.representatives];
+    }
+
+    // Add the new rep
+    companyPayload.representatives.push(updatedRep.id);
+  }
+  return await createCompany(companyPayload);
+}
+
+export async function requestRepAction(repPayload: Partial<CompanyRep>) {
+  if (!repPayload) throw new Error("No rep payload");
+
+  const salespersonId = typeof repPayload?.company?.salesperson === "string"
+    ? repPayload.company.salesperson
+    : repPayload?.company?.salesperson?.id;
+
+  if (!salespersonId) {
+    throw new Error("Salesperson ID not found");
+  }
+
+  // 1️⃣ Create approval request and wait for salesperson’s approval
+  const approved = await waitForApproval(salespersonId, repPayload);
+
+  if (!approved) {
+    console.log("Rep request was rejected or expired");
+    return { status: "rejected" };
+  }
+
+  // 2️⃣ Once approved, create Directus user
   const newRep = await createRep(repPayload);
+
+  // 3️⃣ Optionally update the rep data (name, etc.)
   const updatedRep = await updateRep(newRep.id, {
     first_name: repPayload.first_name,
     last_name: repPayload.last_name,
   });
-  // Ensure representatives is an array, then add the new rep's ID
-  if (!companyPayload.representatives) {
-    companyPayload.representatives = [];
-  }
 
-  // If it's a string (single ID), convert it to array
-  if (typeof companyPayload.representatives === "string") {
-    companyPayload.representatives = [companyPayload.representatives];
-  }
-
-  // Add the new rep
-  companyPayload.representatives.push(updatedRep.id);
-  return await createCompany(companyPayload);
+  return updatedRep
 }
 
 export async function updateCompanyAction(

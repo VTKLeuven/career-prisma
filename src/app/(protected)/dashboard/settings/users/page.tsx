@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import { useEffect, useState } from 'react';
-import { fetchCompanyByIdAction } from "@/app/actions/companies";
-import { Company, DirectusUser } from '@/lib/schema';
+import { fetchCompanyByIdAction, requestRepAction } from "@/app/actions/companies";
+import { Company, CompanyRep } from '@/lib/schema';
 import Image from "next/image";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/select";
 import { useUser } from "@/providers/UserProvider";
 import { IconBuilding, IconMail, IconTaxEuro } from "@tabler/icons-react";
+
 
 export default function CompanyUsersPage() {
   const { user } = useUser();
@@ -107,7 +108,7 @@ export function UsersOverview({ company }: { company?: Company }) {
               These are your company representatives who have access to the platform.
             </p>
           </div>
-          <RepFormDialog />
+          <RepFormDialog company={company} />
         </div>
 
         <motion.ul
@@ -155,15 +156,32 @@ export function UsersOverview({ company }: { company?: Company }) {
 }
 
 // --- Rep Form Dialog ---
-function RepFormDialog() {
+function RepFormDialog({ company }: { company?: Company }) {
   const [open, setOpen] = React.useState(false);
-  const [salesperson, setSalesperson] = React.useState<string>("");
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const firstName = String(fd.get("firstName") ?? "").trim();
+    const lastName = String(fd.get("lastName") ?? "").trim();
+    const email = String(fd.get("email") ?? "").trim();
+    const number = String(fd.get("number") ?? "").trim();
+    const funct = String(fd.get("funct") ?? "").trim();
+
+    const newRep: Partial<CompanyRep> = {
+      first_name: firstName,
+      last_name: lastName,
+      email: email,
+      tel: number,
+      role: "d5475bf4-a77f-48de-b06c-fac199b0f631",
+      title: funct,
+      company: company,
+    }
+
+    requestRepAction(newRep)
+
     setOpen(false);
     (e.target as HTMLFormElement).reset();
-    setSalesperson("");
     console.log("Form submitted");
   };
 
@@ -180,24 +198,24 @@ function RepFormDialog() {
           </DialogHeader>
 
           <div className="w-full">
-            <Label htmlFor="repFirstName" className="text-xs">First Name*</Label>
-            <Input name="repFirstName" id="repFirstName" required />
+            <Label htmlFor="firstName" className="text-xs">First Name*</Label>
+            <Input name="firstName" id="firstName" required />
           </div>
           <div className="w-full">
-            <Label htmlFor="repLastName" className="text-xs">Last Name*</Label>
-            <Input name="repLastName" id="repLastName" required />
+            <Label htmlFor="lastName" className="text-xs">Last Name*</Label>
+            <Input name="lastName" id="lastName" required />
           </div>
           <div className="w-full">
-            <Label htmlFor="repMail" className="text-xs">E-mail address*</Label>
-            <Input name="repMail" id="repMail" required />
+            <Label htmlFor="email" className="text-xs">E-mail address*</Label>
+            <Input name="email" id="email" required />
           </div>
           <div className="w-full">
-            <Label htmlFor="repTel" className="text-xs">Phone number*</Label>
-            <Input name="repTel" id="repTel" required />
+            <Label htmlFor="number" className="text-xs">Phone number*</Label>
+            <Input name="number" id="number" required />
           </div>
           <div className="w-full">
-            <Label htmlFor="repFun" className="text-xs">Function</Label>
-            <Input name="repFun" id="repFun" />
+            <Label htmlFor="funct" className="text-xs">Function</Label>
+            <Input name="funct" id="funct" />
           </div>
           {/* <div className="w-full">
             <Label htmlFor="repAvatar" className="text-xs">Profile Picture</Label>
@@ -206,7 +224,7 @@ function RepFormDialog() {
 
           <DialogFooter>
             <div className="flex gap-2">
-              <Button type="submit" disabled={!salesperson}>Submit</Button>
+              <Button type="submit">Submit</Button>
               <DialogClose asChild>
                 <Button variant="outline">Cancel</Button>
               </DialogClose>

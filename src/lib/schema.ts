@@ -3,6 +3,18 @@ export type DirectusRole = { id: string; name: string };
 
 export type DirectusUser = {
   id: string;
+  name: string | null;
+  title?: string;
+  email: string;
+  tel?: string | null;
+  role?: string | DirectusRole | null;
+  admin: boolean;
+  company: Company;
+  status?: string;
+} | null;
+
+export type CompanyRep = {
+  id: string;
   first_name: string | null;
   last_name: string | null;
   title?: string;
@@ -10,7 +22,8 @@ export type DirectusUser = {
   tel?: string | null;
   role?: string | DirectusRole | null;
   admin: boolean;
-  company: Company
+  company: Company;
+  status: string;
 } | null;
 
 export type Company = {
@@ -29,7 +42,7 @@ export type Company = {
   address_city?: string | null;
   address_country?: string | null;
   address: string;
-  representatives?: DirectusUser[]
+  representatives?: CompanyRep[]
   category?: Master[] | { master_id: string; }[]
   options?: CareerEventOption[]
 };
@@ -110,7 +123,7 @@ export type Master = {
 
 // Optional: Full Directus Schema map (only collections you use)
 export type Schema = {
-  directus_users: DirectusUser;
+  directus_users: CompanyRep;
   company: Company; // collection key should match your collection name
   booths: Booth
 };
