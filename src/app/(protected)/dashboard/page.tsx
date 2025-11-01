@@ -96,6 +96,9 @@ export function MyEventsSection() {
   const companyEvents = React.useMemo(() => {
   const companyOptions = company?.options ?? [];
 
+  console.log("test")
+  console.log(company)
+
 
   // Extract event IDs from the career_event_option_id objects
   const companyEventIds = companyOptions

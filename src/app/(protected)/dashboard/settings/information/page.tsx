@@ -27,38 +27,6 @@ function isFileLike(value: any): value is File {
   return typeof value === "object" && value !== null && "name" in value;
 }
 
-// --- Company Header ---
-function CompanyHeaderCard({ company }: { company: Company | null }) {
-  if (!company) {
-    return (
-      <Card className="rounded-2xl shadow-md bg-slate-700 text-white">
-        <CardHeader>
-          <CardTitle>Company Profile</CardTitle>
-        </CardHeader>
-      </Card>
-    );
-  }
-
-  const logoSrc =
-    isFileLike(company.logo)
-      ? URL.createObjectURL(company.logo)
-      : getDirectusImageUrl(company.logo);
-
-  return (
-    <Card className="rounded-2xl shadow-md bg-slate-700 text-white">
-      <CardHeader className="flex items-center gap-4">
-        {logoSrc && (
-          <img src={logoSrc} alt={company.name || "logo"} className="h-12 w-12 object-contain rounded-lg" />
-        )}
-        <div>
-          <CardTitle>{company.name || "Company Profile"}</CardTitle>
-          {company.address_city && <CardDescription>{company.address_city}</CardDescription>}
-        </div>
-      </CardHeader>
-    </Card>
-  );
-}
-
 // --- Main Form ---
 export default function CompanyForm() {
   const { user } = useUser();
@@ -226,11 +194,6 @@ export default function CompanyForm() {
       logoId = company.logo;
     }
 
-    console.log("test", masters)
-    console.log("test2", selectedMasters)
-    console.log("payload", masters.filter((m) => selectedMasters.includes(m.id)))
-
-
     const payload: Partial<Company> = {
       name: company.name,
       short_description: company.short_description,
@@ -238,13 +201,6 @@ export default function CompanyForm() {
       category: masters.filter((m) => selectedMasters.includes(m.id)).map((m) => ({ master_id: m.id })),
       location: company.location,
       website: company.website,
-      VAT: company.VAT,
-      address_street: company.address_street,
-      address_number: company.address_number,
-      address_zip: company.address_zip,
-      address_city: company.address_city,
-      address_country: company.address_country,
-      address: company.address,
       logo: logoId,
     };
 
@@ -287,8 +243,6 @@ export default function CompanyForm() {
   // --- Render ---
   return (
     <div className="w-full gap-4 flex flex-col">
-      <CompanyHeaderCard company={company} />
-
       {/* Company Information Section */}
       <Card className="rounded-2xl shadow-md">
         <CardHeader>
@@ -435,80 +389,6 @@ export default function CompanyForm() {
                 disabled={!isDirty}
               >
                 <IconCheck size={18} /> {!isDirty ? "Saved" : "Save Company Info"}
-              </Button>
-              <Button type="button" variant="ghost" onClick={handleReset} className="cursor-pointer">
-                <IconRefresh size={18} /> Reset
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Billing Section */}
-      <Card className="rounded-2xl shadow-md">
-        <CardHeader>
-          <CardTitle className="text-xl">Billing Information</CardTitle>
-          <CardDescription>Provide your company's billing and address details.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <Label htmlFor="vat">VAT Number</Label>
-                <Input
-                  placeholder="VAT Number"
-                  value={formCompany.VAT ?? ""}
-                  onChange={(e) => updateField("VAT", e.target.value)}
-                />
-              </div>
-              <div className="space-y-3">
-                <Label htmlFor="address-street">Street</Label>
-                <Input
-                  placeholder="Street"
-                  value={formCompany.address_street ?? ""}
-                  onChange={(e) => updateField("address_street", e.target.value)}
-                />
-              </div>
-              <div className="space-y-3">
-                <Label htmlFor="address-number">Number</Label>
-                <Input
-                  placeholder="Number"
-                  value={formCompany.address_number ?? ""}
-                  onChange={(e) => updateField("address_number", e.target.value)}
-                />
-              </div>
-              <div className="space-y-3">
-                <Label htmlFor="address-zip">ZIP Code</Label>
-                <Input
-                  placeholder="ZIP Code"
-                  value={formCompany.address_zip ?? ""}
-                  onChange={(e) => updateField("address_zip", e.target.value)}
-                />
-              </div>
-              <div className="space-y-3">
-                <Label htmlFor="address-city">City</Label>
-                <Input
-                  placeholder="City"
-                  value={formCompany.address_city ?? ""}
-                  onChange={(e) => updateField("address_city", e.target.value)}
-                />
-              </div>
-              <div className="space-y-3">
-                <Label htmlFor="address-country">Country</Label>
-                <Input
-                  placeholder="Country"
-                  value={formCompany.address_country ?? ""}
-                  onChange={(e) => updateField("address_country", e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button
-                type="submit"
-                className={`flex items-center gap-2 cursor-pointer ${!isDirty ? "bg-green-600 text-white" : ""}`}
-                disabled={!isDirty}
-              >
-                <IconCheck size={18} /> {!isDirty ? "Saved" : "Save Billing Info"}
               </Button>
               <Button type="button" variant="ghost" onClick={handleReset} className="cursor-pointer">
                 <IconRefresh size={18} /> Reset

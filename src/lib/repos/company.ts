@@ -19,8 +19,8 @@ const COMPANY_FIELDS = [
   "address_city",
   "address_country",
   "category.master_id.*",
-  "options.option_id.*",
-  "representatives.directus_user_id"
+  "options.career_event_option_id.*",
+  "representatives.directus_user_id.*"
 ] as const;
 
 export async function listCompanies(opts?: {
@@ -56,7 +56,7 @@ export async function getCompanyById(id: string) {
   
   return directus.request(
     readItem("company", id, {
-      fields: ["*", "representatives.*", "category.master_id.*", "options.option_id.*"],
+      fields: ["*", "representatives.*", "category.master_id.*", "options.career_event_option_id.*"],
     })
   ) as unknown as Company;
 }

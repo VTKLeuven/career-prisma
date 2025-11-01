@@ -53,36 +53,8 @@ export default function CompanyUsersPage() {
 
   return (
     <>
-      <CompanyHeaderCard company={company ?? undefined} />
       <UsersOverview company={company ?? undefined} />
     </>
-  );
-}
-
-// --- Company Header ---
-function CompanyHeaderCard({ company }: { company: Company | undefined }) {
-  if (!company) return (
-    <Card className="rounded-2xl shadow-md bg-slate-700 text-white">
-      <CardHeader>
-        <CardTitle>Company Profile</CardTitle>
-      </CardHeader>
-    </Card>
-  );
-
-  const logoSrc = company.logo && typeof company.logo === "string" ? getDirectusImageUrl(company.logo) : null;
-
-  return (
-    <Card className="rounded-2xl shadow-md bg-slate-700 text-white">
-      <CardHeader className="flex items-center gap-4">
-        {logoSrc && (
-          <img src={logoSrc} alt={company.name || "logo"} className="h-12 w-12 object-contain rounded-lg" />
-        )}
-        <div>
-          <CardTitle>{company.name || "Company Profile"}</CardTitle>
-          {company.address_city && <CardDescription>{company.address_city}</CardDescription>}
-        </div>
-      </CardHeader>
-    </Card>
   );
 }
 

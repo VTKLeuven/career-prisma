@@ -83,7 +83,7 @@ const data = {
         },
         {
           title: "Billing",
-          url: "/dashboard/settings/information",
+          url: "/dashboard/settings/billing",
         },
       ],
     },
