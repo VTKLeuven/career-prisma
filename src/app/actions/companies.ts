@@ -28,10 +28,15 @@ export async function fetchCompaniesAction() {
     name: c.name,
     address: formatAddress(c),
     VAT: c.VAT ?? "Not set",
-    salesperson: c.salesperson,
+    salesperson:
+      typeof c.salesperson === "object" && c.salesperson
+        ? `${c.salesperson.first_name ?? ""} ${c.salesperson.last_name ?? ""}`.trim() ||
+          c.salesperson.id
+        : "Not set",
 
     // Include options so you can access events
     options: c.options ?? [],
+    representatives: c.representatives ?? [],
   }));
 }
 
@@ -74,6 +79,41 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
     companyPayload.representatives.push(updatedRep.id);
   }
   return await createCompany(companyPayload);
+}
+
+export async function createCompanyRepAction(companyId: string, repPayload: Partial<CompanyRep>) {
+  if (!repPayload) return null;
+  const newRep = await createRep(repPayload);
+  const updatedRep = await updateRep(newRep.id, {
+    first_name: repPayload.first_name,
+    last_name: repPayload.last_name,
+  });
+
+  const company = await fetchCompanyByIdAction(companyId)
+
+  if (!company) {return}
+
+  if (!company.representatives) {
+      company.representatives = [];
+    }
+
+  // If it's a string (single ID), convert it to array
+  if (typeof company.representatives === "string") {
+    company.representatives = [company.representatives];
+  }
+  else {
+    company.representatives = company.representatives?.map((item: any) => {
+    const rep = item.id;
+    return rep;
+  }) ?? [];
+  }
+
+  // Add the new rep
+  company.representatives.push(updatedRep.id);
+
+  console.log(company.representatives)
+
+  return await updateCompanyAction(companyId, {representatives: company.representatives});
 }
 
 export async function requestRepAction(repPayload: Partial<CompanyRep>) {

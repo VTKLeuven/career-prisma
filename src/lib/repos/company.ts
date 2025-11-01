@@ -19,7 +19,8 @@ const COMPANY_FIELDS = [
   "address_city",
   "address_country",
   "category.master_id.*",
-  "options.option_id.*"
+  "options.option_id.*",
+  "representatives.directus_user_id"
 ] as const;
 
 export async function listCompanies(opts?: {
