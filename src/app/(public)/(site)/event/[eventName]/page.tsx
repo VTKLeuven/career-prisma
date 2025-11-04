@@ -281,12 +281,20 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
           />
         )}
 
-        <button
-          className="mt-4 text-vtk-blue text-lg font-bold"
-          onClick={() => setSelectedCompany(null)}
-        >
-          ← Back
-        </button>
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            className="text-vtk-blue text-lg font-bold"
+            onClick={() => setSelectedCompany(null)}
+          >
+            ← Back
+          </button>
+          <Link
+            href={`/company/${(selectedCompany.name || "").toLowerCase().replace(/\s+/g, "-")}`}
+            className="inline-flex rounded-full bg-vtk-blue text-white px-4 py-2 text-sm font-medium hover:bg-vtk-blueDark"
+          >
+            View company page
+          </Link>
+        </div>
       </div>
     )
   }

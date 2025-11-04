@@ -32,6 +32,7 @@ export type Company = {
   name: string;
   salesperson?: { id: string; first_name: string | null; last_name: string | null } | string | null;
   logo?: string;
+  page_image?: string;
   website?: string;
   short_description?: string;
   long_description?: string;
