@@ -12,6 +12,7 @@ import { fetchMastersAction } from "@/app/actions/features";
 import { updateCompanyAction, fetchCompanyByIdAction, uploadCompanyLogo } from "@/app/actions/companies";
 import { useUser } from "@/providers/UserProvider";
 import { getDirectusImageUrl } from "@/components/Images";
+import NextImage from "next/image";
 
 // --- Tiptap ---
 import { useEditor } from "@tiptap/react";
@@ -23,7 +24,7 @@ const EditorContent = dynamic(
 );
 
 // --- Helpers ---
-function isFileLike(value: any): value is File {
+function isFileLike(value: unknown): value is File {
   return typeof value === "object" && value !== null && "name" in value;
 }
 
@@ -33,7 +34,6 @@ export default function CompanyForm() {
   const [company, setCompany] = useState<Company | null>(null);
   const [selectedMasters, setSelectedMasters] = useState<string[]>([]);
   const [masters, setMasters] = useState<Master[]>([]);
-  const [submittedJson, setSubmittedJson] = useState<string | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   const [savedSnapshot, setSavedSnapshot] = useState<{
@@ -82,11 +82,11 @@ export default function CompanyForm() {
         const fetchedCompany = await fetchCompanyByIdAction(user.company.id);
         if (fetchedCompany) {
           setCompany(fetchedCompany);
-          setSelectedMasters(fetchedCompany.category?.map((c: any) => c.id) || []);
+          setSelectedMasters(fetchedCompany.category?.map((c: Master) => c.id) || []);
           setLogoPreview(typeof fetchedCompany.logo === "string" ? getDirectusImageUrl(fetchedCompany.logo) ?? null : null);
           setSavedSnapshot({
             company: fetchedCompany,
-            selectedMasters: fetchedCompany.category?.map((c: any) => c.id) || [],
+            selectedMasters: fetchedCompany.category?.map((c: Master) => c.id) || [],
           });
         } else {
           setCompany(null);
@@ -120,7 +120,7 @@ export default function CompanyForm() {
     }
     const url = URL.createObjectURL(file);
     setLogoPreview(url);
-    updateField("logo", file as any);
+    updateField("logo", file as unknown as string);
   }
 
   // --- Toggle Masters ---
@@ -222,7 +222,6 @@ export default function CompanyForm() {
             ? getDirectusImageUrl(updated.logo) ?? null
             : null
         );
-        setSubmittedJson(JSON.stringify(updated, null, 2));
       }
     } catch (err) {
       console.error("Error updating company:", err);
@@ -235,9 +234,7 @@ export default function CompanyForm() {
     setCompany({ ...savedSnapshot.company });
     setSelectedMasters([...savedSnapshot.selectedMasters]);
     setLogoPreview(typeof savedSnapshot.company.logo === "string" ? getDirectusImageUrl(savedSnapshot.company.logo) ?? null : null);
-    setSubmittedJson(null);
     shortDescEditor?.commands.setContent(savedSnapshot.company.short_description || "");
-    longDescEditor?.commands.setContent(savedSnapshot.company.long_description || "");
   }
 
   // --- Render ---
@@ -270,15 +267,19 @@ export default function CompanyForm() {
                 <Label>Company Logo (PNG)</Label>
                 <div className="flex flex-col items-center gap-2">
                   {logoPreview ? (
-                    <img
+                    <NextImage
                       src={logoPreview}
                       alt="Company Logo"
+                      width={48}
+                      height={48}
                       className="h-12 w-12 object-contain rounded-md"
                     />
                   ) : formCompany.logo ? (
-                    <img
+                    <NextImage
                       src={getDirectusImageUrl(formCompany.logo) ?? ""}
                       alt="Company Logo"
+                      width={48}
+                      height={48}
                       className="h-12 w-12 object-contain rounded-md"
                     />
                   ) : (

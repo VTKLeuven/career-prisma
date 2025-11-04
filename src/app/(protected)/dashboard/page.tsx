@@ -3,67 +3,15 @@
 import * as React from "react";
 import Image from 'next/image'
 import { getDirectusImageUrl } from "@/components/Images";
-import { fetchCompaniesAction, fetchCompanyByIdAction } from "@/app/actions/companies";
+import { fetchCompanyByIdAction } from "@/app/actions/companies";
 import { fetchEventsAction } from "@/app/actions/events";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { motion } from 'framer-motion'
-import {
-  ColumnDef,
-  ColumnFiltersState,
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  SortingState,
-  useReactTable,
-  VisibilityState,
-} from "@tanstack/react-table";
-import { ChevronDown, MoreHorizontal, Calendar } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-  DialogClose,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { IconBuilding, IconColumns, IconMail, IconPlus, IconTaxEuro } from "@tabler/icons-react";
-import type { CareerEvent, CareerEventOption, Company } from "@/lib/schema";
+import { Calendar } from "lucide-react";
+import type { CareerEvent, Company } from "@/lib/schema";
 import { useUser } from "@/providers/UserProvider";
 
-export function MyEventsSection() {
+function MyEventsSection() {
   const { user } = useUser();
   const [allEvents, setAllEvents] = React.useState<CareerEvent[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -92,7 +40,7 @@ export function MyEventsSection() {
     };
   }, []);
 
-  // Company’s own events
+  // Company's own events
   const companyEvents = React.useMemo(() => {
   const companyOptions = company?.options ?? [];
 
@@ -100,9 +48,9 @@ export function MyEventsSection() {
   console.log(company)
 
 
-  // Extract event IDs from the career_event_option_id objects
+  // Extract event IDs from the career_event_option objects
   const companyEventIds = companyOptions
-      .map((opt: any) => opt.event) // 'event' is the string ID
+      .map((opt) => typeof opt.event === 'string' ? opt.event : opt.event?.id)
       .filter(Boolean);             // remove null/undefined
 
     return allEvents.filter((e) => companyEventIds.includes(e.id));
@@ -166,6 +114,7 @@ export function MyEventsSection() {
 
 function ManageEventCard({ event }: { event: CareerEvent }) {
   const hours = [event.start_hour, event.end_hour].filter(Boolean).join(" – ");
+
   return (
     <Card className="border rounded-lg shadow-sm">
       <CardHeader>
@@ -188,7 +137,6 @@ function ManageEventCard({ event }: { event: CareerEvent }) {
 }
 
 function EventCard({ event, i }: { event: CareerEvent; i: number }) {
-  const hours = [event.start_hour, event.end_hour].filter(Boolean).join(" – ");
 
   if (!event.href) return null; // skip if no href
 

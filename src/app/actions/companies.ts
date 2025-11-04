@@ -2,11 +2,10 @@
 "use server";
 import { listCompanies, getCompanyById, createCompany, updateCompany } from "@/lib/repos/company";
 import { createRep, updateRep, waitForApproval } from "@/lib/repos/users";
-import { CareerEventOption, Company, CompanyRep } from "@/lib/schema";
+import { Company, CompanyRep } from "@/lib/schema";
 import { uploadDirectusFile } from "@/lib/repos/directus";
 
 
-const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
 
 function formatAddress(c: Company) {
   const parts = [

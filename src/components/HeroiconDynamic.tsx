@@ -24,7 +24,7 @@ export default function HeroiconDynamic({
       .join("") + "Icon";
 
   const icons = outline ? OutlineIcons : SolidIcons;
-  const IconComponent = (icons as Record<string, ComponentType<any>>)[formattedName];
+  const IconComponent = (icons as Record<string, ComponentType<{ className?: string }>>)[formattedName];
 
   if (!IconComponent) {
     console.warn(`❌ Heroicon not found: ${formattedName}`);

@@ -20,7 +20,6 @@ import {
   IconCalendarEvent,
   IconFileCv,
   IconSettings,
-  IconShoppingBag,
 } from "@tabler/icons-react";
 import Link from "next/link";
 

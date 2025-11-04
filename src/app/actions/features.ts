@@ -36,9 +36,9 @@ export async function fetchFloorplanAction(page: CareerEventPage) {
 
       // Unwrap company.category -> Master[]
       if (booth.company?.category) {
-        booth.company.category = booth.company.category
-          .map((item: any) => item.master_id) // unwrap master_id
-          .filter((m: any): m is Master => !!m); // ensure non-null
+        booth.company.category = (booth.company.category as unknown as Array<{ master_id: Master }>)
+          .map((item) => item.master_id) // unwrap master_id
+          .filter((m: Master | null): m is Master => !!m); // ensure non-null
       }
 
       return { ...booth, coords };

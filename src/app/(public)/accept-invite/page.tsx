@@ -41,8 +41,8 @@ export default function AcceptInvitePage() {
 
       // ✅ Success — redirect to your dashboard
       window.location.href = "/dashboard";
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
     }

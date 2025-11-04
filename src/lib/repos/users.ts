@@ -1,6 +1,7 @@
 // lib/repos/users.ts
 "use server"
 
+import { DirectusUser } from "@directus/sdk";
 import { readItems, readItem, createItem, updateItem, DirectusUser } from "@directus/sdk";
 import { getDirectusWithToken } from "@/lib/directus";
 import { sendEmail } from "@/lib/repos/directus";
@@ -57,8 +58,8 @@ export async function createRep(payload: Partial<CompanyRep>) {
 
     const json = await res.json();
     return json.data ?? null;
-  } catch (err: any) {
-    console.error("Failed to invite user:", err.message);
+  } catch (err) {
+    console.error("Failed to invite user:", err instanceof Error ? err.message : "Unknown error");
     return null;
   }
 }
@@ -89,8 +90,8 @@ export async function updateRep(userId: string, updates: Partial<CompanyRep>) {
 
     const json = await res.json();
     return json.data; // the updated user
-  } catch (err: any) {
-    console.error("Failed to update user:", err.message);
+  } catch (err) {
+    console.error("Failed to update user:", err instanceof Error ? err.message : "Unknown error");
     return null;
   }
 }
@@ -221,8 +222,8 @@ export async function listSalespersons(opts?: {
 
     const json = await res.json();
     return json.data as DirectusUser[];
-  } catch (err: any) {
-    console.error("Failed to fetch public salespersons:", err.message);
+  } catch (err) {
+    console.error("Failed to fetch public salespersons:", err instanceof Error ? err.message : "Unknown error");
     return [];
   }
 }

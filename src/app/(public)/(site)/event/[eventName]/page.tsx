@@ -4,14 +4,13 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { motion, useScroll, useTransform } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { ScrollCue } from '../../page'
+import { ScrollCue } from '@/components/ScrollCue'
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useParams, usePathname } from "next/navigation"
+import { useParams } from "next/navigation"
 import { fetchEventPagesAction } from "@/app/actions/events"
 import { getDirectusImageUrl } from "@/components/Images";
 import { CareerEventPage, Company } from '@/lib/schema'
-import { Icon } from '@iconify/react';
 import dynamic from "next/dynamic"
 import HeroiconDynamic from "@/components/HeroiconDynamic"
 
@@ -20,7 +19,6 @@ const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.E
 })
 
 export default function EventPage() {
-  const [EVENTS, setEVENTS] = useState<CareerEventPage[]>([])
   const [page, setPage] = useState<CareerEventPage | null>(null)
   const [popupMessage, setPopupMessage] = useState<string>("")
   const [popupContent, setPopupContent] = useState<React.ReactNode>(null)
@@ -34,7 +32,6 @@ export default function EventPage() {
   useEffect(() => {
     async function load() {
       const events = await fetchEventPagesAction()
-      setEVENTS(events)
       if (!eventName) return
       const found = events.find(
         (p) => p.event?.name && p.event.name.toLowerCase().replace(/\s+/g, "-") === eventName
@@ -185,7 +182,7 @@ function Hero({
       rows.push(companies.slice(i, i + maxPerRow))
     }
 
-    showPopupContent(<CompanyPopup companies={companies} rows={rows} />)
+    showPopupContent(<CompanyPopup companies={companies} />)
   }
 
   return (
@@ -267,7 +264,7 @@ function Hero({
 
 // ---------------- CompanyPopup ----------------
 
-function CompanyPopup({ companies, rows }: { companies: Company[]; rows: Company[][] }) {
+function CompanyPopup({ companies }: { companies: Company[] }) {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
 
   if (selectedCompany) {

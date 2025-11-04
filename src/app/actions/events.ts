@@ -5,6 +5,7 @@
 import { listEvents } from "@/lib/repos/event";
 import { listEventPages } from "@/lib/repos/event";
 import DOMPurify from 'isomorphic-dompurify';
+import type { Company } from "@/lib/schema";
 
 export async function fetchEventsAction() {
     const events = await listEvents({ limit: 50, sort: "date" }) ?? [];
@@ -28,7 +29,7 @@ export async function fetchEventPagesAction(lim = 50) {
 
   pages.map(page => {
     // ✅ Flatten timetable relation
-    page.timetable = page.timetable?.map((item: any) => {
+    page.timetable = (page.timetable as unknown as Array<{ timetable_id: { id: string; title: string; start_time: string; end_time: string; description?: string; icon?: string } }>)?.map((item) => {
       const slot = item.timetable_id;
 
       // Remove seconds from start_time and end_time
@@ -38,7 +39,7 @@ export async function fetchEventPagesAction(lim = 50) {
       return slot;
     }) ?? [];
 
-    page.companies = page.companies?.map((item: any) => {
+    page.companies = (page.companies as unknown as Array<{ company_id: Company }>)?.map((item) => {
       const company = item.company_id;
 
       return company;

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { ChevronDown } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { fetchEventsAction } from "@/app/actions/events";
+import { CareerEvent } from '@/lib/schema'
 
 
 export default function NoSidebarLayout({ children }: { children: React.ReactNode }) {
@@ -20,7 +21,7 @@ export default function NoSidebarLayout({ children }: { children: React.ReactNod
 function Header() {
   const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
   const router = useRouter()
-  const [EVENTS, setEvents] = useState<any[]>([]);
+  const [EVENTS, setEvents] = useState<CareerEvent[]>([]);
 
     useEffect(() => {
         fetchEventsAction().then(setEvents);
@@ -111,7 +112,7 @@ function Header() {
                     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       {EVENTS.slice(0, 8).map((event) => (
                         <li key={event.name} className="rounded-xl border p-3 hover:bg-vtk-light/40">
-                          <Link href={event.href} className="block">
+                          <Link href={event.href ?? '#'} className="block">
                             <div className="text-sm font-medium text-neutral-900">{event.name}</div>
                             <div className="mt-0.5 text-xs text-neutral-600">{event.date} · {event.location}</div>
                           </Link>

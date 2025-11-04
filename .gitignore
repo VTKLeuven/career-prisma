@@ -25,6 +25,7 @@ package-lock.json
 .DS_Store
 *.pem
 /.next
+.idea/
 
 # debug
 npm-debug.log*
