@@ -4,22 +4,21 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { motion, useScroll, useTransform } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { ScrollCue } from '../../page'
+import { ScrollCue } from '@/components/ScrollCue'
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useParams, usePathname } from "next/navigation"
+import { useParams } from "next/navigation"
 import { fetchEventPagesAction } from "@/app/actions/events"
-import { getDirectusImageUrl } from "@/lib/repos/directus"
+import { getDirectusImageUrl } from "@/components/Images";
 import { CareerEventPage, Company } from '@/lib/schema'
-import { Icon } from '@iconify/react';
 import dynamic from "next/dynamic"
+import HeroiconDynamic from "@/components/HeroiconDynamic"
 
 const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.EventMap), {
   ssr: false,
 })
 
 export default function EventPage() {
-  const [EVENTS, setEVENTS] = useState<CareerEventPage[]>([])
   const [page, setPage] = useState<CareerEventPage | null>(null)
   const [popupMessage, setPopupMessage] = useState<string>("")
   const [popupContent, setPopupContent] = useState<React.ReactNode>(null)
@@ -33,7 +32,6 @@ export default function EventPage() {
   useEffect(() => {
     async function load() {
       const events = await fetchEventPagesAction()
-      setEVENTS(events)
       if (!eventName) return
       const found = events.find(
         (p) => p.event?.name && p.event.name.toLowerCase().replace(/\s+/g, "-") === eventName
@@ -82,7 +80,7 @@ export default function EventPage() {
 }
 
 function Header({ page }: { page?: CareerEventPage }) {
-
+  const router = useRouter()
   return (
     <header className="fixed top-4 inset-x-0 z-50 w-full">
       <div className="mx-auto max-w-7xl px-4">
@@ -116,14 +114,22 @@ function Header({ page }: { page?: CareerEventPage }) {
             )}
           </nav>
 
-          {/* Right buttons */}
+          {/* Right cluster */}
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" className="hidden md:inline-flex cursor-pointer" onClick={() => alert("Dashboard")}>
-              Company Dashboard
-            </Button>
-            <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">
-              <Link href="#contact">Contact Us</Link>
-            </Button>
+            {/* icon pills */}
+            {/* <button className="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-white text-neutral-700 hover:bg-neutral-100">
+              <ShoppingCart className="h-5 w-5" />
+            </button>
+            <button className="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-white text-neutral-700 hover:bg-neutral-100">
+              <Search className="h-5 w-5" />
+            </button> */}
+
+            {/* <div className="hidden items-center gap-2 rounded-full border bg-white px-3 py-2 text-sm text-neutral-700 lg:flex">
+              <Globe className="h-4 w-4" /> English (US) <ChevronDown className="h-4 w-4" />
+            </div> */}
+
+            <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => router.push("/dashboard")}>Company Dashboard</Button>
+            <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark"><Link href="#contact">Contact Us</Link></Button>
           </div>
         </div>
       </div>
@@ -176,7 +182,7 @@ function Hero({
       rows.push(companies.slice(i, i + maxPerRow))
     }
 
-    showPopupContent(<CompanyPopup companies={companies} rows={rows} />)
+    showPopupContent(<CompanyPopup companies={companies} />)
   }
 
   return (
@@ -258,7 +264,7 @@ function Hero({
 
 // ---------------- CompanyPopup ----------------
 
-function CompanyPopup({ companies, rows }: { companies: Company[]; rows: Company[][] }) {
+function CompanyPopup({ companies }: { companies: Company[] }) {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
 
   if (selectedCompany) {
@@ -400,15 +406,18 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
               <div className="relative border-l-2 border-vtk-blue/30 pl-12">
                 {page?.timetable?.map((item, index) => (
                   <div key={index} className="relative mb-10 last:mb-0">
-                    <span className="absolute -left-7 top-2 flex h-10 w-10 items-center justify-center rounded-full bg-vtk-yellow text-xl shadow-md">
+                    <span className="absolute -left-7 top-2 flex h-10 w-10 items-center justify-center rounded-full bg-vtk-yellow shadow-md">
                       {item.icon ? (
-                        <Icon
-                          icon={`material-symbols-outlined:${item.icon}`} // automatically adds prefix
-                          width={24}
-                          height={24}
-                          className="text-neutral-900"
+                        <HeroiconDynamic
+                          name={item.icon}
+                          className="w-5 h-5 text-black" // smaller + black
                         />
-                      ) : "⭐"}
+                      ) : (
+                        <HeroiconDynamic
+                          name={"star"}
+                          className="w-5 h-5 text-black" // smaller + black
+                        />
+                      )}
                     </span>
                     <div className="flex items-center gap-3 mb-1 ml-6">
                       <span className="text-sm font-medium text-vtk-blue">{item.start_time} - {item.end_time}</span>
@@ -429,3 +438,4 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
     </section>
   )
 }
+

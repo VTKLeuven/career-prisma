@@ -4,10 +4,27 @@ export type DirectusRole = { id: string; name: string };
 export type DirectusUser = {
   id: string;
   name: string | null;
+  title?: string;
   email: string;
   tel?: string | null;
   role?: string | DirectusRole | null;
-  admin: boolean
+  admin: boolean;
+  company: Company;
+  status?: string;
+} | null;
+
+export type CompanyRep = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  title?: string;
+  email: string;
+  tel?: string | null;
+  role?: string | DirectusRole | null;
+  admin: boolean;
+  company: Company;
+  status: string;
+  avatar?: string;
 } | null;
 
 export type Company = {
@@ -15,7 +32,10 @@ export type Company = {
   name: string;
   salesperson?: { id: string; first_name: string | null; last_name: string | null } | string | null;
   logo?: string;
+  website?: string;
   short_description?: string;
+  long_description?: string;
+  location?: string;
   VAT?: string | null;
   address_street?: string | null;
   address_number?: string | null;
@@ -23,11 +43,9 @@ export type Company = {
   address_city?: string | null;
   address_country?: string | null;
   address: string;
-  representatives?: Array<
-    | { id: string; first_name: string | null; last_name: string | null } 
-    | string
-  >
-  category?: Master[]
+  representatives?: CompanyRep[]
+  category?: Master[] | { master_id: string; }[]
+  options?: CareerEventOption[]
 };
 
 export type CareerEvent = {
@@ -35,13 +53,15 @@ export type CareerEvent = {
   name: string;
   description: string;
   image: string;
+  shout: string;
   location: string;
   date: string;
   start_hour: string;
   end_hour: string;
   max_companies: number;
   num_of_students: number;
-  options: CareerEvent[]
+  options: CareerEventOption[];
+  href?: string;
 }
 
 export type CareerEventOption = {
@@ -49,6 +69,7 @@ export type CareerEventOption = {
   name: string;
   description: string;
   price: string;
+  event: CareerEvent;
 }
 
 export type CareerEventPage = {
@@ -57,8 +78,6 @@ export type CareerEventPage = {
   description_EN: string;
   image: string;
   registration_link?: string;
-  shout: string;
-  href?: string;
   tagline?: string;
   timetable?: TimeSlot[];
   address?: string;
@@ -105,7 +124,7 @@ export type Master = {
 
 // Optional: Full Directus Schema map (only collections you use)
 export type Schema = {
-  directus_users: DirectusUser;
+  directus_users: CompanyRep;
   company: Company; // collection key should match your collection name
   booths: Booth
 };

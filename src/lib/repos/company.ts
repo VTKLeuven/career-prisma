@@ -5,21 +5,6 @@ import { readItems, readItem, createItem, updateItem } from "@directus/sdk";
 import { getDirectusWithToken } from "@/lib/directus";
 import type { Company } from "@/lib/schema";
 
-const COMPANY_FIELDS = [
-  "id",
-  "name",
-  "salesperson.id",
-  "salesperson.first_name",
-  "salesperson.last_name",
-  "salesperson.email",
-  "VAT",
-  "address_street",
-  "address_number",
-  "address_zip",
-  "address_city",
-  "address_country",
-  "category.master_id.*"
-] as const;
 
 export async function listCompanies(opts?: {
   search?: string;
@@ -34,7 +19,7 @@ export async function listCompanies(opts?: {
     const { search, limit = 25, page = 1, sort = "name" } = opts ?? {};
     return directus.request(
       readItems("company", {
-        fields: COMPANY_FIELDS as unknown as string[],
+        fields: ["*", "*.*", "*.*.*"],
         limit,
         page,
         sort,
@@ -54,7 +39,7 @@ export async function getCompanyById(id: string) {
   
   return directus.request(
     readItem("company", id, {
-      fields: COMPANY_FIELDS as unknown as string[],
+      fields: ["*", "representatives.*", "category.master_id.*", "options.career_event_option_id.*"],
     })
   ) as unknown as Company;
 }
@@ -73,5 +58,3 @@ export async function updateCompany(id: string, payload: Partial<Company>) {
 
   return directus.request(updateItem("company", id, payload));
 }
-
-

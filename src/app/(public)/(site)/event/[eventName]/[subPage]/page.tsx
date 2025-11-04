@@ -3,13 +3,13 @@
 import { useEffect, useState, useRef } from "react"
 import { useParams, usePathname } from "next/navigation"
 import Link from "next/link"
+import NextImage from "next/image"
 import { fetchEventPagesAction } from "@/app/actions/events"
 import { fetchFloorplanAction, fetchMastersAction } from "@/app/actions/features"
 import type { CareerEventPage, Booth, Master, Company } from '@/lib/schema'
-import { getDirectusImageUrl } from "@/lib/repos/directus"
+import { getDirectusImageUrl } from "@/components/Images"
 
 export default function SubPage() {
-  const [EVENTS, setEVENTS] = useState<CareerEventPage[]>([])
   const [page, setPage] = useState<CareerEventPage | null>(null)
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [allCategories, setAllCategories] = useState<Master[]>([])
@@ -26,7 +26,6 @@ export default function SubPage() {
   useEffect(() => {
     async function load() {
       const events = await fetchEventPagesAction()
-      setEVENTS(events)
 
       if (!eventName) return
       const found = events.find(
@@ -204,10 +203,12 @@ function Header({
                   className="relative w-10 h-10 rounded-full overflow-hidden border transition-all duration-200 cursor-pointer flex items-center justify-center"
                   style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
                 >
-                  <img
-                    src={getDirectusImageUrl(cat.logo)}
+                  <NextImage
+                    src={getDirectusImageUrl(cat.logo) ?? ''}
                     alt={cat.short_name}
-                    className={`w-8 h-8 object-contain transition-all duration-200 transform ${
+                    width={32}
+                    height={32}
+                    className={`object-contain transition-all duration-200 transform ${
                       isSelected
                         ? 'scale-110 grayscale-0 opacity-100'
                         : 'scale-90 grayscale-[50%] opacity-70'
@@ -331,10 +332,12 @@ function Popup({ company, onClose }: { company: Company; onClose: () => void }) 
 
         {company.logo && (
           <div className="flex justify-center mb-4">
-            <img
-              src={getDirectusImageUrl(company.logo)}
+            <NextImage
+              src={getDirectusImageUrl(company.logo) ?? ''}
               alt={company.name}
-              className="object-contain max-h-20"
+              width={100}
+              height={80}
+              className="object-contain"
             />
           </div>
         )}

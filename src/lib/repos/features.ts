@@ -1,5 +1,5 @@
 // lib/repos/features.ts
-import { directus, getDirectusWithToken } from "@/lib/directus"
+import { directus } from "@/lib/directus"
 import type { Floorplan, Booth, Master } from "@/lib/schema"
 import { readItems } from "@directus/sdk"
 
@@ -47,10 +47,10 @@ export async function listMasters(
   }
 ): Promise<Master[] | null> {
   try {
-    const { search, limit = 300, page = 1, sort = "name" } = opts ?? {}
+    const { search, limit = 300, page = 1, sort = "id" } = opts ?? {}
     return directus.request(
       readItems("master", {
-        fields: ["*", "*.*"],
+        fields: ["*"],
         limit,
         page,
         sort,

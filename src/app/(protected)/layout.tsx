@@ -5,9 +5,6 @@ import {
   SidebarInset, SidebarProvider, SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import {
-  Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { getUserFromCookies } from "@/lib/auth-server";
@@ -27,6 +24,7 @@ export default async function WithSidebarLayout({ children }: { children: React.
       </div>
     );
   }
+  console.log(user)
 
   return (
     <UserProvider key={user?.id ?? "anon"} initialUser={user}>
@@ -38,7 +36,8 @@ export default async function WithSidebarLayout({ children }: { children: React.
             <div className="flex items-center gap-2">
               <SidebarTrigger className="-ml-1" />
               <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-              <Breadcrumb>
+              <span className="text-muted-foreground">You are viewing this page as a representative for <span className="underline cursor-pointer">{user.company.name}</span></span>
+              {/* <Breadcrumb>
                 <BreadcrumbList>
                   <BreadcrumbItem><BreadcrumbLink href="/">Events</BreadcrumbLink></BreadcrumbItem>
                   <BreadcrumbSeparator />
@@ -48,7 +47,7 @@ export default async function WithSidebarLayout({ children }: { children: React.
                   <BreadcrumbSeparator />
                   <BreadcrumbItem><BreadcrumbPage>Onboarding</BreadcrumbPage></BreadcrumbItem>
                 </BreadcrumbList>
-              </Breadcrumb>
+              </Breadcrumb> */}
             </div>
             {user.admin && <Button variant="link"><Link href="/admin">Admin Panel</Link></Button>}
           </div>

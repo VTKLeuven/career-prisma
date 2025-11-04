@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import * as React from "react"
+import * as React from "react";
 
-import { NavMain } from "./nav-main"
-import { NavUser } from "./nav-user"
+import { NavMain } from "./nav-main";
+import { NavUser } from "./nav-user";
 import {
   Sidebar,
   SidebarContent,
@@ -13,29 +13,24 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar
-} from "@/components/ui/sidebar"
-import { IconBrandInstagram, IconCalendarEvent, IconFileCv, IconSettings, IconShoppingBag } from "@tabler/icons-react"
-import Link from "next/link"
+  useSidebar,
+} from "@/components/ui/sidebar";
+import {
+  IconBrandInstagram,
+  IconCalendarEvent,
+  IconFileCv,
+  IconSettings,
+} from "@tabler/icons-react";
+import Link from "next/link";
 
-// This is sample data.
+// Updated sidebar data
 const data = {
   navMain: [
     {
       title: "Events",
-      url: "#",
+      url: "/dashboard",
       icon: IconCalendarEvent,
       isActive: true,
-      items: [
-        {
-          title: "My Events",
-          url: "#",
-        },
-        {
-          title: "Upcoming Events",
-          url: "#",
-        },
-      ],
     },
     {
       title: "Online Interaction",
@@ -50,10 +45,6 @@ const data = {
           title: "Mailing",
           url: "#",
         },
-        {
-          title: "CV Book",
-          url: "#",
-        },
       ],
     },
     {
@@ -62,24 +53,20 @@ const data = {
       icon: IconFileCv,
       items: [
         {
-          title: "Social Media Post",
-          url: "#",
-        },
-        {
-          title: "Mailing",
-          url: "#",
-        },
-        {
           title: "CV Book",
+          url: "#",
+        },
+        {
+          title: "Vacancies",
           url: "#",
         },
       ],
     },
-    {
-      title: "Purchases",
-      url: "#",
-      icon: IconShoppingBag,
-    },
+    // {
+    //   title: "Purchases",
+    //   url: "#",
+    //   icon: IconShoppingBag,
+    // },
     {
       title: "Settings",
       url: "#",
@@ -87,35 +74,37 @@ const data = {
       items: [
         {
           title: "Company Information",
-          url: "#",
+          url: "/dashboard/settings/information",
         },
         {
           title: "Users",
-          url: "#",
+          url: "/dashboard/settings/users",
         },
         {
           title: "Billing",
-          url: "#",
+          url: "/dashboard/settings/billing",
         },
       ],
     },
   ],
-}
+};
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const {open} = useSidebar()
+  const { open } = useSidebar();
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-
             <SidebarMenuButton
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground data-[state=close]:text-center"
             >
-              <Link href={"/"}>{open && <span className="font-extrabold text-xl">VTK CAREER</span>}</Link>
-            </SidebarMenuButton></SidebarMenuItem>
+              <Link href={"/"}>
+                {open && <span className="font-extrabold text-xl">VTK CAREER</span>}
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
@@ -126,6 +115,5 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
-
-  )
+  );
 }
