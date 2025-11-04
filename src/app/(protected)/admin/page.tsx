@@ -16,8 +16,8 @@ import {
   SortingState,
   useReactTable,
   VisibilityState,
-  Row,
-} from "@tanstack/react-table";
+}
+from "@tanstack/react-table";
 import { ChevronDown, MoreHorizontal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -211,7 +211,7 @@ function CompaniesSection() {
                       <DropdownMenuCheckboxItem
                         key={c.id}
                         checked={c.getIsVisible()}
-                        onCheckedChange={v => c.toggleVisibility(!!v)}
+                        onCheckedChange={v => c.toggleVisibility(v)}
                         className="capitalize"
                       >
                         {c.id}
@@ -389,10 +389,7 @@ function CompanyUsersTable({ company, onAddUser }: { company: CompanyRow; onAddU
   // Called by UserFormDialog. Persist locally and call parent callback to update outer state.
   const handleCreate = (newUser: Partial<CompanyRep>) => {
     // append locally
-    setLocalRows(prev => {
-      const next = [...prev, newUser];
-      return next;
-    });
+    setLocalRows(prev => [...prev, newUser]);
     // notify parent to update main data array + selectedCompany
     onAddUser(newUser);
   };
@@ -418,7 +415,7 @@ function CompanyUsersTable({ company, onAddUser }: { company: CompanyRow; onAddU
               <DropdownMenuCheckboxItem
                 key={c.id}
                 checked={c.getIsVisible()}
-                onCheckedChange={(v) => c.toggleVisibility(!!v)}
+                onCheckedChange={(v) => c.toggleVisibility(v)}
                 className="capitalize"
               >
                 {c.id}

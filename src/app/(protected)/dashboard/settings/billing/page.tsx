@@ -1,21 +1,19 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import dynamic from "next/dynamic";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { IconCheck, IconRefresh } from "@tabler/icons-react";
 import type { Company } from "@/lib/schema";
-import { updateCompanyAction, fetchCompanyByIdAction, uploadCompanyLogo } from "@/app/actions/companies";
+import { updateCompanyAction, fetchCompanyByIdAction } from "@/app/actions/companies";
 import { useUser } from "@/providers/UserProvider";
 
 // --- Main Form ---
 export default function BillingForm() {
   const { user } = useUser();
   const [company, setCompany] = useState<Company | null>(null);
-  const [submittedJson, setSubmittedJson] = useState<string | null>(null);
 
   const [savedSnapshot, setSavedSnapshot] = useState<{
     company: Company;
@@ -100,7 +98,6 @@ export default function BillingForm() {
           ...updated,
         });
         setSavedSnapshot({ company: updated });
-        setSubmittedJson(JSON.stringify(updated, null, 2));
       }
     } catch (err) {
       console.error("Error updating company:", err);
@@ -111,7 +108,6 @@ export default function BillingForm() {
   function handleReset() {
     if (!savedSnapshot) return;
     setCompany({ ...savedSnapshot.company });
-    setSubmittedJson(null);
   }
 
   // --- Render ---
@@ -121,7 +117,7 @@ export default function BillingForm() {
       <Card className="rounded-2xl shadow-md">
         <CardHeader>
           <CardTitle className="text-xl">Billing Information</CardTitle>
-          <CardDescription>Provide your company's billing and address details.</CardDescription>
+          <CardDescription>Provide your company&apos;s billing and address details.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-8">

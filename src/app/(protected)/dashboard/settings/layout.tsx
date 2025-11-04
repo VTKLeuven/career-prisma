@@ -2,13 +2,14 @@
 
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { getDirectusImageUrl } from "@/components/Images";
+import Image from "next/image";
 import { ReactNode } from "react";
 import { useState, useEffect } from "react";
 import { fetchCompanyByIdAction } from "@/app/actions/companies";
 import { useUser } from "@/providers/UserProvider";
 import type { Company } from "@/lib/schema";
 
-function isFileLike(value: any): value is File {
+function isFileLike(value: unknown): value is File {
   return typeof value === "object" && value !== null && "name" in value;
 }
 
@@ -19,7 +20,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user?.company) return;
     fetchCompanyByIdAction(user.company.id)
-      .then((fetched) => setCompany(fetched ?? null))
+      .then((fetched) => setCompany(fetched as Company ?? null))
       .catch(console.error);
   }, [user?.company]);
 
@@ -50,9 +51,11 @@ function CompanyHeaderCard({ company }: { company: Company | null }) {
     <Card className="rounded-2xl shadow-md bg-slate-700 text-white">
       <CardHeader className="flex items-center gap-4">
         {logoSrc && (
-          <img
+          <Image
             src={logoSrc}
             alt={company.name || "logo"}
+            width={48}
+            height={48}
             className="h-12 w-12 object-contain rounded-lg"
           />
         )}

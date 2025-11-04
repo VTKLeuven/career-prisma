@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react';
 import { fetchCompanyByIdAction, requestRepAction } from "@/app/actions/companies";
 import { Company, CompanyRep } from '@/lib/schema';
 import Image from "next/image";
-import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { IconPlus } from "@tabler/icons-react";
 import { getDirectusImageUrl } from "@/components/Images";
@@ -22,15 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useUser } from "@/providers/UserProvider";
-import { IconBuilding, IconMail, IconTaxEuro } from "@tabler/icons-react";
 
 
 export default function CompanyUsersPage() {
@@ -59,9 +50,9 @@ export default function CompanyUsersPage() {
 }
 
 // --- Users Overview ---
-export function UsersOverview({ company }: { company?: Company }) {
+function UsersOverview({ company }: { company?: Company }) {
   const representatives = company?.representatives ?? [];
-  const users = representatives.map((rep: any) => rep.user_id ? rep.user_id : rep);
+  const users = representatives.filter((rep): rep is NonNullable<CompanyRep> => rep !== null);
 
   if (!users.length) return null;
 

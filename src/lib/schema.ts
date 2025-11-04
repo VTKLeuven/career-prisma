@@ -24,6 +24,7 @@ export type CompanyRep = {
   admin: boolean;
   company: Company;
   status: string;
+  avatar?: string;
 } | null;
 
 export type Company = {

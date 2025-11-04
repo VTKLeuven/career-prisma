@@ -39,22 +39,9 @@ export async function fetchCompaniesAction() {
   }));
 }
 
-export async function fetchCompanyByIdAction(company_id: string) {
-  const company = (await getCompanyById(company_id)) ?? null;
-
-  if (!company) return null;
-
-  company.options = company.options?.map((item: any) => {
-    const option = item.career_event_option_id;
-    return option;
-  }) ?? [];
-
-  company.category = company.category?.map((item: any) => {
-    const cat = item.master_id;
-    return cat;
-  }) ?? [];
-
-  return company
+export async function fetchCompanyByIdAction(company_id: string): Promise<Company | null> {
+  const company = (await getCompanyById(company_id)) as Company | null;
+  return company;
 }
 
 export async function createCompanyAction(companyPayload: Partial<Company>, repPayload: Partial<CompanyRep>) {
@@ -64,18 +51,14 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
       first_name: repPayload.first_name,
       last_name: repPayload.last_name,
     });
-    // Ensure representatives is an array, then add the new rep's ID
-    if (!companyPayload.representatives) {
-      companyPayload.representatives = [];
-    }
 
-    // If it's a string (single ID), convert it to array
-    if (typeof companyPayload.representatives === "string") {
-      companyPayload.representatives = [companyPayload.representatives];
-    }
+    // Create a mutable payload with representatives as string array for the API
+    const payload = {
+      ...companyPayload,
+      representatives: [updatedRep.id] as unknown as CompanyRep[]
+    };
 
-    // Add the new rep
-    companyPayload.representatives.push(updatedRep.id);
+    return await createCompany(payload as Partial<Company>);
   }
   return await createCompany(companyPayload);
 }
@@ -83,36 +66,31 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
 export async function createCompanyRepAction(companyId: string, repPayload: Partial<CompanyRep>) {
   if (!repPayload) return null;
   const newRep = await createRep(repPayload);
-  const updatedRep = await updateRep(newRep.id, {
+  await updateRep(newRep.id, {
     first_name: repPayload.first_name,
     last_name: repPayload.last_name,
   });
 
-  const company = await fetchCompanyByIdAction(companyId)
+  const company = await fetchCompanyByIdAction(companyId);
 
-  if (!company) {return}
+  if (!company) {return;}
 
-  if (!company.representatives) {
-      company.representatives = [];
-    }
+  // Build representatives array as string IDs
+  let representativeIds: string[] = [];
 
-  // If it's a string (single ID), convert it to array
-  if (typeof company.representatives === "string") {
-    company.representatives = [company.representatives];
-  }
-  else {
-    company.representatives = company.representatives?.map((item: any) => {
-    const rep = item.id;
-    return rep;
-  }) ?? [];
+  if (company.representatives) {
+    // If representatives is an array of objects with id property, extract the ids
+    representativeIds = (company.representatives as (CompanyRep | string)[]).map((item: CompanyRep | string) => {
+      return typeof item === 'string' ? item : item?.id ?? '';
+    });
   }
 
   // Add the new rep
-  company.representatives.push(updatedRep.id);
+  representativeIds.push(newRep.id);
 
-  console.log(company.representatives)
+  console.log(representativeIds)
 
-  return await updateCompanyAction(companyId, {representatives: company.representatives});
+  return await updateCompanyAction(companyId, {representatives: representativeIds as unknown as CompanyRep[]});
 }
 
 export async function requestRepAction(repPayload: Partial<CompanyRep>) {
@@ -120,7 +98,9 @@ export async function requestRepAction(repPayload: Partial<CompanyRep>) {
 
   const salespersonId = typeof repPayload?.company?.salesperson === "string"
     ? repPayload.company.salesperson
-    : repPayload?.company?.salesperson?.id;
+    : repPayload?.company?.salesperson && typeof repPayload.company.salesperson === "object"
+    ? repPayload.company.salesperson.id
+    : undefined;
 
   if (!salespersonId) {
     throw new Error("Salesperson ID not found");
@@ -138,12 +118,12 @@ export async function requestRepAction(repPayload: Partial<CompanyRep>) {
   const newRep = await createRep(repPayload);
 
   // 3️⃣ Optionally update the rep data (name, etc.)
-  const updatedRep = await updateRep(newRep.id, {
+  await updateRep(newRep.id, {
     first_name: repPayload.first_name,
     last_name: repPayload.last_name,
   });
 
-  return updatedRep
+  return newRep;
 }
 
 export async function updateCompanyAction(

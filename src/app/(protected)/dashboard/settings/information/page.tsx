@@ -82,11 +82,17 @@ export default function CompanyForm() {
         const fetchedCompany = await fetchCompanyByIdAction(user.company.id);
         if (fetchedCompany) {
           setCompany(fetchedCompany);
-          setSelectedMasters(fetchedCompany.category?.map((c: Master) => c.id) || []);
+          // category is already transformed to string[] by fetchCompanyByIdAction
+          const categoryIds = Array.isArray(fetchedCompany.category)
+            ? (fetchedCompany.category as (string | Master | { master_id: string })[]).map(c =>
+                typeof c === 'string' ? c : 'id' in c ? c.id : c.master_id
+              )
+            : [];
+          setSelectedMasters(categoryIds);
           setLogoPreview(typeof fetchedCompany.logo === "string" ? getDirectusImageUrl(fetchedCompany.logo) ?? null : null);
           setSavedSnapshot({
             company: fetchedCompany,
-            selectedMasters: fetchedCompany.category?.map((c: Master) => c.id) || [],
+            selectedMasters: categoryIds,
           });
         } else {
           setCompany(null);

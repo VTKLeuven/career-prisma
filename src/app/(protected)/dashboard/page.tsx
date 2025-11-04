@@ -20,7 +20,7 @@ function MyEventsSection() {
   React.useEffect(() => {
     if (!user?.company?.id) return;
 
-    fetchCompanyByIdAction(user.company.id).then((c) => setCompany(c ?? null));
+    fetchCompanyByIdAction(user.company.id).then((c) => setCompany(c as Company ?? null));
   }, [user?.company?.id]);
 
 
@@ -44,14 +44,38 @@ function MyEventsSection() {
   const companyEvents = React.useMemo(() => {
   const companyOptions = company?.options ?? [];
 
-  console.log("test")
-  console.log(company)
+  // Type guards to avoid any
+  const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+  const hasEvent = (v: unknown): v is { event: unknown } => isRecord(v) && 'event' in v;
+  const getStringIdFromEventRef = (ref: unknown): string | null => {
+    if (typeof ref === 'string') return ref;
+    if (isRecord(ref)) {
+      const id = ref.id;
+      return typeof id === 'string' ? id : null;
+    }
+    return null;
+  };
 
-
-  // Extract event IDs from the career_event_option objects
-  const companyEventIds = companyOptions
-      .map((opt) => typeof opt.event === 'string' ? opt.event : opt.event?.id)
-      .filter(Boolean);             // remove null/undefined
+  // Extract event IDs from the career_event_option objects (handle multiple shapes)
+  const companyEventIds = (companyOptions as unknown[])
+      .map((opt) => {
+        if (!opt) return null;
+        if (isRecord(opt)) {
+          // Shape A: option has event directly
+          if (hasEvent(opt) && opt.event) {
+            return getStringIdFromEventRef(opt.event);
+          }
+          // Shape B: option nested under career_event_option_id
+          if ('career_event_option_id' in opt && opt.career_event_option_id) {
+            const ceo = (opt as Record<string, unknown>).career_event_option_id;
+            if (hasEvent(ceo) && ceo.event) {
+              return getStringIdFromEventRef(ceo.event);
+            }
+          }
+        }
+        return null;
+      })
+      .filter((v): v is string => typeof v === 'string');             // remove null/undefined
 
     return allEvents.filter((e) => companyEventIds.includes(e.id));
   }, [allEvents, company]);

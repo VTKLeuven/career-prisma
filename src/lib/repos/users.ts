@@ -2,8 +2,6 @@
 "use server"
 
 import { DirectusUser } from "@directus/sdk";
-import { readItems, readItem, createItem, updateItem, DirectusUser } from "@directus/sdk";
-import { getDirectusWithToken } from "@/lib/directus";
 import { sendEmail } from "@/lib/repos/directus";
 import { cookies } from "next/headers";
 import { CompanyRep } from "@/lib/schema";
@@ -266,8 +264,8 @@ export async function fetchSalespersonByID(salesperson_id: string, opts?: {
 
     const json = await res.json();
     return json.data[0] as DirectusUser;
-  } catch (err: any) {
-    console.error("Failed to fetch public salesperson:", err.message);
+  } catch (err) {
+    console.error("Failed to fetch public salesperson:", err instanceof Error ? err.message : "Unknown error");
     return null;
   }
 }
