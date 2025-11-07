@@ -1,7 +1,7 @@
 // app/actions/companies.ts
 "use server";
 import { listCompanies, getCompanyById, createCompany, updateCompany } from "@/lib/repos/company";
-import { createRep, updateRep, waitForApproval } from "@/lib/repos/users";
+import { createRep, updateRep, waitForApproval, deleteUser } from "@/lib/repos/users";
 import { Company, CompanyRep, CareerEventOption } from "@/lib/schema";
 import { uploadDirectusFile } from "@/lib/repos/directus";
 
@@ -306,4 +306,53 @@ export async function removeOptionFromCompanyAction(companyId: string, optionId:
   }
 
   return await updateCompanyAction(companyId, updatePayload);
+}
+
+export async function removeUserFromCompanyAction(companyId: string, userId: string) {
+  const company = await fetchCompanyByIdAction(companyId);
+
+  if (!company) return { success: false, error: "Company not found" };
+
+  // Build representatives array as string IDs, excluding the user to remove
+  let representativeIds: string[] = [];
+
+  if (company.representatives) {
+    // If representatives is an array of objects with id property, extract the ids
+    representativeIds = (company.representatives as (CompanyRep | string)[])
+      .map((item: CompanyRep | string) => {
+        return typeof item === 'string' ? item : item?.id ?? '';
+      })
+      .filter(id => id && id !== userId);
+  }
+
+  // Get the salesperson ID to reassign files to (if available)
+  let reassignToUserId: string | null = null;
+  if (company.salesperson) {
+    if (typeof company.salesperson === 'string') {
+      reassignToUserId = company.salesperson;
+    } else if (typeof company.salesperson === 'object' && company.salesperson?.id) {
+      reassignToUserId = company.salesperson.id;
+    }
+  }
+
+  // Update company to remove the user from representatives first
+  const updateResult = await updateCompanyAction(companyId, { representatives: representativeIds as unknown as CompanyRep[] });
+
+  if (!updateResult) {
+    return { success: false, error: "Failed to update company" };
+  }
+
+  // Try to delete the user from Directus
+  // Files will be automatically reassigned to the company's salesperson (or current admin) before deletion
+  const deleteResult = await deleteUser(userId, reassignToUserId || undefined);
+
+  if (!deleteResult.success && deleteResult.error === "CONSTRAINT_ERROR") {
+    // User couldn't be deleted due to foreign key constraints in other tables (not just files)
+    // But they're already removed from the company
+    return { success: true, warning: "User removed from company but could not be fully deleted from Directus due to existing references in other tables" };
+  }
+
+  return deleteResult.success 
+    ? { success: true } 
+    : { success: false, error: deleteResult.error || "Failed to delete user" };
 }

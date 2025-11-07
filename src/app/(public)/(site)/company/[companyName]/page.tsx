@@ -193,7 +193,7 @@ export default function CompanyPage() {
                 <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-6 shadow-sm">
                   <h2 className="text-xl font-semibold text-neutral-900 mb-6">Attending at</h2>
                   <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                    {events.slice(0, 3).map((event, i) => {
+                    {events.slice(0, 3).map((event) => {
                       const href = `/event/${(event.name || "").toLowerCase().replace(/\s+/g, "-")}`;
                       return (
                         <Link

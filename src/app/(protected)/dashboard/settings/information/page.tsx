@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { IconCheck, IconRefresh } from "@tabler/icons-react";
+import Link from "next/link";
 import type { Company, Master } from "@/lib/schema";
 import { fetchMastersAction } from "@/app/actions/features";
 import { updateCompanyAction, fetchCompanyByIdAction, uploadCompanyLogo } from "@/app/actions/companies";
@@ -298,11 +299,31 @@ export default function CompanyForm() {
     <div className="w-full gap-4 flex flex-col">
       {/* Company Information Section */}
       <Card className="rounded-2xl shadow-md">
-        <CardHeader>
-          <CardTitle className="text-xl">Company Information</CardTitle>
-          <CardDescription>
-            Provide general company details. This information will be visible on your profile and used for events.
-          </CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div className="flex-1">
+            <CardTitle className="text-xl">Company Information</CardTitle>
+            <CardDescription>
+              Provide general company details. This information will be visible on your profile and used for events.
+            </CardDescription>
+          </div>
+          {company && (
+            <Link
+              href={company.page_on_platform 
+                ? `/company/${(company.name ?? "")
+                    .toLowerCase()
+                    .trim()
+                    .replace(/\s+/g, "-")
+                    .replace(/[^a-z0-9-]/g, "")
+                    .replace(/-+/g, "-")
+                    .replace(/^-|-$/g, "")}`
+                : "/dashboard/settings/information/request-page"
+              }
+            >
+              <Button type="button" variant="outline" className="cursor-pointer">
+                {company.page_on_platform ? "View Company Page" : "Request Company Page"}
+              </Button>
+            </Link>
+          )}
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-8">
@@ -318,6 +339,9 @@ export default function CompanyForm() {
                 />
               </div>
 
+              {/* Empty space to keep grid layout */}
+              <div></div>
+
               {/* Logo */}
               <div className="space-y-3">
                 <Label>Company Logo (PNG)</Label>
@@ -326,20 +350,20 @@ export default function CompanyForm() {
                     <NextImage
                       src={logoPreview}
                       alt="Company Logo"
-                      width={48}
-                      height={48}
-                      className="h-12 w-12 object-contain rounded-md"
+                      width={320}
+                      height={180}
+                      className="h-32 w-full max-w-sm object-contain rounded-md"
                     />
                   ) : formCompany.logo ? (
                     <NextImage
                       src={getDirectusImageUrl(formCompany.logo) ?? ""}
                       alt="Company Logo"
-                      width={48}
-                      height={48}
-                      className="h-12 w-12 object-contain rounded-md"
+                      width={320}
+                      height={180}
+                      className="h-32 w-full max-w-sm object-contain rounded-md"
                     />
                   ) : (
-                    <div className="h-12 w-12 flex items-center justify-center rounded-md bg-gray-100 text-gray-500 text-sm whitespace-nowrap">
+                    <div className="h-32 w-full max-w-sm flex items-center justify-center rounded-md bg-gray-100 text-gray-500 text-sm whitespace-nowrap">
                       No logo
                     </div>
                   )}
@@ -380,67 +404,67 @@ export default function CompanyForm() {
                 />
               </div>
 
-            {/* Page Background Image */}
-            <div className="space-y-3">
-              <Label>Page Background Image</Label>
-              <div className="flex flex-col items-center gap-2">
-                {pageImagePreview ? (
-                  <NextImage
-                    src={pageImagePreview}
-                    alt="Page Background"
-                    width={320}
-                    height={180}
-                    className="h-32 w-full max-w-sm object-cover rounded-md"
-                  />
-                ) : formCompany.page_image ? (
-                  <NextImage
-                    src={getDirectusImageUrl(formCompany.page_image) ?? ""}
-                    alt="Page Background"
-                    width={320}
-                    height={180}
-                    className="h-32 w-full max-w-sm object-cover rounded-md"
-                  />
-                ) : (
-                  <div className="h-32 w-full max-w-sm flex items-center justify-center rounded-md bg-gray-100 text-gray-500 text-sm whitespace-nowrap">
-                    No background image
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="cursor-pointer"
-                    onClick={() =>
-                      document.getElementById("hidden-page-image-input")?.click()
-                    }
-                  >
-                    {pageImagePreview || formCompany.page_image ? "Change Image" : "Upload Image"}
-                  </Button>
-                  {(pageImagePreview || formCompany.page_image) && (
+              {/* Page Background Image */}
+              <div className="space-y-3">
+                <Label>Page Background Image</Label>
+                <div className="flex flex-col items-center gap-2">
+                  {pageImagePreview ? (
+                    <NextImage
+                      src={pageImagePreview}
+                      alt="Page Background"
+                      width={320}
+                      height={180}
+                      className="h-32 w-full max-w-sm object-cover rounded-md"
+                    />
+                  ) : formCompany.page_image ? (
+                    <NextImage
+                      src={getDirectusImageUrl(formCompany.page_image) ?? ""}
+                      alt="Page Background"
+                      width={320}
+                      height={180}
+                      className="h-32 w-full max-w-sm object-cover rounded-md"
+                    />
+                  ) : (
+                    <div className="h-32 w-full max-w-sm flex items-center justify-center rounded-md bg-gray-100 text-gray-500 text-sm whitespace-nowrap">
+                      No background image
+                    </div>
+                  )}
+                  <div className="flex gap-2">
                     <Button
                       type="button"
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
                       className="cursor-pointer"
-                      onClick={() => {
-                        setPageImagePreview(null);
-                        updateField("page_image", "");
-                      }}
+                      onClick={() =>
+                        document.getElementById("hidden-page-image-input")?.click()
+                      }
                     >
-                      Remove
+                      {pageImagePreview || formCompany.page_image ? "Change Image" : "Upload Image"}
                     </Button>
-                  )}
+                    {(pageImagePreview || formCompany.page_image) && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="cursor-pointer"
+                        onClick={() => {
+                          setPageImagePreview(null);
+                          updateField("page_image", "");
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
                 </div>
+                <input
+                  id="hidden-page-image-input"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handlePageImageUpload}
+                />
               </div>
-              <input
-                id="hidden-page-image-input"
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handlePageImageUpload}
-              />
-            </div>
 
               {/* Short Description */}
               <div className="space-y-3 md:col-span-2">

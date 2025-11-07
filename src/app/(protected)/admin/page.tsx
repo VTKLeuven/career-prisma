@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { fetchCompaniesAction, createCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction } from "@/app/actions/companies";
+import { fetchCompaniesAction, createCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, removeUserFromCompanyAction } from "@/app/actions/companies";
 import { fetchEventsAction } from "@/app/actions/events";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -208,6 +208,20 @@ function CompaniesSection() {
     }
   }, [selectedCompany]);
 
+  // helper to remove a user locally (updates both `data` and `selectedCompany`)
+  const removeUserFromCompany = React.useCallback((companyId: string, userId: string) => {
+    setData(prev => prev.map(c => {
+      if (c.id !== companyId) return c;
+      return {
+        ...c,
+        representatives: (c.representatives ?? []).filter(rep => rep && rep.id !== userId),
+      };
+    }));
+    if (selectedCompany?.id === companyId) {
+      setSelectedCompany(prev => prev ? { ...prev, representatives: (prev.representatives ?? []).filter(rep => rep && rep.id !== userId) } : prev);
+    }
+  }, [selectedCompany]);
+
   return (
     <Card className="rounded-2xl shadow-md">
       <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -322,6 +336,10 @@ function CompaniesSection() {
               // locally add partial user and also update main data list
               addUserToCompany(selectedCompany.id, newUser);
             }}
+            onRemoveUser={(userId) => {
+              // locally remove user and also update main data list
+              removeUserFromCompany(selectedCompany.id, userId);
+            }}
           />
         ) : viewMode === "options" ? (
           <CompanyOptionsTable
@@ -410,7 +428,7 @@ function getCompanyColumns(onViewUsers: (company: CompanyRow) => void, onViewOpt
  * Company Users Table (full-featured)
  * - uses Partial<CompanyRep> for data so newly created users can be partial
  * ------------------------------------------------------------------ */
-function CompanyUsersTable({ company, onAddUser }: { company: CompanyRow; onAddUser: (newUser: Partial<CompanyRep>) => void }) {
+function CompanyUsersTable({ company, onAddUser, onRemoveUser }: { company: CompanyRow; onAddUser: (newUser: Partial<CompanyRep>) => void; onRemoveUser: (userId: string) => void }) {
   const [globalFilter, setGlobalFilter] = React.useState("");
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -427,7 +445,7 @@ function CompanyUsersTable({ company, onAddUser }: { company: CompanyRow; onAddU
 
   const table = useReactTable<Partial<CompanyRep>>({
     data: localRows,
-    columns: userColumns as ColumnDef<Partial<CompanyRep>>[], // userColumns defined below
+    columns: getUserColumns(onRemoveUser, company.id) as ColumnDef<Partial<CompanyRep>>[],
     state: { globalFilter, columnFilters, columnVisibility, rowSelection, sorting },
     onGlobalFilterChange: setGlobalFilter,
     onColumnFiltersChange: setColumnFilters,
@@ -505,7 +523,7 @@ function CompanyUsersTable({ company, onAddUser }: { company: CompanyRow; onAddU
               </TableRow>
             )) : (
               <TableRow>
-                <TableCell colSpan={userColumns.length} className="h-24 text-center">No users found.</TableCell>
+                <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center">No users found.</TableCell>
               </TableRow>
             )}
           </TableBody>
@@ -529,66 +547,78 @@ function CompanyUsersTable({ company, onAddUser }: { company: CompanyRow; onAddU
  * User columns definition (no 'role')
  * Using Partial<CompanyRep> friendly renderers
  * ------------------------------------------------------------------ */
-const userColumns: ColumnDef<Partial<CompanyRep>>[] = [
-  {
-    id: "select",
-    header: ({ table }) => (
-      <Checkbox
-        checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && "indeterminate")}
-        onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
-        aria-label="Select all"
-      />
-    ),
-    cell: ({ row }) => (
-      <Checkbox
-        checked={row.getIsSelected()}
-        onCheckedChange={(v) => row.toggleSelected(!!v)}
-        aria-label="Select row"
-      />
-    ),
-    enableSorting: false,
-    enableHiding: false,
-    size: 24,
-  },
-  {
-    accessorKey: "first_name",
-    header: "First name",
-    cell: ({ row }) => <div className="capitalize">{String(row.getValue("first_name") ?? "")}</div>,
-  },
-  {
-    accessorKey: "last_name",
-    header: "Last name",
-    cell: ({ row }) => <div className="capitalize">{String(row.getValue("last_name") ?? "")}</div>,
-  },
-  {
-    accessorKey: "email",
-    header: "Email",
-    cell: ({ row }) => <div className="truncate max-w-[36ch]">{String(row.getValue("email") ?? "")}</div>,
-  },
-  {
-    accessorKey: "status",
-    header: "Status",
-    cell: ({ row }) => <div className="font-medium">{String(row.getValue("status") ?? "—")}</div>,
-  },
-  {
-    id: "actions",
-    enableHiding: false,
-    cell: ({ row }) => {
-      const user = row.original;
-      return (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal /></Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-            <DropdownMenuItem onClick={() => console.log("Edit user", user)}>Edit</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      );
+function getUserColumns(onRemoveUser: (userId: string) => void, companyId: string): ColumnDef<Partial<CompanyRep>>[] {
+  return [
+    {
+      id: "select",
+      header: ({ table }) => (
+        <Checkbox
+          checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && "indeterminate")}
+          onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
+          aria-label="Select all"
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={row.getIsSelected()}
+          onCheckedChange={(v) => row.toggleSelected(!!v)}
+          aria-label="Select row"
+        />
+      ),
+      enableSorting: false,
+      enableHiding: false,
+      size: 24,
     },
-  },
-];
+    {
+      accessorKey: "first_name",
+      header: "First name",
+      cell: ({ row }) => <div className="capitalize">{String(row.getValue("first_name") ?? "")}</div>,
+    },
+    {
+      accessorKey: "last_name",
+      header: "Last name",
+      cell: ({ row }) => <div className="capitalize">{String(row.getValue("last_name") ?? "")}</div>,
+    },
+    {
+      accessorKey: "email",
+      header: "Email",
+      cell: ({ row }) => <div className="truncate max-w-[36ch]">{String(row.getValue("email") ?? "")}</div>,
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => <div className="font-medium">{String(row.getValue("status") ?? "—")}</div>,
+    },
+    {
+      id: "actions",
+      enableHiding: false,
+      cell: ({ row }) => {
+        const user = row.original;
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal /></Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => console.log("Edit user", user)}>Edit</DropdownMenuItem>
+              {user?.id && (
+                <>
+                  <DropdownMenuSeparator />
+                  <RemoveUserDialog
+                    user={user}
+                    companyId={companyId}
+                    onRemove={() => onRemoveUser(user.id!)}
+                  />
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
+    },
+  ];
+}
 
 /** ------------------------------------------------------------------
  * UserFormDialog (returns Partial<CompanyRep>)
@@ -917,6 +947,88 @@ function RemoveOptionDialog({ option, companyId, onRemove }: { option: CareerEve
 }
 
 /** ------------------------------------------------------------------
+ * Remove User Dialog (confirmation popup)
+ * ------------------------------------------------------------------ */
+function RemoveUserDialog({ user, companyId, onRemove }: { user: Partial<CompanyRep>; companyId: string; onRemove: () => void }) {
+  const [open, setOpen] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [warning, setWarning] = React.useState<string | null>(null);
+
+  const handleRemove = () => {
+    if (!user?.id) return;
+    
+    setError(null);
+    setWarning(null);
+    
+    removeUserFromCompanyAction(companyId, user.id)
+      .then((result) => {
+        if (result?.success) {
+          onRemove();
+          if (result.warning) {
+            setWarning(result.warning);
+            // Still close after a short delay to show the warning
+            setTimeout(() => setOpen(false), 2000);
+          } else {
+            setOpen(false);
+          }
+        } else {
+          setError(result?.error || "Failed to remove user");
+        }
+      })
+      .catch((error: unknown) => {
+        console.error("Error removing user from company:", error);
+        setError("An unexpected error occurred");
+      });
+  };
+
+  const userName = user?.first_name || user?.last_name 
+    ? `${user.first_name || ""} ${user.last_name || ""}`.trim() 
+    : user?.email || "this user";
+
+  return (
+    <Dialog open={open} onOpenChange={(isOpen) => {
+      setOpen(isOpen);
+      if (!isOpen) {
+        setError(null);
+        setWarning(null);
+      }
+    }}>
+      <DialogTrigger asChild>
+        <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setOpen(true); }} className="text-destructive">
+          Remove
+        </DropdownMenuItem>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Remove User</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to remove {userName} from this company? This will attempt to delete the user from Directus. If the user has uploaded files or other references, they will only be removed from this company.
+          </DialogDescription>
+        </DialogHeader>
+        {error && (
+          <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
+            {error}
+          </div>
+        )}
+        {warning && (
+          <div className="text-sm text-amber-600 bg-amber-50 p-3 rounded-md">
+            {warning}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => {
+            setOpen(false);
+            setError(null);
+            setWarning(null);
+          }}>Cancel</Button>
+          <Button variant="destructive" onClick={handleRemove}>Remove</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** ------------------------------------------------------------------
  * OptionFormDialog (returns CareerEventOption)
  * ------------------------------------------------------------------ */
 function OptionFormDialog({ company, onCreate }: {
@@ -927,6 +1039,10 @@ function OptionFormDialog({ company, onCreate }: {
   const [selectedOptionId, setSelectedOptionId] = React.useState<string>("");
   const [allOptions, setAllOptions] = React.useState<CareerEventOption[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [showDropdown, setShowDropdown] = React.useState(false);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
 
   // Fetch all events and extract all options
   React.useEffect(() => {
@@ -959,6 +1075,47 @@ function OptionFormDialog({ company, onCreate }: {
     return allOptions.filter(opt => !companyOptionIds.has(opt.id));
   }, [allOptions, company.options]);
 
+  // Filter options based on search query
+  const filteredOptions = React.useMemo(() => {
+    if (!searchQuery.trim()) return availableOptions.slice(0, 50); // Show first 50 when no search
+    const query = searchQuery.toLowerCase();
+    return availableOptions.filter(opt => {
+      const priceStr = typeof opt.price === 'string' ? opt.price : String(opt.price ?? '');
+      return (
+        opt.name.toLowerCase().includes(query) ||
+        opt.event?.name?.toLowerCase().includes(query) ||
+        (opt.description && stripHtml(opt.description).toLowerCase().includes(query)) ||
+        priceStr.toLowerCase().includes(query)
+      );
+    });
+  }, [availableOptions, searchQuery]);
+
+  // Handle click outside to close dropdown
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node) &&
+        inputRef.current &&
+        !inputRef.current.contains(event.target as Node)
+      ) {
+        setShowDropdown(false);
+      }
+    };
+
+    if (showDropdown) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [showDropdown]);
+
+  const handleOptionSelect = (option: CareerEventOption) => {
+    setSelectedOptionId(option.id);
+    const priceStr = typeof option.price === 'string' ? option.price : String(option.price ?? '');
+    setSearchQuery(`${option.name} - ${option.event?.name} (${priceStr})`);
+    setShowDropdown(false);
+  };
+
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedOptionId) return;
@@ -972,6 +1129,7 @@ function OptionFormDialog({ company, onCreate }: {
         onCreate(selectedOption);
         setOpen(false);
         setSelectedOptionId("");
+        setSearchQuery("");
         (e.target as HTMLFormElement).reset();
       })
       .catch((error) => {
@@ -979,12 +1137,21 @@ function OptionFormDialog({ company, onCreate }: {
       });
   };
 
+  // Reset search when dialog closes
+  React.useEffect(() => {
+    if (!open) {
+      setSearchQuery("");
+      setSelectedOptionId("");
+      setShowDropdown(false);
+    }
+  }, [open]);
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline"><IconPlus /> Add Option</Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>Add Option to Company</DialogTitle>
@@ -998,18 +1165,58 @@ function OptionFormDialog({ company, onCreate }: {
             ) : availableOptions.length === 0 ? (
               <div className="text-sm text-muted-foreground">No available options. All options are already assigned to this company.</div>
             ) : (
-              <Select value={selectedOptionId} onValueChange={setSelectedOptionId} required>
-                <SelectTrigger id="option" className="w-full">
-                  <SelectValue placeholder="Select an option" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableOptions.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.name} - {option.event?.name} ({option.price})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="relative w-full">
+                <Input
+                  ref={inputRef}
+                  id="option"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setShowDropdown(true);
+                    if (!e.target.value) {
+                      setSelectedOptionId("");
+                    }
+                  }}
+                  onFocus={() => setShowDropdown(true)}
+                  placeholder="Search and select an option..."
+                  className="w-full"
+                  required={!!selectedOptionId}
+                />
+                {showDropdown && (filteredOptions.length > 0 || !searchQuery) && (
+                  <div
+                    ref={dropdownRef}
+                    className="absolute z-50 w-full mt-1 max-h-[300px] overflow-y-auto rounded-md border bg-popover shadow-md"
+                    style={{ maxWidth: '100%' }}
+                  >
+                    {filteredOptions.length > 0 ? (
+                      filteredOptions.map((option) => {
+                        const priceStr = typeof option.price === 'string' ? option.price : String(option.price ?? '');
+                        return (
+                          <div
+                            key={option.id}
+                            className="px-3 py-2 hover:bg-accent hover:text-accent-foreground cursor-pointer text-sm border-b last:border-b-0"
+                            onClick={() => handleOptionSelect(option)}
+                          >
+                            <div className="font-medium truncate">{option.name}</div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {option.event?.name} - {priceStr}
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        Type to search options...
+                      </div>
+                    )}
+                  </div>
+                )}
+                {showDropdown && searchQuery && filteredOptions.length === 0 && (
+                  <div className="absolute z-50 w-full mt-1 rounded-md border bg-popover shadow-md p-3 text-sm text-muted-foreground">
+                    No options found matching &quot;{searchQuery}&quot;
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -1017,7 +1224,7 @@ function OptionFormDialog({ company, onCreate }: {
             <div className="flex gap-2">
               <Button type="submit" disabled={!selectedOptionId || loading || availableOptions.length === 0}>Add</Button>
               <DialogClose asChild>
-                <Button variant="outline">Cancel</Button>
+                <Button variant="outline" onClick={() => { setSearchQuery(""); setSelectedOptionId(""); }}>Cancel</Button>
               </DialogClose>
             </div>
           </DialogFooter>
