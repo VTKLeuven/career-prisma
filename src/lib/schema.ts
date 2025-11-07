@@ -122,9 +122,59 @@ export type Master = {
   logo: string
 }
 
+export type Form = {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+  form_versions?: FormVersion[];  // Changed from 'versions' to 'form_versions'
+};
+
+export type FormVersion = {
+  id: string;
+  form_id: string | Form;
+  version_number: number;
+  schema: FormSchema;
+  is_active: boolean;
+  created_at: string;
+}
+
+export type FormSchema = {
+  fields: FormField[];
+}
+
+export type FormField = {
+  id: string;
+  name: string;
+  label: string;
+  type: 'text' | 'textarea' | 'email' | 'number' | 'select' | 'checkbox' | 'radio' | 'file' | 'date';
+  required?: boolean;
+  placeholder?: string;
+  options?: string[]; // for select, radio, checkbox
+  validation?: {
+    min?: number;
+    max?: number;
+    pattern?: string;
+  };
+}
+
+export type FormResponse = {
+  id: string;
+  form_version_id: string | FormVersion;
+  user_id?: string | DirectusUser;
+  data: Record<string, unknown>;
+  submitted_at: string;
+  attachments?: string[]; // Directus file IDs
+}
+
 // Optional: Full Directus Schema map (only collections you use)
 export type Schema = {
   directus_users: CompanyRep;
   company: Company; // collection key should match your collection name
-  booths: Booth
+  booths: Booth;
+  forms: Form;
+  form_versions: FormVersion;
+  form_responses: FormResponse;
 };

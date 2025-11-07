@@ -20,8 +20,10 @@ import {
   IconCalendarEvent,
   IconFileCv,
   IconSettings,
+  IconColumns,
 } from "@tabler/icons-react";
 import Link from "next/link";
+import { useUser } from "@/providers/UserProvider";
 
 // Updated sidebar data
 const data = {
@@ -91,6 +93,34 @@ const data = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { open } = useSidebar();
+  const { user } = useUser();
+
+  // Add admin sections if user is admin
+  const navItems = React.useMemo(() => {
+    const items = [...data.navMain];
+
+    // Add Forms section for admins
+    if (user?.admin) {
+      items.push({
+        title: "Admin",
+        url: "#",
+        icon: IconColumns,
+        items: [
+          {
+            title: "Forms Management",
+            url: "/admin/forms",
+          },
+          {
+            title: "Companies & Events",
+            url: "/admin",
+          },
+        ],
+      });
+    }
+
+    return items;
+  }, [user?.admin]);
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
@@ -108,7 +138,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={data.navMain} />
+        <NavMain items={navItems} />
       </SidebarContent>
       <SidebarFooter>
         <NavUser />
