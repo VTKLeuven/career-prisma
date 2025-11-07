@@ -53,22 +53,63 @@ export async function sendEmail({
   const smtpHost = process.env.SMTP_HOST || "smtp-relay.gmail.com";
   const smtpPort = parseInt(process.env.SMTP_PORT || "587", 10);
   const defaultFromEmail = process.env.SMTP_FROM_EMAIL;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
 
   // Determine the from email: function parameter > env variable > fallback
   const fromEmail = from || defaultFromEmail || "noreply@example.com";
 
   // Build transporter config
-  const transportConfig = {
+  interface SMTPTransportOptions {
+    host: string;
+    port: number;
+    secure: boolean;
+    requireTLS: boolean;
+    tls: {
+      rejectUnauthorized: boolean;
+      minVersion: string;
+    };
+    logger?: boolean;
+    debug?: boolean;
+    auth?: {
+      user: string;
+      pass: string;
+    };
+  }
+
+  const transportConfig: SMTPTransportOptions = {
     host: smtpHost,
     port: smtpPort,
-    secure: false, // true for 465, false for other ports
+    secure: smtpPort === 465, // true for 465, false for other ports
+    requireTLS: true, // Force STARTTLS for port 587
     tls: {
+      // Do not fail on invalid certs for development
       rejectUnauthorized: false,
+      minVersion: "TLSv1.2",
     },
-    auth: undefined as { user: string; pass: string } | undefined,
+    // Optional: Enable connection logging for debugging
+    logger: process.env.NODE_ENV === "development",
+    debug: process.env.NODE_ENV === "development",
   };
 
-  const transporter = nodemailer.createTransport(transportConfig);
+  // Add authentication if credentials are provided
+  if (smtpUser && smtpPass) {
+    transportConfig.auth = {
+      user: smtpUser,
+      pass: smtpPass,
+    };
+  }
+
+  const transporter = nodemailer.createTransport(transportConfig as nodemailer.TransportOptions);
+
+  // Verify connection before sending
+  try {
+    await transporter.verify();
+    console.log("SMTP connection verified successfully");
+  } catch (error) {
+    console.error("SMTP connection verification failed:", error);
+    throw new Error(`SMTP connection failed: ${error}`);
+  }
 
   await transporter.sendMail({
     from: fromEmail,
