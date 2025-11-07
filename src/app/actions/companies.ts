@@ -3,7 +3,7 @@
 import { listCompanies, getCompanyById, createCompany, updateCompany } from "@/lib/repos/company";
 import { createRep, updateRep, waitForApproval } from "@/lib/repos/users";
 import { Company, CompanyRep } from "@/lib/schema";
-import { uploadDirectusFile, sendEmail } from "@/lib/repos/directus";
+import { uploadDirectusFile } from "@/lib/repos/directus";
 
 
 
@@ -138,26 +138,3 @@ export async function uploadCompanyLogo(file: File) {
   return await uploadDirectusFile(file);
 }
 
-export async function testEmailAction(toEmail: string, fromEmail?: string) {
-  try {
-    await sendEmail({
-      to: toEmail,
-      subject: "Test Email from Career Portal",
-      html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: #333;">Test Email</h1>
-          <p>This is a test email sent from the Career Portal admin panel.</p>
-          <p><strong>Sent at:</strong> ${new Date().toLocaleString()}</p>
-          <p style="color: #666; font-size: 12px; margin-top: 30px;">
-            If you received this email, your SMTP configuration is working correctly!
-          </p>
-        </div>
-      `,
-      from: fromEmail,
-    });
-    return { success: true, message: "Email sent successfully!" };
-  } catch (error) {
-    console.error("Test email error:", error);
-    return { success: false, message: error instanceof Error ? error.message : "Failed to send email" };
-  }
-}

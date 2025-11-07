@@ -53,8 +53,6 @@ export async function sendEmail({
   const smtpHost = process.env.SMTP_HOST || "smtp-relay.gmail.com";
   const smtpPort = parseInt(process.env.SMTP_PORT || "587", 10);
   const defaultFromEmail = process.env.SMTP_FROM_EMAIL;
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASS;
 
   // Determine the from email: function parameter > env variable > fallback
   const fromEmail = from || defaultFromEmail || "noreply@example.com";
@@ -92,13 +90,6 @@ export async function sendEmail({
     debug: process.env.NODE_ENV === "development",
   };
 
-  // Add authentication if credentials are provided
-  if (smtpUser && smtpPass) {
-    transportConfig.auth = {
-      user: smtpUser,
-      pass: smtpPass,
-    };
-  }
 
   const transporter = nodemailer.createTransport(transportConfig as nodemailer.TransportOptions);
 
