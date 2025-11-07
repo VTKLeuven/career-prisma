@@ -2,7 +2,7 @@
 "use server"
 
 import { readItems, readItem, createItem, updateItem } from "@directus/sdk";
-import { getDirectusWithToken } from "@/lib/directus";
+import { getDirectusWithToken, directus } from "@/lib/directus";
 import type { Company } from "@/lib/schema";
 
 
@@ -11,15 +11,27 @@ export async function listCompanies(opts?: {
   limit?: number;
   page?: number;        // 1-based
   sort?: string;        // e.g. "-date_created" or "name"
+  usePublic?: boolean;  // Use public client for unauthenticated access
 }) {
   try {
-    const directus = await getDirectusWithToken();
-    if (! directus) return null;
+    const { usePublic = false, search, limit = 25, page = 1, sort = "name" } = opts ?? {};
+    
+    // Use public client if requested, otherwise try authenticated
+    const client = usePublic ? directus : await getDirectusWithToken();
+    if (!client) return null;
 
-    const { search, limit = 25, page = 1, sort = "name" } = opts ?? {};
-    return directus.request(
+    return client.request(
       readItems("company", {
-        fields: ["*", "*.*", "*.*.*"],
+        fields: [
+          "*",
+          "representatives.*",
+          "category.master_id.*",
+          "options.career_event_option_id.id",
+          "options.career_event_option_id.name",
+          "options.career_event_option_id.description",
+          "options.career_event_option_id.price",
+          "options.career_event_option_id.event.*",
+        ],
         limit,
         page,
         sort,
@@ -30,16 +42,27 @@ export async function listCompanies(opts?: {
     ) as unknown as Company[];
   } catch (error) {
     console.log(error);
+    return null;
   }
 }
 
-export async function getCompanyById(id: string) {
-  const directus = await getDirectusWithToken();
-  if (!directus) return null;
+export async function getCompanyById(id: string, usePublic = false) {
+  const client = usePublic ? directus : await getDirectusWithToken();
+  if (!client) return null;
   
-  return directus.request(
+  return client.request(
     readItem("company", id, {
-      fields: ["*", "representatives.*", "category.master_id.*", "options.career_event_option_id.*"],
+      fields: [
+        "*",
+        "page_image",
+        "representatives.*",
+        "category.master_id.*",
+        "options.career_event_option_id.id",
+        "options.career_event_option_id.name",
+        "options.career_event_option_id.description",
+        "options.career_event_option_id.price",
+        "options.career_event_option_id.event.*",
+      ],
     })
   ) as unknown as Company;
 }

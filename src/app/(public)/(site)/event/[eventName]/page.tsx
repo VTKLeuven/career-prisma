@@ -268,8 +268,21 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
 
   if (selectedCompany) {
+    const slug = (selectedCompany.name || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "") // Remove special characters except hyphens
+    .replace(/-+/g, "-") // Replace multiple hyphens with single
+    .replace(/^-|-$/g, ""); // Remove leading/trailing hyphens
+
     return (
-      <div className="flex flex-col items-center justify-center gap-4 text-center px-6 py-4">
+      <div
+        className="flex flex-col items-center justify-center gap-4 text-center px-6 py-4"
+        // Block events from reaching the backdrop/overlay:
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-center gap-2">
           <h2 className="text-2xl font-semibold text-vtk-blue">{selectedCompany.name}</h2>
         </div>
@@ -288,15 +301,20 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
           >
             ← Back
           </button>
-          <Link
-            href={`/company/${(selectedCompany.name || "").toLowerCase().replace(/\s+/g, "-")}`}
-            className="inline-flex rounded-full bg-vtk-blue text-white px-4 py-2 text-sm font-medium hover:bg-vtk-blueDark"
-          >
-            View company page
-          </Link>
+
+          {selectedCompany.page_on_platform && (
+            <Link
+              href={`/company/${slug}`}
+              // (Optional) also stop bubbling on the link itself:
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex rounded-full bg-vtk-blue text-white px-4 py-2 text-sm font-medium hover:bg-vtk-blueDark"
+            >
+              View company page
+            </Link>
+          )}
         </div>
       </div>
-    )
+    );
   }
 
   // All companies grid (smaller boxes)

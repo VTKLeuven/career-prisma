@@ -1,22 +1,13 @@
-import { directus } from "@/lib/directus";
-import { readItems } from "@directus/sdk";
+'use client'
+
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { Company, Master, CareerEventOption, CareerEvent } from "@/lib/schema";
 import { getDirectusImageUrl } from "@/components/Images";
 import Image from "next/image";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-
-type RouteParams = { companyName: string };
-
-function slugifyName(name?: string | null): string {
-  return (name ?? "")
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "") // Remove special characters except hyphens
-    .replace(/-+/g, "-") // Replace multiple hyphens with single
-    .replace(/^-|-$/g, ""); // Remove leading/trailing hyphens
-}
+import { Calendar } from "lucide-react";
+import { fetchCompanyBySlugAction } from "@/app/actions/companies";
 
 type CategoryJunction = { master_id: Master | null };
 type OptionJunction = { career_event_option_id: CareerEventOption | null };
@@ -37,88 +28,80 @@ function isOptionJunction(value: unknown): value is OptionJunction {
   );
 }
 
-async function fetchCompanyBySlug(slug: string): Promise<Company | null> {
-  try {
-    const items = (await directus.request(
-      readItems("company", {
-        fields: [
-          "*",
-          "page_image",
-          "category.master_id.*",
-          // include options and their linked event for event listings
-          "options.career_event_option_id.id",
-          "options.career_event_option_id.name",
-          "options.career_event_option_id.description",
-          "options.career_event_option_id.price",
-          "options.career_event_option_id.event.*",
-        ],
-        limit: 200,
-        sort: "name",
-      })
-    )) as unknown as Company[];
+export default function CompanyPage() {
+  const params = useParams();
+  const router = useRouter();
+  const companyName = Array.isArray(params.companyName) ? params.companyName[0] : params.companyName;
+  const [company, setCompany] = useState<Company | null>(null);
+  const [loading, setLoading] = useState(true);
 
-    // Debug: log all company slugs for troubleshooting
-    if (process.env.NODE_ENV === "development") {
-      console.log("Looking for slug:", slug);
-      console.log("Available companies:", (items || []).map(c => ({
-        name: c.name,
-        slug: slugifyName(c.name)
-      })));
+  useEffect(() => {
+    if (!companyName || typeof companyName !== "string") {
+      setLoading(false);
+      return;
     }
-
-    const match = (items || []).find((c) => {
-      const companySlug = slugifyName(c.name);
-      return companySlug === slug;
-    });
     
-    if (!match) {
-      if (process.env.NODE_ENV === "development") {
-        console.log("No match found for slug:", slug);
+    // Redirect if underscore found
+    if (companyName.includes("_")) {
+      router.replace(`/company/${companyName.replace(/_/g, "-")}`);
+      return;
+    }
+
+    async function loadCompany() {
+      try {
+        const fetched = await fetchCompanyBySlugAction(companyName ?? "");
+        if (fetched) {
+          // Normalize categories and options
+          const rawCategory: unknown[] = Array.isArray(fetched.category)
+            ? (fetched.category as unknown[])
+            : [];
+          const normalizedCategories: Master[] = rawCategory
+            .filter(isCategoryJunction)
+            .map((item) => item.master_id)
+            .filter((m): m is Master => Boolean(m));
+
+          const rawOptions: unknown[] = Array.isArray(fetched.options)
+            ? (fetched.options as unknown[])
+            : [];
+          const normalizedOptions: CareerEventOption[] = rawOptions
+            .filter(isOptionJunction)
+            .map((item) => item.career_event_option_id)
+            .filter((o): o is CareerEventOption => Boolean(o));
+
+          setCompany({
+            ...fetched,
+            category: normalizedCategories,
+            options: normalizedOptions,
+          });
+        } else {
+          setCompany(null);
+        }
+      } catch (error) {
+        console.error("Error fetching company:", error);
+        setCompany(null);
+      } finally {
+        setLoading(false);
       }
-      return null;
     }
 
-    const rawCategory: unknown[] = Array.isArray(match.category)
-      ? (match.category as unknown[])
-      : [];
-    const normalizedCategories: Master[] = rawCategory
-      .filter(isCategoryJunction)
-      .map((item) => item.master_id)
-      .filter((m): m is Master => Boolean(m));
+    loadCompany();
+  }, [companyName, router]);
 
-    const rawOptions: unknown[] = Array.isArray(match.options)
-      ? (match.options as unknown[])
-      : [];
-    const normalizedOptions: CareerEventOption[] = rawOptions
-      .filter(isOptionJunction)
-      .map((item) => item.career_event_option_id)
-      .filter((o): o is CareerEventOption => Boolean(o));
-
-    const normalized: Company = {
-      ...match,
-      category: normalizedCategories,
-      options: normalizedOptions,
-    };
-    return normalized;
-  } catch (error) {
-    if (process.env.NODE_ENV === "development") {
-      console.error("Error fetching company by slug:", error);
-    }
-    return null;
+  if (loading) {
+    return (
+      <main className="min-h-svh bg-vtk-bg text-neutral-900 pt-24 md:pt-28">
+        <div className="mx-auto max-w-7xl px-4 py-24">
+          <div className="rounded-2xl border bg-white p-10 shadow-sm">
+            <p className="text-neutral-600">Loading company...</p>
+          </div>
+        </div>
+      </main>
+    );
   }
-}
-
-export default async function CompanyPage({ params }: { params: Promise<RouteParams> }) {
-  const { companyName } = await params;
-  if (companyName.includes("_")) {
-    redirect(`/company/${companyName.replace(/_/g, "-")}`);
-  }
-  const normalizedSlug = companyName;
-  const company = await fetchCompanyBySlug(normalizedSlug);
 
   if (!company) {
     return (
-      <main className="min-h-svh bg-vtk-bg text-neutral-900">
+      <main className="min-h-svh bg-vtk-bg text-neutral-900 pt-24 md:pt-28">
         <div className="mx-auto max-w-7xl px-4 py-24">
           <div className="rounded-2xl border bg-white p-10 shadow-sm">
             <h1 className="text-2xl font-semibold text-neutral-900">Company not found</h1>
@@ -208,22 +191,44 @@ export default async function CompanyPage({ params }: { params: Promise<RoutePar
 
               {events.length > 0 && (
                 <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-6 shadow-sm">
-                  <h2 className="text-xl font-semibold text-neutral-900">Events with this company</h2>
-                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {events.map((ev) => {
-                      const href = `/event/${(ev.name || "").toLowerCase().replace(/\s+/g, "-")}`;
-                      const img = getDirectusImageUrl(ev.image);
+                  <h2 className="text-xl font-semibold text-neutral-900 mb-6">Attending at</h2>
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                    {events.slice(0, 3).map((event, i) => {
+                      const href = `/event/${(event.name || "").toLowerCase().replace(/\s+/g, "-")}`;
                       return (
-                        <Link key={ev.id} href={href} className="group rounded-xl border overflow-hidden bg-neutral-50 hover:bg-neutral-100 transition-colors">
-                          {img && (
-                            <div className="relative h-32 w-full overflow-hidden">
-                              <Image src={img} alt={ev.name} fill className="object-cover group-hover:scale-[1.02] transition-transform" />
+                        <Link
+                          key={event.id}
+                          href={href}
+                          className="group relative block"
+                        >
+                          <div className="rounded-[28px] bg-white/90 p-3 shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md transition-transform duration-300 hover:-translate-y-2 hover:rotate-1">
+                            <div className="relative overflow-hidden rounded-[20px]">
+                              <div className="aspect-[4/3]">
+                                {event.image && (
+                                  <Image
+                                    src={getDirectusImageUrl(event.image)!}
+                                    alt={event.name}
+                                    fill
+                                    className="object-cover transition-transform duration-300 group-hover:scale-105"
+                                  />
+                                )}
+                              </div>
+                              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                              {event.shout ? (
+                                <span className="absolute left-3 top-3 rounded-full bg-vtk-yellow px-2 py-0.5 text-xs font-bold text-black shadow-sm">
+                                  {event.shout}
+                                </span>
+                              ) : null}
                             </div>
-                          )}
-                          <div className="p-4">
-                            <div className="text-sm font-semibold text-neutral-900">{ev.name}</div>
-                            <div className="text-xs text-neutral-600 mt-1">{ev.date} · {ev.location}</div>
+                            <div className="px-2 pb-2 pt-3">
+                              <div className="text-base font-semibold tracking-tight text-neutral-900">{event.name}</div>
+                              <div className="mt-1 flex items-center gap-2 text-sm text-neutral-700">
+                                <Calendar className="h-4 w-4 text-vtk-blue" />
+                                <span>{event.date} · {event.location}</span>
+                              </div>
+                            </div>
                           </div>
+                          <div aria-hidden className="absolute inset-x-6 -bottom-3 h-6 rounded-full bg-black/10 blur-md opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
                         </Link>
                       );
                     })}
