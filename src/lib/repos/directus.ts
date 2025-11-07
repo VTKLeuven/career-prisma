@@ -2,6 +2,7 @@
 "use server";
 
 import { cookies } from "next/headers";
+import nodemailer from "nodemailer";
 
 export async function uploadDirectusFile(file: File): Promise<string | null> {
   const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
@@ -42,25 +43,37 @@ export async function sendEmail({
   to,
   subject,
   html,
+  from,
 }: {
   to: string;
   subject: string;
   html: string;
+  from?: string;
 }) {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) throw new Error("RESEND_API_KEY missing");
+  const smtpHost = process.env.SMTP_HOST || "smtp-relay.gmail.com";
+  const smtpPort = parseInt(process.env.SMTP_PORT || "587", 10);
+  const defaultFromEmail = process.env.SMTP_FROM_EMAIL;
 
-  await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
+  // Determine the from email: function parameter > env variable > fallback
+  const fromEmail = from || defaultFromEmail || "noreply@example.com";
+
+  // Build transporter config
+  const transportConfig = {
+    host: smtpHost,
+    port: smtpPort,
+    secure: false, // true for 465, false for other ports
+    tls: {
+      rejectUnauthorized: false,
     },
-    body: JSON.stringify({
-      from: "", // TODO: create domain in resend
-      to,
-      subject,
-      html,
-    }),
+    auth: undefined as { user: string; pass: string } | undefined,
+  };
+
+  const transporter = nodemailer.createTransport(transportConfig);
+
+  await transporter.sendMail({
+    from: fromEmail,
+    to,
+    subject,
+    html,
   });
 }

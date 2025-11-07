@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { fetchCompaniesAction, createCompanyAction, createCompanyRepAction } from "@/app/actions/companies";
+import { fetchCompaniesAction, createCompanyAction, createCompanyRepAction, testEmailAction } from "@/app/actions/companies";
 import { fetchEventsAction } from "@/app/actions/events";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -171,9 +171,12 @@ function CompaniesSection() {
         <CardTitle className="text-2xl">
           {selectedCompany ? `Manage Users: ${selectedCompany.name}` : "Manage Companies"}
         </CardTitle>
-        {selectedCompany && (
-          <Button variant="outline" size="sm" onClick={() => setSelectedCompany(null)}>Back to Companies</Button>
-        )}
+        <div className="flex items-center gap-2">
+          {!selectedCompany && <TestEmailDialog />}
+          {selectedCompany && (
+            <Button variant="outline" size="sm" onClick={() => setSelectedCompany(null)}>Back to Companies</Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {!selectedCompany ? (
@@ -848,6 +851,118 @@ function formatAddress(r: Company) {
     r.address_country,
   ].filter(Boolean);
   return parts.join(", ");
+}
+
+/** ------------------------------------------------------------------
+ * Test Email Dialog
+ * ------------------------------------------------------------------ */
+function TestEmailDialog() {
+  const [open, setOpen] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [message, setMessage] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage(null);
+
+    const fd = new FormData(e.currentTarget);
+    const toEmail = String(fd.get("toEmail") ?? "").trim();
+    const fromEmail = String(fd.get("fromEmail") ?? "").trim() || undefined;
+
+    try {
+      const result = await testEmailAction(toEmail, fromEmail);
+
+      if (result.success) {
+        setMessage({ type: 'success', text: result.message });
+        setTimeout(() => {
+          setOpen(false);
+          setMessage(null);
+          (e.target as HTMLFormElement).reset();
+        }, 2000);
+      } else {
+        setMessage({ type: 'error', text: result.message });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Unknown error occurred' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <IconMail className="mr-2" size={16} />
+          Test Email
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>Test Email Configuration</DialogTitle>
+            <DialogDescription>
+              Send a test email to verify your SMTP configuration is working correctly.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="w-full">
+            <Label htmlFor="toEmail" className="text-xs">
+              Send To (Email Address)*
+            </Label>
+            <Input
+              name="toEmail"
+              id="toEmail"
+              type="email"
+              placeholder="your-email@example.com"
+              required
+              disabled={loading}
+            />
+          </div>
+
+          <div className="w-full">
+            <Label htmlFor="fromEmail" className="text-xs">
+              From (Email Address) - Optional
+            </Label>
+            <Input
+              name="fromEmail"
+              id="fromEmail"
+              type="email"
+              placeholder="noreply@yourdomain.com"
+              disabled={loading}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Leave empty to use the default from SMTP_FROM_EMAIL
+            </p>
+          </div>
+
+          {message && (
+            <div className={`p-3 rounded-md text-sm ${
+              message.type === 'success' 
+                ? 'bg-green-50 text-green-800 border border-green-200' 
+                : 'bg-red-50 text-red-800 border border-red-200'
+            }`}>
+              {message.text}
+            </div>
+          )}
+
+          <DialogFooter>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={loading}>
+                {loading ? "Sending..." : "Send Test Email"}
+              </Button>
+              <DialogClose asChild>
+                <Button variant="outline" type="button" disabled={loading}>
+                  Cancel
+                </Button>
+              </DialogClose>
+            </div>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 /** ------------------------------------------------------------------
