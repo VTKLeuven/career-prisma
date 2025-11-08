@@ -222,18 +222,31 @@ export async function submitFormResponseAction(data: {
   data: Record<string, unknown>;
   attachments?: string[];
 }) {
+  console.log("[FormSubmission] Starting form submission");
+  console.log("[FormSubmission] Form version ID:", data.form_version_id);
+  console.log("[FormSubmission] Has email in data:", !!data.data.email);
+  console.log("[FormSubmission] Email value:", data.data.email);
+  
   try {
     const response = await createFormResponse(data);
+    console.log("[FormSubmission] Form response created:", !!response);
     
     // If this is an event registration form, send confirmation email
     if (response && data.data.email) {
+      console.log("[FormSubmission] Checking if event registration form...");
       // Get the form to check if it's an event registration
       const formVersion = await getFormVersionById(data.form_version_id);
+      console.log("[FormSubmission] Form version retrieved:", !!formVersion);
+      
       if (formVersion) {
         const formId = typeof formVersion.form_id === 'string' ? formVersion.form_id : formVersion.form_id.id;
+        console.log("[FormSubmission] Form ID:", formId);
         const form = await getFormById(formId);
+        console.log("[FormSubmission] Form retrieved:", !!form);
+        console.log("[FormSubmission] Is event registration:", form?.metadata?.is_event_registration);
         
         if (form?.metadata?.is_event_registration) {
+          console.log("[FormSubmission] Calling sendEventConfirmationEmail...");
           await sendEventConfirmationEmail({
             to: data.data.email as string,
             name: (data.data.name as string) || '',
@@ -244,13 +257,20 @@ export async function submitFormResponseAction(data: {
             eventDate: form.metadata.event_date,
             eventLocation: form.metadata.event_location as string | undefined,
           });
+          console.log("[FormSubmission] sendEventConfirmationEmail completed");
+        } else {
+          console.log("[FormSubmission] Form is not an event registration, skipping email");
         }
+      } else {
+        console.log("[FormSubmission] Form version not found, skipping email");
       }
+    } else {
+      console.log("[FormSubmission] No response or no email, skipping email send");
     }
     
     return response;
   } catch (error) {
-    console.error("Error submitting form response:", error);
+    console.error("[FormSubmission] Error submitting form response:", error);
     throw error;
   }
 }
@@ -274,8 +294,15 @@ async function sendEventConfirmationEmail({
   eventDate?: string;
   eventLocation?: string;
 }) {
+  console.log("[EventEmail] Starting sendEventConfirmationEmail");
+  console.log("[EventEmail] To:", to);
+  console.log("[EventEmail] Form name:", formName);
+  console.log("[EventEmail] Subject:", subject);
+  
   try {
+    console.log("[EventEmail] Importing sendEmail function...");
     const { sendEmail } = await import("@/lib/repos/directus");
+    console.log("[EventEmail] sendEmail function imported successfully");
     
     // Generate calendar link
     const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
@@ -321,13 +348,19 @@ async function sendEventConfirmationEmail({
       </html>
     `;
     
+    console.log("[EventEmail] Calling sendEmail function...");
     await sendEmail({
       to,
       subject,
       html: emailHtml,
     });
+    console.log("[EventEmail] sendEmail call completed successfully");
   } catch (error) {
-    console.error("Error sending event confirmation email:", error);
+    console.error("[EventEmail] Error sending event confirmation email:", error);
+    console.error("[EventEmail] Error details:", error instanceof Error ? error.message : String(error));
+    if (error instanceof Error && error.stack) {
+      console.error("[EventEmail] Stack trace:", error.stack);
+    }
     // Don't throw - email failure shouldn't prevent form submission
   }
 }

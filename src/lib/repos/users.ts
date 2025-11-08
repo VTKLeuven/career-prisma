@@ -136,6 +136,9 @@ export async function waitForApproval(salespersonId: string, repPayload: Partial
   console.log("Salesperson object:", salesperson);
 
   try {
+    console.log("[ApprovalEmail] Attempting to send approval email");
+    console.log("[ApprovalEmail] To:", salesperson?.email ?? "matthijs.dehaeck@vtk.be");
+    console.log("[ApprovalEmail] Rep email:", repPayload?.email);
     await sendEmail({
       to: salesperson?.email ?? "matthijs.dehaeck@vtk.be",
       subject: `Approval needed for new Rep: ${repPayload?.email}`,
@@ -147,8 +150,13 @@ export async function waitForApproval(salespersonId: string, repPayload: Partial
         </p>
       `,
     });
+    console.log("[ApprovalEmail] Approval email sent successfully");
   } catch (err) {
-    console.error("Failed to send approval email:", err);
+    console.error("[ApprovalEmail] Failed to send approval email:", err);
+    if (err instanceof Error) {
+      console.error("[ApprovalEmail] Error message:", err.message);
+      console.error("[ApprovalEmail] Stack trace:", err.stack);
+    }
   }
 
   // 3️⃣ Poll until approved (or timeout)
