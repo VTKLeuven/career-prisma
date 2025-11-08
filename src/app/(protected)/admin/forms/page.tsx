@@ -471,7 +471,9 @@ function EditFormDialog({
     (form.metadata?.event_location as string) || ''
   );
   const [loading, setLoading] = useState(false);
-  const isEventRegistration = form.metadata?.is_event_registration === true;
+  const [isEventRegistration, setIsEventRegistration] = useState(
+    form.metadata?.is_event_registration === true
+  );
 
   useEffect(() => {
     if (open) {
@@ -479,6 +481,7 @@ function EditFormDialog({
       setSlug(form.slug);
       setDescription(form.description);
       setDeadline(form.metadata?.deadline ? new Date(form.metadata.deadline).toISOString().slice(0, 16) : '');
+      setIsEventRegistration(form.metadata?.is_event_registration === true);
       setEventEmailSubject((form.metadata?.event_email_subject as string) || '');
       setEventEmailContent((form.metadata?.event_email_content as string) || '');
       setEventDate(form.metadata?.event_date ? new Date(form.metadata.event_date as string).toISOString().slice(0, 16) : '');
@@ -511,6 +514,12 @@ function EditFormDialog({
           ...(eventDate ? { event_date: new Date(eventDate).toISOString() } : {}),
           ...(eventLocation ? { event_location: eventLocation } : {}),
         };
+      } else {
+        // If unchecked, remove event registration flag but keep other metadata
+        if (metadata) {
+          const { is_event_registration, ...restMetadata } = metadata;
+          metadata = Object.keys(restMetadata).length > 0 ? restMetadata : undefined;
+        }
       }
       
       // Clean up empty metadata
@@ -579,6 +588,17 @@ function EditFormDialog({
             <p className="text-xs text-muted-foreground">
               Set a deadline for form submissions. Leave empty for no deadline.
             </p>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="edit-event-registration"
+              checked={isEventRegistration}
+              onCheckedChange={(checked: boolean) => setIsEventRegistration(checked)}
+            />
+            <Label htmlFor="edit-event-registration" className="font-normal cursor-pointer">
+              Use as event registration (sends confirmation emails)
+            </Label>
           </div>
           
           {isEventRegistration && (

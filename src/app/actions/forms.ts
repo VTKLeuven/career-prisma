@@ -243,7 +243,10 @@ export async function submitFormResponseAction(data: {
         console.log("[FormSubmission] Form ID:", formId);
         const form = await getFormById(formId);
         console.log("[FormSubmission] Form retrieved:", !!form);
+        console.log("[FormSubmission] Form metadata:", JSON.stringify(form?.metadata, null, 2));
         console.log("[FormSubmission] Is event registration:", form?.metadata?.is_event_registration);
+        console.log("[FormSubmission] Metadata type:", typeof form?.metadata);
+        console.log("[FormSubmission] Metadata keys:", form?.metadata ? Object.keys(form.metadata) : "no metadata");
         
         if (form?.metadata?.is_event_registration) {
           console.log("[FormSubmission] Calling sendEventConfirmationEmail...");
