@@ -368,7 +368,8 @@ function Header() {
               </button>
             </div>
 
-            <Link href="#students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Services</Link>
+            <Link href="/our-students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
+            <Link href="/vacancies" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
 
           {/* Mobile nav - Events as simple button */}
@@ -381,7 +382,8 @@ function Header() {
             >
               Events
             </button>
-            <Link href="#students" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Services</Link>
+            <Link href="/our-students" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
+            <Link href="/vacancies" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
@@ -554,7 +556,9 @@ function Header() {
                       <div className="text-sm font-medium text-neutral-900">Featured</div>
                       <p className="mt-1 text-sm text-neutral-700">Meet 200+ companies at our flagship jobfair in Leuven.</p>
                       <div className="mt-4">
-                        <Button className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">Explore jobfair</Button>
+                        <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">
+                          <Link href="/event/vtk-jobfair">Explore jobfair</Link>
+                        </Button>
                       </div>
                     </div>
                   </div>

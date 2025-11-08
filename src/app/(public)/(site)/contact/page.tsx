@@ -1,202 +1,263 @@
-"use client"
+'use client'
 
-import { useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { submitContactFormAction } from "@/app/actions/contact"
+import { Mail, CheckCircle2, AlertCircle } from "lucide-react"
 
 export default function ContactPage() {
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    question: ''
+    name: "",
+    surname: "",
+    email: "",
+    companyName: "",
+    reason: "",
   })
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  const [submitting, setSubmitting] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [submitStatus, setSubmitStatus] = useState<{
+    type: 'success' | 'error' | null
+    message: string
+  }>({ type: null, message: '' })
 
-  const validateForm = () => {
-    const newErrors: Record<string, string> = {}
-
-    if (!formData.name.trim()) {
-      newErrors.name = 'Name is required'
-    }
-
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email is required'
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address'
-    }
-
-    if (!formData.question.trim()) {
-      newErrors.question = 'Question is required'
-    }
-
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-
-    if (!validateForm()) {
-      return
-    }
-
-    setSubmitting(true)
+    setLoading(true)
+    setSubmitStatus({ type: null, message: '' })
 
     try {
-      const response = await fetch('/api/contact', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          question: formData.question,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to send message')
+      const result = await submitContactFormAction(formData)
+      
+      if (result.success) {
+        setSubmitStatus({
+          type: 'success',
+          message: 'Thank you for your message! We will get back to you soon.'
+        })
+        // Reset form
+        setFormData({
+          name: "",
+          surname: "",
+          email: "",
+          companyName: "",
+          reason: "",
+        })
+      } else {
+        setSubmitStatus({
+          type: 'error',
+          message: result.error || 'Failed to send message. Please try again.'
+        })
       }
-
-      setSubmitted(true)
-      setFormData({ name: '', email: '', question: '' })
     } catch (error) {
-      console.error('Error submitting form:', error)
-      setErrors({ 
-        submit: error instanceof Error 
-          ? error.message 
-          : 'Failed to send message. Please try again.' 
+      setSubmitStatus({
+        type: 'error',
+        message: 'An unexpected error occurred. Please try again later.'
       })
     } finally {
-      setSubmitting(false)
+      setLoading(false)
     }
-  }
-
-  if (submitted) {
-    return (
-      <div className="container mx-auto px-4 py-16 max-w-2xl">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center py-8">
-              <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <h2 className="text-2xl font-semibold text-neutral-900 mb-2">Thank you for contacting us!</h2>
-              <p className="text-neutral-600 mb-6">We'll get back to you as soon as possible.</p>
-              <Button onClick={() => setSubmitted(false)} className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">
-                Send another message
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-3xl">
-      <div className="mb-6 text-center">
-        <h1 className="text-4xl font-bold text-neutral-900 mb-4">Contact Us</h1>
-        <p className="text-lg text-neutral-600">Have a question? We'd love to hear from you.</p>
+    <div className="min-h-screen relative">
+      {/* Fixed Background Image */}
+      <div 
+        className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat"
+        style={{
+          backgroundImage: 'url(https://directustest.vtk.be/assets/39d8fd46-fcc7-4d1f-84cf-38093d96cb93)',
+          backgroundAttachment: 'fixed',
+        }}
+      >
       </div>
 
-      {/* Contact Information Section - At the top */}
-      <Card className="mb-4">
-        <CardHeader>
-          <CardTitle>Get in Touch</CardTitle>
-          <CardDescription>Reach out to us through the following channels</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid md:grid-cols-2 gap-6">
-            <div>
-              <Label className="text-sm font-medium text-neutral-700 mb-2 block">Email</Label>
-              <p className="text-neutral-900 text-lg">bedrijvenrelaties@vtk.be</p>
-            </div>
-            <div>
-              <Label className="text-sm font-medium text-neutral-700 mb-2 block">Phone</Label>
-              <p className="text-neutral-900 text-lg">+32 (0)16 20 00 97</p>
+      {/* Content Container - Scrolls over background */}
+      <div className="relative z-10">
+        <div className="min-h-screen py-16 sm:py-24">
+          <div className="container mx-auto px-4">
+            <div className="max-w-4xl mx-auto">
+              {/* Header Card */}
+              <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-6 shadow-sm mb-12">
+                <div className="text-center">
+                  <div className="flex justify-center mb-4">
+                    <div className="rounded-full bg-vtk-blue/10 p-4">
+                      <Mail className="h-12 w-12 text-vtk-blue" />
+                    </div>
+                  </div>
+                  <h1 className="text-3xl sm:text-4xl font-bold text-neutral-900 mb-2">
+                    Contact Us
+                  </h1>
+                  <p className="text-lg text-neutral-700">
+                    Have a question? We'd love to hear from you.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Contact Information Card */}
+                <div className="rounded-2xl border bg-white/85 backdrop-blur-sm shadow-sm">
+                  <div className="p-6">
+                    <h2 className="text-2xl font-semibold text-neutral-900 mb-2">Get in Touch</h2>
+                    <p className="text-neutral-600 mb-6">
+                      Reach out to us through the following channels
+                    </p>
+                    <div className="space-y-6">
+                      <div className="flex items-start gap-4">
+                        <div className="rounded-full bg-vtk-blue/10 p-3">
+                          <Mail className="h-5 w-5 text-vtk-blue" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-neutral-900 mb-1">Email</h3>
+                          <a
+                            href="mailto:bedrijvenrelaties@vtk.be"
+                            className="text-vtk-blue hover:underline"
+                          >
+                            bedrijvenrelaties@vtk.be
+                          </a>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-4">
+                        <div className="rounded-full bg-vtk-blue/10 p-3">
+                          <svg
+                            className="h-5 w-5 text-vtk-blue"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+                            />
+                          </svg>
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-neutral-900 mb-1">Phone</h3>
+                          <a
+                            href="tel:+3216200097"
+                            className="text-vtk-blue hover:underline"
+                          >
+                            +32 (0)16 20 00 97
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contact Form Card */}
+                <div className="rounded-2xl border bg-white/85 backdrop-blur-sm shadow-sm">
+                  <div className="p-6">
+                    <h2 className="text-2xl font-semibold text-neutral-900 mb-2">Send us a Message</h2>
+                    <p className="text-neutral-600 mb-6">
+                      Fill out the form below and we'll respond as soon as possible.
+                    </p>
+                    <form onSubmit={handleSubmit} className="space-y-6">
+                      {/* Name and Surname */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="name">Name *</Label>
+                          <Input
+                            id="name"
+                            type="text"
+                            value={formData.name}
+                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            placeholder="John"
+                            required
+                            disabled={loading}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="surname">Surname *</Label>
+                          <Input
+                            id="surname"
+                            type="text"
+                            value={formData.surname}
+                            onChange={(e) => setFormData({ ...formData, surname: e.target.value })}
+                            placeholder="Doe"
+                            required
+                            disabled={loading}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Email */}
+                      <div className="space-y-2">
+                        <Label htmlFor="email">Email *</Label>
+                        <Input
+                          id="email"
+                          type="email"
+                          value={formData.email}
+                          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                          placeholder="john.doe@example.com"
+                          required
+                          disabled={loading}
+                        />
+                      </div>
+
+                      {/* Company Name */}
+                      <div className="space-y-2">
+                        <Label htmlFor="companyName">Company Name</Label>
+                        <Input
+                          id="companyName"
+                          type="text"
+                          value={formData.companyName}
+                          onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                          placeholder="Your Company Name (Optional)"
+                          disabled={loading}
+                        />
+                      </div>
+
+                      {/* Reason for Contact */}
+                      <div className="space-y-2">
+                        <Label htmlFor="reason">Question *</Label>
+                        <Textarea
+                          id="reason"
+                          value={formData.reason}
+                          onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                          placeholder="Tell us how we can help you..."
+                          rows={6}
+                          required
+                          disabled={loading}
+                          className="resize-none"
+                        />
+                      </div>
+
+                      {/* Status Message */}
+                      {submitStatus.type && (
+                        <div
+                          className={`flex items-start gap-3 p-4 rounded-lg ${
+                            submitStatus.type === 'success'
+                              ? 'bg-green-50 border border-green-200 text-green-800'
+                              : 'bg-red-50 border border-red-200 text-red-800'
+                          }`}
+                        >
+                          {submitStatus.type === 'success' ? (
+                            <CheckCircle2 className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                          ) : (
+                            <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                          )}
+                          <p className="text-sm">{submitStatus.message}</p>
+                        </div>
+                      )}
+
+                      {/* Submit Button */}
+                      <Button
+                        type="submit"
+                        disabled={loading}
+                        className="w-full rounded-full bg-vtk-blue hover:bg-vtk-blueDark text-white"
+                      >
+                        {loading ? "Sending..." : "Send Message"}
+                      </Button>
+                    </form>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Contact Form */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Send us a Message</CardTitle>
-          <CardDescription>Fill out the form below and we'll respond as soon as possible</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="name">Name *</Label>
-              <Input
-                id="name"
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className={errors.name ? 'border-red-500' : ''}
-                placeholder="Your name"
-              />
-              {errors.name && (
-                <p className="text-sm text-red-500">{errors.name}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="email">Email *</Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className={errors.email ? 'border-red-500' : ''}
-                placeholder="your.email@example.com"
-              />
-              {errors.email && (
-                <p className="text-sm text-red-500">{errors.email}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="question">Question *</Label>
-              <Textarea
-                id="question"
-                value={formData.question}
-                onChange={(e) => setFormData({ ...formData, question: e.target.value })}
-                className={errors.question ? 'border-red-500' : ''}
-                placeholder="Your question or message..."
-                rows={10}
-              />
-              {errors.question && (
-                <p className="text-sm text-red-500">{errors.question}</p>
-              )}
-            </div>
-
-            {errors.submit && (
-              <p className="text-sm text-red-500">{errors.submit}</p>
-            )}
-
-            <Button
-              type="submit"
-              disabled={submitting}
-              className="w-full rounded-full bg-vtk-blue hover:bg-vtk-blueDark"
-            >
-              {submitting ? 'Sending...' : 'Send Message'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }

@@ -44,7 +44,19 @@ export default async function WithSidebarLayout({ children }: { children: React.
             <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
               <SidebarTrigger className="-ml-1" />
               <Separator orientation="vertical" className="mr-1 sm:mr-2 data-[orientation=vertical]:h-4 hidden sm:block" />
-              <span className="text-muted-foreground text-xs sm:text-sm truncate">You are viewing this page as a representative for <span className="underline cursor-pointer">{user.company.name}</span></span>
+              <span className="text-muted-foreground text-xs sm:text-sm truncate">
+                You are viewing this page as a representative for{' '}
+                <Link 
+                  href={
+                    user.company.page_on_platform
+                      ? `/company/${(user.company.name || "").toLowerCase().trim().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "")}`
+                      : "/dashboard/settings/information/request-page"
+                  }
+                  className="underline cursor-pointer hover:text-foreground transition-colors"
+                >
+                  {user.company.name}
+                </Link>
+              </span>
             </div>
             {user.admin && <Button variant="link" className="shrink-0 text-xs sm:text-sm"><Link href="/admin">Admin</Link></Button>}
           </div>

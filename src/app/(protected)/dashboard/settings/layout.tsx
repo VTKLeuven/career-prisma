@@ -8,6 +8,7 @@ import { useState, useEffect } from "react";
 import { fetchCompanyByIdAction } from "@/app/actions/companies";
 import { useUser } from "@/providers/UserProvider";
 import type { Company } from "@/lib/schema";
+import { SectionLayout } from "@/components/dashboard/SectionLayout";
 
 function isFileLike(value: unknown): value is File {
   return typeof value === "object" && value !== null && "name" in value;
@@ -27,7 +28,17 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
   return (
     <div className="w-full flex flex-col gap-4">
       <CompanyHeaderCard company={company} />
-      <div>{children}</div>
+      <SectionLayout
+        title="Settings"
+        description="Manage your company information, users, and billing"
+        items={[
+          { title: "Company Information", url: "/dashboard/settings/information" },
+          { title: "Users", url: "/dashboard/settings/users" },
+          { title: "Billing", url: "/dashboard/settings/billing" },
+        ]}
+      >
+        {children}
+      </SectionLayout>
     </div>
   );
 }

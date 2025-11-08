@@ -47,7 +47,7 @@ export async function listMasters(
   }
 ): Promise<Master[] | null> {
   try {
-    const { search, limit = 300, page = 1, sort = "id" } = opts ?? {}
+    const { search, limit = 300, page = 1, sort = "name" } = opts ?? {}
     return directus.request(
       readItems("master", {
         fields: ["*"],
