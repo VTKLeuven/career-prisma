@@ -14,6 +14,13 @@ const nextConfig: NextConfig = {
         hostname: "images.unsplash.com", // your Directus domain
       },
     ],
+    // Enable image optimization caching
+    minimumCacheTTL: 31536000, // 1 year
+    formats: ['image/avif', 'image/webp'],
+  },
+  // Enable experimental features for better caching
+  experimental: {
+    optimizePackageImports: ['framer-motion', 'lucide-react'],
   },
 };
 

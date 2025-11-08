@@ -53,7 +53,14 @@ function Header() {
   const eventsMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    fetchEventsAction().then(setEvents);
+    // Use API route for better caching
+    fetch('/api/homepage')
+      .then(res => res.json())
+      .then((data) => setEvents(data.events ?? []))
+      .catch(() => {
+        // Fallback to direct action
+        fetchEventsAction().then(setEvents);
+      });
   }, []);
 
   // Close menus when clicking outside
@@ -135,7 +142,7 @@ function Header() {
 
           <div className="ml-auto flex items-center gap-2">
             <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => router.push("/dashboard")}>Company Dashboard</Button>
-            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="#contact">Contact Us</Link></Button>
+            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="/contact">Contact Us</Link></Button>
 
             {/* Mobile menu button */}
             <button
@@ -236,7 +243,7 @@ function Header() {
                     className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full"
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    <Link href="#contact">Contact Us</Link>
+                    <Link href="/contact">Contact Us</Link>
                   </Button>
                 </div>
               </div>

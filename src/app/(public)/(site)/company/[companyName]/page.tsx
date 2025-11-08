@@ -386,7 +386,7 @@ function Header() {
 
           <div className="ml-auto flex items-center gap-2">
             <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => router.push("/dashboard")}>Company Dashboard</Button>
-            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="#contact">Contact Us</Link></Button>
+            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="/contact">Contact Us</Link></Button>
             
             {/* Mobile menu button - only show if menu is closed (Events button handles opening) */}
             {!mobileMenuOpen && (
@@ -488,7 +488,7 @@ function Header() {
                     className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full"
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    <Link href="#contact">Contact Us</Link>
+                    <Link href="/contact">Contact Us</Link>
                   </Button>
                 </div>
               </div>

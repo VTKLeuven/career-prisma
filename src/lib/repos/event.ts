@@ -81,3 +81,50 @@ export async function listEventPages(opts?: {
     return [];
   }
 }
+
+export async function getEventPageBySlug(slug: string): Promise<CareerEventPage | null> {
+  try {
+    // Step 1: Fetch all events to find the one matching the slug
+    const events = await directus.request(
+      readItems("career_event", {
+        fields: ["id", "name"],
+        limit: 100, // Reasonable limit for events
+      })
+    ) as unknown as Array<{ id: string; name: string }>;
+
+    // Find event where slugified name matches
+    const normalizedSlug = slug.toLowerCase().trim();
+    const matchingEvent = events.find((event) => {
+      const eventSlug = event.name.toLowerCase().replace(/\s+/g, "-");
+      return eventSlug === normalizedSlug;
+    });
+
+    if (!matchingEvent) {
+      return null;
+    }
+
+    // Step 2: Fetch the event page for this specific event
+    const pages = await directus.request(
+      readItems("career_event_page", {
+        fields: [
+          "*",
+          "*.*",
+          "event.*",
+          "timetable.timetable_id.*",
+          "companies.company_id.*",
+        ],
+        filter: {
+          event: {
+            _eq: matchingEvent.id,
+          },
+        },
+        limit: 1,
+      })
+    ) as unknown as CareerEventPage[];
+
+    return pages.length > 0 ? pages[0] : null;
+  } catch (error) {
+    console.error("Error fetching event page by slug:", error);
+    return null;
+  }
+}

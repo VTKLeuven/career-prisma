@@ -52,7 +52,7 @@ export async function GET(
     const blob = await response.blob();
 
     // Get headers from Directus response
-    const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    const contentType = response.headers.get('content-type') || blob.type || 'application/octet-stream';
     const contentDisposition = response.headers.get('content-disposition');
     const contentLength = response.headers.get('content-length');
 
@@ -61,14 +61,16 @@ export async function GET(
       size: contentLength,
     });
 
-    // Return the file with proper headers
+    // Return the file with proper headers including CDN caching
     return new NextResponse(blob, {
       status: 200,
       headers: {
         'Content-Type': contentType,
         ...(contentDisposition ? { 'Content-Disposition': contentDisposition } : {}),
         ...(contentLength ? { 'Content-Length': contentLength } : {}),
-        'Cache-Control': 'public, max-age=31536000, immutable',
+        'Cache-Control': 'public, max-age=31536000, immutable', // 1 year cache for immutable assets
+        'CDN-Cache-Control': 'public, max-age=31536000',
+        'Vary': 'Accept',
       },
     });
   } catch (error) {
