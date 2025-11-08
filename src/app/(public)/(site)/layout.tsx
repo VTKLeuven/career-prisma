@@ -1,7 +1,7 @@
 "use client"
 
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, createContext, useContext } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { ChevronDown } from 'lucide-react'
@@ -9,12 +9,30 @@ import { useRouter } from 'next/navigation'
 import { fetchEventsAction } from "@/app/actions/events";
 import { CareerEvent } from '@/lib/schema'
 
+// Context to allow pages to opt-out of header padding if they have a banner
+const PageLayoutContext = createContext<{
+  hasBanner: boolean
+  setHasBanner: (hasBanner: boolean) => void
+}>({
+  hasBanner: false,
+  setHasBanner: () => {},
+})
+
+export const usePageLayout = () => useContext(PageLayoutContext)
 
 export default function NoSidebarLayout({ children }: { children: React.ReactNode }) {
+    const [hasBanner, setHasBanner] = useState(false)
+    
     // simple shell without sidebar/header
-    return <main className="min-h-svh bg-vtk-bg text-neutral-900 pt-28 md:pt-32">
-        <Header />
-        {children}</main>
+    // Apply padding only if page doesn't have a banner
+    return (
+        <PageLayoutContext.Provider value={{ hasBanner, setHasBanner }}>
+            <main className={`min-h-svh bg-vtk-bg text-neutral-900 ${hasBanner ? '' : 'pt-28 md:pt-32'}`}>
+                <Header />
+                {children}
+            </main>
+        </PageLayoutContext.Provider>
+    )
 }
 
 

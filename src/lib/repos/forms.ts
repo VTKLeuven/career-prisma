@@ -92,12 +92,23 @@ export async function getPublicFormBySlug(slug: string) {
   }
 }
 
-export async function createForm(data: Partial<Form>) {
+export async function createForm(data: Partial<Form> & { metadata?: unknown }) {
   try {
     const client = await getAuthedDirectusOrThrow();
-    return client.request(
-      createItem("forms", data)
+    // Remove metadata from form creation - it goes on form_version instead
+    const { metadata, ...formData } = data;
+    const created = await client.request(
+      createItem("forms", formData)
     ) as unknown as Form;
+    
+    // Refetch to get all fields
+    const result = await client.request(
+      readItem("forms", created.id, {
+        fields: ["*", "form_versions.*"],
+      })
+    ) as unknown as Form;
+    
+    return result;
   } catch (error) {
     console.error("Error creating form:", error);
     throw error;

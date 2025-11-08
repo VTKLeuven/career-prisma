@@ -122,16 +122,6 @@ export type Master = {
   logo: string
 }
 
-export type FormMetadata = {
-  deadline?: string; // ISO datetime string
-  is_event_registration?: boolean; // If true, this form is for event registration
-  event_email_subject?: string; // Email subject for event confirmation
-  event_email_content?: string; // Email content for event confirmation
-  event_date?: string; // Event date/time (ISO string)
-  event_location?: string; // Event location
-  [key: string]: unknown; // Allow other metadata fields
-};
-
 export type Form = {
   id: string;
   name: string;
@@ -143,14 +133,24 @@ export type Form = {
   form_versions?: FormVersion[];  // Changed from 'versions' to 'form_versions'
 };
 
+export type FormMetadata = {
+  deadline?: string; // ISO date string
+  is_event_registration?: boolean; // If true, this form is for event registration
+  event_email_subject?: string; // Email subject for event confirmation
+  event_email_content?: string; // Email content for event confirmation
+  event_date?: string; // Event date/time (ISO string)
+  event_location?: string; // Event location
+  [key: string]: unknown; // Allow other metadata fields
+};
+
 export type FormVersion = {
   id: string;
   form_id: string | Form;
   version_number: number;
   schema: FormSchema;
   is_active: boolean;
-  metadata?: FormMetadata; // JSON field in Directus - versioned metadata
   created_at: string;
+  metadata?: FormMetadata;
 }
 
 export type FormSchema = {
@@ -161,7 +161,7 @@ export type FormField = {
   id: string;
   name: string;
   label: string;
-  type: 'text' | 'textarea' | 'email' | 'number' | 'select' | 'checkbox' | 'radio' | 'file' | 'date';
+  type: 'text' | 'textarea' | 'email' | 'number' | 'select' | 'checkbox' | 'radio' | 'file' | 'date' | 'date-range' | 'time';
   required?: boolean;
   placeholder?: string;
   options?: string[]; // for select, radio, checkbox
@@ -169,7 +169,11 @@ export type FormField = {
     min?: number;
     max?: number;
     pattern?: string;
+    maxFileSize?: number; // Max file size in bytes (for file fields)
+    allowedFileTypes?: string[]; // Allowed MIME types (for file fields)
   };
+  layout?: 'full' | 'half' | 'third' | 'two-thirds'; // Field width layout
+  multiple?: boolean; // For file fields - allow multiple file uploads
 }
 
 export type FormResponse = {

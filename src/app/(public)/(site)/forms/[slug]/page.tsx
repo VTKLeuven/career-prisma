@@ -97,7 +97,7 @@ export default function PublicFormPage() {
       return;
     }
 
-    // Check deadline
+    // Check deadline (with time)
     if (form.metadata?.deadline) {
       const deadline = new Date(form.metadata.deadline);
       const now = new Date();
@@ -123,9 +123,26 @@ export default function PublicFormPage() {
     }
   };
 
-  const isDeadlinePassed = form?.metadata?.deadline 
-    ? new Date(form.metadata.deadline) < new Date()
-    : false;
+  const isDeadlinePassed = React.useMemo(() => {
+    if (!form?.metadata?.deadline) {
+      return false;
+    }
+    try {
+      const deadline = new Date(form.metadata.deadline);
+      const now = new Date();
+      const passed = now > deadline;
+      console.log('[PublicFormPage] Deadline check:', {
+        deadline: form.metadata.deadline,
+        deadlineDate: deadline.toISOString(),
+        now: now.toISOString(),
+        passed
+      });
+      return passed;
+    } catch (error) {
+      console.error('[PublicFormPage] Error parsing deadline:', error);
+      return false;
+    }
+  }, [form?.metadata?.deadline]);
 
   const handleFieldChange = (fieldName: string, value: unknown) => {
     setFormData((prev) => ({ ...prev, [fieldName]: value }));
@@ -199,42 +216,93 @@ export default function PublicFormPage() {
               )}
               {form.metadata?.deadline && (
                 <div className="mt-2">
-                  <Badge variant={isDeadlinePassed ? "destructive" : "secondary"}>
+                  <Badge variant="secondary">
                     Deadline: {formatDateTimeBE(form.metadata.deadline)}
                     {isDeadlinePassed && " (Passed)"}
                   </Badge>
                 </div>
               )}
             </div>
-            <Badge variant="outline">v{form.activeVersion.version_number}</Badge>
           </div>
         </CardHeader>
         <CardContent>
-          {isDeadlinePassed && (
-            <div className="mb-4 p-4 bg-destructive/10 border border-destructive rounded-md">
-              <p className="text-destructive font-medium">
-                This form's deadline has passed. Submissions are no longer accepted.
+          {isDeadlinePassed && form.metadata?.deadline && (
+            <div className="mb-4 p-4 bg-muted border border-border rounded-md">
+              <p className="text-muted-foreground">
+                This form's deadline has passed. Submissions are no longer accepted. The deadline was {formatDateTimeBE(form.metadata.deadline)}.
               </p>
             </div>
           )}
           <form onSubmit={handleSubmit} className="space-y-6">
-            {form.activeVersion.schema.fields.map((field) => (
-              <div key={field.id} className="space-y-2">
-                <Label htmlFor={field.id}>
-                  {field.label}
-                  {field.required && <span className="text-destructive ml-1">*</span>}
-                </Label>
-                <FormFieldRenderer
-                  field={field}
-                  value={formData[field.name]}
-                  onChange={(value) => handleFieldChange(field.name, value)}
-                  error={errors[field.name]}
-                />
-                {errors[field.name] && (
-                  <p className="text-sm text-destructive">{errors[field.name]}</p>
-                )}
-              </div>
-            ))}
+            {(() => {
+              // Group fields by layout rows
+              const rows: FormField[][] = [];
+              let currentRow: FormField[] = [];
+              let currentRowWidth = 0;
+
+              form.activeVersion.schema.fields.forEach((field) => {
+                const layout = field.layout || 'full';
+                const width = layout === 'half' ? 0.5 : layout === 'third' ? 1/3 : layout === 'two-thirds' ? 2/3 : 1;
+
+                // If adding this field would exceed 1, start a new row
+                if (currentRowWidth + width > 1 && currentRow.length > 0) {
+                  rows.push(currentRow);
+                  currentRow = [];
+                  currentRowWidth = 0;
+                }
+
+                currentRow.push(field);
+                currentRowWidth += width;
+
+                // If the row is full or field is full width, finalize the row
+                if (currentRowWidth >= 1 || layout === 'full') {
+                  rows.push(currentRow);
+                  currentRow = [];
+                  currentRowWidth = 0;
+                }
+              });
+
+              // Add any remaining fields
+              if (currentRow.length > 0) {
+                rows.push(currentRow);
+              }
+
+              const getColSpanClass = (layout: string) => {
+                switch (layout) {
+                  case 'half': return 'md:col-span-6';
+                  case 'third': return 'md:col-span-4';
+                  case 'two-thirds': return 'md:col-span-8';
+                  default: return 'md:col-span-12';
+                }
+              };
+
+              return rows.map((row, rowIndex) => (
+                <div key={`row-${rowIndex}`} className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  {row.map((field) => {
+                    const layout = field.layout || 'full';
+                    
+                    return (
+                      <div key={field.id} className={`space-y-2 ${getColSpanClass(layout)}`}>
+                        <Label htmlFor={field.id}>
+                          {field.label}
+                          {field.required && <span className="text-destructive ml-1">*</span>}
+                        </Label>
+                        <FormFieldRenderer
+                          field={field}
+                          value={formData[field.name]}
+                          onChange={(value) => handleFieldChange(field.name, value)}
+                          error={errors[field.name]}
+                          disabled={isDeadlinePassed}
+                        />
+                        {errors[field.name] && (
+                          <p className="text-sm text-destructive">{errors[field.name]}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ));
+            })()}
 
             <div className="flex justify-end gap-4 pt-4">
               <Button type="button" variant="outline" onClick={() => router.back()}>
@@ -263,11 +331,13 @@ function FormFieldRenderer({
   value,
   onChange,
   error,
+  disabled = false,
 }: {
   field: FormField;
   value: unknown;
   onChange: (value: unknown) => void;
   error?: string;
+  disabled?: boolean;
 }) {
   const inputClassName = error ? "border-destructive" : "";
 
@@ -283,6 +353,7 @@ function FormFieldRenderer({
           required={field.required}
           className={inputClassName}
           rows={4}
+          disabled={disabled}
         />
       );
 
@@ -297,6 +368,7 @@ function FormFieldRenderer({
           placeholder={field.placeholder}
           required={field.required}
           className={inputClassName}
+          disabled={disabled}
         />
       );
 
@@ -313,6 +385,7 @@ function FormFieldRenderer({
           className={inputClassName}
           min={field.validation?.min}
           max={field.validation?.max}
+          disabled={disabled}
         />
       );
 
@@ -326,6 +399,58 @@ function FormFieldRenderer({
           onChange={(e) => onChange(e.target.value)}
           required={field.required}
           className={inputClassName}
+          disabled={disabled}
+        />
+      );
+
+    case "date-range":
+      const dateRangeValue = value as { start?: string; end?: string } || {};
+      return (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <Label htmlFor={`${field.id}-start`} className="text-sm">Start Date</Label>
+            <Input
+              id={`${field.id}-start`}
+              name={`${field.name}_start`}
+              type="date"
+              value={dateRangeValue.start || ""}
+              onChange={(e) => onChange({ ...dateRangeValue, start: e.target.value })}
+              required={field.required}
+              className={inputClassName}
+              disabled={disabled}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`${field.id}-end`} className="text-sm">End Date</Label>
+            <Input
+              id={`${field.id}-end`}
+              name={`${field.name}_end`}
+              type="date"
+              value={dateRangeValue.end || ""}
+              onChange={(e) => {
+                const newValue = { ...dateRangeValue, end: e.target.value };
+                onChange(newValue);
+              }}
+              required={field.required}
+              min={dateRangeValue.start || undefined}
+              className={inputClassName}
+              disabled={disabled}
+            />
+          </div>
+        </div>
+      );
+
+    case "time":
+      return (
+        <Input
+          id={field.id}
+          name={field.name}
+          type="time"
+          value={(value as string) || ""}
+          onChange={(e) => onChange(e.target.value)}
+          required={field.required}
+          className={inputClassName}
+          disabled={disabled}
         />
       );
 
@@ -335,6 +460,7 @@ function FormFieldRenderer({
           value={(value as string) || ""}
           onValueChange={onChange}
           required={field.required}
+          disabled={disabled}
         >
           <SelectTrigger id={field.id} className={inputClassName}>
             <SelectValue placeholder={field.placeholder || "Select an option"} />
@@ -367,6 +493,7 @@ function FormFieldRenderer({
                       onChange(currentValues.filter((v) => v !== option));
                     }
                   }}
+                  disabled={disabled}
                 />
                 <Label
                   htmlFor={`${field.id}-${index}`}
@@ -394,6 +521,7 @@ function FormFieldRenderer({
                 onChange={(e) => onChange(e.target.value)}
                 required={field.required}
                 className="cursor-pointer"
+                disabled={disabled}
               />
               <Label
                 htmlFor={`${field.id}-${index}`}
@@ -407,17 +535,49 @@ function FormFieldRenderer({
       );
 
     case "file":
+      const maxFileSize = field.validation?.maxFileSize || 50 * 1024 * 1024; // Default 50MB
+      const maxFileSizeMB = Math.round(maxFileSize / (1024 * 1024));
+      const isMultiple = field.multiple || false;
+      
       return (
         <div className="space-y-2">
           <Input
             id={field.id}
             name={field.name}
             type="file"
+            multiple={isMultiple}
+            disabled={disabled}
             onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (file) {
-                try {
-                  // Upload to Directus via API route
+              const files = Array.from(e.target.files || []);
+              if (files.length === 0) return;
+
+              // Validate file sizes
+              const oversizedFiles = files.filter(file => file.size > maxFileSize);
+              if (oversizedFiles.length > 0) {
+                alert(`Some files exceed the maximum size of ${maxFileSizeMB}MB. Please select smaller files.`);
+                e.target.value = '';
+                return;
+              }
+
+              // Validate file types if specified
+              if (field.validation?.allowedFileTypes && field.validation.allowedFileTypes.length > 0) {
+                const invalidFiles = files.filter(file => 
+                  !field.validation!.allowedFileTypes!.some(type => 
+                    file.type === type || file.name.toLowerCase().endsWith(type.replace('*', ''))
+                  )
+                );
+                if (invalidFiles.length > 0) {
+                  alert(`Some files have invalid types. Allowed types: ${field.validation.allowedFileTypes.join(', ')}`);
+                  e.target.value = '';
+                  return;
+                }
+              }
+
+              try {
+                const uploadedIds: string[] = [];
+                
+                // Upload files sequentially
+                for (const file of files) {
                   const formData = new FormData();
                   formData.append('file', file);
 
@@ -432,32 +592,51 @@ function FormFieldRenderer({
                   }
 
                   const result = await response.json();
-
-                  // Store the Directus file ID
-                  onChange(result.id);
-                } catch (error) {
-                  console.error('File upload error:', error);
-
-                  // Check if it's a permission error
-                  const errorMessage = error instanceof Error ? error.message : String(error);
-                  if (errorMessage.includes('permission') || errorMessage.includes('FORBIDDEN')) {
-                    alert('File upload failed: Directus permissions not configured.\n\nPlease ask an administrator to enable CREATE permission for Public role on directus_files collection.');
-                  } else {
-                    alert(`Failed to upload file: ${errorMessage}. Please try again or contact support.`);
-                  }
-
-                  // Clear the file input
-                  e.target.value = '';
+                  uploadedIds.push(result.id);
                 }
+
+                // Store file ID(s)
+                if (isMultiple) {
+                  onChange(uploadedIds);
+                } else {
+                  onChange(uploadedIds[0]);
+                }
+              } catch (error) {
+                console.error('File upload error:', error);
+
+                // Check if it's a permission error
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                if (errorMessage.includes('permission') || errorMessage.includes('FORBIDDEN')) {
+                  alert('File upload failed: Directus permissions not configured.\n\nPlease ask an administrator to enable CREATE permission for Public role on directus_files collection.');
+                } else {
+                  alert(`Failed to upload file: ${errorMessage}. Please try again or contact support.`);
+                }
+
+                // Clear the file input
+                e.target.value = '';
               }
             }}
             required={field.required}
             className={inputClassName}
           />
+          <p className="text-xs text-muted-foreground">
+            Maximum file size: {maxFileSizeMB}MB{isMultiple ? ' (multiple files allowed)' : ''}
+          </p>
           {value ? (
-            <p className="text-sm text-muted-foreground">
-              ✓ File uploaded: {typeof value === 'string' ? value : 'File selected'}
-            </p>
+            <div className="text-sm text-muted-foreground">
+              {isMultiple && Array.isArray(value) ? (
+                <div className="space-y-1">
+                  <p>✓ {value.length} file(s) uploaded:</p>
+                  <ul className="list-disc list-inside ml-2">
+                    {value.map((id, idx) => (
+                      <li key={idx}>File {idx + 1}: {id}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p>✓ File uploaded: {typeof value === 'string' ? value : 'File selected'}</p>
+              )}
+            </div>
           ) : null}
         </div>
       );
@@ -474,6 +653,7 @@ function FormFieldRenderer({
           placeholder={field.placeholder}
           required={field.required}
           className={inputClassName}
+          disabled={disabled}
         />
       );
   }

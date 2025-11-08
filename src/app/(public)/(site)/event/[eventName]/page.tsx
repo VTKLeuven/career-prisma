@@ -13,6 +13,7 @@ import { getDirectusImageUrl } from "@/components/Images";
 import { CareerEventPage, Company } from '@/lib/schema'
 import dynamic from "next/dynamic"
 import HeroiconDynamic from "@/components/HeroiconDynamic"
+import { useBannerPage } from '@/hooks/use-banner-page'
 
 const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.EventMap), {
   ssr: false,
@@ -22,6 +23,7 @@ export default function EventPage() {
   const [page, setPage] = useState<CareerEventPage | null>(null)
   const [popupMessage, setPopupMessage] = useState<string>("")
   const [popupContent, setPopupContent] = useState<React.ReactNode>(null)
+  useBannerPage()
 
   const params = useParams()
   const eventName = Array.isArray(params.eventName)
