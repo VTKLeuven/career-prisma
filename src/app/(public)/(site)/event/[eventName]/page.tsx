@@ -15,12 +15,14 @@ import dynamic from "next/dynamic"
 import HeroiconDynamic from "@/components/HeroiconDynamic"
 import { ChevronDown } from 'lucide-react'
 import { useBannerPage } from '@/hooks/use-banner-page'
+import { usePageLayout } from '../../layout'
 
 const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.EventMap), {
   ssr: false,
 })
 
 export default function EventPage() {
+  const { setHideLayoutHeader } = usePageLayout()
   const [page, setPage] = useState<CareerEventPage | null>(null)
   const [popupMessage, setPopupMessage] = useState<string>("")
   const [popupContent, setPopupContent] = useState<React.ReactNode>(null)
@@ -83,6 +85,12 @@ export default function EventPage() {
     setPopupMessage("")
     setPopupContent(null)
   }
+
+  // Hide layout header since this page renders its own
+  useEffect(() => {
+    setHideLayoutHeader(true)
+    return () => setHideLayoutHeader(false)
+  }, [setHideLayoutHeader])
 
   const includesFair = page?.event?.name?.toLowerCase().includes("fair")
 

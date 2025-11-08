@@ -10,25 +10,31 @@ import { fetchEventsAction } from "@/app/actions/events";
 import { CareerEvent } from '@/lib/schema'
 
 // Context to allow pages to opt-out of header padding if they have a banner
+// and to hide the layout header if they render their own
 const PageLayoutContext = createContext<{
   hasBanner: boolean
   setHasBanner: (hasBanner: boolean) => void
+  hideLayoutHeader: boolean
+  setHideLayoutHeader: (hide: boolean) => void
 }>({
   hasBanner: false,
   setHasBanner: () => {},
+  hideLayoutHeader: false,
+  setHideLayoutHeader: () => {},
 })
 
 export const usePageLayout = () => useContext(PageLayoutContext)
 
 export default function NoSidebarLayout({ children }: { children: React.ReactNode }) {
     const [hasBanner, setHasBanner] = useState(false)
+    const [hideLayoutHeader, setHideLayoutHeader] = useState(false)
 
     // simple shell without sidebar/header
-    // Apply padding only if page doesn't have a banner
+    // Apply padding only if page doesn't have a banner and layout header is shown
     return (
-        <PageLayoutContext.Provider value={{ hasBanner, setHasBanner }}>
-            <main className={`min-h-svh bg-vtk-bg text-neutral-900 ${hasBanner ? '' : 'pt-28 md:pt-32'}`}>
-                <Header />
+        <PageLayoutContext.Provider value={{ hasBanner, setHasBanner, hideLayoutHeader, setHideLayoutHeader }}>
+            <main className={`min-h-svh bg-vtk-bg text-neutral-900 ${hasBanner || hideLayoutHeader ? '' : 'pt-28 md:pt-32'}`}>
+                {!hideLayoutHeader && <Header />}
                 {children}
             </main>
         </PageLayoutContext.Provider>

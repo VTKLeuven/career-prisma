@@ -12,6 +12,7 @@ import { fetchEventsAction } from "@/app/actions/events";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
+import { usePageLayout } from '../../layout';
 
 type CategoryJunction = { master_id: Master | null };
 type OptionJunction = { career_event_option_id: CareerEventOption | null };
@@ -33,11 +34,18 @@ function isOptionJunction(value: unknown): value is OptionJunction {
 }
 
 export default function CompanyPage() {
+  const { setHideLayoutHeader } = usePageLayout()
   const params = useParams();
   const router = useRouter();
   const companyName = Array.isArray(params.companyName) ? params.companyName[0] : params.companyName;
   const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Hide layout header since this page renders its own
+  useEffect(() => {
+    setHideLayoutHeader(true)
+    return () => setHideLayoutHeader(false)
+  }, [setHideLayoutHeader])
 
   useEffect(() => {
     if (!companyName || typeof companyName !== "string") {

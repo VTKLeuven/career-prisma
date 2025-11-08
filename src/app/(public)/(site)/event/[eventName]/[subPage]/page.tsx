@@ -8,8 +8,10 @@ import { fetchEventPagesAction } from "@/app/actions/events"
 import { fetchFloorplanAction, fetchMastersAction } from "@/app/actions/features"
 import type { CareerEventPage, Booth, Master, Company } from '@/lib/schema'
 import { getDirectusImageUrl } from "@/components/Images"
+import { usePageLayout } from '../../../layout'
 
 export default function SubPage() {
+  const { setHideLayoutHeader } = usePageLayout()
   const [page, setPage] = useState<CareerEventPage | null>(null)
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [allCategories, setAllCategories] = useState<Master[]>([])
@@ -22,6 +24,12 @@ export default function SubPage() {
   const pathname = usePathname()
   const eventName = Array.isArray(params.eventName) ? params.eventName[0] : params.eventName
   const isFloorplanPage = pathname.endsWith("/floorplan")
+
+  // Hide layout header when rendering floorplan header
+  useEffect(() => {
+    setHideLayoutHeader(isFloorplanPage)
+    return () => setHideLayoutHeader(false)
+  }, [isFloorplanPage, setHideLayoutHeader])
 
   useEffect(() => {
     async function load() {
