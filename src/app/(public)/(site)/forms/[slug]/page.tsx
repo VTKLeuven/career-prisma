@@ -20,7 +20,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import type { FormField, FormSchema } from "@/lib/schema";
-import { formatDateBE } from "@/lib/date-utils";
+import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 
 type PublicForm = {
   id: string;
@@ -102,7 +102,7 @@ export default function PublicFormPage() {
       const deadline = new Date(form.metadata.deadline);
       const now = new Date();
       if (now > deadline) {
-        alert(`This form's deadline has passed. The deadline was ${formatDateBE(deadline)}.`);
+        alert(`This form's deadline has passed. The deadline was ${formatDateTimeBE(deadline)}.`);
         return;
       }
     }
@@ -200,7 +200,7 @@ export default function PublicFormPage() {
               {form.metadata?.deadline && (
                 <div className="mt-2">
                   <Badge variant={isDeadlinePassed ? "destructive" : "secondary"}>
-                    Deadline: {formatDateBE(form.metadata.deadline)}
+                    Deadline: {formatDateTimeBE(form.metadata.deadline)}
                     {isDeadlinePassed && " (Passed)"}
                   </Badge>
                 </div>

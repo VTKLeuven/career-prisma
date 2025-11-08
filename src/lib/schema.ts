@@ -129,7 +129,7 @@ export type Form = {
   description?: string;
   is_active?: boolean;
   metadata?: {
-    deadline?: string; // ISO date string
+    deadline?: string; // ISO datetime string
     is_event_registration?: boolean; // If true, this form is for event registration
     event_email_subject?: string; // Email subject for event confirmation
     event_email_content?: string; // Email content for event confirmation

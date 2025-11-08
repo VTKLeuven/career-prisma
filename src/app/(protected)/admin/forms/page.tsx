@@ -155,7 +155,7 @@ export default function AdminFormsPage() {
                     <TableCell>
                       {form.metadata?.deadline ? (
                         <span className={new Date(form.metadata.deadline) < new Date() ? 'text-destructive' : ''}>
-                          {formatDateBE(form.metadata.deadline)}
+                          {formatDateTimeBE(form.metadata.deadline)}
                         </span>
                       ) : (
                         <span className="text-muted-foreground">No deadline</span>
@@ -456,7 +456,7 @@ function EditFormDialog({
   const [slug, setSlug] = useState(form.slug);
   const [description, setDescription] = useState(form.description);
   const [deadline, setDeadline] = useState(
-    form.metadata?.deadline ? new Date(form.metadata.deadline).toISOString().split('T')[0] : ''
+    form.metadata?.deadline ? new Date(form.metadata.deadline).toISOString().slice(0, 16) : ''
   );
   const [eventEmailSubject, setEventEmailSubject] = useState(
     (form.metadata?.event_email_subject as string) || ''
@@ -478,7 +478,7 @@ function EditFormDialog({
       setName(form.name);
       setSlug(form.slug);
       setDescription(form.description);
-      setDeadline(form.metadata?.deadline ? new Date(form.metadata.deadline).toISOString().split('T')[0] : '');
+      setDeadline(form.metadata?.deadline ? new Date(form.metadata.deadline).toISOString().slice(0, 16) : '');
       setEventEmailSubject((form.metadata?.event_email_subject as string) || '');
       setEventEmailContent((form.metadata?.event_email_content as string) || '');
       setEventDate(form.metadata?.event_date ? new Date(form.metadata.event_date as string).toISOString().slice(0, 16) : '');
@@ -495,7 +495,8 @@ function EditFormDialog({
       let metadata: { [key: string]: unknown } | undefined = form.metadata ? { ...form.metadata } : undefined;
       
       if (deadline) {
-        metadata = { ...metadata, deadline };
+        // Convert datetime-local value to ISO string
+        metadata = { ...metadata, deadline: new Date(deadline).toISOString() };
       } else if (metadata?.deadline) {
         delete metadata.deadline;
       }
@@ -571,7 +572,7 @@ function EditFormDialog({
             <Label htmlFor="edit-deadline">Deadline (Optional)</Label>
             <Input
               id="edit-deadline"
-              type="date"
+              type="datetime-local"
               value={deadline}
               onChange={(e) => setDeadline(e.target.value)}
             />

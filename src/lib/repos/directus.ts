@@ -79,7 +79,7 @@ export async function sendEmail({
     host: smtpHost,
     port: smtpPort,
     secure: smtpPort === 465, // true for 465, false for other ports
-    requireTLS: true, // Force STARTTLS for port 587
+    requireTLS: smtpPort === 587, // Only require TLS for port 587
     tls: {
       // Do not fail on invalid certs for development
       rejectUnauthorized: false,
@@ -90,22 +90,30 @@ export async function sendEmail({
     debug: process.env.NODE_ENV === "development",
   };
 
+  // Add authentication if credentials are provided (optional for relay services)
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  if (smtpUser && smtpPass) {
+    transportConfig.auth = {
+      user: smtpUser,
+      pass: smtpPass,
+    };
+  }
 
   const transporter = nodemailer.createTransport(transportConfig as nodemailer.TransportOptions);
 
-  // Verify connection before sending
+  // Skip verification for relay services - it can cause connection issues
+  // Just attempt to send the email directly
   try {
-    await transporter.verify();
-    console.log("SMTP connection verified successfully");
+    await transporter.sendMail({
+      from: fromEmail,
+      to,
+      subject,
+      html,
+    });
+    console.log(`Email sent successfully to ${to}`);
   } catch (error) {
-    console.error("SMTP connection verification failed:", error);
-    throw new Error(`SMTP connection failed: ${error}`);
+    console.error("Failed to send email:", error);
+    throw error;
   }
-
-  await transporter.sendMail({
-    from: fromEmail,
-    to,
-    subject,
-    html,
-  });
 }
