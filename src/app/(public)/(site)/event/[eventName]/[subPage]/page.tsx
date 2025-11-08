@@ -333,6 +333,8 @@ function Floorplan({
   const [boothsLocal, setBoothsLocal] = useState<Booth[]>([])
   const [svgContent, setSvgContent] = useState<string>("")
   const [viewBox, setViewBox] = useState<string>("0 0 1000 600")
+  const [originalViewBox, setOriginalViewBox] = useState<string>("0 0 1000 600")
+  const svgRef = useRef<SVGSVGElement>(null)
 
   useEffect(() => {
     const loadData = async () => {
@@ -347,8 +349,177 @@ function Floorplan({
 
       const parser = new DOMParser()
       const svgDoc = parser.parseFromString(data.svg || "", "image/svg+xml")
-      const vb = svgDoc.documentElement.getAttribute("viewBox")
-      if (vb) setViewBox(vb)
+      const originalVb = svgDoc.documentElement.getAttribute("viewBox") || "0 0 1000 600"
+      
+      setOriginalViewBox(originalVb)
+      
+      // Parse original viewBox
+      const origVbParts = originalVb.split(/\s+/).map(Number)
+      if (origVbParts.length !== 4) {
+        setViewBox(originalVb)
+        return
+      }
+      
+      const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
+      
+      // Calculate bounds from all SVG elements
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      let hasBounds = false
+      
+      const extractBounds = (element: Element) => {
+        const tagName = element.tagName.toLowerCase()
+        if (['script', 'style', 'defs', 'metadata', 'title', 'desc'].includes(tagName)) return
+        
+        let x = 0, y = 0, width = 0, height = 0, valid = false
+        
+        if (tagName === 'rect') {
+          x = parseFloat(element.getAttribute('x') || '0')
+          y = parseFloat(element.getAttribute('y') || '0')
+          width = parseFloat(element.getAttribute('width') || '0')
+          height = parseFloat(element.getAttribute('height') || '0')
+          valid = width > 0 && height > 0
+        } else if (tagName === 'circle') {
+          const cx = parseFloat(element.getAttribute('cx') || '0')
+          const cy = parseFloat(element.getAttribute('cy') || '0')
+          const r = parseFloat(element.getAttribute('r') || '0')
+          x = cx - r
+          y = cy - r
+          width = r * 2
+          height = r * 2
+          valid = r > 0
+        } else if (tagName === 'ellipse') {
+          const cx = parseFloat(element.getAttribute('cx') || '0')
+          const cy = parseFloat(element.getAttribute('cy') || '0')
+          const rx = parseFloat(element.getAttribute('rx') || '0')
+          const ry = parseFloat(element.getAttribute('ry') || '0')
+          x = cx - rx
+          y = cy - ry
+          width = rx * 2
+          height = ry * 2
+          valid = rx > 0 && ry > 0
+        } else if (tagName === 'line') {
+          const x1 = parseFloat(element.getAttribute('x1') || '0')
+          const y1 = parseFloat(element.getAttribute('y1') || '0')
+          const x2 = parseFloat(element.getAttribute('x2') || '0')
+          const y2 = parseFloat(element.getAttribute('y2') || '0')
+          x = Math.min(x1, x2)
+          y = Math.min(y1, y2)
+          width = Math.abs(x2 - x1)
+          height = Math.abs(y2 - y1)
+          valid = width > 0 || height > 0
+        } else if (tagName === 'polyline' || tagName === 'polygon') {
+          const points = element.getAttribute('points') || ''
+          const coords = points.trim().split(/[\s,]+/).map(Number).filter(n => !isNaN(n))
+          if (coords.length >= 4) {
+            const xs = coords.filter((_, i) => i % 2 === 0)
+            const ys = coords.filter((_, i) => i % 2 === 1)
+            if (xs.length > 0 && ys.length > 0) {
+              x = Math.min(...xs)
+              y = Math.min(...ys)
+              width = Math.max(...xs) - x
+              height = Math.max(...ys) - y
+              valid = width > 0 && height > 0
+            }
+          }
+        } else if (tagName === 'path') {
+          const d = element.getAttribute('d') || ''
+          const numbers = d.match(/[-+]?(?:\d*\.?\d+|\d+\.?\d*)/g)?.map(Number) || []
+          if (numbers.length >= 2) {
+            const xs: number[] = []
+            const ys: number[] = []
+            for (let i = 0; i < numbers.length; i += 2) {
+              if (i + 1 < numbers.length) {
+                xs.push(numbers[i])
+                ys.push(numbers[i + 1])
+              }
+            }
+            if (xs.length > 0 && ys.length > 0) {
+              x = Math.min(...xs)
+              y = Math.min(...ys)
+              width = Math.max(...xs) - x
+              height = Math.max(...ys) - y
+              valid = width > 0 && height > 0
+            }
+          }
+        } else if (tagName === 'image') {
+          x = parseFloat(element.getAttribute('x') || '0')
+          y = parseFloat(element.getAttribute('y') || '0')
+          width = parseFloat(element.getAttribute('width') || '0')
+          height = parseFloat(element.getAttribute('height') || '0')
+          valid = width > 0 && height > 0
+        }
+        
+        if (valid && width > 0 && height > 0) {
+          minX = Math.min(minX, x)
+          minY = Math.min(minY, y)
+          maxX = Math.max(maxX, x + width)
+          maxY = Math.max(maxY, y + height)
+          hasBounds = true
+        }
+      }
+      
+      const walkElements = (element: Element) => {
+        extractBounds(element)
+        Array.from(element.children).forEach(walkElements)
+      }
+      
+      walkElements(svgDoc.documentElement)
+      
+      // Include booth bounds
+      boothsData.forEach(booth => {
+        if (booth.coords) {
+          const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
+          const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
+          const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
+          const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
+          
+          minX = Math.min(minX, boothX)
+          minY = Math.min(minY, boothY)
+          maxX = Math.max(maxX, boothX + boothWidth)
+          maxY = Math.max(maxY, boothY + boothHeight)
+          hasBounds = true
+        }
+      })
+      
+      // Adjust viewBox if we found valid bounds
+      if (hasBounds && minX < Infinity && minY < Infinity && maxX > -Infinity && maxY > -Infinity && minX < maxX && minY < maxY) {
+        const contentWidth = maxX - minX
+        const contentHeight = maxY - minY
+        
+        // Calculate whitespace
+        const horizontalWS = ((origVbWidth - contentWidth) / origVbWidth) * 100
+        const verticalWS = ((origVbHeight - contentHeight) / origVbHeight) * 100
+        
+        console.log('SVG Bounds Calculation:', {
+          originalViewBox: originalVb,
+          calculatedBounds: { minX, minY, maxX, maxY },
+          contentSize: { width: contentWidth, height: contentHeight },
+          whitespace: { horizontal: horizontalWS.toFixed(1) + '%', vertical: verticalWS.toFixed(1) + '%' }
+        })
+        
+        // Always adjust if we found bounds and there's any whitespace
+        if (contentWidth > 0 && contentHeight > 0 && (horizontalWS > 0 || verticalWS > 0)) {
+          // Very minimal padding - just enough to avoid edge clipping
+          const padding = Math.min(
+            Math.min(contentWidth, contentHeight) * 0.005, // 0.5% padding
+            3 // or 3px, whichever is smaller
+          )
+          const newX = Math.max(origVbX, minX - padding)
+          const newY = Math.max(origVbY, minY - padding)
+          const newWidth = contentWidth + padding * 2
+          const newHeight = contentHeight + padding * 2
+          
+          const newViewBox = `${newX} ${newY} ${newWidth} ${newHeight}`
+          console.log('Adjusted viewBox:', newViewBox)
+          setViewBox(newViewBox)
+        } else {
+          console.log('Using original viewBox - no significant whitespace detected')
+          setViewBox(originalVb)
+        }
+      } else {
+        console.log('No valid bounds found, using original viewBox')
+        setViewBox(originalVb)
+      }
     }
 
     loadData()
@@ -394,12 +565,15 @@ function Floorplan({
 
   return (
     <>
-      <div className="pt-32 md:pt-[90px] flex justify-center w-full max-w-7xl px-2 sm:px-4 pb-20 md:pb-4">
-        <svg
-          viewBox={viewBox}
-          className="w-full h-auto"
-          xmlns="http://www.w3.org/2000/svg"
-        >
+      <div className="pt-32 md:pt-[90px] flex justify-center w-full px-2 sm:px-4 pb-20 md:pb-4">
+        <div className="w-full max-w-full">
+          <svg
+            ref={svgRef}
+            viewBox={viewBox}
+            className="w-full h-auto min-w-0"
+            xmlns="http://www.w3.org/2000/svg"
+            preserveAspectRatio="xMidYMid meet"
+          >
           <g dangerouslySetInnerHTML={{ __html: svgContent }} />
 
           {boothsLocal.map((booth, i) => {
@@ -419,13 +593,25 @@ function Floorplan({
 
             const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
 
+            // Convert booth percentage coordinates to absolute coordinates
+            // Use original viewBox for booth coordinates since they're stored as percentages of original
+            const origVbParts = originalViewBox.split(/\s+/).map(Number)
+            if (origVbParts.length !== 4) return null
+            const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
+
+            // Calculate absolute coordinates using original viewBox
+            const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
+            const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
+            const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
+            const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
+
             return (
               <rect
                 key={i}
-                x={booth.coords.x_pct + "%"}
-                y={booth.coords.y_pct + "%"}
-                width={booth.coords.width_pct + "%"}
-                height={booth.coords.height_pct + "%"}
+                x={boothX}
+                y={boothY}
+                width={boothWidth}
+                height={boothHeight}
                 fill={isSelected ? "rgba(0,51,102,0.35)" : "transparent"}
                 stroke={isSelected ? "#003366" : "transparent"}
                 strokeWidth={isSelected ? 1 : 0}
@@ -434,7 +620,8 @@ function Floorplan({
               />
             )
           })}
-        </svg>
+          </svg>
+        </div>
       </div>
 
       {/* Mobile: Categories at bottom */}
