@@ -17,6 +17,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Email and password are required." }, { status: 400 });
     }
 
+    // Ensure rememberMe is a boolean
+    const shouldRemember = Boolean(rememberMe);
+
     const rawBase = process.env.DIRECTUS_URL;
     if (!rawBase) {
       return NextResponse.json({ error: "DIRECTUS_URL is not configured." }, { status: 500 });
@@ -91,11 +94,11 @@ export async function POST(req: Request) {
     // Extend cookie expiration if "remember me" is checked
     // Default: 14 days for refresh token, access token uses Directus expires
     // With remember me: 90 days for refresh token, extend access token to 7 days
-    const refreshMaxAge = rememberMe
+    const refreshMaxAge = shouldRemember
       ? 60 * 60 * 24 * 90 // 90 days
       : 60 * 60 * 24 * 14; // 14 days
 
-    const finalAccessMaxAge = rememberMe
+    const finalAccessMaxAge = shouldRemember
       ? 60 * 60 * 24 * 7 // 7 days when remember me is checked
       : accessMaxAge; // Use Directus expires otherwise
 
@@ -116,8 +119,9 @@ export async function POST(req: Request) {
     });
 
     return res;
-  } catch {
+  } catch (error) {
     // Body parse errors, network issues, unexpected shapes, etc.
+    console.error("Login error:", error);
     return NextResponse.json({ error: "Unexpected error during login." }, { status: 500 });
   }
 }

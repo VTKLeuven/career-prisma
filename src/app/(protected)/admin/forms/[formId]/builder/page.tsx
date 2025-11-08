@@ -29,6 +29,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { 
   Plus, 
@@ -401,6 +402,12 @@ function FieldEditor({
   isLast: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [optionsText, setOptionsText] = useState((field.options ?? []).join("\n"));
+  
+  // Sync optionsText when field.options changes externally
+  useEffect(() => {
+    setOptionsText((field.options ?? []).join("\n"));
+  }, [field.options]);
 
   return (
     <Card className={expanded ? "border-primary" : ""}>
@@ -527,11 +534,25 @@ function FieldEditor({
                 <Label htmlFor={`field-${index}-options`}>Options (one per line)</Label>
                 <Textarea
                   id={`field-${index}-options`}
-                  value={(field.options ?? []).join("\n")}
-                  onChange={(e) => onUpdate({ options: e.target.value.split("\n").filter(Boolean) })}
-                  placeholder="Option 1&#10;Option 2&#10;Option 3"
+                  value={optionsText}
+                  onChange={(e) => {
+                    // Update local state immediately so Enter works
+                    setOptionsText(e.target.value);
+                  }}
+                  onBlur={() => {
+                    // Process options when user leaves the field
+                    const options = optionsText
+                      .split("\n")
+                      .map(opt => opt.trim())
+                      .filter(Boolean);
+                    onUpdate({ options });
+                  }}
+                  placeholder="Enter each option on a new line"
                   rows={4}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Press Enter after each option to add it on a new line
+                </p>
               </div>
             )}
 
@@ -642,14 +663,14 @@ function FormFieldPreview({ field }: { field: FormField }) {
             <FieldIcon className="h-4 w-4" />
             <span>Radio Buttons</span>
           </div>
-          <div className="space-y-2">
+          <RadioGroup value="" disabled>
             {(field.options ?? ["Option 1"]).map((opt, i) => (
               <div key={i} className="flex items-center space-x-2">
-                <input type="radio" disabled />
-                <Label>{opt}</Label>
+                <RadioGroupItem value={opt} id={`preview-${i}`} />
+                <Label htmlFor={`preview-${i}`}>{opt}</Label>
               </div>
             ))}
-          </div>
+          </RadioGroup>
         </div>
       );
     case "file":

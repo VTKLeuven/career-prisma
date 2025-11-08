@@ -4,10 +4,18 @@ import * as React from "react";
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { fetchFormByIdAction, fetchFormVersionsAction, fetchFormResponsesAction } from "@/app/actions/forms";
+import { fetchFormByIdAction, fetchFormVersionsAction, fetchFormResponsesAction, deleteFormResponseAction } from "@/app/actions/forms";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -23,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Download, Eye } from "lucide-react";
+import { ArrowLeft, Download, Eye, Trash2 } from "lucide-react";
 import type { FormVersion, FormResponse } from "@/lib/schema";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 
@@ -38,6 +46,9 @@ export default function FormResponsesPage() {
   const [responses, setResponses] = useState<FormResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingResponses, setLoadingResponses] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [responseToDelete, setResponseToDelete] = useState<FormResponse | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const loadFormData = useCallback(async () => {
     setLoading(true);
@@ -96,14 +107,42 @@ export default function FormResponsesPage() {
     const selectedVersion = versions.find(v => v.id === selectedVersionId);
     if (!selectedVersion) return;
 
-    const fieldNames = selectedVersion.schema.fields.map(f => f.label || f.name);
-    const fieldKeys = selectedVersion.schema.fields.map(f => f.name);
+    // Check if both name and surname fields exist
+    const hasNameField = selectedVersion.schema.fields.some(f => f.name === 'name');
+    const hasSurnameField = selectedVersion.schema.fields.some(f => f.name === 'surname');
+    const shouldCombineName = hasNameField && hasSurnameField;
+
+    // Build field names and keys, combining name and surname if both exist
+    const fieldNames: string[] = [];
+    const fieldKeys: string[] = [];
+
+    selectedVersion.schema.fields.forEach(field => {
+      if (shouldCombineName && field.name === 'surname') {
+        // Skip surname - it will be combined with name
+        return;
+      }
+      if (shouldCombineName && field.name === 'name') {
+        // Replace "name" with combined "name" label
+        fieldNames.push('Name');
+        fieldKeys.push('name');
+      } else {
+        fieldNames.push(field.label || field.name);
+        fieldKeys.push(field.name);
+      }
+    });
 
     const header = ['Submission Date', 'Response ID', ...fieldNames].join(',');
 
     const rows = responses.map(response => {
       const date = formatDateTimeBE(response.submitted_at);
       const values = fieldKeys.map(key => {
+        if (shouldCombineName && key === 'name') {
+          // Combine name and surname
+          const firstName = response.data['name'] || '';
+          const surname = response.data['surname'] || '';
+          const fullName = `${firstName} ${surname}`.trim();
+          return fullName.replace(/"/g, '""');
+        }
         const value = response.data[key];
         if (value === null || value === undefined) return '';
         if (Array.isArray(value)) return value.join('; ');
@@ -120,6 +159,29 @@ export default function FormResponsesPage() {
     a.download = `${form?.slug}-responses-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
+  };
+
+  const handleDeleteClick = (response: FormResponse) => {
+    setResponseToDelete(response);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!responseToDelete) return;
+
+    setDeleting(true);
+    try {
+      await deleteFormResponseAction(responseToDelete.id);
+      // Remove the deleted response from the list
+      setResponses(responses.filter(r => r.id !== responseToDelete.id));
+      setDeleteDialogOpen(false);
+      setResponseToDelete(null);
+    } catch (error) {
+      console.error("Error deleting response:", error);
+      alert("Failed to delete response. Please try again.");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   if (loading) {
@@ -245,6 +307,7 @@ export default function FormResponsesPage() {
                       {selectedVersion?.schema.fields.map((field) => (
                         <TableHead key={field.id}>{field.label || field.name}</TableHead>
                       ))}
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -258,6 +321,16 @@ export default function FormResponsesPage() {
                             {formatFieldValue(response.data[field.name], field.type)}
                           </TableCell>
                         ))}
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteClick(response)}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -267,6 +340,43 @@ export default function FormResponsesPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Submission</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this submission? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {responseToDelete && (
+            <div className="py-4">
+              <p className="text-sm text-muted-foreground">
+                <strong>Submitted:</strong> {formatDateTimeBE(responseToDelete.submitted_at)}
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteDialogOpen(false);
+                setResponseToDelete(null);
+              }}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

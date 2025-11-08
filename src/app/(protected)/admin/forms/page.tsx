@@ -177,7 +177,11 @@ export default function AdminFormsPage() {
                         <span className="text-muted-foreground">No deadline</span>
                       )}
                     </TableCell>
-                    <TableCell>{form.submissionCount}</TableCell>
+                    <TableCell>
+                      {form.metadata?.max_entries 
+                        ? `${form.submissionCount}/${form.metadata.max_entries}`
+                        : form.submissionCount}
+                    </TableCell>
                     <TableCell>{formatDateBE(form.updated_at)}</TableCell>
                     <TableCell className="text-right">
                       <FormActionsMenu form={form} onUpdate={loadForms} />
@@ -199,10 +203,46 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
   const [deadline, setDeadline] = useState("");
-  const [deadlineDateDisplay, setDeadlineDateDisplay] = useState("");
-  const [deadlineTimeDisplay, setDeadlineTimeDisplay] = useState("");
+  const [maxEntries, setMaxEntries] = useState<string>("");
   const [isEventRegistration, setIsEventRegistration] = useState(false);
+  const [eventEmailSubject, setEventEmailSubject] = useState("Event Registration Confirmation");
+  const [eventEmailContent, setEventEmailContent] = useState("Thank you for registering! We look forward to seeing you at the event.");
+  const [eventDate, setEventDate] = useState("");
+  const [eventEndDate, setEventEndDate] = useState("");
+  const [eventLocation, setEventLocation] = useState("");
   const [loading, setLoading] = useState(false);
+  
+  // TipTap editor for email content - only create when dialog is open and on client
+  const [isClient, setIsClient] = useState(false);
+  
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  const emailEditor = useEditor({
+    extensions: [StarterKit],
+    content: eventEmailContent,
+    onUpdate({ editor }) {
+      setEventEmailContent(editor.getHTML());
+    },
+    editorProps: {
+      attributes: {
+        class: "border rounded-md p-3 bg-background text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-ring [&>p:last-child]:mb-0 [&>ul:last-child]:mb-0 [&>ol:last-child]:mb-0",
+      },
+    },
+    immediatelyRender: false,
+    editable: open && isClient, // Only editable when dialog is open and on client
+  });
+
+  // Update editor content when dialog opens
+  useEffect(() => {
+    if (open && isClient && emailEditor && isEventRegistration) {
+      emailEditor.commands.setContent(eventEmailContent);
+      emailEditor.setEditable(true);
+    } else if (!open && emailEditor) {
+      emailEditor.setEditable(false);
+    }
+  }, [open, isClient, emailEditor, isEventRegistration, eventEmailContent]);
 
   const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
   const formUrl = `${formDomain}/forms/${slug || "your-slug"}`;
@@ -255,60 +295,30 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
       
       if (isEventRegistration) {
         metadata.is_event_registration = true;
-        metadata.event_email_subject = "Event Registration Confirmation";
-        metadata.event_email_content = "Thank you for registering! We look forward to seeing you at the event.";
-      }
-      
-      // Construct deadline from state or display values
-      let deadlineToUse = deadline;
-      if (!deadlineToUse && deadlineDateDisplay && deadlineTimeDisplay) {
-        // If deadline state is empty but we have display values, construct it
-        const dateMatch = deadlineDateDisplay.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-        const timeMatch = deadlineTimeDisplay.match(/^(\d{2}):(\d{2})$/);
-        if (dateMatch && timeMatch) {
-          const day = dateMatch[1];
-          const month = dateMatch[2];
-          const year = dateMatch[3];
-          const hours = timeMatch[1];
-          const minutes = timeMatch[2];
-          deadlineToUse = `${year}-${month}-${day}T${hours}:${minutes}`;
+        metadata.event_email_subject = eventEmailSubject || 'Event Registration Confirmation';
+        metadata.event_email_content = eventEmailContent || 'Thank you for registering!';
+        if (eventDate) {
+          metadata.event_date = new Date(eventDate).toISOString();
+        }
+        if (eventEndDate) {
+          metadata.event_end_date = new Date(eventEndDate).toISOString();
+        }
+        if (eventLocation) {
+          metadata.event_location = eventLocation;
         }
       }
       
-      if (deadlineToUse) {
-        // Convert to ISO string format for storage
-        // Ensure deadline is in proper format (YYYY-MM-DDTHH:mm or YYYY-MM-DDTHH:mm:ss)
-        let deadlineStr = deadlineToUse.trim();
-        
-        if (deadlineStr.includes('T')) {
-          // Has date and time
-          const [datePart, timePart] = deadlineStr.split('T');
-          // Check if time has seconds (HH:mm:ss has 2 colons, HH:mm has 1 colon)
-          const colonCount = (timePart.match(/:/g) || []).length;
-          if (colonCount === 1) {
-            // Only HH:mm, add :00 for seconds
-            deadlineStr = `${datePart}T${timePart}:00`;
-          }
-        } else {
-          // Only date, add time 23:59:59 as default
-          deadlineStr = deadlineStr + 'T23:59:59';
+      if (maxEntries && maxEntries.trim() !== "") {
+        const maxEntriesNum = parseInt(maxEntries, 10);
+        if (!isNaN(maxEntriesNum) && maxEntriesNum > 0) {
+          metadata.max_entries = maxEntriesNum;
         }
-        
-        const deadlineDate = new Date(deadlineStr);
-        // Validate the date is valid
-        if (isNaN(deadlineDate.getTime())) {
-          console.error('Invalid deadline format:', deadlineToUse);
-          throw new Error('Invalid deadline format. Please use format: dd/mm/yyyy HH:mm');
-        }
-        metadata.deadline = deadlineDate.toISOString();
       }
-
-      console.log('[CreateFormDialog] Submitting form with metadata:', metadata);
-      console.log('[CreateFormDialog] Deadline state:', deadline);
-      console.log('[CreateFormDialog] Deadline date display:', deadlineDateDisplay);
-      console.log('[CreateFormDialog] Deadline time display:', deadlineTimeDisplay);
-      console.log('[CreateFormDialog] Deadline to use:', deadlineToUse);
-      console.log('[CreateFormDialog] Deadline ISO:', metadata.deadline);
+      
+      if (deadline) {
+        // Convert datetime-local value to ISO string
+        metadata.deadline = new Date(deadline).toISOString();
+      }
 
       await createFormAction({
         name,
@@ -323,9 +333,13 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
       setSlug("");
       setDescription("");
       setDeadline("");
-      setDeadlineDateDisplay("");
-      setDeadlineTimeDisplay("");
+      setMaxEntries("");
       setIsEventRegistration(false);
+      setEventEmailSubject("Event Registration Confirmation");
+      setEventEmailContent("Thank you for registering! We look forward to seeing you at the event.");
+      setEventDate("");
+      setEventEndDate("");
+      setEventLocation("");
       onFormCreated();
     } catch (error) {
       console.error("Error creating form:", error);
@@ -351,7 +365,7 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
           Create Form
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto scrollbar-thin">
         <DialogHeader>
           <DialogTitle>Create New Form</DialogTitle>
           <DialogDescription>
@@ -394,280 +408,28 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
           </div>
           <div className="space-y-2">
             <Label htmlFor="deadline">Deadline (Optional)</Label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <Input
-                id="deadline-date"
-                type="text"
-                value={deadlineDateDisplay}
-                placeholder="dd/mm/yyyy"
-                onChange={(e) => {
-                  const input = e.target.value;
-                  // Remove all non-digit and non-slash characters
-                  let cleaned = input.replace(/[^\d/]/g, '');
-                  
-                  // Limit format to dd/mm/yyyy (max 10 chars: dd/mm/yyyy)
-                  if (cleaned.length > 10) {
-                    cleaned = cleaned.slice(0, 10);
-                  }
-                  
-                  // Auto-format as user types: dd/mm/yyyy
-                  let formatted = '';
-                  const digits = cleaned.replace(/\//g, '');
-                  
-                  for (let i = 0; i < digits.length && i < 8; i++) {
-                    if (i === 2 || i === 4) {
-                      formatted += '/';
-                    }
-                    formatted += digits[i];
-                  }
-                  
-                  setDeadlineDateDisplay(formatted);
-                  
-                  // Parse dd/mm/yyyy and convert to ISO format
-                  if (formatted.length === 10) {
-                    const match = formatted.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-                    if (match) {
-                      const day = parseInt(match[1]);
-                      const month = parseInt(match[2]);
-                      const year = parseInt(match[3]);
-                      
-                      // Validate date
-                      if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000) {
-                        const date = new Date(year, month - 1, day);
-                        // Verify the date is valid (handles invalid dates like 31/02/2024)
-                        if (date.getFullYear() === year && 
-                            date.getMonth() === month - 1 && 
-                            date.getDate() === day) {
-                          const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                          
-                          // If we have a time display, use it; otherwise just set the date
-                          if (deadlineTimeDisplay && deadlineTimeDisplay.length === 5) {
-                            const timeDigits = deadlineTimeDisplay.replace(/\D/g, '');
-                            if (timeDigits.length === 4) {
-                              const hours = timeDigits.slice(0, 2);
-                              const minutes = timeDigits.slice(2, 4);
-                              const hoursNum = parseInt(hours);
-                              const minutesNum = parseInt(minutes);
-                              if (hoursNum >= 0 && hoursNum <= 23 && minutesNum >= 0 && minutesNum <= 59) {
-                                setDeadline(`${isoDate}T${hours}:${minutes}`);
-                              } else {
-                                setDeadline(isoDate);
-                              }
-                            } else {
-                              setDeadline(isoDate);
-                            }
-                          } else {
-                            setDeadline(isoDate);
-                          }
-                        }
-                      }
-                    }
-                  } else if (formatted.length === 0) {
-                    // Clear deadline if input is empty
-                    setDeadline('');
-                  }
-                }}
-                onBlur={(e) => {
-                  // Validate and fix format on blur
-                  const value = e.target.value;
-                  if (value && value.length < 10) {
-                    // If incomplete, clear it
-                    setDeadlineDateDisplay('');
-                    const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
-                    if (dateValue) {
-                      setDeadline(dateValue);
-                    } else {
-                      setDeadline('');
-                    }
-                  }
-                }}
-              />
-              <Input
-                id="deadline-time"
-                type="text"
-                value={deadlineTimeDisplay}
-                placeholder="HH:MM (e.g., 18:30)"
-                onChange={(e) => {
-                  const input = e.target.value;
-                  // Remove all non-digit characters
-                  const digits = input.replace(/\D/g, '');
-                  
-                  // Validate and limit digits as user types
-                  let validatedDigits = '';
-                  
-                  for (let i = 0; i < digits.length && i < 4; i++) {
-                    const digit = parseInt(digits[i]);
-                    
-                    if (i === 0) {
-                      // First digit (hours tens): 0-2
-                      if (digit >= 0 && digit <= 2) {
-                        validatedDigits += digits[i];
-                      }
-                    } else if (i === 1) {
-                      // Second digit (hours ones)
-                      const firstDigit = parseInt(validatedDigits[0]);
-                      if (firstDigit === 0 || firstDigit === 1) {
-                        // If first digit is 0 or 1, second can be 0-9
-                        validatedDigits += digits[i];
-                      } else if (firstDigit === 2) {
-                        // If first digit is 2, second can only be 0-3
-                        if (digit >= 0 && digit <= 3) {
-                          validatedDigits += digits[i];
-                        }
-                      }
-                    } else if (i === 2) {
-                      // Third digit (minutes tens): 0-5
-                      if (digit >= 0 && digit <= 5) {
-                        validatedDigits += digits[i];
-                      }
-                    } else if (i === 3) {
-                      // Fourth digit (minutes ones): 0-9
-                      validatedDigits += digits[i];
-                    }
-                  }
-                  
-                  // Format as HH:MM
-                  let formatted = '';
-                  if (validatedDigits.length === 0) {
-                    formatted = '';
-                  } else if (validatedDigits.length === 1) {
-                    formatted = validatedDigits;
-                  } else if (validatedDigits.length === 2) {
-                    formatted = `${validatedDigits}:`;
-                  } else if (validatedDigits.length === 3) {
-                    formatted = `${validatedDigits.slice(0, 2)}:${validatedDigits.slice(2)}`;
-                  } else {
-                    formatted = `${validatedDigits.slice(0, 2)}:${validatedDigits.slice(2, 4)}`;
-                  }
-                  
-                  setDeadlineTimeDisplay(formatted);
-                  
-                  // Update deadline if we have a complete time
-                  if (validatedDigits.length === 4) {
-                    const hours = validatedDigits.slice(0, 2);
-                    const minutes = validatedDigits.slice(2, 4);
-                    const hoursNum = parseInt(hours);
-                    const minutesNum = parseInt(minutes);
-                    
-                    // Final validation (should always pass due to above checks, but double-check)
-                    if (hoursNum >= 0 && hoursNum <= 23 && minutesNum >= 0 && minutesNum <= 59) {
-                      // Get date from deadline if it exists, otherwise parse from deadlineDateDisplay
-                      let dateValue = '';
-                      if (deadline && deadline.includes('T')) {
-                        dateValue = deadline.split('T')[0];
-                      } else if (deadlineDateDisplay && deadlineDateDisplay.length === 10) {
-                        // Parse dd/mm/yyyy format
-                        const match = deadlineDateDisplay.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-                        if (match) {
-                          const day = parseInt(match[1]);
-                          const month = parseInt(match[2]);
-                          const year = parseInt(match[3]);
-                          if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000) {
-                            const date = new Date(year, month - 1, day);
-                            if (date.getFullYear() === year && 
-                                date.getMonth() === month - 1 && 
-                                date.getDate() === day) {
-                              dateValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                            }
-                          }
-                        }
-                      }
-                      if (dateValue) {
-                        setDeadline(`${dateValue}T${hours}:${minutes}`);
-                      }
-                    }
-                  } else if (validatedDigits.length === 0) {
-                    // Clear deadline time if input is empty
-                    const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
-                    if (dateValue) {
-                      setDeadline(dateValue);
-                    } else {
-                      setDeadline('');
-                    }
-                  }
-                }}
-                onKeyDown={(e) => {
-                  // Handle backspace to remove characters progressively
-                  if (e.key === 'Backspace' && deadlineTimeDisplay) {
-                    e.preventDefault();
-                    const digits = deadlineTimeDisplay.replace(/\D/g, '');
-                    
-                    if (digits.length === 0) {
-                      setDeadlineTimeDisplay('');
-                      const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
-                      if (dateValue) {
-                        setDeadline(dateValue);
-                      } else {
-                        setDeadline('');
-                      }
-                    } else {
-                      // Remove last digit
-                      const newDigits = digits.slice(0, -1);
-                      
-                      // Reformat
-                      let formatted = '';
-                      if (newDigits.length === 0) {
-                        formatted = '';
-                      } else if (newDigits.length === 1) {
-                        formatted = `${newDigits}:`;
-                      } else if (newDigits.length === 2) {
-                        formatted = `${newDigits}:`;
-                      } else if (newDigits.length === 3) {
-                        formatted = `${newDigits.slice(0, 2)}:${newDigits.slice(2)}`;
-                      } else {
-                        formatted = `${newDigits.slice(0, 2)}:${newDigits.slice(2, 4)}`;
-                      }
-                      
-                      setDeadlineTimeDisplay(formatted);
-                      
-                      // Update deadline
-                      if (newDigits.length === 4) {
-                        const hours = newDigits.slice(0, 2);
-                        const minutes = newDigits.slice(2, 4);
-                        const hoursNum = parseInt(hours);
-                        const minutesNum = parseInt(minutes);
-                        
-                        if (hoursNum >= 0 && hoursNum <= 23 && minutesNum >= 0 && minutesNum <= 59) {
-                          // Get date from deadline if it exists, otherwise parse from deadlineDateDisplay
-                          let dateValue = '';
-                          if (deadline && deadline.includes('T')) {
-                            dateValue = deadline.split('T')[0];
-                          } else if (deadlineDateDisplay && deadlineDateDisplay.length === 10) {
-                            // Parse dd/mm/yyyy format
-                            const match = deadlineDateDisplay.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-                            if (match) {
-                              const day = parseInt(match[1]);
-                              const month = parseInt(match[2]);
-                              const year = parseInt(match[3]);
-                              if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000) {
-                                const date = new Date(year, month - 1, day);
-                                if (date.getFullYear() === year && 
-                                    date.getMonth() === month - 1 && 
-                                    date.getDate() === day) {
-                                  dateValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                                }
-                              }
-                            }
-                          }
-                          if (dateValue) {
-                            setDeadline(`${dateValue}T${hours}:${minutes}`);
-                          }
-                        }
-                      } else {
-                        const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
-                        if (dateValue) {
-                          setDeadline(dateValue);
-                        } else {
-                          setDeadline('');
-                        }
-                      }
-                    }
-                  }
-                }}
-              />
-            </div>
+            <Input
+              id="deadline"
+              type="datetime-local"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+            />
             <p className="text-xs text-muted-foreground">
               Set a deadline (date and time) for form submissions. After this time, users cannot submit the form. Date format: dd/mm/yyyy. Time format: 24-hour (e.g., 23:59).
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="max-entries">Maximum Number of Entries (Optional)</Label>
+            <Input
+              id="max-entries"
+              type="number"
+              value={maxEntries}
+              onChange={(e) => setMaxEntries(e.target.value)}
+              placeholder="e.g., 100"
+              min="1"
+            />
+            <p className="text-xs text-muted-foreground">
+              Set a maximum number of submissions allowed. Once this limit is reached, the form will be closed to new submissions.
             </p>
           </div>
           <div className="flex items-center space-x-2">
@@ -677,35 +439,79 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
               onCheckedChange={(checked: boolean) => setIsEventRegistration(checked)}
             />
             <Label htmlFor="event-registration" className="font-normal cursor-pointer">
-              Use as event registration (adds name, surname, email fields automatically)
+              Use as event registration (sends confirmation emails)
             </Label>
           </div>
+          
           {isEventRegistration && (
-            <div className="space-y-3 p-4 bg-muted rounded-md">
+            <div className="space-y-4 p-4 bg-muted rounded-md border-t">
+              <h3 className="font-semibold text-sm">Event Registration Settings</h3>
               <div className="space-y-2">
                 <Label htmlFor="event-email-subject">Email Subject</Label>
                 <Input
                   id="event-email-subject"
-                  value="Event Registration Confirmation"
-                  readOnly
-                  className="bg-background"
+                  value={eventEmailSubject}
+                  onChange={(e) => setEventEmailSubject(e.target.value)}
+                  placeholder="Event Registration Confirmation"
                 />
-                <p className="text-xs text-muted-foreground">
-                  You can customize this in the form settings after creation.
-                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="event-email-content">Email Content</Label>
-                <Textarea
-                  id="event-email-content"
-                  value="Thank you for registering! We look forward to seeing you at the event."
-                  readOnly
-                  className="bg-background"
-                  rows={3}
+                {open && isClient && emailEditor && isEventRegistration ? (
+                  <div className="[&_.ProseMirror]:mb-0 [&_.ProseMirror]:pb-0">
+                    <EditorContent editor={emailEditor} />
+                  </div>
+                ) : (
+                  <Textarea
+                    id="event-email-content"
+                    value={eventEmailContent}
+                    onChange={(e) => {
+                      setEventEmailContent(e.target.value);
+                      // Also update editor if it exists
+                      if (emailEditor && isClient) {
+                        emailEditor.commands.setContent(e.target.value);
+                      }
+                    }}
+                    placeholder="Thank you for registering! We look forward to seeing you at the event."
+                    rows={6}
+                  />
+                )}
+                <p className="text-xs text-muted-foreground">
+                  This content will be sent in the confirmation email. Use {`{name}`} and {`{surname}`} to personalize. You can format text with bold, italic, lists, etc.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="event-date">Event Start Date & Time</Label>
+                <Input
+                  id="event-date"
+                  type="datetime-local"
+                  value={eventDate}
+                  onChange={(e) => setEventDate(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  You can customize this in the form settings after creation.
+                  Used for the calendar button in confirmation emails.
                 </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="event-end-date">Event End Date & Time</Label>
+                <Input
+                  id="event-end-date"
+                  type="datetime-local"
+                  value={eventEndDate}
+                  onChange={(e) => setEventEndDate(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used for the calendar button in confirmation emails. If not set, defaults to 1 hour after start time.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="event-location">Event Location (Optional)</Label>
+                <Input
+                  id="event-location"
+                  value={eventLocation}
+                  onChange={(e) => setEventLocation(e.target.value)}
+                  placeholder="e.g., Main Conference Hall, Brussels"
+                />
               </div>
             </div>
           )}
@@ -816,6 +622,9 @@ function EditFormDialog({
   );
   const [deadlineDateDisplay, setDeadlineDateDisplay] = useState("");
   const [deadlineTimeDisplay, setDeadlineTimeDisplay] = useState("");
+  const [maxEntries, setMaxEntries] = useState(
+    form.metadata?.max_entries ? String(form.metadata.max_entries) : ''
+  );
   const [eventEmailSubject, setEventEmailSubject] = useState(
     (form.metadata?.event_email_subject as string) || ''
   );
@@ -824,6 +633,9 @@ function EditFormDialog({
   );
   const [eventDate, setEventDate] = useState(
     form.metadata?.event_date ? new Date(form.metadata.event_date as string).toISOString().slice(0, 16) : ''
+  );
+  const [eventEndDate, setEventEndDate] = useState(
+    form.metadata?.event_end_date ? new Date(form.metadata.event_end_date as string).toISOString().slice(0, 16) : ''
   );
   const [eventLocation, setEventLocation] = useState(
     (form.metadata?.event_location as string) || ''
@@ -848,7 +660,7 @@ function EditFormDialog({
     },
     editorProps: {
       attributes: {
-        class: "border rounded-md p-3 bg-background text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-ring",
+        class: "border rounded-md p-3 bg-background text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-ring [&>p:last-child]:mb-0 [&>ul:last-child]:mb-0 [&>ol:last-child]:mb-0",
       },
     },
     immediatelyRender: false,
@@ -873,10 +685,12 @@ function EditFormDialog({
       setSlug(form.slug);
       setDescription(form.description);
       setDeadline(form.metadata?.deadline ? new Date(form.metadata.deadline).toISOString().slice(0, 16) : '');
+      setMaxEntries(form.metadata?.max_entries ? String(form.metadata.max_entries) : '');
       setIsEventRegistration(form.metadata?.is_event_registration === true);
       setEventEmailSubject((form.metadata?.event_email_subject as string) || '');
       setEventEmailContent((form.metadata?.event_email_content as string) || '');
       setEventDate(form.metadata?.event_date ? new Date(form.metadata.event_date as string).toISOString().slice(0, 16) : '');
+      setEventEndDate(form.metadata?.event_end_date ? new Date(form.metadata.event_end_date as string).toISOString().slice(0, 16) : '');
       setEventLocation((form.metadata?.event_location as string) || '');
     }
   }, [open, form]);
@@ -905,6 +719,17 @@ function EditFormDialog({
           delete metadata.deadline;
         }
         
+        if (maxEntries && maxEntries.trim() !== "") {
+          const maxEntriesNum = parseInt(maxEntries, 10);
+          if (!isNaN(maxEntriesNum) && maxEntriesNum > 0) {
+            metadata = { ...metadata, max_entries: maxEntriesNum };
+          } else if (metadata?.max_entries) {
+            delete metadata.max_entries;
+          }
+        } else if (metadata?.max_entries) {
+          delete metadata.max_entries;
+        }
+        
         // Update event registration fields if this is an event registration form
         if (isEventRegistration) {
           metadata = {
@@ -913,6 +738,7 @@ function EditFormDialog({
             event_email_subject: eventEmailSubject || 'Event Registration Confirmation',
             event_email_content: eventEmailContent || 'Thank you for registering!',
             ...(eventDate ? { event_date: new Date(eventDate).toISOString() } : {}),
+            ...(eventEndDate ? { event_end_date: new Date(eventEndDate).toISOString() } : {}),
             ...(eventLocation ? { event_location: eventLocation } : {}),
           };
         } else {
@@ -942,11 +768,17 @@ function EditFormDialog({
     }
   };
 
+  const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
+  const formUrl = `${formDomain}/forms/${slug || "your-slug"}`;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto scrollbar-thin">
         <DialogHeader>
           <DialogTitle>Edit Form</DialogTitle>
+          <DialogDescription>
+            Update form details and settings.
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
@@ -959,13 +791,16 @@ function EditFormDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="edit-slug">Slug</Label>
+            <Label htmlFor="edit-slug">Slug (URL)</Label>
             <Input
               id="edit-slug"
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
               required
             />
+            <p className="text-xs text-muted-foreground">
+              Will be accessible at: <code className="bg-muted px-1 py-0.5 rounded">{formUrl}</code>
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="edit-description">Description</Label>
@@ -986,6 +821,20 @@ function EditFormDialog({
             />
             <p className="text-xs text-muted-foreground">
               Set a deadline (date and time) for form submissions. After this time, users cannot submit the form. Date format: dd/mm/yyyy. Time format: 24-hour (e.g., 23:59).
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-max-entries">Maximum Number of Entries (Optional)</Label>
+            <Input
+              id="edit-max-entries"
+              type="number"
+              value={maxEntries}
+              onChange={(e) => setMaxEntries(e.target.value)}
+              placeholder="e.g., 100"
+              min="1"
+            />
+            <p className="text-xs text-muted-foreground">
+              Set a maximum number of submissions allowed. Once this limit is reached, the form will be closed to new submissions.
             </p>
           </div>
           
@@ -1015,7 +864,7 @@ function EditFormDialog({
               <div className="space-y-2">
                 <Label htmlFor="edit-event-email-content">Email Content</Label>
                 {open && isClient && emailEditor && isEventRegistration ? (
-                  <div className="border rounded-md min-h-[150px]">
+                  <div className="[&_.ProseMirror]:mb-0 [&_.ProseMirror]:pb-0">
                     <EditorContent editor={emailEditor} />
                   </div>
                 ) : (
@@ -1038,7 +887,7 @@ function EditFormDialog({
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-event-date">Event Date & Time</Label>
+                <Label htmlFor="edit-event-date">Event Start Date & Time</Label>
                 <Input
                   id="edit-event-date"
                   type="datetime-local"
@@ -1047,6 +896,18 @@ function EditFormDialog({
                 />
                 <p className="text-xs text-muted-foreground">
                   Used for the calendar button in confirmation emails.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-event-end-date">Event End Date & Time</Label>
+                <Input
+                  id="edit-event-end-date"
+                  type="datetime-local"
+                  value={eventEndDate}
+                  onChange={(e) => setEventEndDate(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used for the calendar button in confirmation emails. If not set, defaults to 1 hour after start time.
                 </p>
               </div>
               <div className="space-y-2">

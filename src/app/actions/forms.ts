@@ -17,7 +17,9 @@ import {
   listFormResponses,
   getFormResponseById,
   createFormResponse,
+  deleteFormResponse,
   countFormResponses,
+  countFormVersionResponses,
 } from "@/lib/repos/forms";
 import type { Form, FormVersion, FormSchema, FormMetadata } from "@/lib/schema";
 
@@ -177,12 +179,21 @@ export async function createFormVersionAction(data: {
     const versions = await listFormVersions(data.form_id);
     const maxVersion = Math.max(...versions.map((v) => v.version_number), 0);
     
+    // If metadata is not provided, preserve metadata from the previous active version
+    let metadataToUse = data.metadata;
+    if (!metadataToUse) {
+      const activeVersion = versions.find((v) => v.is_active);
+      if (activeVersion && activeVersion.metadata) {
+        metadataToUse = activeVersion.metadata as FormMetadata;
+      }
+    }
+    
     return await createFormVersion({
       form_id: data.form_id,
       schema: data.schema,
       version_number: maxVersion + 1,
       is_active: data.is_active ?? false,
-      metadata: data.metadata,
+      metadata: metadataToUse,
     });
   } catch (error) {
     console.error("Error creating form version:", error);
@@ -240,6 +251,15 @@ export async function fetchFormResponseByIdAction(id: string) {
   }
 }
 
+export async function deleteFormResponseAction(id: string) {
+  try {
+    return await deleteFormResponse(id);
+  } catch (error) {
+    console.error("Error deleting form response:", error);
+    throw error;
+  }
+}
+
 export async function submitFormResponseAction(data: {
   form_version_id: string;
   user_id?: string;
@@ -247,19 +267,38 @@ export async function submitFormResponseAction(data: {
   attachments?: string[];
 }) {
   try {
+    // Get the form version to check metadata (including max_entries)
+    const formVersion = await getFormVersionById(data.form_version_id);
+    const versionMetadata = (formVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata;
+
+    // Check max_entries limit before creating the response
+    if (versionMetadata?.max_entries) {
+      const maxEntries = versionMetadata.max_entries as number;
+      const currentCount = await countFormVersionResponses(data.form_version_id, false);
+      
+      if (currentCount >= maxEntries) {
+        throw new Error(`This form has reached its maximum capacity and is no longer accepting new submissions.`);
+      }
+    }
+
+    // Check deadline
+    if (versionMetadata?.deadline) {
+      const deadline = new Date(versionMetadata.deadline as string);
+      const now = new Date();
+      if (now > deadline) {
+        throw new Error(`This form's deadline has passed. The deadline was ${new Date(versionMetadata.deadline as string).toLocaleString()}.`);
+      }
+    }
+
     const response = await createFormResponse(data);
     
     // If this is an event registration form, send confirmation email
     if (response && data.data.email) {
-      // Get the form version to check if it's an event registration
-      const formVersion = await getFormVersionById(data.form_version_id);
-
-      if (formVersion?.metadata?.is_event_registration) {
+      if (versionMetadata?.is_event_registration) {
         const formId = typeof formVersion.form_id === 'string' ? formVersion.form_id : formVersion.form_id.id;
         const form = await getFormById(formId);
-        const versionMetadata = (formVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata;
 
-        if (versionMetadata?.is_event_registration) {
+        if (versionMetadata.is_event_registration) {
           await sendEventConfirmationEmail({
             to: data.data.email as string,
             name: (data.data.name as string) || '',
@@ -268,6 +307,7 @@ export async function submitFormResponseAction(data: {
             subject: (versionMetadata.event_email_subject as string) || 'Event Registration Confirmation',
             content: (versionMetadata.event_email_content as string) || 'Thank you for registering!',
             eventDate: versionMetadata.event_date as string | undefined,
+            eventEndDate: versionMetadata.event_end_date as string | undefined,
             eventLocation: versionMetadata.event_location as string | undefined,
           });
         }
@@ -289,6 +329,7 @@ async function sendEventConfirmationEmail({
   subject,
   content,
   eventDate,
+  eventEndDate,
   eventLocation,
 }: {
   to: string;
@@ -298,6 +339,7 @@ async function sendEventConfirmationEmail({
   subject: string;
   content: string;
   eventDate?: string;
+  eventEndDate?: string;
   eventLocation?: string;
 }) {
   try {
@@ -306,7 +348,7 @@ async function sendEventConfirmationEmail({
     // Generate calendar link
     const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
     const calendarUrl = eventDate 
-      ? `${formDomain}/api/calendar?title=${encodeURIComponent(formName)}&date=${encodeURIComponent(eventDate)}&location=${encodeURIComponent(eventLocation || '')}`
+      ? `${formDomain}/api/calendar?title=${encodeURIComponent(formName)}&date=${encodeURIComponent(eventDate)}${eventEndDate ? `&endDate=${encodeURIComponent(eventEndDate)}` : ''}&location=${encodeURIComponent(eventLocation || '')}`
       : null;
     
     const fullName = `${name} ${surname}`.trim() || 'Guest';
@@ -347,7 +389,7 @@ async function sendEventConfirmationEmail({
                 <a href="${calendarUrl}" class="button">📅 Add to Calendar</a>
               </p>
             ` : ''}
-            <p>Best regards,<br>The ${formName} Team</p>
+            <p>Best regards,<br>The VTK Career Team</p>
           </div>
         </body>
       </html>
@@ -452,17 +494,34 @@ export async function fetchPublicFormBySlugAction(slug: string) {
       return null;
     }
 
+    const versionMetadata = (activeVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata;
+    
+    // Check if form is full using authenticated client (for admin check)
+    let isFull = false;
+    if (versionMetadata?.max_entries) {
+      try {
+        // Use authenticated client to check count (this is a server-side check)
+        const currentCount = await countFormVersionResponses(activeVersion.id, false);
+        const maxEntries = versionMetadata.max_entries as number;
+        isFull = currentCount >= maxEntries;
+      } catch (error) {
+        // If we can't check (e.g., no auth), we'll let the submission action handle it
+        console.error('[fetchPublicFormBySlugAction] Could not check form capacity:', error);
+      }
+    }
+
     return {
       id: form.id,
       name: form.name,
       slug: form.slug,
       description: form.description,
-      metadata: (activeVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata, // Get metadata from active version
+      metadata: versionMetadata, // Get metadata from active version
       activeVersion: {
         id: activeVersion.id,
         version_number: activeVersion.version_number,
         schema: activeVersion.schema,
       },
+      isFull, // Indicates if form has reached max capacity
     };
   } catch (error) {
     // Log detailed error for debugging

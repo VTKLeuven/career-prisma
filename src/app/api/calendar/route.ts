@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const title = searchParams.get('title') || 'Event';
     const dateStr = searchParams.get('date');
+    const endDateStr = searchParams.get('endDate');
     const location = searchParams.get('location') || '';
 
     if (!dateStr) {
@@ -31,8 +32,18 @@ export async function GET(request: NextRequest) {
     };
 
     const startDate = formatICSDate(eventDate);
-    // Default to 1 hour duration
-    const endDate = formatICSDate(new Date(eventDate.getTime() + 60 * 60 * 1000));
+    // Use end date if provided, otherwise default to 1 hour duration
+    let endDate: string;
+    if (endDateStr) {
+      const eventEndDate = new Date(endDateStr);
+      if (isNaN(eventEndDate.getTime())) {
+        return NextResponse.json({ error: 'Invalid end date format' }, { status: 400 });
+      }
+      endDate = formatICSDate(eventEndDate);
+    } else {
+      // Default to 1 hour duration
+      endDate = formatICSDate(new Date(eventDate.getTime() + 60 * 60 * 1000));
+    }
     const now = formatICSDate(new Date());
 
     // Escape special characters for ICS format

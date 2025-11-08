@@ -124,7 +124,7 @@ export default function ContactPage() {
             </div>
             <div>
               <Label className="text-sm font-medium text-neutral-700 mb-2 block">Phone</Label>
-              <p className="text-neutral-900 text-lg">+32 16 200 097</p>
+              <p className="text-neutral-900 text-lg">+32 (0)16 20 00 97</p>
             </div>
           </div>
         </CardContent>
