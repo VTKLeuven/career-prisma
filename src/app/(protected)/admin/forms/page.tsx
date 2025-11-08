@@ -9,6 +9,7 @@ import {
   deleteFormAction,
   setActiveVersionAction,
   fetchFormVersionsAction,
+  updateFormVersionAction,
 } from "@/app/actions/forms";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,7 @@ type FormRow = {
   created_at: string;
   updated_at: string;
   activeVersion: {
+    id: string;
     version_number: number;
   } | null;
   versionCount: number;
@@ -494,45 +496,52 @@ function EditFormDialog({
     setLoading(true);
 
     try {
-      // Build metadata object preserving all existing fields
-      let metadata: { [key: string]: unknown } | undefined = form.metadata ? { ...form.metadata } : undefined;
-      
-      if (deadline) {
-        // Convert datetime-local value to ISO string
-        metadata = { ...metadata, deadline: new Date(deadline).toISOString() };
-      } else if (metadata?.deadline) {
-        delete metadata.deadline;
-      }
-      
-      // Update event registration fields if this is an event registration form
-      if (isEventRegistration) {
-        metadata = {
-          ...metadata,
-          is_event_registration: true,
-          event_email_subject: eventEmailSubject || 'Event Registration Confirmation',
-          event_email_content: eventEmailContent || 'Thank you for registering!',
-          ...(eventDate ? { event_date: new Date(eventDate).toISOString() } : {}),
-          ...(eventLocation ? { event_location: eventLocation } : {}),
-        };
-      } else {
-        // If unchecked, remove event registration flag but keep other metadata
-        if (metadata) {
-          const { is_event_registration, ...restMetadata } = metadata;
-          metadata = Object.keys(restMetadata).length > 0 ? restMetadata : undefined;
-        }
-      }
-      
-      // Clean up empty metadata
-      if (metadata && Object.keys(metadata).length === 0) {
-        metadata = undefined;
-      }
-      
+      // Update form basic info
       await updateFormAction(form.id, { 
         name, 
         slug, 
         description,
-        metadata
       });
+      
+      // Update metadata on the active form version if it exists
+      if (form.activeVersion?.id) {
+        // Build metadata object preserving all existing fields
+        let metadata: { [key: string]: unknown } | undefined = form.metadata ? { ...form.metadata } : undefined;
+        
+        if (deadline) {
+          // Convert datetime-local value to ISO string
+          metadata = { ...metadata, deadline: new Date(deadline).toISOString() };
+        } else if (metadata?.deadline) {
+          delete metadata.deadline;
+        }
+        
+        // Update event registration fields if this is an event registration form
+        if (isEventRegistration) {
+          metadata = {
+            ...metadata,
+            is_event_registration: true,
+            event_email_subject: eventEmailSubject || 'Event Registration Confirmation',
+            event_email_content: eventEmailContent || 'Thank you for registering!',
+            ...(eventDate ? { event_date: new Date(eventDate).toISOString() } : {}),
+            ...(eventLocation ? { event_location: eventLocation } : {}),
+          };
+        } else {
+          // If unchecked, remove event registration flag but keep other metadata
+          if (metadata) {
+            const { is_event_registration, ...restMetadata } = metadata;
+            metadata = Object.keys(restMetadata).length > 0 ? restMetadata : undefined;
+          }
+        }
+        
+        // Clean up empty metadata
+        if (metadata && Object.keys(metadata).length === 0) {
+          metadata = undefined;
+        }
+        
+        // Update the active version's metadata
+        await updateFormVersionAction(form.activeVersion.id, { metadata });
+      }
+      
       onOpenChange(false);
       onUpdate();
     } catch (error) {

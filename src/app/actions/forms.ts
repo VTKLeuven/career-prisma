@@ -19,7 +19,7 @@ import {
   createFormResponse,
   countFormResponses,
 } from "@/lib/repos/forms";
-import type { Form, FormVersion, FormSchema } from "@/lib/schema";
+import type { Form, FormVersion, FormSchema, FormMetadata } from "@/lib/schema";
 
 // ===================== FORM ACTIONS =====================
 
@@ -42,10 +42,13 @@ export async function fetchFormsAction(opts?: {
         slug: form.slug,
         description: form.description ?? "",
         is_active: form.is_active ?? true,
-        metadata: form.metadata,
+        metadata: activeVersion?.metadata, // Get metadata from active version
         created_at: form.created_at,
         updated_at: form.updated_at,
-        activeVersion: activeVersion,
+        activeVersion: activeVersion ? {
+          id: activeVersion.id,
+          version_number: activeVersion.version_number,
+        } : null,
         versionCount: form.form_versions?.length ?? 0,
         submissionCount,
       };
@@ -86,7 +89,6 @@ export async function createFormAction(data: {
       name: data.name,
       slug: data.slug,
       description: data.description,
-      metadata: data.metadata,
     });
 
     // Create initial version if schema provided
@@ -96,6 +98,7 @@ export async function createFormAction(data: {
         schema: data.initialSchema,
         version_number: 1,
         is_active: true,
+        metadata: data.metadata, // Store metadata in the version
       });
     }
 
@@ -148,6 +151,7 @@ export async function createFormVersionAction(data: {
   form_id: string;
   schema: FormSchema;
   is_active?: boolean;
+  metadata?: FormMetadata;
 }) {
   try {
     // Get the next version number
@@ -159,6 +163,7 @@ export async function createFormVersionAction(data: {
       schema: data.schema,
       version_number: maxVersion + 1,
       is_active: data.is_active ?? false,
+      metadata: data.metadata,
     });
   } catch (error) {
     console.error("Error creating form version:", error);
@@ -222,58 +227,34 @@ export async function submitFormResponseAction(data: {
   data: Record<string, unknown>;
   attachments?: string[];
 }) {
-  console.log("[FormSubmission] Starting form submission");
-  console.log("[FormSubmission] Form version ID:", data.form_version_id);
-  console.log("[FormSubmission] Has email in data:", !!data.data.email);
-  console.log("[FormSubmission] Email value:", data.data.email);
-  
   try {
     const response = await createFormResponse(data);
-    console.log("[FormSubmission] Form response created:", !!response);
     
     // If this is an event registration form, send confirmation email
     if (response && data.data.email) {
-      console.log("[FormSubmission] Checking if event registration form...");
-      // Get the form to check if it's an event registration
+      // Get the form version to check if it's an event registration
       const formVersion = await getFormVersionById(data.form_version_id);
-      console.log("[FormSubmission] Form version retrieved:", !!formVersion);
       
-      if (formVersion) {
+      if (formVersion?.metadata?.is_event_registration) {
         const formId = typeof formVersion.form_id === 'string' ? formVersion.form_id : formVersion.form_id.id;
-        console.log("[FormSubmission] Form ID:", formId);
         const form = await getFormById(formId);
-        console.log("[FormSubmission] Form retrieved:", !!form);
-        console.log("[FormSubmission] Form metadata:", JSON.stringify(form?.metadata, null, 2));
-        console.log("[FormSubmission] Is event registration:", form?.metadata?.is_event_registration);
-        console.log("[FormSubmission] Metadata type:", typeof form?.metadata);
-        console.log("[FormSubmission] Metadata keys:", form?.metadata ? Object.keys(form.metadata) : "no metadata");
         
-        if (form?.metadata?.is_event_registration) {
-          console.log("[FormSubmission] Calling sendEventConfirmationEmail...");
-          await sendEventConfirmationEmail({
-            to: data.data.email as string,
-            name: (data.data.name as string) || '',
-            surname: (data.data.surname as string) || '',
-            formName: form.name,
-            subject: form.metadata.event_email_subject || 'Event Registration Confirmation',
-            content: form.metadata.event_email_content || 'Thank you for registering!',
-            eventDate: form.metadata.event_date,
-            eventLocation: form.metadata.event_location as string | undefined,
-          });
-          console.log("[FormSubmission] sendEventConfirmationEmail completed");
-        } else {
-          console.log("[FormSubmission] Form is not an event registration, skipping email");
-        }
-      } else {
-        console.log("[FormSubmission] Form version not found, skipping email");
+        await sendEventConfirmationEmail({
+          to: data.data.email as string,
+          name: (data.data.name as string) || '',
+          surname: (data.data.surname as string) || '',
+          formName: form.name,
+          subject: formVersion.metadata.event_email_subject || 'Event Registration Confirmation',
+          content: formVersion.metadata.event_email_content || 'Thank you for registering!',
+          eventDate: formVersion.metadata.event_date,
+          eventLocation: formVersion.metadata.event_location as string | undefined,
+        });
       }
-    } else {
-      console.log("[FormSubmission] No response or no email, skipping email send");
     }
     
     return response;
   } catch (error) {
-    console.error("[FormSubmission] Error submitting form response:", error);
+    console.error("Error submitting form response:", error);
     throw error;
   }
 }
@@ -297,15 +278,8 @@ async function sendEventConfirmationEmail({
   eventDate?: string;
   eventLocation?: string;
 }) {
-  console.log("[EventEmail] Starting sendEventConfirmationEmail");
-  console.log("[EventEmail] To:", to);
-  console.log("[EventEmail] Form name:", formName);
-  console.log("[EventEmail] Subject:", subject);
-  
   try {
-    console.log("[EventEmail] Importing sendEmail function...");
     const { sendEmail } = await import("@/lib/repos/directus");
-    console.log("[EventEmail] sendEmail function imported successfully");
     
     // Generate calendar link
     const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
@@ -351,19 +325,13 @@ async function sendEventConfirmationEmail({
       </html>
     `;
     
-    console.log("[EventEmail] Calling sendEmail function...");
     await sendEmail({
       to,
       subject,
       html: emailHtml,
     });
-    console.log("[EventEmail] sendEmail call completed successfully");
   } catch (error) {
-    console.error("[EventEmail] Error sending event confirmation email:", error);
-    console.error("[EventEmail] Error details:", error instanceof Error ? error.message : String(error));
-    if (error instanceof Error && error.stack) {
-      console.error("[EventEmail] Stack trace:", error.stack);
-    }
+    console.error("Error sending event confirmation email:", error);
     // Don't throw - email failure shouldn't prevent form submission
   }
 }
@@ -461,7 +429,7 @@ export async function fetchPublicFormBySlugAction(slug: string) {
       name: form.name,
       slug: form.slug,
       description: form.description,
-      metadata: form.metadata,
+      metadata: activeVersion.metadata, // Get metadata from active version
       activeVersion: {
         id: activeVersion.id,
         version_number: activeVersion.version_number,

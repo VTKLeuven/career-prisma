@@ -3,7 +3,7 @@
 
 import { readItems, createItem, updateItem, deleteItem, readItem } from "@directus/sdk";
 import { getAuthedDirectusOrThrow, directus } from "@/lib/directus";
-import type { Form, FormVersion, FormResponse, FormSchema } from "@/lib/schema";
+import type { Form, FormVersion, FormResponse, FormSchema, FormMetadata } from "@/lib/schema";
 
 // ===================== FORMS =====================
 
@@ -117,6 +117,7 @@ export async function updateForm(id: string, data: Partial<Form>) {
         fields: ["*", "form_versions.*"],
       })
     ) as unknown as Form;
+    
     return updated;
   } catch (error) {
     console.error("Error updating form:", error);
@@ -172,6 +173,7 @@ export async function createFormVersion(data: {
   schema: FormSchema;
   version_number: number;
   is_active?: boolean;
+  metadata?: FormMetadata;
 }) {
   try {
     const client = await getAuthedDirectusOrThrow();
