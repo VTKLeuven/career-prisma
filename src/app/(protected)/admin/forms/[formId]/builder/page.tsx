@@ -30,23 +30,44 @@ import {
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Save, ArrowLeft } from "lucide-react";
+import { 
+  Plus, 
+  Trash2, 
+  Save, 
+  ArrowLeft, 
+  Type, 
+  FileText, 
+  Mail, 
+  Hash, 
+  List, 
+  CheckSquare, 
+  CircleDot, 
+  Upload, 
+  Calendar,
+  ChevronUp,
+  ChevronDown
+} from "lucide-react";
 import type { Form, FormVersion, FormField, FormSchema } from "@/lib/schema";
 import Link from "next/link";
 
 type FieldType = "text" | "textarea" | "email" | "number" | "select" | "checkbox" | "radio" | "file" | "date";
 
-const FIELD_TYPES: { value: FieldType; label: string }[] = [
-  { value: "text", label: "Text" },
-  { value: "textarea", label: "Text Area" },
-  { value: "email", label: "Email" },
-  { value: "number", label: "Number" },
-  { value: "select", label: "Select Dropdown" },
-  { value: "checkbox", label: "Checkbox" },
-  { value: "radio", label: "Radio Buttons" },
-  { value: "file", label: "File Upload" },
-  { value: "date", label: "Date" },
+const FIELD_TYPES: { value: FieldType; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { value: "text", label: "Text", icon: Type },
+  { value: "textarea", label: "Text Area", icon: FileText },
+  { value: "email", label: "Email", icon: Mail },
+  { value: "number", label: "Number", icon: Hash },
+  { value: "select", label: "Select Dropdown", icon: List },
+  { value: "checkbox", label: "Checkbox", icon: CheckSquare },
+  { value: "radio", label: "Radio Buttons", icon: CircleDot },
+  { value: "file", label: "File Upload", icon: Upload },
+  { value: "date", label: "Date", icon: Calendar },
 ];
+
+const getFieldIcon = (type: FieldType) => {
+  const fieldType = FIELD_TYPES.find(ft => ft.value === type);
+  return fieldType?.icon || Type;
+};
 
 export default function FormBuilderPage() {
   const params = useParams();
@@ -90,9 +111,10 @@ export default function FormBuilderPage() {
   }, [loadForm]);
 
   const addField = () => {
+    const fieldNumber = fields.length + 1;
     const newField: FormField = {
       id: `field_${Date.now()}`,
-      name: "",
+      name: `field_${fieldNumber}`,
       label: "",
       type: "text",
       required: false,
@@ -101,8 +123,29 @@ export default function FormBuilderPage() {
     setFields([...fields, newField]);
   };
 
+  const generateFieldName = (label: string): string => {
+    if (!label) return '';
+    // Convert to lowercase, replace spaces and special chars with underscores, remove multiple underscores
+    return label
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .replace(/_+/g, '_');
+  };
+
   const updateField = (index: number, updates: Partial<FormField>) => {
     const newFields = [...fields];
+    const currentField = newFields[index];
+    
+    // Auto-generate field name from label if label is being updated
+    if (updates.label !== undefined && updates.label !== currentField.label) {
+      const generatedName = generateFieldName(updates.label);
+      if (generatedName) {
+        updates.name = generatedName;
+      }
+    }
+    
     newFields[index] = { ...newFields[index], ...updates };
     setFields(newFields);
   };
@@ -280,7 +323,7 @@ function FieldEditor({
               disabled={isFirst}
               className="h-6 w-6 p-0"
             >
-              ↑
+              <ChevronUp className="h-4 w-4" />
             </Button>
             <Button
               variant="ghost"
@@ -289,18 +332,24 @@ function FieldEditor({
               disabled={isLast}
               className="h-6 w-6 p-0"
             >
-              ↓
+              <ChevronDown className="h-4 w-4" />
             </Button>
           </div>
           <div className="flex-1 cursor-pointer" onClick={() => setExpanded(!expanded)}>
             <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">{field.label || "Untitled Field"}</p>
-                <p className="text-sm text-muted-foreground">
-                  {field.type} {field.required && "• Required"}
-                </p>
+              <div className="flex items-center gap-3">
+                {React.createElement(getFieldIcon(field.type), { className: "h-5 w-5 text-muted-foreground" })}
+                <div>
+                  <p className="font-medium">{field.label || "Untitled Field"}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {field.type} {field.required && "• Required"}
+                  </p>
+                </div>
               </div>
-              <Badge variant="outline">{field.type}</Badge>
+              <Badge variant="outline" className="flex items-center gap-1">
+                {React.createElement(getFieldIcon(field.type), { className: "h-3 w-3" })}
+                {field.type}
+              </Badge>
             </div>
           </div>
           <Button variant="ghost" size="sm" onClick={onRemove}>
@@ -312,13 +361,18 @@ function FieldEditor({
           <div className="mt-4 space-y-3 border-t pt-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label htmlFor={`field-${index}-name`}>Field Name (ID)</Label>
+                <Label htmlFor={`field-${index}-label`}>Label</Label>
                 <Input
-                  id={`field-${index}-name`}
-                  value={field.name}
-                  onChange={(e) => onUpdate({ name: e.target.value })}
-                  placeholder="field_name"
+                  id={`field-${index}-label`}
+                  value={field.label}
+                  onChange={(e) => onUpdate({ label: e.target.value })}
+                  placeholder="Field Label"
                 />
+                {field.name && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Field ID: <code className="bg-muted px-1 py-0.5 rounded">{field.name}</code>
+                  </p>
+                )}
               </div>
               <div className="space-y-1">
                 <Label htmlFor={`field-${index}-type`}>Field Type</Label>
@@ -327,24 +381,20 @@ function FieldEditor({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {FIELD_TYPES.map((type) => (
-                      <SelectItem key={type.value} value={type.value}>
-                        {type.label}
-                      </SelectItem>
-                    ))}
+                    {FIELD_TYPES.map((type) => {
+                      const Icon = type.icon;
+                      return (
+                        <SelectItem key={type.value} value={type.value}>
+                          <div className="flex items-center gap-2">
+                            <Icon className="h-4 w-4" />
+                            {type.label}
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor={`field-${index}-label`}>Label</Label>
-              <Input
-                id={`field-${index}-label`}
-                value={field.label}
-                onChange={(e) => onUpdate({ label: e.target.value })}
-                placeholder="Field Label"
-              />
             </div>
 
             <div className="space-y-1">
@@ -388,41 +438,118 @@ function FieldEditor({
 }
 
 function FormFieldPreview({ field }: { field: FormField }) {
+  const FieldIcon = getFieldIcon(field.type);
+  
   switch (field.type) {
     case "textarea":
-      return <Textarea placeholder={field.placeholder} disabled />;
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <FieldIcon className="h-4 w-4" />
+            <span>Text Area</span>
+          </div>
+          <Textarea placeholder={field.placeholder} disabled />
+        </div>
+      );
     case "select":
       return (
-        <Select disabled>
-          <SelectTrigger>
-            <SelectValue placeholder={field.placeholder || "Select an option"} />
-          </SelectTrigger>
-        </Select>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <FieldIcon className="h-4 w-4" />
+            <span>Select Dropdown</span>
+          </div>
+          <Select disabled>
+            <SelectTrigger>
+              <SelectValue placeholder={field.placeholder || "Select an option"} />
+            </SelectTrigger>
+          </Select>
+        </div>
       );
     case "checkbox":
       return (
         <div className="space-y-2">
-          {(field.options ?? ["Option 1"]).map((opt, i) => (
-            <div key={i} className="flex items-center space-x-2">
-              <Checkbox disabled />
-              <Label>{opt}</Label>
-            </div>
-          ))}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <FieldIcon className="h-4 w-4" />
+            <span>Checkbox Group</span>
+          </div>
+          <div className="space-y-2">
+            {(field.options ?? ["Option 1"]).map((opt, i) => (
+              <div key={i} className="flex items-center space-x-2">
+                <Checkbox disabled />
+                <Label>{opt}</Label>
+              </div>
+            ))}
+          </div>
         </div>
       );
     case "radio":
       return (
         <div className="space-y-2">
-          {(field.options ?? ["Option 1"]).map((opt, i) => (
-            <div key={i} className="flex items-center space-x-2">
-              <input type="radio" disabled />
-              <Label>{opt}</Label>
-            </div>
-          ))}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <FieldIcon className="h-4 w-4" />
+            <span>Radio Buttons</span>
+          </div>
+          <div className="space-y-2">
+            {(field.options ?? ["Option 1"]).map((opt, i) => (
+              <div key={i} className="flex items-center space-x-2">
+                <input type="radio" disabled />
+                <Label>{opt}</Label>
+              </div>
+            ))}
+          </div>
         </div>
       );
+    case "file":
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <FieldIcon className="h-4 w-4" />
+            <span>File Upload</span>
+          </div>
+          <Input type="file" disabled />
+        </div>
+      );
+    case "date":
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <FieldIcon className="h-4 w-4" />
+            <span>Date Picker</span>
+          </div>
+          <Input type="date" disabled />
+        </div>
+      );
+    case "email":
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <FieldIcon className="h-4 w-4" />
+            <span>Email Input</span>
+          </div>
+          <Input type="email" placeholder={field.placeholder} disabled />
+        </div>
+      );
+    case "number":
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <FieldIcon className="h-4 w-4" />
+            <span>Number Input</span>
+          </div>
+          <Input type="number" placeholder={field.placeholder} disabled />
+        </div>
+      );
+    case "text":
     default:
-      return <Input type={field.type} placeholder={field.placeholder} disabled />;
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <FieldIcon className="h-4 w-4" />
+            <span>Text Input</span>
+          </div>
+          <Input type="text" placeholder={field.placeholder} disabled />
+        </div>
+      );
   }
 }
 

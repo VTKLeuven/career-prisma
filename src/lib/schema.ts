@@ -127,6 +127,16 @@ export type Form = {
   name: string;
   slug: string;
   description?: string;
+  is_active?: boolean;
+  metadata?: {
+    deadline?: string; // ISO date string
+    is_event_registration?: boolean; // If true, this form is for event registration
+    event_email_subject?: string; // Email subject for event confirmation
+    event_email_content?: string; // Email content for event confirmation
+    event_date?: string; // Event date/time (ISO string)
+    event_location?: string; // Event location
+    [key: string]: unknown; // Allow other metadata fields
+  };
   created_at: string;
   updated_at: string;
   form_versions?: FormVersion[];  // Changed from 'versions' to 'form_versions'

@@ -9,7 +9,6 @@ import {
   deleteFormAction,
   setActiveVersionAction,
   fetchFormVersionsAction,
-  debugFormsQueryAction,
 } from "@/app/actions/forms";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,21 +41,30 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock } from "lucide-react";
+import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power } from "lucide-react";
 import { useUser } from "@/providers/UserProvider";
-import type { FormSchema } from "@/lib/schema";
+import type { FormSchema, FormField } from "@/lib/schema";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Checkbox } from "@/components/ui/checkbox";
+import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 
 type FormRow = {
   id: string;
   name: string;
   slug: string;
   description: string;
+  is_active?: boolean;
+  metadata?: {
+    deadline?: string;
+    [key: string]: unknown;
+  };
   created_at: string;
   updated_at: string;
   activeVersion: {
     version_number: number;
   } | null;
   versionCount: number;
+  submissionCount: number;
 };
 
 export default function AdminFormsPage() {
@@ -65,49 +73,14 @@ export default function AdminFormsPage() {
   const [loading, setLoading] = useState(true);
 
   const loadForms = async () => {
-    console.log('[AdminFormsPage] Loading forms...');
     setLoading(true);
     try {
       const data = await fetchFormsAction();
-      console.log('[AdminFormsPage] Loaded', data.length, 'forms');
-      console.log('[AdminFormsPage] Raw forms data:', JSON.stringify(data, null, 2));
-
-      // Log each form's details explicitly
-      data.forEach((form, idx) => {
-        console.log(`[AdminFormsPage] Form ${idx + 1}:`, {
-          name: form.name,
-          slug: form.slug,
-          activeVersion: form.activeVersion,
-          versionCount: form.versionCount,
-          hasActiveVersion: !!form.activeVersion,
-          rawForm: form,
-        });
-      });
-
       setForms(data);
     } catch (error) {
       console.error("[AdminFormsPage] Error loading forms:", error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const runDebugQuery = async () => {
-    console.log('[AdminFormsPage] Running debug query...');
-    try {
-      const result = await debugFormsQueryAction();
-      console.log('[AdminFormsPage] Debug result:', result);
-      alert(`Debug complete! Check console and terminal for detailed logs.
-
-Query 1 fields: ${result.query1Keys.join(', ')}
-Query 2 fields: ${result.query2Keys.join(', ')}
-Query 3 fields: ${result.query3Keys.join(', ')}
-
-Has versions in Query 2: ${result.hasVersionsInQuery2}
-Has versions in Query 3: ${result.hasVersionsInQuery3}`);
-    } catch (error) {
-      console.error('[AdminFormsPage] Debug error:', error);
-      alert('Debug failed - check console');
     }
   };
 
@@ -127,11 +100,8 @@ Has versions in Query 3: ${result.hasVersionsInQuery3}`);
           <p className="text-muted-foreground">Create and manage forms for external users</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={runDebugQuery}>
-            🐛 Debug Directus
-          </Button>
-          <Button variant="outline" onClick={loadForms} disabled={loading}>
-            {loading ? "Refreshing..." : "🔄 Refresh"}
+          <Button variant="outline" onClick={loadForms} disabled={loading} size="default">
+            {loading ? "Refreshing..." : "Refresh"}
           </Button>
           <CreateFormDialog onFormCreated={loadForms} />
         </div>
@@ -159,7 +129,8 @@ Has versions in Query 3: ${result.hasVersionsInQuery3}`);
                   <TableHead>Slug</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Versions</TableHead>
+                  <TableHead>Deadline</TableHead>
+                  <TableHead>Submissions</TableHead>
                   <TableHead>Updated</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -169,18 +140,29 @@ Has versions in Query 3: ${result.hasVersionsInQuery3}`);
                   <TableRow key={form.id}>
                     <TableCell className="font-medium">{form.name}</TableCell>
                     <TableCell>
-                      <code className="text-sm bg-muted px-2 py-1 rounded">{form.slug}</code>
+                      <SlugCell slug={form.slug} />
                     </TableCell>
                     <TableCell className="max-w-xs truncate">{form.description}</TableCell>
                     <TableCell>
-                      {form.activeVersion ? (
+                      {form.is_active === false ? (
+                        <Badge variant="destructive">Disabled</Badge>
+                      ) : form.activeVersion ? (
                         <Badge variant="default">Active (v{form.activeVersion.version_number})</Badge>
                       ) : (
                         <Badge variant="secondary">No Active Version</Badge>
                       )}
                     </TableCell>
-                    <TableCell>{form.versionCount}</TableCell>
-                    <TableCell>{new Date(form.updated_at).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      {form.metadata?.deadline ? (
+                        <span className={new Date(form.metadata.deadline) < new Date() ? 'text-destructive' : ''}>
+                          {formatDateBE(form.metadata.deadline)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">No deadline</span>
+                      )}
+                    </TableCell>
+                    <TableCell>{form.submissionCount}</TableCell>
+                    <TableCell>{formatDateBE(form.updated_at)}</TableCell>
                     <TableCell className="text-right">
                       <FormActionsMenu form={form} onUpdate={loadForms} />
                     </TableCell>
@@ -200,29 +182,72 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
+  const [isEventRegistration, setIsEventRegistration] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
+  const formUrl = `${formDomain}/forms/${slug || "your-slug"}`;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      // Create initial empty schema
+      // Create initial schema - if event registration, add name, surname, email fields
+      let initialFields: FormField[] = [];
+      
+      if (isEventRegistration) {
+        initialFields = [
+          {
+            id: `field_${Date.now()}_1`,
+            name: "name",
+            label: "Name",
+            type: "text",
+            required: true,
+            placeholder: "Enter your first name",
+          },
+          {
+            id: `field_${Date.now()}_2`,
+            name: "surname",
+            label: "Surname",
+            type: "text",
+            required: true,
+            placeholder: "Enter your last name",
+          },
+          {
+            id: `field_${Date.now()}_3`,
+            name: "email",
+            label: "Email",
+            type: "email",
+            required: true,
+            placeholder: "Enter your email address",
+          },
+        ];
+      }
+
       const initialSchema: FormSchema = {
-        fields: [],
+        fields: initialFields,
       };
+
+      const metadata = isEventRegistration ? {
+        is_event_registration: true,
+        event_email_subject: "Event Registration Confirmation",
+        event_email_content: "Thank you for registering! We look forward to seeing you at the event.",
+      } : undefined;
 
       await createFormAction({
         name,
         slug,
         description,
         initialSchema,
+        metadata,
       });
 
       setOpen(false);
       setName("");
       setSlug("");
       setDescription("");
+      setIsEventRegistration(false);
       onFormCreated();
     } catch (error) {
       console.error("Error creating form:", error);
@@ -243,7 +268,7 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>
+        <Button size="default">
           <Plus className="mr-2 h-4 w-4" />
           Create Form
         </Button>
@@ -276,7 +301,7 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
               required
             />
             <p className="text-xs text-muted-foreground">
-              Will be accessible at: /form/{slug}
+              Will be accessible at: <code className="bg-muted px-1 py-0.5 rounded">{formUrl}</code>
             </p>
           </div>
           <div className="space-y-2">
@@ -289,6 +314,45 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
               rows={3}
             />
           </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="event-registration"
+              checked={isEventRegistration}
+              onCheckedChange={(checked: boolean) => setIsEventRegistration(checked)}
+            />
+            <Label htmlFor="event-registration" className="font-normal cursor-pointer">
+              Use as event registration (adds name, surname, email fields automatically)
+            </Label>
+          </div>
+          {isEventRegistration && (
+            <div className="space-y-3 p-4 bg-muted rounded-md">
+              <div className="space-y-2">
+                <Label htmlFor="event-email-subject">Email Subject</Label>
+                <Input
+                  id="event-email-subject"
+                  value="Event Registration Confirmation"
+                  readOnly
+                  className="bg-background"
+                />
+                <p className="text-xs text-muted-foreground">
+                  You can customize this in the form settings after creation.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="event-email-content">Email Content</Label>
+                <Textarea
+                  id="event-email-content"
+                  value="Thank you for registering! We look forward to seeing you at the event."
+                  readOnly
+                  className="bg-background"
+                  rows={3}
+                />
+                <p className="text-xs text-muted-foreground">
+                  You can customize this in the form settings after creation.
+                </p>
+              </div>
+            </div>
+          )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
@@ -343,6 +407,8 @@ function FormActionsMenu({ form, onUpdate }: { form: FormRow; onUpdate: () => vo
             </a>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
+          <ToggleFormStatusMenuItem form={form} onUpdate={onUpdate} />
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={() => setDeleteOpen(true)}
             className="text-destructive"
@@ -389,13 +455,34 @@ function EditFormDialog({
   const [name, setName] = useState(form.name);
   const [slug, setSlug] = useState(form.slug);
   const [description, setDescription] = useState(form.description);
+  const [deadline, setDeadline] = useState(
+    form.metadata?.deadline ? new Date(form.metadata.deadline).toISOString().split('T')[0] : ''
+  );
+  const [eventEmailSubject, setEventEmailSubject] = useState(
+    (form.metadata?.event_email_subject as string) || ''
+  );
+  const [eventEmailContent, setEventEmailContent] = useState(
+    (form.metadata?.event_email_content as string) || ''
+  );
+  const [eventDate, setEventDate] = useState(
+    form.metadata?.event_date ? new Date(form.metadata.event_date as string).toISOString().slice(0, 16) : ''
+  );
+  const [eventLocation, setEventLocation] = useState(
+    (form.metadata?.event_location as string) || ''
+  );
   const [loading, setLoading] = useState(false);
+  const isEventRegistration = form.metadata?.is_event_registration === true;
 
   useEffect(() => {
     if (open) {
       setName(form.name);
       setSlug(form.slug);
       setDescription(form.description);
+      setDeadline(form.metadata?.deadline ? new Date(form.metadata.deadline).toISOString().split('T')[0] : '');
+      setEventEmailSubject((form.metadata?.event_email_subject as string) || '');
+      setEventEmailContent((form.metadata?.event_email_content as string) || '');
+      setEventDate(form.metadata?.event_date ? new Date(form.metadata.event_date as string).toISOString().slice(0, 16) : '');
+      setEventLocation((form.metadata?.event_location as string) || '');
     }
   }, [open, form]);
 
@@ -404,7 +491,38 @@ function EditFormDialog({
     setLoading(true);
 
     try {
-      await updateFormAction(form.id, { name, slug, description });
+      // Build metadata object preserving all existing fields
+      let metadata: { [key: string]: unknown } | undefined = form.metadata ? { ...form.metadata } : undefined;
+      
+      if (deadline) {
+        metadata = { ...metadata, deadline };
+      } else if (metadata?.deadline) {
+        delete metadata.deadline;
+      }
+      
+      // Update event registration fields if this is an event registration form
+      if (isEventRegistration) {
+        metadata = {
+          ...metadata,
+          is_event_registration: true,
+          event_email_subject: eventEmailSubject || 'Event Registration Confirmation',
+          event_email_content: eventEmailContent || 'Thank you for registering!',
+          ...(eventDate ? { event_date: new Date(eventDate).toISOString() } : {}),
+          ...(eventLocation ? { event_location: eventLocation } : {}),
+        };
+      }
+      
+      // Clean up empty metadata
+      if (metadata && Object.keys(metadata).length === 0) {
+        metadata = undefined;
+      }
+      
+      await updateFormAction(form.id, { 
+        name, 
+        slug, 
+        description,
+        metadata
+      });
       onOpenChange(false);
       onUpdate();
     } catch (error) {
@@ -449,6 +567,68 @@ function EditFormDialog({
               rows={3}
             />
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-deadline">Deadline (Optional)</Label>
+            <Input
+              id="edit-deadline"
+              type="date"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Set a deadline for form submissions. Leave empty for no deadline.
+            </p>
+          </div>
+          
+          {isEventRegistration && (
+            <div className="space-y-4 p-4 bg-muted rounded-md border-t">
+              <h3 className="font-semibold text-sm">Event Registration Settings</h3>
+              <div className="space-y-2">
+                <Label htmlFor="edit-event-email-subject">Email Subject</Label>
+                <Input
+                  id="edit-event-email-subject"
+                  value={eventEmailSubject}
+                  onChange={(e) => setEventEmailSubject(e.target.value)}
+                  placeholder="Event Registration Confirmation"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-event-email-content">Email Content</Label>
+                <Textarea
+                  id="edit-event-email-content"
+                  value={eventEmailContent}
+                  onChange={(e) => setEventEmailContent(e.target.value)}
+                  placeholder="Thank you for registering! We look forward to seeing you at the event."
+                  rows={4}
+                />
+                <p className="text-xs text-muted-foreground">
+                  This content will be sent in the confirmation email. Use {`{name}`} and {`{surname}`} to personalize.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-event-date">Event Date & Time</Label>
+                <Input
+                  id="edit-event-date"
+                  type="datetime-local"
+                  value={eventDate}
+                  onChange={(e) => setEventDate(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used for the calendar button in confirmation emails.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-event-location">Event Location (Optional)</Label>
+                <Input
+                  id="edit-event-location"
+                  value={eventLocation}
+                  onChange={(e) => setEventLocation(e.target.value)}
+                  placeholder="e.g., Main Conference Hall, Brussels"
+                />
+              </div>
+            </div>
+          )}
+          
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
@@ -513,6 +693,105 @@ function DeleteFormDialog({
   );
 }
 
+function ToggleFormStatusMenuItem({ form, onUpdate }: { form: FormRow; onUpdate: () => void }) {
+  const [toggling, setToggling] = useState(false);
+
+  const handleToggle = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setToggling(true);
+    try {
+      // If form is currently active (is_active is true or undefined), disable it
+      // If form is disabled (is_active is false), enable it
+      const newStatus = form.is_active === false ? true : false;
+      console.log('[ToggleFormStatus] Toggling form:', form.id, 'from', form.is_active, 'to', newStatus);
+      const result = await updateFormAction(form.id, { is_active: newStatus });
+      console.log('[ToggleFormStatus] Update result:', result);
+      onUpdate();
+    } catch (error) {
+      console.error("Error toggling form status:", error);
+      alert(`Failed to update form status: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setToggling(false);
+    }
+  };
+
+  const isActive = form.is_active !== false; // Default to true if undefined
+
+  return (
+    <DropdownMenuItem onClick={handleToggle} disabled={toggling}>
+      <Power className={`mr-2 h-4 w-4 ${isActive ? 'text-green-600' : 'text-gray-400'}`} />
+      {isActive ? 'Disable Form' : 'Enable Form'}
+    </DropdownMenuItem>
+  );
+}
+
+function SlugCell({ slug }: { slug: string }) {
+  const [copied, setCopied] = useState(false);
+  const domain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
+  const formUrl = `${domain}/forms/${slug}`;
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(formUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.open(formUrl, "_blank", "noopener,noreferrer");
+  };
+
+  return (
+    <TooltipProvider>
+      <div className="flex items-center gap-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <a
+              href={formUrl}
+              onClick={handleClick}
+              className="text-sm bg-muted px-2 py-1 rounded hover:underline cursor-pointer"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {slug}
+            </a>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Click to open form</p>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0"
+              onClick={handleCopy}
+            >
+              {copied ? (
+                <Check className="h-3 w-3 text-green-600" />
+              ) : (
+                <Copy className="h-3 w-3" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{copied ? "Copied!" : "Copy URL"}</p>
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    </TooltipProvider>
+  );
+}
+
 function VersionsDialog({
   form,
   open,
@@ -555,15 +834,9 @@ function VersionsDialog({
   const handleActivate = async (versionId: string) => {
     setActivating(versionId);
     try {
-      console.log('[VersionsDialog] Activating version:', versionId);
       await setActiveVersionAction(versionId);
-      console.log('[VersionsDialog] Activation complete, reloading versions...');
       await loadVersions();
-      console.log('[VersionsDialog] Versions reloaded, calling onUpdate...');
       onUpdate();
-      console.log('[VersionsDialog] Update complete');
-
-      // Show success message
       alert('Version activated successfully! The form list will refresh.');
     } catch (error) {
       console.error("[VersionsDialog] Error activating version:", error);
@@ -603,7 +876,7 @@ function VersionsDialog({
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {version.schema.fields.length} field(s) • Created{" "}
-                        {new Date(version.created_at).toLocaleString()}
+                        {formatDateTimeBE(version.created_at)}
                       </p>
                     </div>
                     {!version.is_active && (

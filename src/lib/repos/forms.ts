@@ -17,22 +17,15 @@ export async function listForms(opts?: {
     const client = await getAuthedDirectusOrThrow();
     const { search, limit = 25, page = 1, sort = "-created_at" } = opts ?? {};
 
-    console.log('[listForms] Querying Directus with params:', { search, limit, page, sort });
     const result = await client.request(
       readItems("forms", {
-        fields: ["*", "form_versions.*"],  // Changed from "versions.*" to "form_versions.*"
+        fields: ["*", "form_versions.*"],
         limit,
         page,
         sort,
         ...(search ? { search } : {}),
       })
     ) as unknown as Form[];
-
-    console.log('[listForms] Query returned', result.length, 'forms');
-    result.forEach(form => {
-      console.log(`[listForms] Form "${form.name}": ${form.form_versions?.length || 0} versions,`,
-        form.form_versions?.filter(v => v.is_active).length || 0, 'active');
-    });
 
     return result;
   } catch (error) {
@@ -46,7 +39,7 @@ export async function getFormById(id: string) {
     const client = await getAuthedDirectusOrThrow();
     return client.request(
       readItem("forms", id, {
-        fields: ["*", "form_versions.*"],  // Changed from "versions.*" to "form_versions.*"
+        fields: ["*", "form_versions.*"],
       })
     ) as unknown as Form;
   } catch (error) {
@@ -57,38 +50,44 @@ export async function getFormById(id: string) {
 
 export async function getFormBySlug(slug: string) {
   try {
-    console.log('[getFormBySlug] Attempting to fetch form with slug:', slug);
-
     // Try authenticated first, fall back to public client
     let client;
-    let isAuthenticated = false;
     try {
       client = await getAuthedDirectusOrThrow();
-      isAuthenticated = true;
-      console.log('[getFormBySlug] Using authenticated client');
-    } catch (authError) {
+    } catch {
       // If auth fails, use public client for public forms
       client = directus;
-      console.log('[getFormBySlug] Using public client (no auth)');
     }
 
-    console.log('[getFormBySlug] Querying Directus for slug:', slug);
     const forms = await client.request(
       readItems("forms", {
-        fields: ["*", "form_versions.*"],  // Changed from "versions.*" to "form_versions.*"
+        fields: ["*", "form_versions.*"],
         filter: { slug: { _eq: slug } },
         limit: 1,
       })
     ) as unknown as Form[];
 
-    console.log('[getFormBySlug] Query result:', forms?.length || 0, 'forms found');
-    if (forms?.[0]) {
-      console.log('[getFormBySlug] Form ID:', forms[0].id, 'Versions:', forms[0].form_versions?.length || 0);
-    }
-
     return forms?.[0] ?? null;
   } catch (error) {
     console.error("[getFormBySlug] Error getting form by slug:", error);
+    throw error;
+  }
+}
+
+export async function getPublicFormBySlug(slug: string) {
+  try {
+    // Always use public client for public form access
+    const forms = await directus.request(
+      readItems("forms", {
+        fields: ["*", "form_versions.*"],
+        filter: { slug: { _eq: slug } },
+        limit: 1,
+      })
+    ) as unknown as Form[];
+
+    return forms?.[0] ?? null;
+  } catch (error) {
+    console.error("[getPublicFormBySlug] Error getting public form by slug:", error);
     throw error;
   }
 }
@@ -108,9 +107,23 @@ export async function createForm(data: Partial<Form>) {
 export async function updateForm(id: string, data: Partial<Form>) {
   try {
     const client = await getAuthedDirectusOrThrow();
-    return client.request(
+    console.log('[updateForm] Updating form:', id, 'with data:', data);
+    const result = await client.request(
       updateItem("forms", id, data)
     ) as unknown as Form;
+    console.log('[updateForm] Update successful, result:', result);
+    console.log('[updateForm] Result keys:', Object.keys(result as unknown as Record<string, unknown>));
+    console.log('[updateForm] Result has is_active:', 'is_active' in (result as unknown as Record<string, unknown>));
+    console.log('[updateForm] Result is_active value:', (result as unknown as Form).is_active);
+    
+    // Refetch to get updated data with all fields
+    const updated = await client.request(
+      readItem("forms", id, {
+        fields: ["*", "form_versions.*"],
+      })
+    ) as unknown as Form;
+    console.log('[updateForm] Refetched form is_active:', updated.is_active);
+    return updated;
   } catch (error) {
     console.error("Error updating form:", error);
     throw error;
@@ -192,23 +205,17 @@ export async function createFormVersion(data: {
 
 export async function updateFormVersion(id: string, data: Partial<FormVersion>) {
   try {
-    console.log('[updateFormVersion] Updating version:', id, 'with data:', data);
     const client = await getAuthedDirectusOrThrow();
 
     // If activating this version, deactivate others
     if (data.is_active) {
-      console.log('[updateFormVersion] Activating version, need to deactivate others');
       const version = await getFormVersionById(id);
-      console.log('[updateFormVersion] Current version:', version);
       const formId = typeof version.form_id === "string" ? version.form_id : version.form_id.id;
-      console.log('[updateFormVersion] Form ID:', formId);
 
       const existingVersions = await listFormVersions(formId);
-      console.log('[updateFormVersion] Found', existingVersions.length, 'existing versions');
 
       for (const v of existingVersions) {
         if (v.id !== id && v.is_active) {
-          console.log('[updateFormVersion] Deactivating version:', v.id);
           await client.request(
             updateItem("form_versions", v.id, { is_active: false })
           );
@@ -216,11 +223,9 @@ export async function updateFormVersion(id: string, data: Partial<FormVersion>) 
       }
     }
 
-    console.log('[updateFormVersion] Now updating version:', id);
     const result = await client.request(
       updateItem("form_versions", id, data)
     ) as unknown as FormVersion;
-    console.log('[updateFormVersion] Update successful');
     return result;
   } catch (error) {
     console.error("[updateFormVersion] Error updating form version:", error);
@@ -321,6 +326,35 @@ export async function createFormResponse(data: {
   } catch (error) {
     console.error("Error creating form response:", error);
     throw error;
+  }
+}
+
+export async function countFormResponses(formId: string) {
+  try {
+    const client = await getAuthedDirectusOrThrow();
+    
+    // Get all versions for this form
+    const versions = await listFormVersions(formId);
+    const versionIds = versions.map(v => v.id);
+    
+    if (versionIds.length === 0) {
+      return 0;
+    }
+    
+    // Count responses for all versions of this form
+    const { readItems } = await import("@directus/sdk");
+    const responses = await client.request(
+      readItems("form_responses", {
+        fields: ["id"],
+        filter: { form_version_id: { _in: versionIds } },
+        limit: -1, // Get all to count
+      })
+    ) as unknown as FormResponse[];
+    
+    return responses.length;
+  } catch (error) {
+    console.error("Error counting form responses:", error);
+    return 0; // Return 0 on error to avoid breaking the UI
   }
 }
 

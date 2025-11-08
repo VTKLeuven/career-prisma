@@ -5,6 +5,7 @@ import {
   listForms,
   getFormById,
   getFormBySlug,
+  getPublicFormBySlug,
   createForm,
   updateForm,
   deleteForm,
@@ -16,6 +17,7 @@ import {
   listFormResponses,
   getFormResponseById,
   createFormResponse,
+  countFormResponses,
 } from "@/lib/repos/forms";
 import type { Form, FormVersion, FormSchema } from "@/lib/schema";
 
@@ -28,29 +30,26 @@ export async function fetchFormsAction(opts?: {
   sort?: string;
 }) {
   try {
-    console.log('[fetchFormsAction] Fetching forms with options:', opts);
     const forms = await listForms(opts);
-    console.log('[fetchFormsAction] Retrieved', forms.length, 'forms from Directus');
 
-    const mapped = forms.map((form) => {
-      const activeVersion = form.form_versions?.find((v) => v.is_active) ?? null;  // Changed from versions to form_versions
-      console.log(`[fetchFormsAction] Form "${form.name}" (${form.slug}):`, {
-        totalVersions: form.form_versions?.length || 0,  // Changed from versions to form_versions
-        activeVersion: activeVersion ? `v${activeVersion.version_number}` : 'None',
-        versions: form.form_versions?.map(v => ({ version: v.version_number, active: v.is_active }))  // Changed from versions to form_versions
-      });
+    const mapped = await Promise.all(forms.map(async (form) => {
+      const activeVersion = form.form_versions?.find((v) => v.is_active) ?? null;
+      const submissionCount = await countFormResponses(form.id);
 
       return {
         id: form.id,
         name: form.name,
         slug: form.slug,
         description: form.description ?? "",
+        is_active: form.is_active ?? true,
+        metadata: form.metadata,
         created_at: form.created_at,
         updated_at: form.updated_at,
         activeVersion: activeVersion,
-        versionCount: form.form_versions?.length ?? 0,  // Changed from versions to form_versions
+        versionCount: form.form_versions?.length ?? 0,
+        submissionCount,
       };
-    });
+    }));
 
     return mapped;
   } catch (error) {
@@ -73,12 +72,21 @@ export async function createFormAction(data: {
   slug: string;
   description?: string;
   initialSchema?: FormSchema;
+  metadata?: {
+    is_event_registration?: boolean;
+    event_email_subject?: string;
+    event_email_content?: string;
+    event_date?: string;
+    event_location?: string;
+    [key: string]: unknown;
+  };
 }) {
   try {
     const form = await createForm({
       name: data.name,
       slug: data.slug,
       description: data.description,
+      metadata: data.metadata,
     });
 
     // Create initial version if schema provided
@@ -178,10 +186,7 @@ export async function deleteFormVersionAction(id: string) {
 
 export async function setActiveVersionAction(versionId: string) {
   try {
-    console.log('[setActiveVersionAction] Activating version:', versionId);
-    const result = await updateFormVersion(versionId, { is_active: true });
-    console.log('[setActiveVersionAction] Version activated successfully:', result);
-    return result;
+    return await updateFormVersion(versionId, { is_active: true });
   } catch (error) {
     console.error("[setActiveVersionAction] Error setting active version:", error);
     throw error;
@@ -218,10 +223,112 @@ export async function submitFormResponseAction(data: {
   attachments?: string[];
 }) {
   try {
-    return await createFormResponse(data);
+    const response = await createFormResponse(data);
+    
+    // If this is an event registration form, send confirmation email
+    if (response && data.data.email) {
+      // Get the form to check if it's an event registration
+      const formVersion = await getFormVersionById(data.form_version_id);
+      if (formVersion) {
+        const formId = typeof formVersion.form_id === 'string' ? formVersion.form_id : formVersion.form_id.id;
+        const form = await getFormById(formId);
+        
+        if (form?.metadata?.is_event_registration) {
+          await sendEventConfirmationEmail({
+            to: data.data.email as string,
+            name: (data.data.name as string) || '',
+            surname: (data.data.surname as string) || '',
+            formName: form.name,
+            subject: form.metadata.event_email_subject || 'Event Registration Confirmation',
+            content: form.metadata.event_email_content || 'Thank you for registering!',
+            eventDate: form.metadata.event_date,
+            eventLocation: form.metadata.event_location as string | undefined,
+          });
+        }
+      }
+    }
+    
+    return response;
   } catch (error) {
     console.error("Error submitting form response:", error);
     throw error;
+  }
+}
+
+async function sendEventConfirmationEmail({
+  to,
+  name,
+  surname,
+  formName,
+  subject,
+  content,
+  eventDate,
+  eventLocation,
+}: {
+  to: string;
+  name: string;
+  surname: string;
+  formName: string;
+  subject: string;
+  content: string;
+  eventDate?: string;
+  eventLocation?: string;
+}) {
+  try {
+    const { sendEmail } = await import("@/lib/repos/directus");
+    
+    // Generate calendar link
+    const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
+    const calendarUrl = eventDate 
+      ? `${formDomain}/api/calendar?title=${encodeURIComponent(formName)}&date=${encodeURIComponent(eventDate)}&location=${encodeURIComponent(eventLocation || '')}`
+      : null;
+    
+    const fullName = `${name} ${surname}`.trim() || 'Guest';
+    
+    // Replace placeholders in email content
+    let personalizedContent = content
+      .replace(/{name}/g, name || 'Guest')
+      .replace(/{surname}/g, surname || '')
+      .replace(/\n/g, '<br>');
+    
+    const emailHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .button { display: inline-block; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .button:hover { background-color: #0056b3; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h2>${subject}</h2>
+            <p>Dear ${fullName},</p>
+            <div>${personalizedContent}</div>
+            ${eventDate ? `<p><strong>Event Date:</strong> ${new Date(eventDate).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' })}</p>` : ''}
+            ${eventLocation ? `<p><strong>Location:</strong> ${eventLocation}</p>` : ''}
+            ${calendarUrl ? `
+              <p>
+                <a href="${calendarUrl}" class="button">📅 Add to Calendar</a>
+              </p>
+            ` : ''}
+            <p>Best regards,<br>The ${formName} Team</p>
+          </div>
+        </body>
+      </html>
+    `;
+    
+    await sendEmail({
+      to,
+      subject,
+      html: emailHtml,
+    });
+  } catch (error) {
+    console.error("Error sending event confirmation email:", error);
+    // Don't throw - email failure shouldn't prevent form submission
   }
 }
 // ===================== PUBLIC FORM ACTIONS =====================
@@ -229,99 +336,87 @@ export async function submitFormResponseAction(data: {
 // Upload file to Directus
 export async function uploadFileAction(formData: FormData) {
   try {
-    console.log('[uploadFileAction] Uploading file to Directus');
-
-    const { directus } = await import("@/lib/directus");
-    const { uploadFiles } = await import("@directus/sdk");
-
-    const file = formData.get('file') as File;
+    // Try to get the file from FormData
+    let file = formData.get('file') as File | null;
+    
+    // If file is not found, check all entries (for debugging)
     if (!file) {
-      throw new Error('No file provided');
+      const entries: string[] = [];
+      for (const [key, value] of formData.entries()) {
+        entries.push(`${key}: ${value instanceof File ? `File(${value.name})` : String(value)}`);
+      }
+      console.error('[uploadFileAction] FormData entries:', entries);
+      throw new Error('No file provided in FormData. Available entries: ' + entries.join(', '));
     }
 
-    console.log('[uploadFileAction] File:', file.name, file.size, 'bytes');
+    // Get Directus URL and auth token
+    const directusUrl = process.env.NEXT_PUBLIC_DIRECTUS_URL || process.env.DIRECTUS_URL;
+    if (!directusUrl) {
+      throw new Error('Directus URL not configured');
+    }
 
-    // Upload to Directus
-    const result = await directus.request(
-      uploadFiles(formData)
-    );
+    // Try to get auth token
+    const { cookies } = await import("next/headers");
+    const cookieStore = await cookies();
+    const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
+    const token = cookieStore.get(ACCESS_COOKIE)?.value;
 
-    console.log('[uploadFileAction] Upload successful:', result);
-    return result;
+    // Recreate FormData for upload
+    const uploadFormData = new FormData();
+    uploadFormData.append('file', file);
+
+    // Prepare headers
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    // Upload directly to Directus using fetch
+    const uploadUrl = `${directusUrl.replace(/\/$/, '')}/files`;
+    const response = await fetch(uploadUrl, {
+      method: 'POST',
+      headers,
+      body: uploadFormData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: 'Upload failed' }));
+      throw new Error(`Directus upload failed: ${errorData.message || response.statusText}`);
+    }
+
+    const result = await response.json();
+    
+    // Extract file ID from Directus response
+    const fileId = result?.data?.id || result?.id;
+    if (!fileId) {
+      throw new Error('Failed to extract file ID from upload result');
+    }
+
+    return { id: fileId };
   } catch (error) {
     console.error('[uploadFileAction] Error uploading file:', error);
     throw error;
   }
 }
 
-// DEBUG ACTION - Temporary for troubleshooting
-export async function debugFormsQueryAction() {
-  try {
-    console.log('[DEBUG] Starting debug query...');
-
-    // Import directly to test
-    const { getAuthedDirectusOrThrow } = await import("@/lib/directus");
-    const { readItems } = await import("@directus/sdk");
-
-    const client = await getAuthedDirectusOrThrow();
-    console.log('[DEBUG] Got Directus client');
-
-    // Try different query variations
-    const query1 = await client.request(
-      readItems("forms", {
-        fields: ["*"],
-      })
-    );
-    console.log('[DEBUG] Query 1 (fields: ["*"]):', JSON.stringify(query1, null, 2));
-
-    const query2 = await client.request(
-      readItems("forms", {
-        fields: ["*", "versions.*"],
-      })
-    );
-    console.log('[DEBUG] Query 2 (fields: ["*", "versions.*"]):', JSON.stringify(query2, null, 2));
-
-    const query3 = await client.request(
-      readItems("forms", {
-        fields: ["*", { versions: ["*"] }],
-      })
-    );
-    console.log('[DEBUG] Query 3 (fields: ["*", { versions: ["*"] }]):', JSON.stringify(query3, null, 2));
-
-    return {
-      query1Keys: Object.keys(query1[0] || {}),
-      query2Keys: Object.keys(query2[0] || {}),
-      query3Keys: Object.keys(query3[0] || {}),
-      hasVersionsInQuery1: !!(query1[0] as unknown as {versions?: unknown})?.versions,
-      hasVersionsInQuery2: !!(query2[0] as unknown as {versions?: unknown})?.versions,
-      hasVersionsInQuery3: !!(query3[0] as unknown as {versions?: unknown})?.versions,
-    };
-  } catch (error) {
-    console.error('[DEBUG] Error in debug query:', error);
-    throw error;
-  }
-}
-
 export async function fetchPublicFormBySlugAction(slug: string) {
   try {
-    console.log('[fetchPublicFormBySlugAction] Fetching form with slug:', slug);
-
-    const form = await getFormBySlug(slug);
-    console.log('[fetchPublicFormBySlugAction] Form data:', form ? 'Found' : 'Not found');
+    // Use dedicated public form fetcher that always uses public client
+    const form = await getPublicFormBySlug(slug);
 
     if (!form) {
-      console.log('[fetchPublicFormBySlugAction] No form found with slug:', slug);
       return null;
     }
 
-    console.log('[fetchPublicFormBySlugAction] Form has versions:', form.form_versions?.length || 0);  // Changed from versions to form_versions
+    // Check if form is disabled
+    if (form.is_active === false) {
+      return null;
+    }
 
     // Get the active version
-    const activeVersion = form.form_versions?.find((v) => v.is_active);  // Changed from versions to form_versions
-    console.log('[fetchPublicFormBySlugAction] Active version:', activeVersion ? `v${activeVersion.version_number}` : 'None');
+    const activeVersion = form.form_versions?.find((v) => v.is_active);
 
     if (!activeVersion) {
-      console.log('[fetchPublicFormBySlugAction] No active version found');
       return null;
     }
 
@@ -330,6 +425,7 @@ export async function fetchPublicFormBySlugAction(slug: string) {
       name: form.name,
       slug: form.slug,
       description: form.description,
+      metadata: form.metadata,
       activeVersion: {
         id: activeVersion.id,
         version_number: activeVersion.version_number,
@@ -337,7 +433,13 @@ export async function fetchPublicFormBySlugAction(slug: string) {
       },
     };
   } catch (error) {
-    console.error('[fetchPublicFormBySlugAction] Error fetching public form:', error);
+    // Log detailed error for debugging
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('[fetchPublicFormBySlugAction] Error fetching public form:', {
+      slug,
+      error: errorMessage,
+      hint: 'Check Directus permissions: Public role needs READ access to "forms" and "form_versions" collections'
+    });
     return null;
   }
 }

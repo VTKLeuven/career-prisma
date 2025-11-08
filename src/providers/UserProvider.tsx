@@ -19,7 +19,6 @@ export function UserProvider({
   initialUser: DirectusUser;
   children: React.ReactNode;
 }) {
-  console.log(initialUser)
   const [user, setUser] = useState<DirectusUser>(initialUser);
 
   return (

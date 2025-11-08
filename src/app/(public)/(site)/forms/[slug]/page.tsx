@@ -20,12 +20,17 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import type { FormField, FormSchema } from "@/lib/schema";
+import { formatDateBE } from "@/lib/date-utils";
 
 type PublicForm = {
   id: string;
   name: string;
   slug: string;
   description?: string;
+  metadata?: {
+    deadline?: string;
+    [key: string]: unknown;
+  };
   activeVersion: {
     id: string;
     version_number: number;
@@ -92,6 +97,16 @@ export default function PublicFormPage() {
       return;
     }
 
+    // Check deadline
+    if (form.metadata?.deadline) {
+      const deadline = new Date(form.metadata.deadline);
+      const now = new Date();
+      if (now > deadline) {
+        alert(`This form's deadline has passed. The deadline was ${formatDateBE(deadline)}.`);
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       await submitFormResponseAction({
@@ -107,6 +122,10 @@ export default function PublicFormPage() {
       setSubmitting(false);
     }
   };
+
+  const isDeadlinePassed = form?.metadata?.deadline 
+    ? new Date(form.metadata.deadline) < new Date()
+    : false;
 
   const handleFieldChange = (fieldName: string, value: unknown) => {
     setFormData((prev) => ({ ...prev, [fieldName]: value }));
@@ -178,11 +197,26 @@ export default function PublicFormPage() {
               {form.description && (
                 <CardDescription className="mt-2">{form.description}</CardDescription>
               )}
+              {form.metadata?.deadline && (
+                <div className="mt-2">
+                  <Badge variant={isDeadlinePassed ? "destructive" : "secondary"}>
+                    Deadline: {formatDateBE(form.metadata.deadline)}
+                    {isDeadlinePassed && " (Passed)"}
+                  </Badge>
+                </div>
+              )}
             </div>
             <Badge variant="outline">v{form.activeVersion.version_number}</Badge>
           </div>
         </CardHeader>
         <CardContent>
+          {isDeadlinePassed && (
+            <div className="mb-4 p-4 bg-destructive/10 border border-destructive rounded-md">
+              <p className="text-destructive font-medium">
+                This form's deadline has passed. Submissions are no longer accepted.
+              </p>
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-6">
             {form.activeVersion.schema.fields.map((field) => (
               <div key={field.id} className="space-y-2">
@@ -206,7 +240,7 @@ export default function PublicFormPage() {
               <Button type="button" variant="outline" onClick={() => router.back()}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting}>
+              <Button type="submit" disabled={submitting || isDeadlinePassed}>
                 {submitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -383,12 +417,21 @@ function FormFieldRenderer({
               const file = e.target.files?.[0];
               if (file) {
                 try {
-                  // Upload to Directus
+                  // Upload to Directus via API route
                   const formData = new FormData();
                   formData.append('file', file);
 
-                  const { uploadFileAction } = await import("@/app/actions/forms");
-                  const result = await uploadFileAction(formData);
+                  const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData,
+                  });
+
+                  if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: 'Upload failed' }));
+                    throw new Error(errorData.error || 'Upload failed');
+                  }
+
+                  const result = await response.json();
 
                   // Store the Directus file ID
                   onChange(result.id);
@@ -400,7 +443,7 @@ function FormFieldRenderer({
                   if (errorMessage.includes('permission') || errorMessage.includes('FORBIDDEN')) {
                     alert('File upload failed: Directus permissions not configured.\n\nPlease ask an administrator to enable CREATE permission for Public role on directus_files collection.');
                   } else {
-                    alert('Failed to upload file. Please try again or contact support.');
+                    alert(`Failed to upload file: ${errorMessage}. Please try again or contact support.`);
                   }
 
                   // Clear the file input

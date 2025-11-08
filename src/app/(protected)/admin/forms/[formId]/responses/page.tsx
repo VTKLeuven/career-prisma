@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { ArrowLeft, Download, Eye } from "lucide-react";
 import type { FormVersion, FormResponse } from "@/lib/schema";
+import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 
 export default function FormResponsesPage() {
   const params = useParams();
@@ -101,7 +102,7 @@ export default function FormResponsesPage() {
     const header = ['Submission Date', 'Response ID', ...fieldNames].join(',');
 
     const rows = responses.map(response => {
-      const date = new Date(response.submitted_at).toLocaleString();
+      const date = formatDateTimeBE(response.submitted_at);
       const values = fieldKeys.map(key => {
         const value = response.data[key];
         if (value === null || value === undefined) return '';
@@ -207,6 +208,35 @@ export default function FormResponsesPage() {
             </div>
           ) : (
             <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="py-3">
+                  <CardContent>
+                    <div className="text-2xl font-bold">{responses.length}</div>
+                    <div className="text-sm text-muted-foreground">Total Responses</div>
+                  </CardContent>
+                </Card>
+                <Card className="py-3">
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {responses.length > 0
+                        ? formatDateBE(responses[responses.length - 1].submitted_at)
+                        : "N/A"}
+                    </div>
+                    <div className="text-sm text-muted-foreground">First Response</div>
+                  </CardContent>
+                </Card>
+                <Card className="py-3">
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {responses.length > 0
+                        ? formatDateBE(responses[0].submitted_at)
+                        : "N/A"}
+                    </div>
+                    <div className="text-sm text-muted-foreground">Latest Response</div>
+                  </CardContent>
+                </Card>
+              </div>
+
               <div className="border rounded-lg overflow-hidden">
                 <Table>
                   <TableHeader>
@@ -221,7 +251,7 @@ export default function FormResponsesPage() {
                     {responses.map((response) => (
                       <TableRow key={response.id}>
                         <TableCell className="font-medium">
-                          {new Date(response.submitted_at).toLocaleString()}
+                          {formatDateTimeBE(response.submitted_at)}
                         </TableCell>
                         {selectedVersion?.schema.fields.map((field) => (
                           <TableCell key={field.id}>
@@ -232,31 +262,6 @@ export default function FormResponsesPage() {
                     ))}
                   </TableBody>
                 </Table>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-2xl font-bold">{responses.length}</div>
-                    <div className="text-sm text-muted-foreground">Total Responses</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-2xl font-bold">{selectedVersion?.schema.fields.length || 0}</div>
-                    <div className="text-sm text-muted-foreground">Form Fields</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-2xl font-bold">
-                      {responses.length > 0
-                        ? new Date(responses[responses.length - 1].submitted_at).toLocaleDateString()
-                        : "N/A"}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Latest Response</div>
-                  </CardContent>
-                </Card>
               </div>
             </div>
           )}
@@ -288,9 +293,21 @@ function formatFieldValue(value: unknown, fieldType: string): React.ReactNode {
   if (fieldType === "file") {
     if (!value) return <span className="text-muted-foreground italic">-</span>;
 
+    // Handle both file ID (string) and file object
+    let fileId: string;
+    if (typeof value === 'string') {
+      fileId = value;
+    } else if (typeof value === 'object' && value !== null) {
+      // If it's an object, try to get the id property
+      fileId = (value as { id?: string }).id || String(value);
+    } else {
+      console.error('Unexpected file value type:', typeof value, value);
+      return <span className="text-muted-foreground">Invalid file data</span>;
+    }
+
     return (
       <a
-        href={`/api/files/${value}`}
+        href={`/api/files/${fileId}`}
         target="_blank"
         rel="noopener noreferrer"
         className="text-blue-600 hover:underline flex items-center gap-1"

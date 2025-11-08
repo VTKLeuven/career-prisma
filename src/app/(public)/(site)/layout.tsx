@@ -12,7 +12,7 @@ import { CareerEvent } from '@/lib/schema'
 
 export default function NoSidebarLayout({ children }: { children: React.ReactNode }) {
     // simple shell without sidebar/header
-    return <main className="min-h-svh bg-vtk-bg text-neutral-900">
+    return <main className="min-h-svh bg-vtk-bg text-neutral-900 pt-28 md:pt-32">
         <Header />
         {children}</main>
 }
