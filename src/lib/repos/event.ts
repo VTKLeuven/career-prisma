@@ -74,7 +74,7 @@ export async function listEventPages(opts?: {
       });
     }
 
-    console.log("Fetched and sorted event pages:", sortedList);
+    // console.log("Fetched and sorted event pages:", sortedList);
     return sortedList;
   } catch (error) {
     console.error("Error fetching event pages:", error);

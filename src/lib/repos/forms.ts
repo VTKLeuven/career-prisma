@@ -95,9 +95,20 @@ export async function getPublicFormBySlug(slug: string) {
 export async function createForm(data: Partial<Form>) {
   try {
     const client = await getAuthedDirectusOrThrow();
-    return client.request(
-      createItem("forms", data)
+    // Remove metadata from form creation - it goes on form_version instead
+    const { metadata, ...formData } = data;
+    const created = await client.request(
+      createItem("forms", formData)
     ) as unknown as Form;
+    
+    // Refetch to get all fields
+    const result = await client.request(
+      readItem("forms", created.id, {
+        fields: ["*", "form_versions.*"],
+      })
+    ) as unknown as Form;
+    
+    return result;
   } catch (error) {
     console.error("Error creating form:", error);
     throw error;
@@ -107,14 +118,14 @@ export async function createForm(data: Partial<Form>) {
 export async function updateForm(id: string, data: Partial<Form>) {
   try {
     const client = await getAuthedDirectusOrThrow();
-    console.log('[updateForm] Updating form:', id, 'with data:', data);
+    // console.log('[updateForm] Updating form:', id, 'with data:', data);
     const result = await client.request(
       updateItem("forms", id, data)
     ) as unknown as Form;
-    console.log('[updateForm] Update successful, result:', result);
-    console.log('[updateForm] Result keys:', Object.keys(result as unknown as Record<string, unknown>));
-    console.log('[updateForm] Result has is_active:', 'is_active' in (result as unknown as Record<string, unknown>));
-    console.log('[updateForm] Result is_active value:', (result as unknown as Form).is_active);
+    // console.log('[updateForm] Update successful, result:', result);
+    // console.log('[updateForm] Result keys:', Object.keys(result as unknown as Record<string, unknown>));
+    // console.log('[updateForm] Result has is_active:', 'is_active' in (result as unknown as Record<string, unknown>));
+    // console.log('[updateForm] Result is_active value:', (result as unknown as Form).is_active);
     
     // Refetch to get updated data with all fields
     const updated = await client.request(
@@ -122,7 +133,7 @@ export async function updateForm(id: string, data: Partial<Form>) {
         fields: ["*", "form_versions.*"],
       })
     ) as unknown as Form;
-    console.log('[updateForm] Refetched form is_active:', updated.is_active);
+    // console.log('[updateForm] Refetched form is_active:', updated.is_active);
     return updated;
   } catch (error) {
     console.error("Error updating form:", error);
@@ -178,6 +189,15 @@ export async function createFormVersion(data: {
   schema: FormSchema;
   version_number: number;
   is_active?: boolean;
+  metadata?: {
+    deadline?: string;
+    is_event_registration?: boolean;
+    event_email_subject?: string;
+    event_email_content?: string;
+    event_date?: string;
+    event_location?: string;
+    [key: string]: unknown;
+  };
 }) {
   try {
     const client = await getAuthedDirectusOrThrow();

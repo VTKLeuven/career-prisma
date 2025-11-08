@@ -42,7 +42,7 @@ export async function fetchFormsAction(opts?: {
         slug: form.slug,
         description: form.description ?? "",
         is_active: form.is_active ?? true,
-        metadata: form.metadata,
+        metadata: (activeVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata, // Get metadata from active version
         created_at: form.created_at,
         updated_at: form.updated_at,
         activeVersion: activeVersion,
@@ -82,21 +82,24 @@ export async function createFormAction(data: {
   };
 }) {
   try {
+    console.log('[createFormAction] Received metadata:', JSON.stringify(data.metadata, null, 2));
     const form = await createForm({
       name: data.name,
       slug: data.slug,
       description: data.description,
-      metadata: data.metadata,
     });
+    console.log('[createFormAction] Created form:', JSON.stringify(form, null, 2));
 
-    // Create initial version if schema provided
+    // Create initial version if schema provided, with metadata
     if (data.initialSchema) {
-      await createFormVersion({
+      const version = await createFormVersion({
         form_id: form.id,
         schema: data.initialSchema,
         version_number: 1,
         is_active: true,
+        metadata: data.metadata, // Save metadata to form_version
       });
+      console.log('[createFormAction] Created version with metadata:', (version as FormVersion & { metadata?: Record<string, unknown> })?.metadata);
     }
 
     return form;
@@ -106,8 +109,24 @@ export async function createFormAction(data: {
   }
 }
 
-export async function updateFormAction(id: string, data: Partial<Form>) {
+export async function updateFormAction(id: string, data: Partial<Form & { metadata?: Record<string, unknown> }>) {
   try {
+    // If metadata is provided, we need to update the active form version instead
+    if (data.metadata !== undefined) {
+      // Get the form to find the active version
+      const form = await getFormById(id);
+      const activeVersion = form.form_versions?.find((v) => v.is_active);
+      
+      if (activeVersion) {
+        // Update the form version metadata
+        await updateFormVersion(activeVersion.id, { metadata: data.metadata } as Partial<FormVersion & { metadata?: Record<string, unknown> }>);
+      }
+      
+      // Remove metadata from form update data
+      const { metadata, ...formData } = data;
+      return await updateForm(id, formData);
+    }
+    
     return await updateForm(id, data);
   } catch (error) {
     console.error("Error updating form:", error);
@@ -232,17 +251,18 @@ export async function submitFormResponseAction(data: {
       if (formVersion) {
         const formId = typeof formVersion.form_id === 'string' ? formVersion.form_id : formVersion.form_id.id;
         const form = await getFormById(formId);
+        const versionMetadata = (formVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata;
         
-        if (form?.metadata?.is_event_registration) {
+        if (versionMetadata?.is_event_registration) {
           await sendEventConfirmationEmail({
             to: data.data.email as string,
             name: (data.data.name as string) || '',
             surname: (data.data.surname as string) || '',
             formName: form.name,
-            subject: form.metadata.event_email_subject || 'Event Registration Confirmation',
-            content: form.metadata.event_email_content || 'Thank you for registering!',
-            eventDate: form.metadata.event_date,
-            eventLocation: form.metadata.event_location as string | undefined,
+            subject: (versionMetadata.event_email_subject as string) || 'Event Registration Confirmation',
+            content: (versionMetadata.event_email_content as string) || 'Thank you for registering!',
+            eventDate: versionMetadata.event_date as string | undefined,
+            eventLocation: versionMetadata.event_location as string | undefined,
           });
         }
       }
@@ -286,10 +306,16 @@ async function sendEventConfirmationEmail({
     const fullName = `${name} ${surname}`.trim() || 'Guest';
     
     // Replace placeholders in email content
+    // If content is already HTML (from TipTap), just replace placeholders
+    // Otherwise, convert newlines to <br>
     let personalizedContent = content
       .replace(/{name}/g, name || 'Guest')
-      .replace(/{surname}/g, surname || '')
-      .replace(/\n/g, '<br>');
+      .replace(/{surname}/g, surname || '');
+    
+    // Only convert newlines if content doesn't appear to be HTML
+    if (!personalizedContent.includes('<') || !personalizedContent.includes('>')) {
+      personalizedContent = personalizedContent.replace(/\n/g, '<br>');
+    }
     
     const emailHtml = `
       <!DOCTYPE html>
@@ -425,7 +451,7 @@ export async function fetchPublicFormBySlugAction(slug: string) {
       name: form.name,
       slug: form.slug,
       description: form.description,
-      metadata: form.metadata,
+      metadata: (activeVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata, // Get metadata from active version
       activeVersion: {
         id: activeVersion.id,
         version_number: activeVersion.version_number,

@@ -2,6 +2,14 @@
 
 import * as React from "react";
 import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
+import { useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+
+const EditorContent = dynamic(
+  () => import("@tiptap/react").then((mod) => mod.EditorContent),
+  { ssr: false }
+);
 import {
   fetchFormsAction,
   createFormAction,
@@ -41,9 +49,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power } from "lucide-react";
+import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power, ChevronUp, ChevronDown } from "lucide-react";
 import { useUser } from "@/providers/UserProvider";
-import type { FormSchema, FormField } from "@/lib/schema";
+import type { FormSchema, FormField, Form } from "@/lib/schema";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
@@ -76,6 +84,12 @@ export default function AdminFormsPage() {
     setLoading(true);
     try {
       const data = await fetchFormsAction();
+      console.log('[AdminFormsPage] Loaded forms:', data.map(f => ({ 
+        id: f.id, 
+        name: f.name, 
+        metadata: f.metadata,
+        deadline: f.metadata?.deadline 
+      })));
       setForms(data);
     } catch (error) {
       console.error("[AdminFormsPage] Error loading forms:", error);
@@ -155,7 +169,7 @@ export default function AdminFormsPage() {
                     <TableCell>
                       {form.metadata?.deadline ? (
                         <span className={new Date(form.metadata.deadline) < new Date() ? 'text-destructive' : ''}>
-                          {formatDateBE(form.metadata.deadline)}
+                          {formatDateTimeBE(form.metadata.deadline)}
                         </span>
                       ) : (
                         <span className="text-muted-foreground">No deadline</span>
@@ -182,6 +196,9 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
+  const [deadline, setDeadline] = useState("");
+  const [deadlineDateDisplay, setDeadlineDateDisplay] = useState("");
+  const [deadlineTimeDisplay, setDeadlineTimeDisplay] = useState("");
   const [isEventRegistration, setIsEventRegistration] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -205,6 +222,7 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
             type: "text",
             required: true,
             placeholder: "Enter your first name",
+            layout: "half",
           },
           {
             id: `field_${Date.now()}_2`,
@@ -213,6 +231,7 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
             type: "text",
             required: true,
             placeholder: "Enter your last name",
+            layout: "half",
           },
           {
             id: `field_${Date.now()}_3`,
@@ -221,6 +240,7 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
             type: "email",
             required: true,
             placeholder: "Enter your email address",
+            layout: "full",
           },
         ];
       }
@@ -229,24 +249,80 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
         fields: initialFields,
       };
 
-      const metadata = isEventRegistration ? {
-        is_event_registration: true,
-        event_email_subject: "Event Registration Confirmation",
-        event_email_content: "Thank you for registering! We look forward to seeing you at the event.",
-      } : undefined;
+      const metadata: { [key: string]: unknown } = {};
+      
+      if (isEventRegistration) {
+        metadata.is_event_registration = true;
+        metadata.event_email_subject = "Event Registration Confirmation";
+        metadata.event_email_content = "Thank you for registering! We look forward to seeing you at the event.";
+      }
+      
+      // Construct deadline from state or display values
+      let deadlineToUse = deadline;
+      if (!deadlineToUse && deadlineDateDisplay && deadlineTimeDisplay) {
+        // If deadline state is empty but we have display values, construct it
+        const dateMatch = deadlineDateDisplay.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        const timeMatch = deadlineTimeDisplay.match(/^(\d{2}):(\d{2})$/);
+        if (dateMatch && timeMatch) {
+          const day = dateMatch[1];
+          const month = dateMatch[2];
+          const year = dateMatch[3];
+          const hours = timeMatch[1];
+          const minutes = timeMatch[2];
+          deadlineToUse = `${year}-${month}-${day}T${hours}:${minutes}`;
+        }
+      }
+      
+      if (deadlineToUse) {
+        // Convert to ISO string format for storage
+        // Ensure deadline is in proper format (YYYY-MM-DDTHH:mm or YYYY-MM-DDTHH:mm:ss)
+        let deadlineStr = deadlineToUse.trim();
+        
+        if (deadlineStr.includes('T')) {
+          // Has date and time
+          const [datePart, timePart] = deadlineStr.split('T');
+          // Check if time has seconds (HH:mm:ss has 2 colons, HH:mm has 1 colon)
+          const colonCount = (timePart.match(/:/g) || []).length;
+          if (colonCount === 1) {
+            // Only HH:mm, add :00 for seconds
+            deadlineStr = `${datePart}T${timePart}:00`;
+          }
+        } else {
+          // Only date, add time 23:59:59 as default
+          deadlineStr = deadlineStr + 'T23:59:59';
+        }
+        
+        const deadlineDate = new Date(deadlineStr);
+        // Validate the date is valid
+        if (isNaN(deadlineDate.getTime())) {
+          console.error('Invalid deadline format:', deadlineToUse);
+          throw new Error('Invalid deadline format. Please use format: dd/mm/yyyy HH:mm');
+        }
+        metadata.deadline = deadlineDate.toISOString();
+      }
+
+      console.log('[CreateFormDialog] Submitting form with metadata:', metadata);
+      console.log('[CreateFormDialog] Deadline state:', deadline);
+      console.log('[CreateFormDialog] Deadline date display:', deadlineDateDisplay);
+      console.log('[CreateFormDialog] Deadline time display:', deadlineTimeDisplay);
+      console.log('[CreateFormDialog] Deadline to use:', deadlineToUse);
+      console.log('[CreateFormDialog] Deadline ISO:', metadata.deadline);
 
       await createFormAction({
         name,
         slug,
         description,
         initialSchema,
-        metadata,
+        metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
       });
 
       setOpen(false);
       setName("");
       setSlug("");
       setDescription("");
+      setDeadline("");
+      setDeadlineDateDisplay("");
+      setDeadlineTimeDisplay("");
       setIsEventRegistration(false);
       onFormCreated();
     } catch (error) {
@@ -313,6 +389,284 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
               placeholder="Brief description of this form..."
               rows={3}
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="deadline">Deadline (Optional)</Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <Input
+                id="deadline-date"
+                type="text"
+                value={deadlineDateDisplay}
+                placeholder="dd/mm/yyyy"
+                onChange={(e) => {
+                  const input = e.target.value;
+                  // Remove all non-digit and non-slash characters
+                  let cleaned = input.replace(/[^\d/]/g, '');
+                  
+                  // Limit format to dd/mm/yyyy (max 10 chars: dd/mm/yyyy)
+                  if (cleaned.length > 10) {
+                    cleaned = cleaned.slice(0, 10);
+                  }
+                  
+                  // Auto-format as user types: dd/mm/yyyy
+                  let formatted = '';
+                  const digits = cleaned.replace(/\//g, '');
+                  
+                  for (let i = 0; i < digits.length && i < 8; i++) {
+                    if (i === 2 || i === 4) {
+                      formatted += '/';
+                    }
+                    formatted += digits[i];
+                  }
+                  
+                  setDeadlineDateDisplay(formatted);
+                  
+                  // Parse dd/mm/yyyy and convert to ISO format
+                  if (formatted.length === 10) {
+                    const match = formatted.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+                    if (match) {
+                      const day = parseInt(match[1]);
+                      const month = parseInt(match[2]);
+                      const year = parseInt(match[3]);
+                      
+                      // Validate date
+                      if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000) {
+                        const date = new Date(year, month - 1, day);
+                        // Verify the date is valid (handles invalid dates like 31/02/2024)
+                        if (date.getFullYear() === year && 
+                            date.getMonth() === month - 1 && 
+                            date.getDate() === day) {
+                          const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                          
+                          // If we have a time display, use it; otherwise just set the date
+                          if (deadlineTimeDisplay && deadlineTimeDisplay.length === 5) {
+                            const timeDigits = deadlineTimeDisplay.replace(/\D/g, '');
+                            if (timeDigits.length === 4) {
+                              const hours = timeDigits.slice(0, 2);
+                              const minutes = timeDigits.slice(2, 4);
+                              const hoursNum = parseInt(hours);
+                              const minutesNum = parseInt(minutes);
+                              if (hoursNum >= 0 && hoursNum <= 23 && minutesNum >= 0 && minutesNum <= 59) {
+                                setDeadline(`${isoDate}T${hours}:${minutes}`);
+                              } else {
+                                setDeadline(isoDate);
+                              }
+                            } else {
+                              setDeadline(isoDate);
+                            }
+                          } else {
+                            setDeadline(isoDate);
+                          }
+                        }
+                      }
+                    }
+                  } else if (formatted.length === 0) {
+                    // Clear deadline if input is empty
+                    setDeadline('');
+                  }
+                }}
+                onBlur={(e) => {
+                  // Validate and fix format on blur
+                  const value = e.target.value;
+                  if (value && value.length < 10) {
+                    // If incomplete, clear it
+                    setDeadlineDateDisplay('');
+                    const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
+                    if (dateValue) {
+                      setDeadline(dateValue);
+                    } else {
+                      setDeadline('');
+                    }
+                  }
+                }}
+              />
+              <Input
+                id="deadline-time"
+                type="text"
+                value={deadlineTimeDisplay}
+                placeholder="HH:MM (e.g., 18:30)"
+                onChange={(e) => {
+                  const input = e.target.value;
+                  // Remove all non-digit characters
+                  const digits = input.replace(/\D/g, '');
+                  
+                  // Validate and limit digits as user types
+                  let validatedDigits = '';
+                  
+                  for (let i = 0; i < digits.length && i < 4; i++) {
+                    const digit = parseInt(digits[i]);
+                    
+                    if (i === 0) {
+                      // First digit (hours tens): 0-2
+                      if (digit >= 0 && digit <= 2) {
+                        validatedDigits += digits[i];
+                      }
+                    } else if (i === 1) {
+                      // Second digit (hours ones)
+                      const firstDigit = parseInt(validatedDigits[0]);
+                      if (firstDigit === 0 || firstDigit === 1) {
+                        // If first digit is 0 or 1, second can be 0-9
+                        validatedDigits += digits[i];
+                      } else if (firstDigit === 2) {
+                        // If first digit is 2, second can only be 0-3
+                        if (digit >= 0 && digit <= 3) {
+                          validatedDigits += digits[i];
+                        }
+                      }
+                    } else if (i === 2) {
+                      // Third digit (minutes tens): 0-5
+                      if (digit >= 0 && digit <= 5) {
+                        validatedDigits += digits[i];
+                      }
+                    } else if (i === 3) {
+                      // Fourth digit (minutes ones): 0-9
+                      validatedDigits += digits[i];
+                    }
+                  }
+                  
+                  // Format as HH:MM
+                  let formatted = '';
+                  if (validatedDigits.length === 0) {
+                    formatted = '';
+                  } else if (validatedDigits.length === 1) {
+                    formatted = validatedDigits;
+                  } else if (validatedDigits.length === 2) {
+                    formatted = `${validatedDigits}:`;
+                  } else if (validatedDigits.length === 3) {
+                    formatted = `${validatedDigits.slice(0, 2)}:${validatedDigits.slice(2)}`;
+                  } else {
+                    formatted = `${validatedDigits.slice(0, 2)}:${validatedDigits.slice(2, 4)}`;
+                  }
+                  
+                  setDeadlineTimeDisplay(formatted);
+                  
+                  // Update deadline if we have a complete time
+                  if (validatedDigits.length === 4) {
+                    const hours = validatedDigits.slice(0, 2);
+                    const minutes = validatedDigits.slice(2, 4);
+                    const hoursNum = parseInt(hours);
+                    const minutesNum = parseInt(minutes);
+                    
+                    // Final validation (should always pass due to above checks, but double-check)
+                    if (hoursNum >= 0 && hoursNum <= 23 && minutesNum >= 0 && minutesNum <= 59) {
+                      // Get date from deadline if it exists, otherwise parse from deadlineDateDisplay
+                      let dateValue = '';
+                      if (deadline && deadline.includes('T')) {
+                        dateValue = deadline.split('T')[0];
+                      } else if (deadlineDateDisplay && deadlineDateDisplay.length === 10) {
+                        // Parse dd/mm/yyyy format
+                        const match = deadlineDateDisplay.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+                        if (match) {
+                          const day = parseInt(match[1]);
+                          const month = parseInt(match[2]);
+                          const year = parseInt(match[3]);
+                          if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000) {
+                            const date = new Date(year, month - 1, day);
+                            if (date.getFullYear() === year && 
+                                date.getMonth() === month - 1 && 
+                                date.getDate() === day) {
+                              dateValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                            }
+                          }
+                        }
+                      }
+                      if (dateValue) {
+                        setDeadline(`${dateValue}T${hours}:${minutes}`);
+                      }
+                    }
+                  } else if (validatedDigits.length === 0) {
+                    // Clear deadline time if input is empty
+                    const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
+                    if (dateValue) {
+                      setDeadline(dateValue);
+                    } else {
+                      setDeadline('');
+                    }
+                  }
+                }}
+                onKeyDown={(e) => {
+                  // Handle backspace to remove characters progressively
+                  if (e.key === 'Backspace' && deadlineTimeDisplay) {
+                    e.preventDefault();
+                    const digits = deadlineTimeDisplay.replace(/\D/g, '');
+                    
+                    if (digits.length === 0) {
+                      setDeadlineTimeDisplay('');
+                      const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
+                      if (dateValue) {
+                        setDeadline(dateValue);
+                      } else {
+                        setDeadline('');
+                      }
+                    } else {
+                      // Remove last digit
+                      const newDigits = digits.slice(0, -1);
+                      
+                      // Reformat
+                      let formatted = '';
+                      if (newDigits.length === 0) {
+                        formatted = '';
+                      } else if (newDigits.length === 1) {
+                        formatted = `${newDigits}:`;
+                      } else if (newDigits.length === 2) {
+                        formatted = `${newDigits}:`;
+                      } else if (newDigits.length === 3) {
+                        formatted = `${newDigits.slice(0, 2)}:${newDigits.slice(2)}`;
+                      } else {
+                        formatted = `${newDigits.slice(0, 2)}:${newDigits.slice(2, 4)}`;
+                      }
+                      
+                      setDeadlineTimeDisplay(formatted);
+                      
+                      // Update deadline
+                      if (newDigits.length === 4) {
+                        const hours = newDigits.slice(0, 2);
+                        const minutes = newDigits.slice(2, 4);
+                        const hoursNum = parseInt(hours);
+                        const minutesNum = parseInt(minutes);
+                        
+                        if (hoursNum >= 0 && hoursNum <= 23 && minutesNum >= 0 && minutesNum <= 59) {
+                          // Get date from deadline if it exists, otherwise parse from deadlineDateDisplay
+                          let dateValue = '';
+                          if (deadline && deadline.includes('T')) {
+                            dateValue = deadline.split('T')[0];
+                          } else if (deadlineDateDisplay && deadlineDateDisplay.length === 10) {
+                            // Parse dd/mm/yyyy format
+                            const match = deadlineDateDisplay.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+                            if (match) {
+                              const day = parseInt(match[1]);
+                              const month = parseInt(match[2]);
+                              const year = parseInt(match[3]);
+                              if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000) {
+                                const date = new Date(year, month - 1, day);
+                                if (date.getFullYear() === year && 
+                                    date.getMonth() === month - 1 && 
+                                    date.getDate() === day) {
+                                  dateValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                                }
+                              }
+                            }
+                          }
+                          if (dateValue) {
+                            setDeadline(`${dateValue}T${hours}:${minutes}`);
+                          }
+                        }
+                      } else {
+                        const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
+                        if (dateValue) {
+                          setDeadline(dateValue);
+                        } else {
+                          setDeadline('');
+                        }
+                      }
+                    }
+                  }
+                }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Set a deadline (date and time) for form submissions. After this time, users cannot submit the form. Date format: dd/mm/yyyy. Time format: 24-hour (e.g., 23:59).
+            </p>
           </div>
           <div className="flex items-center space-x-2">
             <Checkbox
@@ -456,8 +810,10 @@ function EditFormDialog({
   const [slug, setSlug] = useState(form.slug);
   const [description, setDescription] = useState(form.description);
   const [deadline, setDeadline] = useState(
-    form.metadata?.deadline ? new Date(form.metadata.deadline).toISOString().split('T')[0] : ''
+    form.metadata?.deadline ? new Date(form.metadata.deadline).toISOString().slice(0, 16) : ''
   );
+  const [deadlineDateDisplay, setDeadlineDateDisplay] = useState("");
+  const [deadlineTimeDisplay, setDeadlineTimeDisplay] = useState("");
   const [eventEmailSubject, setEventEmailSubject] = useState(
     (form.metadata?.event_email_subject as string) || ''
   );
@@ -473,12 +829,56 @@ function EditFormDialog({
   const [loading, setLoading] = useState(false);
   const isEventRegistration = form.metadata?.is_event_registration === true;
 
+  // TipTap editor for email content - only create when dialog is open and on client
+  const [isClient, setIsClient] = useState(false);
+  
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  const emailEditor = useEditor({
+    extensions: [StarterKit],
+    content: eventEmailContent,
+    onUpdate({ editor }) {
+      setEventEmailContent(editor.getHTML());
+    },
+    editorProps: {
+      attributes: {
+        class: "border rounded-md p-3 bg-background text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-ring",
+      },
+    },
+    immediatelyRender: false,
+    editable: open && isClient, // Only editable when dialog is open and on client
+  });
+
+  // Update editor content when form changes or dialog opens
+  useEffect(() => {
+    if (open && isClient && emailEditor && isEventRegistration) {
+      const content = (form.metadata?.event_email_content as string) || '';
+      emailEditor.commands.setContent(content);
+      setEventEmailContent(content);
+      emailEditor.setEditable(true);
+    } else if (!open && emailEditor) {
+      emailEditor.setEditable(false);
+    }
+  }, [open, isClient, form, emailEditor, isEventRegistration]);
+
   useEffect(() => {
     if (open) {
       setName(form.name);
       setSlug(form.slug);
       setDescription(form.description);
-      setDeadline(form.metadata?.deadline ? new Date(form.metadata.deadline).toISOString().split('T')[0] : '');
+      const deadlineValue = form.metadata?.deadline ? new Date(form.metadata.deadline).toISOString().slice(0, 16) : '';
+      setDeadline(deadlineValue);
+      if (deadlineValue) {
+        const formatted = formatDateTimeBE(deadlineValue);
+        const [datePart, timePart] = formatted.split(' ');
+        setDeadlineDateDisplay(datePart || '');
+        setDeadlineTimeDisplay(timePart || '');
+      } else {
+        setDeadlineDateDisplay('');
+        setDeadlineTimeDisplay('');
+      }
       setEventEmailSubject((form.metadata?.event_email_subject as string) || '');
       setEventEmailContent((form.metadata?.event_email_content as string) || '');
       setEventDate(form.metadata?.event_date ? new Date(form.metadata.event_date as string).toISOString().slice(0, 16) : '');
@@ -495,7 +895,31 @@ function EditFormDialog({
       let metadata: { [key: string]: unknown } | undefined = form.metadata ? { ...form.metadata } : undefined;
       
       if (deadline) {
-        metadata = { ...metadata, deadline };
+        // Convert to ISO string format for storage
+        // Ensure deadline is in proper format (YYYY-MM-DDTHH:mm or YYYY-MM-DDTHH:mm:ss)
+        let deadlineStr = deadline.trim();
+        
+        if (deadlineStr.includes('T')) {
+          // Has date and time
+          const [datePart, timePart] = deadlineStr.split('T');
+          // Check if time has seconds (HH:mm:ss has 2 colons, HH:mm has 1 colon)
+          const colonCount = (timePart.match(/:/g) || []).length;
+          if (colonCount === 1) {
+            // Only HH:mm, add :00 for seconds
+            deadlineStr = `${datePart}T${timePart}:00`;
+          }
+        } else {
+          // Only date, add time 23:59:59 as default
+          deadlineStr = deadlineStr + 'T23:59:59';
+        }
+        
+        const deadlineDate = new Date(deadlineStr);
+        // Validate the date is valid
+        if (isNaN(deadlineDate.getTime())) {
+          console.error('Invalid deadline format:', deadline);
+          throw new Error('Invalid deadline format. Please use format: dd/mm/yyyy HH:mm');
+        }
+        metadata = { ...metadata, deadline: deadlineDate.toISOString() };
       } else if (metadata?.deadline) {
         delete metadata.deadline;
       }
@@ -521,8 +945,8 @@ function EditFormDialog({
         name, 
         slug, 
         description,
-        metadata
-      });
+        metadata,
+      } as Partial<Form>);
       onOpenChange(false);
       onUpdate();
     } catch (error) {
@@ -569,14 +993,280 @@ function EditFormDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="edit-deadline">Deadline (Optional)</Label>
-            <Input
-              id="edit-deadline"
-              type="date"
-              value={deadline}
-              onChange={(e) => setDeadline(e.target.value)}
-            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <Input
+                id="edit-deadline-date"
+                type="text"
+                value={deadlineDateDisplay}
+                placeholder="dd/mm/yyyy"
+                onChange={(e) => {
+                  const input = e.target.value;
+                  // Remove all non-digit and non-slash characters
+                  let cleaned = input.replace(/[^\d/]/g, '');
+                  
+                  // Limit format to dd/mm/yyyy (max 10 chars: dd/mm/yyyy)
+                  if (cleaned.length > 10) {
+                    cleaned = cleaned.slice(0, 10);
+                  }
+                  
+                  // Auto-format as user types: dd/mm/yyyy
+                  let formatted = '';
+                  const digits = cleaned.replace(/\//g, '');
+                  
+                  for (let i = 0; i < digits.length && i < 8; i++) {
+                    if (i === 2 || i === 4) {
+                      formatted += '/';
+                    }
+                    formatted += digits[i];
+                  }
+                  
+                  setDeadlineDateDisplay(formatted);
+                  
+                  // Parse dd/mm/yyyy and convert to ISO format
+                  if (formatted.length === 10) {
+                    const match = formatted.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+                    if (match) {
+                      const day = parseInt(match[1]);
+                      const month = parseInt(match[2]);
+                      const year = parseInt(match[3]);
+                      
+                      // Validate date
+                      if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000) {
+                        const date = new Date(year, month - 1, day);
+                        // Verify the date is valid (handles invalid dates like 31/02/2024)
+                        if (date.getFullYear() === year && 
+                            date.getMonth() === month - 1 && 
+                            date.getDate() === day) {
+                          const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                          
+                          // If we have a time display, use it; otherwise just set the date
+                          if (deadlineTimeDisplay && deadlineTimeDisplay.length === 5) {
+                            const timeDigits = deadlineTimeDisplay.replace(/\D/g, '');
+                            if (timeDigits.length === 4) {
+                              const hours = timeDigits.slice(0, 2);
+                              const minutes = timeDigits.slice(2, 4);
+                              const hoursNum = parseInt(hours);
+                              const minutesNum = parseInt(minutes);
+                              if (hoursNum >= 0 && hoursNum <= 23 && minutesNum >= 0 && minutesNum <= 59) {
+                                setDeadline(`${isoDate}T${hours}:${minutes}`);
+                              } else {
+                                setDeadline(isoDate);
+                              }
+                            } else {
+                              setDeadline(isoDate);
+                            }
+                          } else {
+                            setDeadline(isoDate);
+                          }
+                        }
+                      }
+                    }
+                  } else if (formatted.length === 0) {
+                    // Clear deadline if input is empty
+                    setDeadline('');
+                  }
+                }}
+                onBlur={(e) => {
+                  // Validate and fix format on blur
+                  const value = e.target.value;
+                  if (value && value.length < 10) {
+                    // If incomplete, clear it
+                    setDeadlineDateDisplay('');
+                    const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
+                    if (dateValue) {
+                      setDeadline(dateValue);
+                    } else {
+                      setDeadline('');
+                    }
+                  }
+                }}
+              />
+              <Input
+                id="edit-deadline-time"
+                type="text"
+                value={deadlineTimeDisplay}
+                placeholder="HH:MM (e.g., 18:30)"
+                onChange={(e) => {
+                  const input = e.target.value;
+                  // Remove all non-digit characters
+                  const digits = input.replace(/\D/g, '');
+                  
+                  // Validate and limit digits as user types
+                  let validatedDigits = '';
+                  
+                  for (let i = 0; i < digits.length && i < 4; i++) {
+                    const digit = parseInt(digits[i]);
+                    
+                    if (i === 0) {
+                      // First digit (hours tens): 0-2
+                      if (digit >= 0 && digit <= 2) {
+                        validatedDigits += digits[i];
+                      }
+                    } else if (i === 1) {
+                      // Second digit (hours ones)
+                      const firstDigit = parseInt(validatedDigits[0]);
+                      if (firstDigit === 0 || firstDigit === 1) {
+                        // If first digit is 0 or 1, second can be 0-9
+                        validatedDigits += digits[i];
+                      } else if (firstDigit === 2) {
+                        // If first digit is 2, second can only be 0-3
+                        if (digit >= 0 && digit <= 3) {
+                          validatedDigits += digits[i];
+                        }
+                      }
+                    } else if (i === 2) {
+                      // Third digit (minutes tens): 0-5
+                      if (digit >= 0 && digit <= 5) {
+                        validatedDigits += digits[i];
+                      }
+                    } else if (i === 3) {
+                      // Fourth digit (minutes ones): 0-9
+                      validatedDigits += digits[i];
+                    }
+                  }
+                  
+                  // Format as HH:MM
+                  let formatted = '';
+                  if (validatedDigits.length === 0) {
+                    formatted = '';
+                  } else if (validatedDigits.length === 1) {
+                    formatted = validatedDigits;
+                  } else if (validatedDigits.length === 2) {
+                    formatted = `${validatedDigits}:`;
+                  } else if (validatedDigits.length === 3) {
+                    formatted = `${validatedDigits.slice(0, 2)}:${validatedDigits.slice(2)}`;
+                  } else {
+                    formatted = `${validatedDigits.slice(0, 2)}:${validatedDigits.slice(2, 4)}`;
+                  }
+                  
+                  setDeadlineTimeDisplay(formatted);
+                  
+                  // Update deadline if we have a complete time
+                  if (validatedDigits.length === 4) {
+                    const hours = validatedDigits.slice(0, 2);
+                    const minutes = validatedDigits.slice(2, 4);
+                    const hoursNum = parseInt(hours);
+                    const minutesNum = parseInt(minutes);
+                    
+                    // Final validation (should always pass due to above checks, but double-check)
+                    if (hoursNum >= 0 && hoursNum <= 23 && minutesNum >= 0 && minutesNum <= 59) {
+                      // Get date from deadline if it exists, otherwise parse from deadlineDateDisplay
+                      let dateValue = '';
+                      if (deadline && deadline.includes('T')) {
+                        dateValue = deadline.split('T')[0];
+                      } else if (deadlineDateDisplay && deadlineDateDisplay.length === 10) {
+                        // Parse dd/mm/yyyy format
+                        const match = deadlineDateDisplay.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+                        if (match) {
+                          const day = parseInt(match[1]);
+                          const month = parseInt(match[2]);
+                          const year = parseInt(match[3]);
+                          if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000) {
+                            const date = new Date(year, month - 1, day);
+                            if (date.getFullYear() === year && 
+                                date.getMonth() === month - 1 && 
+                                date.getDate() === day) {
+                              dateValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                            }
+                          }
+                        }
+                      }
+                      if (dateValue) {
+                        setDeadline(`${dateValue}T${hours}:${minutes}`);
+                      }
+                    }
+                  } else if (validatedDigits.length === 0) {
+                    // Clear deadline time if input is empty
+                    const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
+                    if (dateValue) {
+                      setDeadline(dateValue);
+                    } else {
+                      setDeadline('');
+                    }
+                  }
+                }}
+                onKeyDown={(e) => {
+                  // Handle backspace to remove characters progressively
+                  if (e.key === 'Backspace' && deadlineTimeDisplay) {
+                    e.preventDefault();
+                    const digits = deadlineTimeDisplay.replace(/\D/g, '');
+                    
+                    if (digits.length === 0) {
+                      setDeadlineTimeDisplay('');
+                      const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
+                      if (dateValue) {
+                        setDeadline(dateValue);
+                      } else {
+                        setDeadline('');
+                      }
+                    } else {
+                      // Remove last digit
+                      const newDigits = digits.slice(0, -1);
+                      
+                      // Reformat
+                      let formatted = '';
+                      if (newDigits.length === 0) {
+                        formatted = '';
+                      } else if (newDigits.length === 1) {
+                        formatted = `${newDigits}:`;
+                      } else if (newDigits.length === 2) {
+                        formatted = `${newDigits}:`;
+                      } else if (newDigits.length === 3) {
+                        formatted = `${newDigits.slice(0, 2)}:${newDigits.slice(2)}`;
+                      } else {
+                        formatted = `${newDigits.slice(0, 2)}:${newDigits.slice(2, 4)}`;
+                      }
+                      
+                      setDeadlineTimeDisplay(formatted);
+                      
+                      // Update deadline
+                      if (newDigits.length === 4) {
+                        const hours = newDigits.slice(0, 2);
+                        const minutes = newDigits.slice(2, 4);
+                        const hoursNum = parseInt(hours);
+                        const minutesNum = parseInt(minutes);
+                        
+                        if (hoursNum >= 0 && hoursNum <= 23 && minutesNum >= 0 && minutesNum <= 59) {
+                          // Get date from deadline if it exists, otherwise parse from deadlineDateDisplay
+                          let dateValue = '';
+                          if (deadline && deadline.includes('T')) {
+                            dateValue = deadline.split('T')[0];
+                          } else if (deadlineDateDisplay && deadlineDateDisplay.length === 10) {
+                            // Parse dd/mm/yyyy format
+                            const match = deadlineDateDisplay.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+                            if (match) {
+                              const day = parseInt(match[1]);
+                              const month = parseInt(match[2]);
+                              const year = parseInt(match[3]);
+                              if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000) {
+                                const date = new Date(year, month - 1, day);
+                                if (date.getFullYear() === year && 
+                                    date.getMonth() === month - 1 && 
+                                    date.getDate() === day) {
+                                  dateValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                                }
+                              }
+                            }
+                          }
+                          if (dateValue) {
+                            setDeadline(`${dateValue}T${hours}:${minutes}`);
+                          }
+                        }
+                      } else {
+                        const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
+                        if (dateValue) {
+                          setDeadline(dateValue);
+                        } else {
+                          setDeadline('');
+                        }
+                      }
+                    }
+                  }
+                }}
+              />
+            </div>
             <p className="text-xs text-muted-foreground">
-              Set a deadline for form submissions. Leave empty for no deadline.
+              Set a deadline (date and time) for form submissions. After this time, users cannot submit the form. Date format: dd/mm/yyyy. Time format: 24-hour (e.g., 23:59).
             </p>
           </div>
           
@@ -594,15 +1284,27 @@ function EditFormDialog({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-event-email-content">Email Content</Label>
-                <Textarea
-                  id="edit-event-email-content"
-                  value={eventEmailContent}
-                  onChange={(e) => setEventEmailContent(e.target.value)}
-                  placeholder="Thank you for registering! We look forward to seeing you at the event."
-                  rows={4}
-                />
+                {open && isClient && emailEditor && isEventRegistration ? (
+                  <div className="border rounded-md min-h-[150px]">
+                    <EditorContent editor={emailEditor} />
+                  </div>
+                ) : (
+                  <Textarea
+                    id="edit-event-email-content"
+                    value={eventEmailContent}
+                    onChange={(e) => {
+                      setEventEmailContent(e.target.value);
+                      // Also update editor if it exists
+                      if (emailEditor && isClient) {
+                        emailEditor.commands.setContent(e.target.value);
+                      }
+                    }}
+                    placeholder="Thank you for registering! We look forward to seeing you at the event."
+                    rows={6}
+                  />
+                )}
                 <p className="text-xs text-muted-foreground">
-                  This content will be sent in the confirmation email. Use {`{name}`} and {`{surname}`} to personalize.
+                  This content will be sent in the confirmation email. Use {`{name}`} and {`{surname}`} to personalize. You can format text with bold, italic, lists, etc.
                 </p>
               </div>
               <div className="space-y-2">

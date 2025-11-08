@@ -14,12 +14,14 @@ import { getDirectusImageUrl } from "@/components/Images";
 import { CareerEvent } from '@/lib/schema'
 import { DirectusUser } from "@directus/sdk";
 import { ScrollCue } from '@/components/ScrollCue';
+import { useBannerPage } from '@/hooks/use-banner-page';
 
 export default function HomePage() {
     const [viewAllEvents, setViewAllEvents] = useState(false);
+    useBannerPage();
 
     return (
-        <main className="min-h-svh bg-vtk-bg text-neutral-900">
+        <>
             <Header onViewAll={() => setViewAllEvents(true)} />
             <Hero />
             {viewAllEvents ? (
@@ -29,7 +31,7 @@ export default function HomePage() {
             )}
             <TeamOverview />
             <Footer />
-        </main>
+        </>
     )
 }
 

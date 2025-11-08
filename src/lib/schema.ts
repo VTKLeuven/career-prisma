@@ -159,7 +159,7 @@ export type FormField = {
   id: string;
   name: string;
   label: string;
-  type: 'text' | 'textarea' | 'email' | 'number' | 'select' | 'checkbox' | 'radio' | 'file' | 'date';
+  type: 'text' | 'textarea' | 'email' | 'number' | 'select' | 'checkbox' | 'radio' | 'file' | 'date' | 'date-range' | 'time';
   required?: boolean;
   placeholder?: string;
   options?: string[]; // for select, radio, checkbox
@@ -167,7 +167,11 @@ export type FormField = {
     min?: number;
     max?: number;
     pattern?: string;
+    maxFileSize?: number; // Max file size in bytes (for file fields)
+    allowedFileTypes?: string[]; // Allowed MIME types (for file fields)
   };
+  layout?: 'full' | 'half' | 'third' | 'two-thirds'; // Field width layout
+  multiple?: boolean; // For file fields - allow multiple file uploads
 }
 
 export type FormResponse = {
