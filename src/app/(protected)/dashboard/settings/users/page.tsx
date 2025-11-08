@@ -63,11 +63,11 @@ function UsersOverview({ company }: { company?: Company }) {
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(40%_30%_at_10%_90%,rgba(255,210,0,0.08),transparent),radial-gradient(40%_30%_at_90%_10%,rgba(14,77,140,0.06),transparent)]"
       />
 
-      <div className="relative mx-auto max-w-7xl px-4 py-16">
-        <div className="flex justify-between items-center mb-2">
+      <div className="relative mx-auto max-w-7xl px-4 py-8 sm:py-16">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
           <div>
-            <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Company Representatives</h2>
-            <p className="mt-2 max-w-2xl text-neutral-600">
+            <h2 className="text-xl sm:text-2xl font-semibold tracking-tight md:text-3xl">Company Representatives</h2>
+            <p className="mt-2 max-w-2xl text-sm sm:text-base text-neutral-600">
               These are your company representatives who have access to the platform.
             </p>
           </div>
@@ -79,7 +79,7 @@ function UsersOverview({ company }: { company?: Company }) {
           whileInView="show"
           viewport={{ once: true, margin: "-100px" }}
           variants={{ hidden: {}, show: { transition: { staggerChildren: 0.06 } } }}
-          className="mt-8 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-3"
+          className="mt-6 sm:mt-8 grid grid-cols-2 gap-4 sm:gap-5 sm:grid-cols-3 lg:grid-cols-3"
         >
           {users.map((user, i) => (
             <motion.li
@@ -185,13 +185,11 @@ function RepFormDialog({ company }: { company?: Company }) {
             <Input name="repAvatar" id="repAvatar" required />
           </div> */}
 
-          <DialogFooter>
-            <div className="flex gap-2">
-              <Button type="submit">Submit</Button>
-              <DialogClose asChild>
-                <Button variant="outline">Cancel</Button>
-              </DialogClose>
-            </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button type="submit" className="w-full sm:w-auto">Submit</Button>
+            <DialogClose asChild>
+              <Button variant="outline" className="w-full sm:w-auto">Cancel</Button>
+            </DialogClose>
           </DialogFooter>
         </form>
       </DialogContent>

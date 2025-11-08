@@ -105,7 +105,7 @@ function MyEventsSection() {
           No events found for your company.
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {companyEvents.map((event) => (
             <ManageEventCard key={event.id ?? event.name} event={event} />
           ))}
@@ -144,7 +144,7 @@ function ManageEventCard({ event }: { event: CareerEvent }) {
       <CardHeader>
         <CardTitle>{event.name}</CardTitle>
       </CardHeader>
-      <CardContent className="grid grid-cols-2 gap-4">
+      <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="grid grid-cols-2 gap-1 text-sm text-muted-foreground">
           <span>Date</span>
           <span className="font-medium text-foreground">{String(event.date ?? "TBA")}</span>

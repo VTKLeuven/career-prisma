@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Company, Master, CareerEventOption, CareerEvent } from "@/lib/schema";
 import { getDirectusImageUrl } from "@/components/Images";
@@ -8,6 +8,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { Calendar } from "lucide-react";
 import { fetchCompanyBySlugAction } from "@/app/actions/companies";
+import { fetchEventsAction } from "@/app/actions/events";
+import { Button } from "@/components/ui/button";
+import { motion, AnimatePresence } from "framer-motion";
+import { ChevronDown } from "lucide-react";
 
 type CategoryJunction = { master_id: Master | null };
 type OptionJunction = { career_event_option_id: CareerEventOption | null };
@@ -51,6 +55,13 @@ export default function CompanyPage() {
       try {
         const fetched = await fetchCompanyBySlugAction(companyName ?? "");
         if (fetched) {
+          // Check if company has page_on_platform enabled
+          if (!fetched.page_on_platform) {
+            setCompany(null);
+            setLoading(false);
+            return;
+          }
+
           // Normalize categories and options
           const rawCategory: unknown[] = Array.isArray(fetched.category)
             ? (fetched.category as unknown[])
@@ -128,29 +139,30 @@ export default function CompanyPage() {
   );
 
   return (
-    <main className="relative min-h-svh bg-vtk-bg text-neutral-900 pt-24 md:pt-28">
-      {bgUrl && (
-        <div className="absolute inset-0 z-0">
-          <Image src={bgUrl} alt={company.name} fill className="object-cover" />
-        </div>
-      )}
-      <div className="relative z-10">
+    <main className="relative min-h-svh bg-vtk-bg text-neutral-900">
+      <Header />
+      <div className="pt-24 md:pt-28">
+        {bgUrl && (
+          <div className="absolute inset-0 z-0">
+            <Image src={bgUrl} alt={company.name} fill className="object-cover" />
+          </div>
+        )}
+        <div className="relative z-10">
       <section className="relative">
         <div className="mx-auto max-w-7xl px-4 py-8">
           <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-6 shadow-sm">
-            <div className="flex items-center gap-5">
-              <div className="h-20 w-20 shrink-0 rounded-xl border bg-neutral-50 flex items-center justify-center overflow-hidden">
+            <div className="flex items-center gap-3 sm:gap-5 flex-col sm:flex-row">
+              <div className="h-16 w-16 sm:h-20 sm:w-20 shrink-0 rounded-xl border bg-neutral-50 flex items-center justify-center overflow-hidden">
                 {logoUrl ? (
                   <Image src={logoUrl} alt={company.name} width={80} height={80} className="object-contain" />
                 ) : (
                   <span className="text-sm text-neutral-500">No logo</span>
                 )}
               </div>
-              <div className="flex-1">
-                <h1 className="text-3xl font-semibold tracking-tight text-neutral-900">{company.name}</h1>
-                {/* Website removed from header */}
+              <div className="flex-1 text-center sm:text-left">
+                <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-900">{company.name}</h1>
                 {categories.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-3">
+                  <div className="mt-3 flex flex-wrap gap-3 justify-center sm:justify-start">
                     {categories.map((cat) => {
                       const catLogo = getDirectusImageUrl(cat.logo);
                       if (!catLogo) return null;
@@ -172,9 +184,9 @@ export default function CompanyPage() {
       </section>
 
       <section className="relative">
-        <div className="mx-auto max-w-7xl px-4 py-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="md:col-span-2 flex flex-col gap-6">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:py-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
+            <div className="lg:col-span-2 flex flex-col gap-4 sm:gap-6">
               {company.short_description && (
                 <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-6 shadow-sm">
                   <h2 className="text-xl font-semibold text-neutral-900">About</h2>
@@ -190,9 +202,9 @@ export default function CompanyPage() {
               )}
 
               {events.length > 0 && (
-                <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-6 shadow-sm">
-                  <h2 className="text-xl font-semibold text-neutral-900 mb-6">Attending at</h2>
-                  <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-4 sm:p-6 shadow-sm">
+                  <h2 className="text-lg sm:text-xl font-semibold text-neutral-900 mb-4 sm:mb-6">Attending at</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                     {events.slice(0, 3).map((event) => {
                       const href = `/event/${(event.name || "").toLowerCase().replace(/\s+/g, "-")}`;
                       return (
@@ -237,15 +249,15 @@ export default function CompanyPage() {
               )}
             </div>
 
-            <aside className="flex flex-col gap-6">
+            <aside className="flex flex-col gap-4 sm:gap-6">
               {company.location && (
-                <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-6 shadow-sm">
+                <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-4 sm:p-6 shadow-sm">
                   <h3 className="text-base font-semibold text-neutral-900">Located at</h3>
                   <div className="mt-2 text-sm text-neutral-700">{company.location}</div>
                 </div>
               )}
               {(company.address_city || company.address_country || company.address_street) && (
-                <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-6 shadow-sm">
+                <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-4 sm:p-6 shadow-sm">
                   <h3 className="text-base font-semibold text-neutral-900">Headquarters</h3>
                   <div className="mt-2 text-sm text-neutral-700">
                     <div>{[company.address_street, company.address_number].filter(Boolean).join(" ")}</div>
@@ -256,7 +268,7 @@ export default function CompanyPage() {
               )}
 
               {company.website && (
-                <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-6 shadow-sm">
+                <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-4 sm:p-6 shadow-sm">
                   <h3 className="text-base font-semibold text-neutral-900">Website</h3>
                   <div className="mt-2">
                     <Link href={company.website} target="_blank" className="text-vtk-blue underline break-all">{company.website}</Link>
@@ -267,9 +279,279 @@ export default function CompanyPage() {
           </div>
         </div>
       </section>
+        </div>
       </div>
     </main>
   );
+}
+
+// ---------------- Header ----------------
+function Header() {
+  const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const router = useRouter()
+  const [EVENTS, setEvents] = useState<CareerEvent[]>([]);
+  const menuRef = useRef<HTMLDivElement>(null)
+  const mobileMenuRef = useRef<HTMLDivElement>(null)
+  const eventsMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+      fetchEventsAction().then(setEvents);
+  }, []);
+
+  // Close menus when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target as Node) &&
+          !(event.target as HTMLElement).closest('button[aria-expanded]')) {
+        setMobileMenuOpen(false)
+      }
+      if (eventsMenuRef.current && !eventsMenuRef.current.contains(event.target as Node) &&
+          !(event.target as HTMLElement).closest('button[aria-controls="mega-events"]')) {
+        setOpenMenu(null)
+      }
+    }
+
+    if (mobileMenuOpen || openMenu === 'events') {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [mobileMenuOpen, openMenu])
+
+  return (
+    <header
+      ref={menuRef}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          setOpenMenu(null);
+          setMobileMenuOpen(false);
+        }
+      }}
+      className="fixed top-2 sm:top-4 inset-x-0 z-50 w-full px-2 sm:px-0"
+      aria-label="Site navigation"
+    >
+      <div className="mx-auto max-w-7xl px-2 sm:px-4">
+        <div className="flex items-center justify-between gap-2 sm:gap-3 rounded-xl sm:rounded-2xl border bg-white/85 px-2 sm:px-3 md:px-5 py-1.5 sm:py-2 md:py-3 shadow-[0_12px_40px_rgba(0,0,0,0.10)] ring-1 ring-black/5 backdrop-blur-md">
+          <Link href="/" className="flex shrink-0 items-center gap-1 sm:gap-2 rounded-full px-1 sm:px-2">
+            <span className="text-xs sm:text-sm font-semibold tracking-tight text-vtk-blue">VTK Career</span>
+          </Link>
+
+          <nav className="hidden items-center gap-2 md:flex">
+            <Link href="/" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">Home</Link>
+
+            <div className="relative">
+              <button
+                type="button"
+                onMouseEnter={() => setOpenMenu('events')}
+                onFocus={() => setOpenMenu('events')}
+                onClick={() => setOpenMenu((s) => (s === 'events' ? null : 'events'))}
+                className="inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
+                aria-expanded={openMenu === 'events'}
+                aria-controls="mega-events"
+              >
+                Events <ChevronDown className="h-4 w-4" />
+              </button>
+            </div>
+
+            <Link href="#students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Services</Link>
+          </nav>
+
+          {/* Mobile nav - Events as simple button */}
+          <nav className="md:hidden flex items-center gap-2">
+            <Link href="/" className="rounded-full bg-vtk-blue px-3 py-1.5 text-xs font-medium text-white">Home</Link>
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100"
+            >
+              Events
+            </button>
+            <Link href="#students" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Services</Link>
+          </nav>
+
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => router.push("/dashboard")}>Company Dashboard</Button>
+            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="#contact">Contact Us</Link></Button>
+            
+            {/* Mobile menu button - only show if menu is closed (Events button handles opening) */}
+            {!mobileMenuOpen && (
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(true)}
+                className="md:hidden inline-flex items-center justify-center rounded-md p-2 text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-vtk-blue"
+                aria-expanded={mobileMenuOpen}
+                aria-label="Open menu"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            )}
+            {mobileMenuOpen && (
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                className="md:hidden inline-flex items-center justify-center rounded-md p-2 text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-vtk-blue"
+                aria-expanded={mobileMenuOpen}
+                aria-label="Close menu"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile Menu */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            ref={mobileMenuRef}
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18 }}
+            className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 md:hidden"
+          >
+            <div className="mx-auto max-w-7xl px-2 sm:px-4">
+              <div className="rounded-xl sm:rounded-2xl border bg-white/95 backdrop-blur-md shadow-xl p-4">
+                {/* Events Section */}
+                <div className="mb-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-neutral-900">Upcoming events</h3>
+                  </div>
+                  <ul className="space-y-2 max-h-[50vh] overflow-y-auto">
+                    {EVENTS
+                      .filter((e) => {
+                        try {
+                          const eventDate = new Date(e.date);
+                          const now = new Date();
+                          return eventDate > now;
+                        } catch {
+                          return false;
+                        }
+                      })
+                      .sort((a, b) => {
+                        try {
+                          return new Date(a.date).getTime() - new Date(b.date).getTime();
+                        } catch {
+                          return 0;
+                        }
+                      })
+                      .slice(0, 6)
+                      .map((event) => (
+                        <li key={event.name}>
+                          <Link 
+                            href={event.href ?? '#'} 
+                            className="block rounded-lg border bg-neutral-50 p-3 hover:bg-vtk-light/40 transition"
+                            onClick={() => setMobileMenuOpen(false)}
+                          >
+                            <div className="text-sm font-medium text-neutral-900">{event.name}</div>
+                            <div className="mt-1 text-xs text-neutral-600">{event.date} · {event.location}</div>
+                          </Link>
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+
+                {/* Other Links */}
+                <div className="border-t pt-4 space-y-2">
+                  <Button 
+                    variant="outline" 
+                    className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full" 
+                    onClick={() => {
+                      router.push("/dashboard");
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    Company Dashboard
+                  </Button>
+                  <Button 
+                    asChild 
+                    className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <Link href="#contact">Contact Us</Link>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Desktop Events Menu */}
+      <AnimatePresence>
+        {openMenu === 'events' && (
+          <motion.div
+            ref={eventsMenuRef}
+            id="mega-events"
+            key="mega"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18 }}
+            className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 hidden md:block"
+            onMouseEnter={() => setOpenMenu('events')}
+            onMouseLeave={() => setOpenMenu(null)}
+          >
+            <div className="mx-auto max-w-7xl px-4">
+              <div className="rounded-2xl border bg-white/85 backdrop-blur-md shadow-xl -mx-8">
+                <div className="grid grid-cols-1 gap-8 px-4 py-8 md:grid-cols-3">
+                  <div className="md:col-span-2">
+                    <div className="mb-4 flex items-center justify-between">
+                      <h3 className="text-sm font-medium text-neutral-900">Upcoming events</h3>
+                    </div>
+                    <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {EVENTS
+                        .filter((e) => {
+                          try {
+                            const eventDate = new Date(e.date);
+                            const now = new Date();
+                            return eventDate > now;
+                          } catch {
+                            return false;
+                          }
+                        })
+                        .sort((a, b) => {
+                          try {
+                            return new Date(a.date).getTime() - new Date(b.date).getTime();
+                          } catch {
+                            return 0;
+                          }
+                        })
+                        .slice(0, 8)
+                        .map((event) => (
+                          <li key={event.name} className="rounded-xl border p-3 hover:bg-vtk-light/40">
+                            <Link href={event.href ?? '#'} className="block">
+                              <div className="text-sm font-medium text-neutral-900">{event.name}</div>
+                              <div className="mt-0.5 text-xs text-neutral-600">{event.date} · {event.location}</div>
+                            </Link>
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+
+                  <div className="hidden md:block">
+                    <div className="h-full rounded-2xl border bg-vtk-light p-5">
+                      <div className="text-sm font-medium text-neutral-900">Featured</div>
+                      <p className="mt-1 text-sm text-neutral-700">Meet 200+ companies at our flagship jobfair in Leuven.</p>
+                      <div className="mt-4">
+                        <Button className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">Explore jobfair</Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+    </header>
+  )
 }
 
 

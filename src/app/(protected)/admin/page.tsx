@@ -224,14 +224,14 @@ function CompaniesSection() {
 
   return (
     <Card className="rounded-2xl shadow-md">
-      <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle className="text-2xl">
+      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+        <CardTitle className="text-xl sm:text-2xl">
           {selectedCompany && viewMode === "users" ? `Manage Users: ${selectedCompany.name}` : 
            selectedCompany && viewMode === "options" ? `Manage Options: ${selectedCompany.name}` : 
            "Manage Companies"}
         </CardTitle>
         {selectedCompany && (
-          <Button variant="outline" size="sm" onClick={() => { setSelectedCompany(null); setViewMode("companies"); }}>Back to Companies</Button>
+          <Button variant="outline" size="sm" onClick={() => { setSelectedCompany(null); setViewMode("companies"); }} className="w-full sm:w-auto">Back to Companies</Button>
         )}
       </CardHeader>
       <CardContent>
@@ -242,13 +242,13 @@ function CompaniesSection() {
                 placeholder="Filter companies..."
                 value={table.getState().globalFilter ?? ""}
                 onChange={e => table.setGlobalFilter(e.target.value)}
-                className="max-w-sm"
+                className="max-w-sm w-full sm:w-auto"
               />
               <Select
                 value={(table.getColumn("salesperson")?.getFilterValue() ?? "") as string}
                 onValueChange={(val) => table.getColumn("salesperson")?.setFilterValue(val === "__all__" ? undefined : val)}
               >
-                <SelectTrigger className="w-[220px]">
+                <SelectTrigger className="w-full sm:w-[220px]">
                   <SelectValue placeholder="Filter on salesperson" />
                 </SelectTrigger>
                 <SelectContent>
@@ -261,7 +261,7 @@ function CompaniesSection() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline"><IconColumns /> Columns <ChevronDown /></Button>
+                  <Button variant="outline" className="w-full sm:w-auto"><IconColumns className="hidden sm:inline" /> <span className="hidden sm:inline">Columns </span><ChevronDown className="h-4 w-4" /></Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   {table.getAllColumns()
@@ -280,52 +280,54 @@ function CompaniesSection() {
               </DropdownMenu>
             </div>
 
-            <div className="mt-4 overflow-hidden rounded-md border">
-              <Table>
-                <TableHeader>
-                  {table.getHeaderGroups().map(headerGroup => (
-                    <TableRow key={headerGroup.id}>
-                      {headerGroup.headers.map(header => (
-                        <TableHead key={header.id}>
-                          {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    <TableRow>
-                      <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center">
-                        Loading...
-                      </TableCell>
-                    </TableRow>
-                  ) : table.getRowModel().rows.length ? (
-                    table.getRowModel().rows.map(row => (
-                      <TableRow key={row.id}>
-                        {row.getVisibleCells().map(cell => (
-                          <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+            <div className="mt-4 overflow-x-auto rounded-md border">
+              <div className="min-w-full">
+                <Table>
+                  <TableHeader>
+                    {table.getHeaderGroups().map(headerGroup => (
+                      <TableRow key={headerGroup.id}>
+                        {headerGroup.headers.map(header => (
+                          <TableHead key={header.id} className="whitespace-nowrap">
+                            {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                          </TableHead>
                         ))}
                       </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center">
-                        No results.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                    ))}
+                  </TableHeader>
+                  <TableBody>
+                    {loading ? (
+                      <TableRow>
+                        <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center">
+                          Loading...
+                        </TableCell>
+                      </TableRow>
+                    ) : table.getRowModel().rows.length ? (
+                      table.getRowModel().rows.map(row => (
+                        <TableRow key={row.id}>
+                          {row.getVisibleCells().map(cell => (
+                            <TableCell key={cell.id} className="whitespace-nowrap">{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+                          ))}
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center">
+                          No results.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
 
-            <div className="mt-2 flex items-center justify-end space-x-2">
-              <div className="text-muted-foreground flex-1 text-sm">
+            <div className="mt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <div className="text-muted-foreground text-xs sm:text-sm">
                 {table.getFilteredSelectedRowModel().rows.length} of {table.getFilteredRowModel().rows.length} row(s) selected.
               </div>
-              <div className="space-x-2">
-                <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>Previous</Button>
-                <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>Next</Button>
+              <div className="flex space-x-2 w-full sm:w-auto">
+                <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="flex-1 sm:flex-initial">Previous</Button>
+                <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="flex-1 sm:flex-initial">Next</Button>
               </div>
             </div>
           </>
@@ -481,14 +483,14 @@ function CompanyUsersTable({ company, onAddUser, onRemoveUser }: { company: Comp
           placeholder="Filter users..."
           value={globalFilter}
           onChange={(e) => setGlobalFilter(e.target.value)}
-          className="max-w-sm"
+          className="max-w-sm w-full sm:w-auto"
         />
 
         <UserFormDialog company={company} onCreate={handleCreate} />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline"><IconColumns /> Columns <ChevronDown /></Button>
+            <Button variant="outline" className="w-full sm:w-auto"><IconColumns className="hidden sm:inline" /> <span className="hidden sm:inline">Columns </span><ChevronDown className="h-4 w-4" /></Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {table.getAllColumns().filter(c => c.getCanHide()).map(c => (
@@ -505,38 +507,40 @@ function CompanyUsersTable({ company, onAddUser, onRemoveUser }: { company: Comp
         </DropdownMenu>
       </div>
 
-      <div className="overflow-hidden rounded-md border">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map(hg => (
-              <TableRow key={hg.id}>
-                {hg.headers.map(h => (
-                  <TableHead key={h.id}>{flexRender(h.column.columnDef.header, h.getContext())}</TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows.length ? table.getRowModel().rows.map(row => (
-              <TableRow key={row.id ?? JSON.stringify(row.getValue("email") ?? row.getValue("first_name") ?? row.index)}>
-                {row.getVisibleCells().map(cell => <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>)}
-              </TableRow>
-            )) : (
-              <TableRow>
-                <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center">No users found.</TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+      <div className="overflow-x-auto rounded-md border">
+        <div className="min-w-full">
+          <Table>
+            <TableHeader>
+              {table.getHeaderGroups().map(hg => (
+                <TableRow key={hg.id}>
+                  {hg.headers.map(h => (
+                    <TableHead key={h.id} className="whitespace-nowrap">{flexRender(h.column.columnDef.header, h.getContext())}</TableHead>
+                  ))}
+                </TableRow>
+              ))}
+            </TableHeader>
+            <TableBody>
+              {table.getRowModel().rows.length ? table.getRowModel().rows.map(row => (
+                <TableRow key={row.id ?? JSON.stringify(row.getValue("email") ?? row.getValue("first_name") ?? row.index)}>
+                  {row.getVisibleCells().map(cell => <TableCell key={cell.id} className="whitespace-nowrap">{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>)}
+                </TableRow>
+              )) : (
+                <TableRow>
+                  <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center">No users found.</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </div>
 
-      <div className="mt-2 flex items-center justify-end space-x-2">
-        <div className="text-muted-foreground flex-1 text-sm">
+      <div className="mt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+        <div className="text-muted-foreground text-xs sm:text-sm">
           {table.getFilteredSelectedRowModel().rows.length} of {table.getFilteredRowModel().rows.length} row(s) selected.
         </div>
-        <div className="space-x-2">
-          <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>Previous</Button>
-          <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>Next</Button>
+        <div className="flex space-x-2 w-full sm:w-auto">
+          <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="flex-1 sm:flex-initial">Previous</Button>
+          <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="flex-1 sm:flex-initial">Next</Button>
         </div>
       </div>
     </>
@@ -683,13 +687,11 @@ function UserFormDialog({ company, onCreate }: {
             <Input name="funct" id="funct" />
           </div>
 
-          <DialogFooter>
-            <div className="flex gap-2">
-              <Button type="submit">Submit</Button>
-              <DialogClose asChild>
-                <Button variant="outline">Cancel</Button>
-              </DialogClose>
-            </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button type="submit" className="w-full sm:w-auto">Submit</Button>
+            <DialogClose asChild>
+              <Button variant="outline" className="w-full sm:w-auto">Cancel</Button>
+            </DialogClose>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -754,14 +756,14 @@ function CompanyOptionsTable({ company, onAddOption, onRemoveOption }: { company
           placeholder="Filter options..."
           value={globalFilter}
           onChange={(e) => setGlobalFilter(e.target.value)}
-          className="max-w-sm"
+          className="max-w-sm w-full sm:w-auto"
         />
 
         <OptionFormDialog company={company} onCreate={handleCreate} />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline"><IconColumns /> Columns <ChevronDown /></Button>
+            <Button variant="outline" className="w-full sm:w-auto"><IconColumns className="hidden sm:inline" /> <span className="hidden sm:inline">Columns </span><ChevronDown className="h-4 w-4" /></Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {table.getAllColumns().filter(c => c.getCanHide()).map(c => (
@@ -778,38 +780,40 @@ function CompanyOptionsTable({ company, onAddOption, onRemoveOption }: { company
         </DropdownMenu>
       </div>
 
-      <div className="overflow-hidden rounded-md border">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map(hg => (
-              <TableRow key={hg.id}>
-                {hg.headers.map(h => (
-                  <TableHead key={h.id}>{flexRender(h.column.columnDef.header, h.getContext())}</TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows.length ? table.getRowModel().rows.map(row => (
-              <TableRow key={row.original.id ?? row.index}>
-                {row.getVisibleCells().map(cell => <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>)}
-              </TableRow>
-            )) : (
-              <TableRow>
-                <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center">No options found.</TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+      <div className="overflow-x-auto rounded-md border">
+        <div className="min-w-full">
+          <Table>
+            <TableHeader>
+              {table.getHeaderGroups().map(hg => (
+                <TableRow key={hg.id}>
+                  {hg.headers.map(h => (
+                    <TableHead key={h.id} className="whitespace-nowrap">{flexRender(h.column.columnDef.header, h.getContext())}</TableHead>
+                  ))}
+                </TableRow>
+              ))}
+            </TableHeader>
+            <TableBody>
+              {table.getRowModel().rows.length ? table.getRowModel().rows.map(row => (
+                <TableRow key={row.original.id ?? row.index}>
+                  {row.getVisibleCells().map(cell => <TableCell key={cell.id} className="whitespace-nowrap">{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>)}
+                </TableRow>
+              )) : (
+                <TableRow>
+                  <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center">No options found.</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </div>
 
-      <div className="mt-2 flex items-center justify-end space-x-2">
-        <div className="text-muted-foreground flex-1 text-sm">
+      <div className="mt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+        <div className="text-muted-foreground text-xs sm:text-sm">
           {table.getFilteredSelectedRowModel().rows.length} of {table.getFilteredRowModel().rows.length} row(s) selected.
         </div>
-        <div className="space-x-2">
-          <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>Previous</Button>
-          <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>Next</Button>
+        <div className="flex space-x-2 w-full sm:w-auto">
+          <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="flex-1 sm:flex-initial">Previous</Button>
+          <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="flex-1 sm:flex-initial">Next</Button>
         </div>
       </div>
     </>
@@ -937,9 +941,9 @@ function RemoveOptionDialog({ option, companyId, onRemove }: { option: CareerEve
             Are you sure you want to remove &quot;{option.name}&quot; from this company? This action cannot be undone.
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="destructive" onClick={handleRemove}>Remove</Button>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button variant="outline" onClick={() => setOpen(false)} className="w-full sm:w-auto">Cancel</Button>
+          <Button variant="destructive" onClick={handleRemove} className="w-full sm:w-auto">Remove</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1015,13 +1019,13 @@ function RemoveUserDialog({ user, companyId, onRemove }: { user: Partial<Company
             {warning}
           </div>
         )}
-        <DialogFooter>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
           <Button variant="outline" onClick={() => {
             setOpen(false);
             setError(null);
             setWarning(null);
-          }}>Cancel</Button>
-          <Button variant="destructive" onClick={handleRemove}>Remove</Button>
+          }} className="w-full sm:w-auto">Cancel</Button>
+          <Button variant="destructive" onClick={handleRemove} className="w-full sm:w-auto">Remove</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1220,13 +1224,11 @@ function OptionFormDialog({ company, onCreate }: {
             )}
           </div>
 
-          <DialogFooter>
-            <div className="flex gap-2">
-              <Button type="submit" disabled={!selectedOptionId || loading || availableOptions.length === 0}>Add</Button>
-              <DialogClose asChild>
-                <Button variant="outline" onClick={() => { setSearchQuery(""); setSelectedOptionId(""); }}>Cancel</Button>
-              </DialogClose>
-            </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button type="submit" disabled={!selectedOptionId || loading || availableOptions.length === 0} className="w-full sm:w-auto">Add</Button>
+            <DialogClose asChild>
+              <Button variant="outline" onClick={() => { setSearchQuery(""); setSelectedOptionId(""); }} className="w-full sm:w-auto">Cancel</Button>
+            </DialogClose>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -1455,10 +1457,10 @@ function CompanyFormDialog({ onCreate }: { onCreate: (row: CompanyRow) => void }
               <DialogDescription>
                 By clicking &quot;Save&quot; an onboarding email will be sent to the &quot;Account Owner&quot;.
               </DialogDescription>
-              <div className="flex gap-2">
-                <Button type="submit" disabled={!salesperson}>Save</Button>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button type="submit" disabled={!salesperson} className="w-full sm:w-auto">Save</Button>
                 <DialogClose asChild>
-                  <Button type="button" variant="outline">
+                  <Button type="button" variant="outline" className="w-full sm:w-auto">
                     Cancel
                   </Button>
                 </DialogClose>
