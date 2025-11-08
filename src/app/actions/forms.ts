@@ -344,12 +344,7 @@ async function sendEventConfirmationEmail({
 }) {
   try {
     const { sendEmail } = await import("@/lib/repos/directus");
-    
-    // Generate calendar link
-    const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
-    const calendarUrl = eventDate 
-      ? `${formDomain}/api/calendar?title=${encodeURIComponent(formName)}&date=${encodeURIComponent(eventDate)}${eventEndDate ? `&endDate=${encodeURIComponent(eventEndDate)}` : ''}&location=${encodeURIComponent(eventLocation || '')}`
-      : null;
+    const { generateEventConfirmationEmailHtml } = await import("@/lib/email-templates");
     
     const fullName = `${name} ${surname}`.trim() || 'Guest';
     
@@ -359,41 +354,21 @@ async function sendEventConfirmationEmail({
     let personalizedContent = content
       .replace(/{name}/g, name || 'Guest')
       .replace(/{surname}/g, surname || '');
-
+    
     // Only convert newlines if content doesn't appear to be HTML
     if (!personalizedContent.includes('<') || !personalizedContent.includes('>')) {
       personalizedContent = personalizedContent.replace(/\n/g, '<br>');
     }
     
-    const emailHtml = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .button { display: inline-block; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
-            .button:hover { background-color: #0056b3; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h2>${subject}</h2>
-            <p>Dear ${fullName},</p>
-            <div>${personalizedContent}</div>
-            ${eventDate ? `<p><strong>Event Date:</strong> ${new Date(eventDate).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' })}</p>` : ''}
-            ${eventLocation ? `<p><strong>Location:</strong> ${eventLocation}</p>` : ''}
-            ${calendarUrl ? `
-              <p>
-                <a href="${calendarUrl}" class="button">📅 Add to Calendar</a>
-              </p>
-            ` : ''}
-            <p>Best regards,<br>The VTK Career Team</p>
-          </div>
-        </body>
-      </html>
-    `;
+    const emailHtml = generateEventConfirmationEmailHtml({
+      subject,
+      fullName,
+      personalizedContent,
+      eventDate: eventDate || undefined,
+      eventEndDate: eventEndDate || undefined,
+      eventLocation: eventLocation || undefined,
+      formName,
+    });
     
     await sendEmail({
       to,
