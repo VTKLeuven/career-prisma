@@ -9,6 +9,8 @@ import { fetchFloorplanAction, fetchMastersAction } from "@/app/actions/features
 import type { CareerEventPage, Booth, Master, Company } from '@/lib/schema'
 import { getDirectusImageUrl } from "@/components/Images"
 import { usePageLayout } from '../../../layout'
+import { Button } from "@/components/ui/button"
+import { Clock, ArrowLeft, Users } from "lucide-react"
 
 export default function SubPage() {
   const { setHideLayoutHeader } = usePageLayout()
@@ -23,7 +25,9 @@ export default function SubPage() {
   const params = useParams()
   const pathname = usePathname()
   const eventName = Array.isArray(params.eventName) ? params.eventName[0] : params.eventName
+  const subPage = Array.isArray(params.subPage) ? params.subPage[0] : params.subPage
   const isFloorplanPage = pathname.endsWith("/floorplan")
+  const isMatchingSoftwarePage = subPage === "matching-software"
 
   // Hide layout header when rendering floorplan header
   useEffect(() => {
@@ -96,7 +100,15 @@ export default function SubPage() {
         </>
       )}
 
-      {!isFloorplanPage && (
+      {!isFloorplanPage && isMatchingSoftwarePage && (
+        <ComingSoonPage 
+          title="Matching Software" 
+          description="Our matching software is currently under development. Soon you'll be able to connect with companies and find the perfect match for your career."
+          eventName={page?.event?.name || eventName || 'Event'}
+        />
+      )}
+
+      {!isFloorplanPage && !isMatchingSoftwarePage && (
         <div className="p-10 text-center text-neutral-700">
           <h1 className="text-2xl font-semibold">Subpage</h1>
           <p className="mt-2 text-sm text-neutral-500">
@@ -458,6 +470,62 @@ function Floorplan({
 }
 
 // ---------------- Popup ----------------
+function ComingSoonPage({ title, description, eventName }: { title: string; description: string; eventName: string }) {
+  const eventSlug = eventName.toLowerCase().replace(/\s+/g, "-")
+  
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-vtk-blue/5 via-white to-vtk-yellow/5 flex items-center justify-center px-4 py-16">
+      <div className="max-w-2xl mx-auto text-center">
+        {/* Icon */}
+        <div className="flex justify-center mb-8">
+          <div className="rounded-full bg-vtk-blue/10 p-6">
+            <Users className="h-16 w-16 text-vtk-blue" />
+          </div>
+        </div>
+
+        {/* Heading */}
+        <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-neutral-900 mb-4">
+          {title}
+        </h1>
+        <p className="text-xl sm:text-2xl text-neutral-600 mb-2">
+          Coming Soon
+        </p>
+        <div className="flex items-center justify-center gap-2 text-neutral-500 mb-12">
+          <Clock className="h-5 w-5" />
+          <span>We're working on something amazing</span>
+        </div>
+
+        {/* Description */}
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-neutral-200 p-8 mb-8">
+          <p className="text-lg text-neutral-700 leading-relaxed">
+            {description}
+          </p>
+        </div>
+
+        {/* CTA Buttons */}
+        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+          <Button
+            asChild
+            className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark text-white px-6 py-3"
+          >
+            <Link href={`/event/${eventSlug}`}>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Event
+            </Link>
+          </Button>
+          <Button
+            asChild
+            variant="outline"
+            className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/10 px-6 py-3"
+          >
+            <Link href="/">Back to Home</Link>
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Popup({ company, onClose }: { company: Company; onClose: () => void }) {
   return (
     <div

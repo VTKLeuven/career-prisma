@@ -8,6 +8,7 @@ import { ChevronDown } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { fetchEventsAction } from "@/app/actions/events";
 import { CareerEvent } from '@/lib/schema'
+import { Footer } from '@/components/Footer'
 
 // Context to allow pages to opt-out of header padding if they have a banner
 // and to hide the layout header if they render their own
@@ -36,6 +37,7 @@ export default function NoSidebarLayout({ children }: { children: React.ReactNod
             <main className={`min-h-svh bg-vtk-bg text-neutral-900 ${hasBanner || hideLayoutHeader ? '' : 'pt-28 md:pt-32'}`}>
                 {!hideLayoutHeader && <Header />}
                 {children}
+                <Footer />
             </main>
         </PageLayoutContext.Provider>
     )
@@ -93,7 +95,7 @@ function Header() {
           </Link>
 
           <nav className="hidden items-center gap-2 md:flex">
-            <Link href="#" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">Home</Link>
+            <Link href="/" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">Home</Link>
 
             <div className="relative">
               <button
@@ -109,12 +111,13 @@ function Header() {
               </button>
             </div>
 
-            <Link href="#students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Services</Link>
+            <Link href="/our-students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
+            <Link href="/vacancies" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
 
           {/* Mobile nav - Events as simple button */}
           <nav className="md:hidden flex items-center gap-2">
-            <Link href="#" className="rounded-full bg-vtk-blue px-3 py-1.5 text-xs font-medium text-white">Home</Link>
+            <Link href="/" className="rounded-full bg-vtk-blue px-3 py-1.5 text-xs font-medium text-white">Home</Link>
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -122,12 +125,13 @@ function Header() {
             >
               Events
             </button>
-            <Link href="#students" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Services</Link>
+            <Link href="/our-students" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
+            <Link href="/vacancies" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
             <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => router.push("/dashboard")}>Company Dashboard</Button>
-            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="#contact">Contact Us</Link></Button>
+            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="/contact">Contact Us</Link></Button>
 
             {/* Mobile menu button */}
             <button
@@ -172,6 +176,16 @@ function Header() {
                       className="h-7 rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5 text-xs px-3"
                       onClick={() => {
                         setMobileMenuOpen(false);
+                        // Check if we're on the homepage
+                        if (window.location.pathname === '/') {
+                          // Dispatch custom event that homepage can listen to
+                          window.dispatchEvent(new CustomEvent('viewAllEvents'));
+                          // Also set hash for URL consistency
+                          window.location.hash = '#all-events';
+                        } else {
+                          // Navigate to homepage with hash
+                          window.location.href = '/#all-events';
+                        }
                       }}
                     >
                       View all
@@ -228,7 +242,7 @@ function Header() {
                     className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full"
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    <Link href="#contact">Contact Us</Link>
+                    <Link href="/contact">Contact Us</Link>
                   </Button>
                 </div>
               </div>
@@ -262,7 +276,19 @@ function Header() {
                         size="sm"
                         variant="outline"
                         className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5"
-                        onClick={() => setOpenMenu(null)}
+                        onClick={() => {
+                          setOpenMenu(null);
+                          // Check if we're on the homepage
+                          if (window.location.pathname === '/') {
+                            // Dispatch custom event that homepage can listen to
+                            window.dispatchEvent(new CustomEvent('viewAllEvents'));
+                            // Also set hash for URL consistency
+                            window.location.hash = '#all-events';
+                          } else {
+                            // Navigate to homepage with hash
+                            window.location.href = '/#all-events';
+                          }
+                        }}
                       >
                         View all
                       </Button>
@@ -302,7 +328,9 @@ function Header() {
                       <div className="text-sm font-medium text-neutral-900">Featured</div>
                       <p className="mt-1 text-sm text-neutral-700">Meet 200+ companies at our flagship jobfair in Leuven.</p>
                       <div className="mt-4">
-                        <Button className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">Explore jobfair</Button>
+                        <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">
+                          <Link href="/event/vtk-jobfair">Explore jobfair</Link>
+                        </Button>
                       </div>
                     </div>
                   </div>

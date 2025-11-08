@@ -121,7 +121,9 @@ export type Master = {
   id: string;
   name: string;
   short_name: string;
-  logo: string
+  logo: string;
+  students?: number;
+  modules?: string; // HTML content
 }
 
 export type Form = {

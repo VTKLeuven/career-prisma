@@ -143,7 +143,6 @@ export default function AdminFormsPage() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Slug</TableHead>
-                  <TableHead>Description</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Deadline</TableHead>
                   <TableHead>Submissions</TableHead>
@@ -158,7 +157,6 @@ export default function AdminFormsPage() {
                     <TableCell>
                       <SlugCell slug={form.slug} />
                     </TableCell>
-                    <TableCell className="max-w-xs truncate">{form.description}</TableCell>
                     <TableCell>
                       {form.is_active === false ? (
                         <Badge variant="destructive">Disabled</Badge>
@@ -351,365 +349,367 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
           Create Form
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Create New Form</DialogTitle>
           <DialogDescription>
             Create a new form that external users can fill out.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Form Name</Label>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => handleNameChange(e.target.value)}
-              placeholder="e.g., Company Registration"
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="slug">Slug (URL)</Label>
-            <Input
-              id="slug"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              placeholder="e.g., company-registration"
-              required
-            />
-            <p className="text-xs text-muted-foreground">
-              Will be accessible at: <code className="bg-muted px-1 py-0.5 rounded">{formUrl}</code>
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Brief description of this form..."
-              rows={3}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="deadline">Deadline (Optional)</Label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-2">
+            <div className="space-y-2">
+              <Label htmlFor="name">Form Name</Label>
               <Input
-                id="deadline-date"
-                type="text"
-                value={deadlineDateDisplay}
-                placeholder="dd/mm/yyyy"
-                onChange={(e) => {
-                  const input = e.target.value;
-                  // Remove all non-digit and non-slash characters
-                  let cleaned = input.replace(/[^\d/]/g, '');
-                  
-                  // Limit format to dd/mm/yyyy (max 10 chars: dd/mm/yyyy)
-                  if (cleaned.length > 10) {
-                    cleaned = cleaned.slice(0, 10);
-                  }
-                  
-                  // Auto-format as user types: dd/mm/yyyy
-                  let formatted = '';
-                  const digits = cleaned.replace(/\//g, '');
-                  
-                  for (let i = 0; i < digits.length && i < 8; i++) {
-                    if (i === 2 || i === 4) {
-                      formatted += '/';
+                id="name"
+                value={name}
+                onChange={(e) => handleNameChange(e.target.value)}
+                placeholder="e.g., Company Registration"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="slug">Slug (URL)</Label>
+              <Input
+                id="slug"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                placeholder="e.g., company-registration"
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Will be accessible at: <code className="bg-muted px-1 py-0.5 rounded">{formUrl}</code>
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Brief description of this form..."
+                rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="deadline">Deadline (Optional)</Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <Input
+                  id="deadline-date"
+                  type="text"
+                  value={deadlineDateDisplay}
+                  placeholder="dd/mm/yyyy"
+                  onChange={(e) => {
+                    const input = e.target.value;
+                    // Remove all non-digit and non-slash characters
+                    let cleaned = input.replace(/[^\d/]/g, '');
+                    
+                    // Limit format to dd/mm/yyyy (max 10 chars: dd/mm/yyyy)
+                    if (cleaned.length > 10) {
+                      cleaned = cleaned.slice(0, 10);
                     }
-                    formatted += digits[i];
-                  }
-                  
-                  setDeadlineDateDisplay(formatted);
-                  
-                  // Parse dd/mm/yyyy and convert to ISO format
-                  if (formatted.length === 10) {
-                    const match = formatted.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-                    if (match) {
-                      const day = parseInt(match[1]);
-                      const month = parseInt(match[2]);
-                      const year = parseInt(match[3]);
-                      
-                      // Validate date
-                      if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000) {
-                        const date = new Date(year, month - 1, day);
-                        // Verify the date is valid (handles invalid dates like 31/02/2024)
-                        if (date.getFullYear() === year && 
-                            date.getMonth() === month - 1 && 
-                            date.getDate() === day) {
-                          const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                          
-                          // If we have a time display, use it; otherwise just set the date
-                          if (deadlineTimeDisplay && deadlineTimeDisplay.length === 5) {
-                            const timeDigits = deadlineTimeDisplay.replace(/\D/g, '');
-                            if (timeDigits.length === 4) {
-                              const hours = timeDigits.slice(0, 2);
-                              const minutes = timeDigits.slice(2, 4);
-                              const hoursNum = parseInt(hours);
-                              const minutesNum = parseInt(minutes);
-                              if (hoursNum >= 0 && hoursNum <= 23 && minutesNum >= 0 && minutesNum <= 59) {
-                                setDeadline(`${isoDate}T${hours}:${minutes}`);
+                    
+                    // Auto-format as user types: dd/mm/yyyy
+                    let formatted = '';
+                    const digits = cleaned.replace(/\//g, '');
+                    
+                    for (let i = 0; i < digits.length && i < 8; i++) {
+                      if (i === 2 || i === 4) {
+                        formatted += '/';
+                      }
+                      formatted += digits[i];
+                    }
+                    
+                    setDeadlineDateDisplay(formatted);
+                    
+                    // Parse dd/mm/yyyy and convert to ISO format
+                    if (formatted.length === 10) {
+                      const match = formatted.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+                      if (match) {
+                        const day = parseInt(match[1]);
+                        const month = parseInt(match[2]);
+                        const year = parseInt(match[3]);
+                        
+                        // Validate date
+                        if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000) {
+                          const date = new Date(year, month - 1, day);
+                          // Verify the date is valid (handles invalid dates like 31/02/2024)
+                          if (date.getFullYear() === year && 
+                              date.getMonth() === month - 1 && 
+                              date.getDate() === day) {
+                            const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                            
+                            // If we have a time display, use it; otherwise just set the date
+                            if (deadlineTimeDisplay && deadlineTimeDisplay.length === 5) {
+                              const timeDigits = deadlineTimeDisplay.replace(/\D/g, '');
+                              if (timeDigits.length === 4) {
+                                const hours = timeDigits.slice(0, 2);
+                                const minutes = timeDigits.slice(2, 4);
+                                const hoursNum = parseInt(hours);
+                                const minutesNum = parseInt(minutes);
+                                if (hoursNum >= 0 && hoursNum <= 23 && minutesNum >= 0 && minutesNum <= 59) {
+                                  setDeadline(`${isoDate}T${hours}:${minutes}`);
+                                } else {
+                                  setDeadline(isoDate);
+                                }
                               } else {
                                 setDeadline(isoDate);
                               }
                             } else {
                               setDeadline(isoDate);
                             }
-                          } else {
-                            setDeadline(isoDate);
                           }
                         }
                       }
-                    }
-                  } else if (formatted.length === 0) {
-                    // Clear deadline if input is empty
-                    setDeadline('');
-                  }
-                }}
-                onBlur={(e) => {
-                  // Validate and fix format on blur
-                  const value = e.target.value;
-                  if (value && value.length < 10) {
-                    // If incomplete, clear it
-                    setDeadlineDateDisplay('');
-                    const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
-                    if (dateValue) {
-                      setDeadline(dateValue);
-                    } else {
+                    } else if (formatted.length === 0) {
+                      // Clear deadline if input is empty
                       setDeadline('');
                     }
-                  }
-                }}
-              />
-              <Input
-                id="deadline-time"
-                type="text"
-                value={deadlineTimeDisplay}
-                placeholder="HH:MM (e.g., 18:30)"
-                onChange={(e) => {
-                  const input = e.target.value;
-                  // Remove all non-digit characters
-                  const digits = input.replace(/\D/g, '');
-                  
-                  // Validate and limit digits as user types
-                  let validatedDigits = '';
-                  
-                  for (let i = 0; i < digits.length && i < 4; i++) {
-                    const digit = parseInt(digits[i]);
-                    
-                    if (i === 0) {
-                      // First digit (hours tens): 0-2
-                      if (digit >= 0 && digit <= 2) {
-                        validatedDigits += digits[i];
-                      }
-                    } else if (i === 1) {
-                      // Second digit (hours ones)
-                      const firstDigit = parseInt(validatedDigits[0]);
-                      if (firstDigit === 0 || firstDigit === 1) {
-                        // If first digit is 0 or 1, second can be 0-9
-                        validatedDigits += digits[i];
-                      } else if (firstDigit === 2) {
-                        // If first digit is 2, second can only be 0-3
-                        if (digit >= 0 && digit <= 3) {
-                          validatedDigits += digits[i];
-                        }
-                      }
-                    } else if (i === 2) {
-                      // Third digit (minutes tens): 0-5
-                      if (digit >= 0 && digit <= 5) {
-                        validatedDigits += digits[i];
-                      }
-                    } else if (i === 3) {
-                      // Fourth digit (minutes ones): 0-9
-                      validatedDigits += digits[i];
-                    }
-                  }
-                  
-                  // Format as HH:MM
-                  let formatted = '';
-                  if (validatedDigits.length === 0) {
-                    formatted = '';
-                  } else if (validatedDigits.length === 1) {
-                    formatted = validatedDigits;
-                  } else if (validatedDigits.length === 2) {
-                    formatted = `${validatedDigits}:`;
-                  } else if (validatedDigits.length === 3) {
-                    formatted = `${validatedDigits.slice(0, 2)}:${validatedDigits.slice(2)}`;
-                  } else {
-                    formatted = `${validatedDigits.slice(0, 2)}:${validatedDigits.slice(2, 4)}`;
-                  }
-                  
-                  setDeadlineTimeDisplay(formatted);
-                  
-                  // Update deadline if we have a complete time
-                  if (validatedDigits.length === 4) {
-                    const hours = validatedDigits.slice(0, 2);
-                    const minutes = validatedDigits.slice(2, 4);
-                    const hoursNum = parseInt(hours);
-                    const minutesNum = parseInt(minutes);
-                    
-                    // Final validation (should always pass due to above checks, but double-check)
-                    if (hoursNum >= 0 && hoursNum <= 23 && minutesNum >= 0 && minutesNum <= 59) {
-                      // Get date from deadline if it exists, otherwise parse from deadlineDateDisplay
-                      let dateValue = '';
-                      if (deadline && deadline.includes('T')) {
-                        dateValue = deadline.split('T')[0];
-                      } else if (deadlineDateDisplay && deadlineDateDisplay.length === 10) {
-                        // Parse dd/mm/yyyy format
-                        const match = deadlineDateDisplay.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-                        if (match) {
-                          const day = parseInt(match[1]);
-                          const month = parseInt(match[2]);
-                          const year = parseInt(match[3]);
-                          if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000) {
-                            const date = new Date(year, month - 1, day);
-                            if (date.getFullYear() === year && 
-                                date.getMonth() === month - 1 && 
-                                date.getDate() === day) {
-                              dateValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                            }
-                          }
-                        }
-                      }
-                      if (dateValue) {
-                        setDeadline(`${dateValue}T${hours}:${minutes}`);
-                      }
-                    }
-                  } else if (validatedDigits.length === 0) {
-                    // Clear deadline time if input is empty
-                    const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
-                    if (dateValue) {
-                      setDeadline(dateValue);
-                    } else {
-                      setDeadline('');
-                    }
-                  }
-                }}
-                onKeyDown={(e) => {
-                  // Handle backspace to remove characters progressively
-                  if (e.key === 'Backspace' && deadlineTimeDisplay) {
-                    e.preventDefault();
-                    const digits = deadlineTimeDisplay.replace(/\D/g, '');
-                    
-                    if (digits.length === 0) {
-                      setDeadlineTimeDisplay('');
+                  }}
+                  onBlur={(e) => {
+                    // Validate and fix format on blur
+                    const value = e.target.value;
+                    if (value && value.length < 10) {
+                      // If incomplete, clear it
+                      setDeadlineDateDisplay('');
                       const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
                       if (dateValue) {
                         setDeadline(dateValue);
                       } else {
                         setDeadline('');
                       }
-                    } else {
-                      // Remove last digit
-                      const newDigits = digits.slice(0, -1);
+                    }
+                  }}
+                />
+                <Input
+                  id="deadline-time"
+                  type="text"
+                  value={deadlineTimeDisplay}
+                  placeholder="HH:MM (e.g., 18:30)"
+                  onChange={(e) => {
+                    const input = e.target.value;
+                    // Remove all non-digit characters
+                    const digits = input.replace(/\D/g, '');
+                    
+                    // Validate and limit digits as user types
+                    let validatedDigits = '';
+                    
+                    for (let i = 0; i < digits.length && i < 4; i++) {
+                      const digit = parseInt(digits[i]);
                       
-                      // Reformat
-                      let formatted = '';
-                      if (newDigits.length === 0) {
-                        formatted = '';
-                      } else if (newDigits.length === 1) {
-                        formatted = `${newDigits}:`;
-                      } else if (newDigits.length === 2) {
-                        formatted = `${newDigits}:`;
-                      } else if (newDigits.length === 3) {
-                        formatted = `${newDigits.slice(0, 2)}:${newDigits.slice(2)}`;
-                      } else {
-                        formatted = `${newDigits.slice(0, 2)}:${newDigits.slice(2, 4)}`;
+                      if (i === 0) {
+                        // First digit (hours tens): 0-2
+                        if (digit >= 0 && digit <= 2) {
+                          validatedDigits += digits[i];
+                        }
+                      } else if (i === 1) {
+                        // Second digit (hours ones)
+                        const firstDigit = parseInt(validatedDigits[0]);
+                        if (firstDigit === 0 || firstDigit === 1) {
+                          // If first digit is 0 or 1, second can be 0-9
+                          validatedDigits += digits[i];
+                        } else if (firstDigit === 2) {
+                          // If first digit is 2, second can only be 0-3
+                          if (digit >= 0 && digit <= 3) {
+                            validatedDigits += digits[i];
+                          }
+                        }
+                      } else if (i === 2) {
+                        // Third digit (minutes tens): 0-5
+                        if (digit >= 0 && digit <= 5) {
+                          validatedDigits += digits[i];
+                        }
+                      } else if (i === 3) {
+                        // Fourth digit (minutes ones): 0-9
+                        validatedDigits += digits[i];
                       }
+                    }
+                    
+                    // Format as HH:MM
+                    let formatted = '';
+                    if (validatedDigits.length === 0) {
+                      formatted = '';
+                    } else if (validatedDigits.length === 1) {
+                      formatted = validatedDigits;
+                    } else if (validatedDigits.length === 2) {
+                      formatted = `${validatedDigits}:`;
+                    } else if (validatedDigits.length === 3) {
+                      formatted = `${validatedDigits.slice(0, 2)}:${validatedDigits.slice(2)}`;
+                    } else {
+                      formatted = `${validatedDigits.slice(0, 2)}:${validatedDigits.slice(2, 4)}`;
+                    }
+                    
+                    setDeadlineTimeDisplay(formatted);
+                    
+                    // Update deadline if we have a complete time
+                    if (validatedDigits.length === 4) {
+                      const hours = validatedDigits.slice(0, 2);
+                      const minutes = validatedDigits.slice(2, 4);
+                      const hoursNum = parseInt(hours);
+                      const minutesNum = parseInt(minutes);
                       
-                      setDeadlineTimeDisplay(formatted);
-                      
-                      // Update deadline
-                      if (newDigits.length === 4) {
-                        const hours = newDigits.slice(0, 2);
-                        const minutes = newDigits.slice(2, 4);
-                        const hoursNum = parseInt(hours);
-                        const minutesNum = parseInt(minutes);
-                        
-                        if (hoursNum >= 0 && hoursNum <= 23 && minutesNum >= 0 && minutesNum <= 59) {
-                          // Get date from deadline if it exists, otherwise parse from deadlineDateDisplay
-                          let dateValue = '';
-                          if (deadline && deadline.includes('T')) {
-                            dateValue = deadline.split('T')[0];
-                          } else if (deadlineDateDisplay && deadlineDateDisplay.length === 10) {
-                            // Parse dd/mm/yyyy format
-                            const match = deadlineDateDisplay.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-                            if (match) {
-                              const day = parseInt(match[1]);
-                              const month = parseInt(match[2]);
-                              const year = parseInt(match[3]);
-                              if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000) {
-                                const date = new Date(year, month - 1, day);
-                                if (date.getFullYear() === year && 
-                                    date.getMonth() === month - 1 && 
-                                    date.getDate() === day) {
-                                  dateValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                                }
+                      // Final validation (should always pass due to above checks, but double-check)
+                      if (hoursNum >= 0 && hoursNum <= 23 && minutesNum >= 0 && minutesNum <= 59) {
+                        // Get date from deadline if it exists, otherwise parse from deadlineDateDisplay
+                        let dateValue = '';
+                        if (deadline && deadline.includes('T')) {
+                          dateValue = deadline.split('T')[0];
+                        } else if (deadlineDateDisplay && deadlineDateDisplay.length === 10) {
+                          // Parse dd/mm/yyyy format
+                          const match = deadlineDateDisplay.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+                          if (match) {
+                            const day = parseInt(match[1]);
+                            const month = parseInt(match[2]);
+                            const year = parseInt(match[3]);
+                            if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000) {
+                              const date = new Date(year, month - 1, day);
+                              if (date.getFullYear() === year && 
+                                  date.getMonth() === month - 1 && 
+                                  date.getDate() === day) {
+                                dateValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                               }
                             }
                           }
-                          if (dateValue) {
-                            setDeadline(`${dateValue}T${hours}:${minutes}`);
-                          }
                         }
+                        if (dateValue) {
+                          setDeadline(`${dateValue}T${hours}:${minutes}`);
+                        }
+                      }
+                    } else if (validatedDigits.length === 0) {
+                      // Clear deadline time if input is empty
+                      const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
+                      if (dateValue) {
+                        setDeadline(dateValue);
                       } else {
+                        setDeadline('');
+                      }
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    // Handle backspace to remove characters progressively
+                    if (e.key === 'Backspace' && deadlineTimeDisplay) {
+                      e.preventDefault();
+                      const digits = deadlineTimeDisplay.replace(/\D/g, '');
+                      
+                      if (digits.length === 0) {
+                        setDeadlineTimeDisplay('');
                         const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
                         if (dateValue) {
                           setDeadline(dateValue);
                         } else {
                           setDeadline('');
                         }
+                      } else {
+                        // Remove last digit
+                        const newDigits = digits.slice(0, -1);
+                        
+                        // Reformat
+                        let formatted = '';
+                        if (newDigits.length === 0) {
+                          formatted = '';
+                        } else if (newDigits.length === 1) {
+                          formatted = `${newDigits}:`;
+                        } else if (newDigits.length === 2) {
+                          formatted = `${newDigits}:`;
+                        } else if (newDigits.length === 3) {
+                          formatted = `${newDigits.slice(0, 2)}:${newDigits.slice(2)}`;
+                        } else {
+                          formatted = `${newDigits.slice(0, 2)}:${newDigits.slice(2, 4)}`;
+                        }
+                        
+                        setDeadlineTimeDisplay(formatted);
+                        
+                        // Update deadline
+                        if (newDigits.length === 4) {
+                          const hours = newDigits.slice(0, 2);
+                          const minutes = newDigits.slice(2, 4);
+                          const hoursNum = parseInt(hours);
+                          const minutesNum = parseInt(minutes);
+                          
+                          if (hoursNum >= 0 && hoursNum <= 23 && minutesNum >= 0 && minutesNum <= 59) {
+                            // Get date from deadline if it exists, otherwise parse from deadlineDateDisplay
+                            let dateValue = '';
+                            if (deadline && deadline.includes('T')) {
+                              dateValue = deadline.split('T')[0];
+                            } else if (deadlineDateDisplay && deadlineDateDisplay.length === 10) {
+                              // Parse dd/mm/yyyy format
+                              const match = deadlineDateDisplay.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+                              if (match) {
+                                const day = parseInt(match[1]);
+                                const month = parseInt(match[2]);
+                                const year = parseInt(match[3]);
+                                if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000) {
+                                  const date = new Date(year, month - 1, day);
+                                  if (date.getFullYear() === year && 
+                                      date.getMonth() === month - 1 && 
+                                      date.getDate() === day) {
+                                    dateValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                                  }
+                                }
+                              }
+                            }
+                            if (dateValue) {
+                              setDeadline(`${dateValue}T${hours}:${minutes}`);
+                            }
+                          }
+                        } else {
+                          const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
+                          if (dateValue) {
+                            setDeadline(dateValue);
+                          } else {
+                            setDeadline('');
+                          }
+                        }
                       }
                     }
-                  }
-                }}
+                  }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Set a deadline (date and time) for form submissions. After this time, users cannot submit the form. Date format: dd/mm/yyyy. Time format: 24-hour (e.g., 23:59).
+              </p>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="event-registration"
+                checked={isEventRegistration}
+                onCheckedChange={(checked: boolean) => setIsEventRegistration(checked)}
               />
+              <Label htmlFor="event-registration" className="font-normal cursor-pointer">
+                Use as event registration (adds name, surname, email fields automatically)
+              </Label>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Set a deadline (date and time) for form submissions. After this time, users cannot submit the form. Date format: dd/mm/yyyy. Time format: 24-hour (e.g., 23:59).
-            </p>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="event-registration"
-              checked={isEventRegistration}
-              onCheckedChange={(checked: boolean) => setIsEventRegistration(checked)}
-            />
-            <Label htmlFor="event-registration" className="font-normal cursor-pointer">
-              Use as event registration (adds name, surname, email fields automatically)
-            </Label>
-          </div>
-          {isEventRegistration && (
-            <div className="space-y-3 p-4 bg-muted rounded-md">
-              <div className="space-y-2">
-                <Label htmlFor="event-email-subject">Email Subject</Label>
-                <Input
-                  id="event-email-subject"
-                  value="Event Registration Confirmation"
-                  readOnly
-                  className="bg-background"
-                />
-                <p className="text-xs text-muted-foreground">
-                  You can customize this in the form settings after creation.
-                </p>
+            {isEventRegistration && (
+              <div className="space-y-3 p-4 bg-muted rounded-md">
+                <div className="space-y-2">
+                  <Label htmlFor="event-email-subject">Email Subject</Label>
+                  <Input
+                    id="event-email-subject"
+                    value="Event Registration Confirmation"
+                    readOnly
+                    className="bg-background"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    You can customize this in the form settings after creation.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="event-email-content">Email Content</Label>
+                  <Textarea
+                    id="event-email-content"
+                    value="Thank you for registering! We look forward to seeing you at the event."
+                    readOnly
+                    className="bg-background"
+                    rows={3}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    You can customize this in the form settings after creation.
+                  </p>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="event-email-content">Email Content</Label>
-                <Textarea
-                  id="event-email-content"
-                  value="Thank you for registering! We look forward to seeing you at the event."
-                  readOnly
-                  className="bg-background"
-                  rows={3}
-                />
-                <p className="text-xs text-muted-foreground">
-                  You can customize this in the form settings after creation.
-                </p>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
+            )}
+          </div>
+          <DialogFooter className="mt-4">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
@@ -944,124 +944,126 @@ function EditFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Edit Form</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="edit-name">Form Name</Label>
-            <Input
-              id="edit-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-slug">Slug</Label>
-            <Input
-              id="edit-slug"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-description">Description</Label>
-            <Textarea
-              id="edit-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-deadline">Deadline (Optional)</Label>
-            <Input
-              id="edit-deadline"
-              type="datetime-local"
-              value={deadline}
-              onChange={(e) => setDeadline(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Set a deadline (date and time) for form submissions. After this time, users cannot submit the form. Date format: dd/mm/yyyy. Time format: 24-hour (e.g., 23:59).
-            </p>
-          </div>
-          
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="edit-event-registration"
-              checked={isEventRegistration}
-              onCheckedChange={(checked: boolean) => setIsEventRegistration(checked)}
-            />
-            <Label htmlFor="edit-event-registration" className="font-normal cursor-pointer">
-              Use as event registration (sends confirmation emails)
-            </Label>
-          </div>
-          
-          {isEventRegistration && (
-            <div className="space-y-4 p-4 bg-muted rounded-md border-t">
-              <h3 className="font-semibold text-sm">Event Registration Settings</h3>
-              <div className="space-y-2">
-                <Label htmlFor="edit-event-email-subject">Email Subject</Label>
-                <Input
-                  id="edit-event-email-subject"
-                  value={eventEmailSubject}
-                  onChange={(e) => setEventEmailSubject(e.target.value)}
-                  placeholder="Event Registration Confirmation"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-event-email-content">Email Content</Label>
-                {open && isClient && emailEditor && isEventRegistration ? (
-                  <div className="border rounded-md min-h-[150px]">
-                    <EditorContent editor={emailEditor} />
-                  </div>
-                ) : (
-                  <Textarea
-                    id="edit-event-email-content"
-                    value={eventEmailContent}
-                    onChange={(e) => {
-                      setEventEmailContent(e.target.value);
-                      // Also update editor if it exists
-                      if (emailEditor && isClient) {
-                        emailEditor.commands.setContent(e.target.value);
-                      }
-                    }}
-                    placeholder="Thank you for registering! We look forward to seeing you at the event."
-                    rows={6}
-                  />
-                )}
-                <p className="text-xs text-muted-foreground">
-                  This content will be sent in the confirmation email. Use {`{name}`} and {`{surname}`} to personalize. You can format text with bold, italic, lists, etc.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-event-date">Event Date & Time</Label>
-                <Input
-                  id="edit-event-date"
-                  type="datetime-local"
-                  value={eventDate}
-                  onChange={(e) => setEventDate(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Used for the calendar button in confirmation emails.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-event-location">Event Location (Optional)</Label>
-                <Input
-                  id="edit-event-location"
-                  value={eventLocation}
-                  onChange={(e) => setEventLocation(e.target.value)}
-                  placeholder="e.g., Main Conference Hall, Brussels"
-                />
-              </div>
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Form Name</Label>
+              <Input
+                id="edit-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
             </div>
-          )}
+            <div className="space-y-2">
+              <Label htmlFor="edit-slug">Slug</Label>
+              <Input
+                id="edit-slug"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Description</Label>
+              <Textarea
+                id="edit-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-deadline">Deadline (Optional)</Label>
+              <Input
+                id="edit-deadline"
+                type="datetime-local"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Set a deadline (date and time) for form submissions. After this time, users cannot submit the form. Date format: dd/mm/yyyy. Time format: 24-hour (e.g., 23:59).
+              </p>
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="edit-event-registration"
+                checked={isEventRegistration}
+                onCheckedChange={(checked: boolean) => setIsEventRegistration(checked)}
+              />
+              <Label htmlFor="edit-event-registration" className="font-normal cursor-pointer">
+                Use as event registration (sends confirmation emails)
+              </Label>
+            </div>
+            
+            {isEventRegistration && (
+              <div className="space-y-4 p-4 bg-muted rounded-md border-t">
+                <h3 className="font-semibold text-sm">Event Registration Settings</h3>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-event-email-subject">Email Subject</Label>
+                  <Input
+                    id="edit-event-email-subject"
+                    value={eventEmailSubject}
+                    onChange={(e) => setEventEmailSubject(e.target.value)}
+                    placeholder="Event Registration Confirmation"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-event-email-content">Email Content</Label>
+                  {open && isClient && emailEditor && isEventRegistration ? (
+                    <div className="border rounded-md min-h-[150px]">
+                      <EditorContent editor={emailEditor} />
+                    </div>
+                  ) : (
+                    <Textarea
+                      id="edit-event-email-content"
+                      value={eventEmailContent}
+                      onChange={(e) => {
+                        setEventEmailContent(e.target.value);
+                        // Also update editor if it exists
+                        if (emailEditor && isClient) {
+                          emailEditor.commands.setContent(e.target.value);
+                        }
+                      }}
+                      placeholder="Thank you for registering! We look forward to seeing you at the event."
+                      rows={6}
+                    />
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    This content will be sent in the confirmation email. Use {`{name}`} and {`{surname}`} to personalize. You can format text with bold, italic, lists, etc.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-event-date">Event Date & Time</Label>
+                  <Input
+                    id="edit-event-date"
+                    type="datetime-local"
+                    value={eventDate}
+                    onChange={(e) => setEventDate(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Used for the calendar button in confirmation emails.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-event-location">Event Location (Optional)</Label>
+                  <Input
+                    id="edit-event-location"
+                    value={eventLocation}
+                    onChange={(e) => setEventLocation(e.target.value)}
+                    placeholder="e.g., Main Conference Hall, Brussels"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
           
-          <DialogFooter>
+          <DialogFooter className="mt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
@@ -1278,14 +1280,14 @@ function VersionsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Manage Versions - {form.name}</DialogTitle>
           <DialogDescription>
             View and activate different versions of your form
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 max-h-96 overflow-y-auto">
+        <div className="space-y-4 overflow-y-auto flex-1 min-h-0">
           {loading ? (
             <div className="text-center py-8">Loading versions...</div>
           ) : versions.length === 0 ? (

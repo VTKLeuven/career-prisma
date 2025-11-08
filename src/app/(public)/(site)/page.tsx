@@ -20,6 +20,51 @@ export default function HomePage() {
     const [viewAllEvents, setViewAllEvents] = useState(false);
     useBannerPage();
 
+    // Check for hash on mount and listen for view all events event
+    useEffect(() => {
+        const checkHash = () => {
+            if (window.location.hash === '#all-events') {
+                setViewAllEvents(true);
+                // Scroll to events section after a short delay to ensure DOM is ready
+                setTimeout(() => {
+                    const eventsSection = document.getElementById('events');
+                    if (eventsSection) {
+                        eventsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }, 100);
+            }
+        };
+        
+        // Handler for custom event from header
+        const handleViewAllEvents = () => {
+            setViewAllEvents(true);
+            setTimeout(() => {
+                const eventsSection = document.getElementById('events');
+                if (eventsSection) {
+                    eventsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }, 100);
+        };
+        
+        // Check immediately
+        checkHash();
+        
+        // Also check after a short delay (in case page just loaded)
+        const timeoutId = setTimeout(checkHash, 300);
+        
+        // Listen for hash changes
+        window.addEventListener('hashchange', checkHash);
+        
+        // Listen for custom event from header (when on same page)
+        window.addEventListener('viewAllEvents', handleViewAllEvents);
+        
+        return () => {
+            clearTimeout(timeoutId);
+            window.removeEventListener('hashchange', checkHash);
+            window.removeEventListener('viewAllEvents', handleViewAllEvents);
+        };
+    }, []);
+
     return (
         <>
             <Hero />
@@ -29,7 +74,6 @@ export default function HomePage() {
                 <UpcomingEvents onViewAll={() => setViewAllEvents(true)} />
             )}
             <TeamOverview />
-            <Footer />
         </>
     )
 }
@@ -85,7 +129,7 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
           </Link>
 
           <nav className="hidden items-center gap-2 md:flex">
-            <Link href="#" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">Home</Link>
+            <Link href="/" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">Home</Link>
 
             <div className="relative">
               <button
@@ -101,12 +145,13 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
               </button>
             </div>
 
-            <Link href="#students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Services</Link>
+            <Link href="/our-students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
+            <Link href="/vacancies" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
 
           {/* Mobile nav - Events as simple button */}
           <nav className="md:hidden flex items-center gap-2">
-            <Link href="#" className="rounded-full bg-vtk-blue px-3 py-1.5 text-xs font-medium text-white">Home</Link>
+            <Link href="/" className="rounded-full bg-vtk-blue px-3 py-1.5 text-xs font-medium text-white">Home</Link>
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -114,12 +159,13 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
             >
               Events
             </button>
-            <Link href="#students" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Services</Link>
+            <Link href="/our-students" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
+            <Link href="/vacancies" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
             <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => router.push("/dashboard")}>Company Dashboard</Button>
-            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="#contact">Contact Us</Link></Button>
+            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="/contact">Contact Us</Link></Button>
             
             {/* Mobile menu button - only show if menu is closed (Events button handles opening) */}
             {!mobileMenuOpen && (
@@ -175,7 +221,20 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
                       className="h-7 rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5 text-xs px-3"
                       onClick={() => {
                         setMobileMenuOpen(false);
-                        onViewAll?.();
+                        if (onViewAll) {
+                          // On homepage, use callback directly
+                          onViewAll();
+                          // Scroll to events section
+                          setTimeout(() => {
+                            const eventsSection = document.getElementById('events');
+                            if (eventsSection) {
+                              eventsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                          }, 100);
+                        } else {
+                          // On other pages, navigate to homepage with hash
+                          router.push('/#all-events');
+                        }
                       }}
                     >
                       View all
@@ -232,7 +291,7 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
                     className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full"
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    <Link href="#contact">Contact Us</Link>
+                    <Link href="/contact">Contact Us</Link>
                   </Button>
                 </div>
               </div>
@@ -266,10 +325,23 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
                         size="sm"
                         variant="outline"
                         className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5"
-                        onClick={() => {
-                          setOpenMenu(null);
-                          onViewAll?.();
-                        }}
+                      onClick={() => {
+                        setOpenMenu(null);
+                        if (onViewAll) {
+                          // On homepage, use callback directly
+                          onViewAll();
+                          // Scroll to events section
+                          setTimeout(() => {
+                            const eventsSection = document.getElementById('events');
+                            if (eventsSection) {
+                              eventsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                          }, 100);
+                        } else {
+                          // On other pages, navigate to homepage with hash
+                          router.push('/#all-events');
+                        }
+                      }}
                       >
                         View all
                       </Button>
@@ -309,7 +381,9 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
                       <div className="text-sm font-medium text-neutral-900">Featured</div>
                       <p className="mt-1 text-sm text-neutral-700">Meet 200+ companies at our flagship jobfair in Leuven.</p>
                       <div className="mt-4">
-                        <Button className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">Explore jobfair</Button>
+                        <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">
+                          <Link href="/event/vtk-jobfair">Explore jobfair</Link>
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -480,14 +554,18 @@ function AllEvents({ onBack }: { onBack?: () => void }) {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <section className="py-16 text-center"><p className="text-sm text-muted-foreground">Loading all events…</p></section>;
+  if (loading) return <section id="events" className="py-16 text-center"><p className="text-sm text-muted-foreground">Loading all events…</p></section>;
 
   return (
-    <section className="relative border-t bg-white">
+    <section id="events" className="relative border-t bg-white">
       <div className="relative mx-auto max-w-7xl px-4 py-16">
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">All Events</h2>
-          <Button variant="outline" className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5" onClick={onBack}>
+          <Button variant="outline" className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5" onClick={() => {
+            onBack?.();
+            // Remove hash from URL when going back
+            window.history.replaceState(null, '', window.location.pathname + window.location.search);
+          }}>
             Back
           </Button>
         </div>
@@ -577,55 +655,4 @@ function TeamOverview() {
     )
 }
 
-function Footer() {
-    return (
-        <footer id="contact" className="bg-white">
-            <div className="mx-auto max-w-7xl px-4 py-12 sm:py-16">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-10">
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-3">
-                            <div className="relative h-8 w-8 overflow-hidden rounded-xl border bg-vtk-light" />
-                            <span className="font-semibold text-vtk-blue">VTK Career Hub</span>
-                        </div>
-                        <p className="max-w-xs text-sm text-neutral-700">The all-in-one platform for engineering students looking for a job.</p>
-                    </div>
-
-                    <div>
-                        <h4 className="mb-3 text-sm font-medium text-neutral-900">Explore</h4>
-                        <ul className="space-y-2 text-sm text-neutral-700">
-                            <li><Link href="#events" className="hover:text-vtk-blue hover:underline underline-offset-4">Events</Link></li>
-                            <li><Link href="#team" className="hover:text-vtk-blue hover:underline underline-offset-4">Team</Link></li>
-                        </ul>
-                    </div>
-
-                    <div>
-                        <h4 className="mb-3 text-sm font-medium text-neutral-900">For partners</h4>
-                        <ul className="space-y-2 text-sm text-neutral-700">
-                            <li><Link href="#" className="hover:text-vtk-blue hover:underline underline-offset-4">Sponsor</Link></li>
-                            <li><Link href="#" className="hover:text-vtk-blue hover:underline underline-offset-4">Job postings</Link></li>
-                        </ul>
-                    </div>
-
-                    <div>
-                        <h4 className="mb-3 text-sm font-medium text-neutral-900">Get in touch</h4>
-                        <ul className="space-y-2 text-sm text-neutral-700">
-                            <li><Link href="mailto:career@vtk.be" className="hover:text-vtk-blue hover:underline underline-offset-4">career@vtk.be</Link></li>
-                        </ul>
-                    </div>
-                </div>
-
-                <Separator className="my-10" />
-
-                <div className="flex flex-col items-start justify-between gap-4 text-xs text-neutral-600 sm:flex-row sm:items-center">
-                    <p>© {new Date().getFullYear()} Career Hub. All rights reserved.</p>
-                    <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-                        <Link href="#" className="hover:text-vtk-blue">Privacy</Link>
-                        <Link href="#" className="hover:text-vtk-blue">Terms</Link>
-                        <Link href="#" className="hover:text-vtk-blue">Cookies</Link>
-                    </div>
-                </div>
-            </div>
-        </footer>
-    )
-}
 

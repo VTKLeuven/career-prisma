@@ -36,31 +36,31 @@ const data = {
     },
     {
       title: "Online Interaction",
-      url: "#",
+      url: "/dashboard/online-interaction",
       icon: IconBrandInstagram,
       items: [
         {
           title: "Social Media Post",
-          url: "#",
+          url: "/dashboard/online-interaction/social-media-post",
         },
         {
           title: "Mailing",
-          url: "#",
+          url: "/dashboard/online-interaction/mailing",
         },
       ],
     },
     {
       title: "Job Platform",
-      url: "#",
+      url: "/dashboard/job-platform",
       icon: IconFileCv,
       items: [
         {
           title: "CV Book",
-          url: "#",
+          url: "/dashboard/job-platform/cv-book",
         },
         {
           title: "Vacancies",
-          url: "#",
+          url: "/dashboard/job-platform/vacancies",
         },
       ],
     },
@@ -71,7 +71,7 @@ const data = {
     // },
     {
       title: "Settings",
-      url: "#",
+      url: "/dashboard/settings",
       icon: IconSettings,
       items: [
         {

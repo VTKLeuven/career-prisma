@@ -92,11 +92,11 @@ export default function EventPage() {
     return () => setHideLayoutHeader(false)
   }, [setHideLayoutHeader])
 
-  const includesFair = page?.event?.name?.toLowerCase().includes("fair")
+  const hasFloorplan = !!page?.floorplan
 
   return (
     <>
-      {includesFair ? (
+      {hasFloorplan ? (
         <Header page={page ?? undefined} />
       ) : (
         <HomepageHeader />
@@ -171,7 +171,7 @@ function HomepageHeader() {
           </Link>
 
           <nav className="hidden items-center gap-2 md:flex">
-            <Link href="#" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">Home</Link>
+            <Link href="/" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">Home</Link>
 
             <div className="relative">
               <button
@@ -187,12 +187,13 @@ function HomepageHeader() {
               </button>
             </div>
 
-            <Link href="#students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Services</Link>
+            <Link href="/our-students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
+            <Link href="/vacancies" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
 
           {/* Mobile nav - Events as simple button */}
           <nav className="md:hidden flex items-center gap-2">
-            <Link href="#" className="rounded-full bg-vtk-blue px-3 py-1.5 text-xs font-medium text-white">Home</Link>
+            <Link href="/" className="rounded-full bg-vtk-blue px-3 py-1.5 text-xs font-medium text-white">Home</Link>
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -200,12 +201,13 @@ function HomepageHeader() {
             >
               Events
             </button>
-            <Link href="#students" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Services</Link>
+            <Link href="/our-students" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
+            <Link href="/vacancies" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
             <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => router.push("/dashboard")}>Company Dashboard</Button>
-            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="#contact">Contact Us</Link></Button>
+            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="/contact">Contact Us</Link></Button>
 
             {/* Mobile menu button */}
             <button
@@ -250,6 +252,8 @@ function HomepageHeader() {
                       className="h-7 rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5 text-xs px-3"
                       onClick={() => {
                         setMobileMenuOpen(false);
+                        // Navigate to homepage with hash
+                        window.location.href = '/#all-events';
                       }}
                     >
                       View all
@@ -306,7 +310,7 @@ function HomepageHeader() {
                     className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full"
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    <Link href="#contact">Contact Us</Link>
+                    <Link href="/contact">Contact Us</Link>
                   </Button>
                 </div>
               </div>
@@ -340,7 +344,11 @@ function HomepageHeader() {
                         size="sm"
                         variant="outline"
                         className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5"
-                        onClick={() => setOpenMenu(null)}
+                        onClick={() => {
+                          setOpenMenu(null);
+                          // Navigate to homepage with hash
+                          window.location.href = '/#all-events';
+                        }}
                       >
                         View all
                       </Button>
@@ -380,7 +388,9 @@ function HomepageHeader() {
                       <div className="text-sm font-medium text-neutral-900">Featured</div>
                       <p className="mt-1 text-sm text-neutral-700">Meet 200+ companies at our flagship jobfair in Leuven.</p>
                       <div className="mt-4">
-                        <Button className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">Explore jobfair</Button>
+                        <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">
+                          <Link href="/event/vtk-jobfair">Explore jobfair</Link>
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -483,7 +493,7 @@ function Header({ page }: { page?: CareerEventPage }) {
           {/* Right cluster */}
           <div className="ml-auto flex items-center gap-2 shrink-0">
             <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => router.push("/dashboard")}>Company Dashboard</Button>
-            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="#contact">Contact Us</Link></Button>
+            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="/contact">Contact Us</Link></Button>
 
             {/* Mobile menu button */}
             {!mobileMenuOpen && (
@@ -545,7 +555,7 @@ function Header({ page }: { page?: CareerEventPage }) {
                     className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full"
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    <Link href="#contact">Contact Us</Link>
+                    <Link href="/contact">Contact Us</Link>
                   </Button>
                 </div>
               </div>
@@ -689,14 +699,26 @@ function Hero({
                 Register
               </Button>
 
-              {/* Explore companies button */}
-              <Button
-                variant="ghost"
-                className="rounded-full bg-vtk-blue-dark text-white hover:brightness-95 cursor-pointer text-sm sm:text-base"
-                onClick={handleExploreCompanies}
-              >
-                Explore companies
-              </Button>
+              {/* Floorplan button (if floorplan exists) or Explore companies button */}
+              {page?.floorplan ? (
+                <Button
+                  variant="ghost"
+                  asChild
+                  className="rounded-full bg-vtk-blue-dark text-white hover:brightness-95 cursor-pointer text-sm sm:text-base"
+                >
+                  <Link href={`/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}/floorplan`}>
+                    Floorplan
+                  </Link>
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  className="rounded-full bg-vtk-blue-dark text-white hover:brightness-95 cursor-pointer text-sm sm:text-base"
+                  onClick={handleExploreCompanies}
+                >
+                  Explore companies
+                </Button>
+              )}
             </div>
 
           </motion.div>
