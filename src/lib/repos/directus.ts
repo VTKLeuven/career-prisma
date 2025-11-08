@@ -39,25 +39,18 @@ export async function uploadDirectusFile(file: File): Promise<string | null> {
   }
 }
 
-export async function sendEmail({
-  to,
-  subject,
-  html,
-  from,
-}: {
-  to: string;
-  subject: string;
-  html: string;
-  from?: string;
-}) {
+// Singleton transporter with connection pooling to avoid rate limiting
+let cachedTransporter: nodemailer.Transporter | null = null;
+
+function getTransporter(): nodemailer.Transporter {
+  if (cachedTransporter) {
+    return cachedTransporter;
+  }
+
   const smtpHost = process.env.SMTP_HOST || "smtp-relay.gmail.com";
   const smtpPort = parseInt(process.env.SMTP_PORT || "587", 10);
-  const defaultFromEmail = process.env.SMTP_FROM_EMAIL;
 
-  // Determine the from email: function parameter > env variable > fallback
-  const fromEmail = from || defaultFromEmail || "noreply@example.com";
-
-  // Build transporter config
+  // Build transporter config with connection pooling
   interface SMTPTransportOptions {
     host: string;
     port: number;
@@ -69,6 +62,11 @@ export async function sendEmail({
     };
     logger?: boolean;
     debug?: boolean;
+    pool?: boolean;
+    maxConnections?: number;
+    maxMessages?: number;
+    rateDelta?: number;
+    rateLimit?: number;
     auth?: {
       user: string;
       pass: string;
@@ -85,6 +83,12 @@ export async function sendEmail({
       rejectUnauthorized: false,
       minVersion: "TLSv1.2",
     },
+    // Connection pooling to reuse connections and reduce EHLO commands
+    pool: true,
+    maxConnections: 5, // Limit concurrent connections
+    maxMessages: 100, // Max messages per connection before closing
+    rateDelta: 1000, // Time window for rate limiting (1 second)
+    rateLimit: 5, // Max 5 messages per rateDelta window
     // Optional: Enable connection logging for debugging
     logger: process.env.NODE_ENV === "development",
     debug: process.env.NODE_ENV === "development",
@@ -100,7 +104,27 @@ export async function sendEmail({
     };
   }
 
-  const transporter = nodemailer.createTransport(transportConfig as nodemailer.TransportOptions);
+  cachedTransporter = nodemailer.createTransport(transportConfig as nodemailer.TransportOptions);
+  return cachedTransporter;
+}
+
+export async function sendEmail({
+  to,
+  subject,
+  html,
+  from,
+}: {
+  to: string;
+  subject: string;
+  html: string;
+  from?: string;
+}) {
+  const defaultFromEmail = process.env.SMTP_FROM_EMAIL;
+
+  // Determine the from email: function parameter > env variable > fallback
+  const fromEmail = from || defaultFromEmail || "noreply@example.com";
+
+  const transporter = getTransporter();
 
   // Retry logic for rate-limited connections
   const maxRetries = 3;
@@ -125,6 +149,7 @@ export async function sendEmail({
       // If it's a rate limit error (421) and we have retries left, wait and retry
       if ((errorCode === 'ECONNECTION' || responseCode === 421) && attempt < maxRetries) {
         const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+        console.warn(`Email send attempt ${attempt} failed with rate limit. Retrying in ${waitTime}ms...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
         continue;
       }
