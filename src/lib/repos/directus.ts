@@ -2,6 +2,7 @@
 "use server";
 
 import { cookies } from "next/headers";
+import nodemailer from "nodemailer";
 
 export async function uploadDirectusFile(file: File): Promise<string | null> {
   const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
@@ -42,25 +43,100 @@ export async function sendEmail({
   to,
   subject,
   html,
+  from,
 }: {
   to: string;
   subject: string;
   html: string;
+  from?: string;
 }) {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) throw new Error("RESEND_API_KEY missing");
+  const smtpHost = process.env.SMTP_HOST || "smtp-relay.gmail.com";
+  const smtpPort = parseInt(process.env.SMTP_PORT || "587", 10);
+  const defaultFromEmail = process.env.SMTP_FROM_EMAIL;
 
-  await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
+  // Determine the from email: function parameter > env variable > fallback
+  const fromEmail = from || defaultFromEmail || "noreply@example.com";
+
+  // Build transporter config
+  interface SMTPTransportOptions {
+    host: string;
+    port: number;
+    secure: boolean;
+    requireTLS: boolean;
+    tls: {
+      rejectUnauthorized: boolean;
+      minVersion: string;
+    };
+    logger?: boolean;
+    debug?: boolean;
+    auth?: {
+      user: string;
+      pass: string;
+    };
+  }
+
+  const transportConfig: SMTPTransportOptions = {
+    host: smtpHost,
+    port: smtpPort,
+    secure: smtpPort === 465, // true for 465, false for other ports
+    requireTLS: smtpPort === 587, // Only require TLS for port 587
+    tls: {
+      // Do not fail on invalid certs for development
+      rejectUnauthorized: false,
+      minVersion: "TLSv1.2",
     },
-    body: JSON.stringify({
-      from: "", // TODO: create domain in resend
-      to,
-      subject,
-      html,
-    }),
-  });
+    // Optional: Enable connection logging for debugging
+    logger: process.env.NODE_ENV === "development",
+    debug: process.env.NODE_ENV === "development",
+  };
+
+  // Add authentication if credentials are provided (optional for relay services)
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  if (smtpUser && smtpPass) {
+    transportConfig.auth = {
+      user: smtpUser,
+      pass: smtpPass,
+    };
+  }
+
+  const transporter = nodemailer.createTransport(transportConfig as nodemailer.TransportOptions);
+
+  // Retry logic for rate-limited connections
+  const maxRetries = 3;
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await transporter.sendMail({
+        from: fromEmail,
+        to,
+        subject,
+        html,
+      });
+      return; // Success, exit function
+    } catch (error) {
+      const err = error as Error & { code?: string; responseCode?: number; response?: string; command?: string };
+      lastError = err;
+
+      const errorCode = err.code;
+      const responseCode = err.responseCode;
+
+      // If it's a rate limit error (421) and we have retries left, wait and retry
+      if ((errorCode === 'ECONNECTION' || responseCode === 421) && attempt < maxRetries) {
+        const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+
+      // For other errors or final attempt, throw immediately
+      console.error("Failed to send email:", error);
+      throw error;
+    }
+  }
+
+  // If we exhausted all retries, throw the last error
+  if (lastError) {
+    throw lastError;
+  }
 }

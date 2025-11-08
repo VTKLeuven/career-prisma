@@ -60,7 +60,7 @@ function slugifyName(name?: string | null): string {
 export async function fetchCompanyBySlugAction(slug: string): Promise<Company | null> {
   // Use public client for unauthenticated access
   const companies = (await listCompanies({ limit: 200, sort: "name", usePublic: true })) ?? [];
-  
+
   // Debug logging
   if (process.env.NODE_ENV === "development") {
     console.log("fetchCompanyBySlugAction - Looking for slug:", slug);
@@ -70,26 +70,26 @@ export async function fetchCompanyBySlugAction(slug: string): Promise<Company | 
       slug: slugifyName(c.name)
     })));
   }
-  
+
   const match = companies.find((c: Company) => {
     const companySlug = slugifyName(c.name);
     return companySlug === slug;
   });
-  
+
   if (!match) {
     if (process.env.NODE_ENV === "development") {
       console.log("fetchCompanyBySlugAction - No match found for slug:", slug);
     }
     return null;
   }
-  
+
   // Fetch full company details with all relations (use public client)
   const fullCompany = await fetchCompanyByIdAction(match.id, true);
-  
+
   if (process.env.NODE_ENV === "development") {
     console.log("fetchCompanyBySlugAction - Found company:", fullCompany?.name);
   }
-  
+
   return fullCompany;
 }
 
@@ -200,8 +200,8 @@ export async function addOptionToCompanyAction(companyId: string, optionId: stri
     optionJunctions = (company.options as unknown[]).map((opt) => {
       if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
         const junction = opt as { career_event_option_id: CareerEventOption | string | null };
-        const optId = typeof junction.career_event_option_id === 'string' 
-          ? junction.career_event_option_id 
+        const optId = typeof junction.career_event_option_id === 'string'
+          ? junction.career_event_option_id
           : junction.career_event_option_id?.id ?? '';
         return { career_event_option_id: optId };
       }
@@ -221,7 +221,7 @@ export async function addOptionToCompanyAction(companyId: string, optionId: stri
   const { readItem } = await import("@directus/sdk");
   const { getDirectusWithToken } = await import("@/lib/directus");
   const directus = await getDirectusWithToken();
-  
+
   let shouldSetPageOnPlatform = false;
   if (directus) {
     try {
@@ -230,7 +230,7 @@ export async function addOptionToCompanyAction(companyId: string, optionId: stri
           fields: ["name"],
         })
       ) as { name?: string } | null;
-      
+
       if (option?.name === "Jobfair Package") {
         shouldSetPageOnPlatform = true;
       }
@@ -239,8 +239,8 @@ export async function addOptionToCompanyAction(companyId: string, optionId: stri
     }
   }
 
-  const updatePayload: Partial<Company> = { 
-    options: optionJunctions as unknown as Company['options'] 
+  const updatePayload: Partial<Company> = {
+    options: optionJunctions as unknown as Company['options']
   };
 
   if (shouldSetPageOnPlatform) {
@@ -259,7 +259,7 @@ export async function removeOptionFromCompanyAction(companyId: string, optionId:
   const { readItem } = await import("@directus/sdk");
   const { getDirectusWithToken } = await import("@/lib/directus");
   const directus = await getDirectusWithToken();
-  
+
   let isJobfairPackage = false;
   if (directus) {
     try {
@@ -268,7 +268,7 @@ export async function removeOptionFromCompanyAction(companyId: string, optionId:
           fields: ["name"],
         })
       ) as { name?: string } | null;
-      
+
       if (option?.name === "Jobfair Package") {
         isJobfairPackage = true;
       }
@@ -285,8 +285,8 @@ export async function removeOptionFromCompanyAction(companyId: string, optionId:
     optionJunctions = (company.options as unknown[]).map((opt) => {
       if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
         const junction = opt as { career_event_option_id: CareerEventOption | string | null };
-        const optId = typeof junction.career_event_option_id === 'string' 
-          ? junction.career_event_option_id 
+        const optId = typeof junction.career_event_option_id === 'string'
+          ? junction.career_event_option_id
           : junction.career_event_option_id?.id ?? '';
         return { career_event_option_id: optId };
       }
@@ -296,8 +296,8 @@ export async function removeOptionFromCompanyAction(companyId: string, optionId:
     }).filter(j => j.career_event_option_id && j.career_event_option_id !== optionId);
   }
 
-  const updatePayload: Partial<Company> = { 
-    options: optionJunctions as unknown as Company['options'] 
+  const updatePayload: Partial<Company> = {
+    options: optionJunctions as unknown as Company['options']
   };
 
   // If removing Jobfair Package, set page_on_platform to false
@@ -352,7 +352,7 @@ export async function removeUserFromCompanyAction(companyId: string, userId: str
     return { success: true, warning: "User removed from company but could not be fully deleted from Directus due to existing references in other tables" };
   }
 
-  return deleteResult.success 
-    ? { success: true } 
+  return deleteResult.success
+    ? { success: true }
     : { success: false, error: deleteResult.error || "Failed to delete user" };
 }

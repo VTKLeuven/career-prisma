@@ -14,6 +14,7 @@ import { CareerEventPage, Company, CareerEvent } from '@/lib/schema'
 import dynamic from "next/dynamic"
 import HeroiconDynamic from "@/components/HeroiconDynamic"
 import { ChevronDown } from 'lucide-react'
+import { useBannerPage } from '@/hooks/use-banner-page'
 
 const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.EventMap), {
   ssr: false,
@@ -23,6 +24,7 @@ export default function EventPage() {
   const [page, setPage] = useState<CareerEventPage | null>(null)
   const [popupMessage, setPopupMessage] = useState<string>("")
   const [popupContent, setPopupContent] = useState<React.ReactNode>(null)
+  useBannerPage()
 
   const params = useParams()
   const eventName = Array.isArray(params.eventName)
@@ -31,26 +33,26 @@ export default function EventPage() {
 
   // Fetch events and find the correct page
   const loadedEventRef = useRef<string | null>(null)
-  
+
   useEffect(() => {
     // Skip if no eventName
     if (!eventName) return
-    
+
     // Prevent duplicate loads of the same event
     if (loadedEventRef.current === eventName) {
       return
     }
-    
+
     // Mark as loading BEFORE async operation
     loadedEventRef.current = eventName
-    
+
     async function load() {
       try {
         const events = await fetchEventPagesAction()
-        
+
         // Verify we're still loading the same event
         if (loadedEventRef.current !== eventName) return
-        
+
         const found = events.find(
           (p) => p.event?.name && p.event.name.toLowerCase().replace(/\s+/g, "-") === eventName
         )
@@ -63,7 +65,7 @@ export default function EventPage() {
         }
       }
     }
-    
+
     load()
   }, [eventName])
 
@@ -196,7 +198,7 @@ function HomepageHeader() {
           <div className="ml-auto flex items-center gap-2">
             <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => router.push("/dashboard")}>Company Dashboard</Button>
             <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="#contact">Contact Us</Link></Button>
-            
+
             {/* Mobile menu button */}
             <button
               type="button"
@@ -266,8 +268,8 @@ function HomepageHeader() {
                       .slice(0, 6)
                       .map((event) => (
                         <li key={event.name}>
-                          <Link 
-                            href={event.href ?? '#'} 
+                          <Link
+                            href={event.href ?? '#'}
                             className="block rounded-lg border bg-neutral-50 p-3 hover:bg-vtk-light/40 transition"
                             onClick={() => setMobileMenuOpen(false)}
                           >
@@ -281,9 +283,9 @@ function HomepageHeader() {
 
                 {/* Other Links */}
                 <div className="border-t pt-4 space-y-2">
-                  <Button 
-                    variant="outline" 
-                    className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full" 
+                  <Button
+                    variant="outline"
+                    className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
                     onClick={() => {
                       router.push("/dashboard");
                       setMobileMenuOpen(false);
@@ -291,8 +293,8 @@ function HomepageHeader() {
                   >
                     Company Dashboard
                   </Button>
-                  <Button 
-                    asChild 
+                  <Button
+                    asChild
                     className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full"
                     onClick={() => setMobileMenuOpen(false)}
                   >
@@ -405,9 +407,9 @@ function Header({ page }: { page?: CareerEventPage }) {
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [mobileMenuOpen])
-  
+
   return (
-    <header 
+    <header
       ref={menuRef}
       className="fixed top-2 sm:top-4 inset-x-0 z-50 w-full px-2 sm:px-0"
       onKeyDown={(e) => {
@@ -474,7 +476,7 @@ function Header({ page }: { page?: CareerEventPage }) {
           <div className="ml-auto flex items-center gap-2 shrink-0">
             <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => router.push("/dashboard")}>Company Dashboard</Button>
             <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="#contact">Contact Us</Link></Button>
-            
+
             {/* Mobile menu button */}
             {!mobileMenuOpen && (
               <button
@@ -520,9 +522,9 @@ function Header({ page }: { page?: CareerEventPage }) {
             <div className="mx-auto max-w-7xl px-2 sm:px-4">
               <div className="rounded-xl sm:rounded-2xl border bg-white/95 backdrop-blur-md shadow-xl p-4">
                 <div className="space-y-2">
-                  <Button 
-                    variant="outline" 
-                    className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full" 
+                  <Button
+                    variant="outline"
+                    className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
                     onClick={() => {
                       router.push("/dashboard");
                       setMobileMenuOpen(false);
@@ -530,8 +532,8 @@ function Header({ page }: { page?: CareerEventPage }) {
                   >
                     Company Dashboard
                   </Button>
-                  <Button 
-                    asChild 
+                  <Button
+                    asChild
                     className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full"
                     onClick={() => setMobileMenuOpen(false)}
                   >

@@ -12,7 +12,6 @@ import { UserProvider } from "@/providers/UserProvider";
 
 export default async function WithSidebarLayout({ children }: { children: React.ReactNode }) {
   const user = await getUserFromCookies();
-  console.log(user);
 
   if (!user) {
     return (
@@ -24,7 +23,6 @@ export default async function WithSidebarLayout({ children }: { children: React.
       </div>
     );
   }
-  console.log(user)
 
   return (
     <UserProvider key={user?.id ?? "anon"} initialUser={user}>

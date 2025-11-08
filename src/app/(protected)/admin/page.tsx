@@ -226,13 +226,15 @@ function CompaniesSection() {
     <Card className="rounded-2xl shadow-md">
       <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
         <CardTitle className="text-xl sm:text-2xl">
-          {selectedCompany && viewMode === "users" ? `Manage Users: ${selectedCompany.name}` : 
-           selectedCompany && viewMode === "options" ? `Manage Options: ${selectedCompany.name}` : 
+          {selectedCompany && viewMode === "users" ? `Manage Users: ${selectedCompany.name}` :
+           selectedCompany && viewMode === "options" ? `Manage Options: ${selectedCompany.name}` :
            "Manage Companies"}
         </CardTitle>
-        {selectedCompany && (
-          <Button variant="outline" size="sm" onClick={() => { setSelectedCompany(null); setViewMode("companies"); }} className="w-full sm:w-auto">Back to Companies</Button>
-        )}
+        <div className="flex items-center gap-2">
+          {selectedCompany && (
+            <Button variant="outline" size="sm" onClick={() => { setSelectedCompany(null); setViewMode("companies"); }} className="w-full sm:w-auto">Back to Companies</Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {!selectedCompany ? (
@@ -960,10 +962,10 @@ function RemoveUserDialog({ user, companyId, onRemove }: { user: Partial<Company
 
   const handleRemove = () => {
     if (!user?.id) return;
-    
+
     setError(null);
     setWarning(null);
-    
+
     removeUserFromCompanyAction(companyId, user.id)
       .then((result) => {
         if (result?.success) {
@@ -985,8 +987,8 @@ function RemoveUserDialog({ user, companyId, onRemove }: { user: Partial<Company
       });
   };
 
-  const userName = user?.first_name || user?.last_name 
-    ? `${user.first_name || ""} ${user.last_name || ""}`.trim() 
+  const userName = user?.first_name || user?.last_name
+    ? `${user.first_name || ""} ${user.last_name || ""}`.trim()
     : user?.email || "this user";
 
   return (
@@ -1485,6 +1487,7 @@ function formatAddress(r: Company) {
   return parts.join(", ");
 }
 
+/** ------------------------------------------------------------------
 /** ------------------------------------------------------------------
  * Events section
  * ------------------------------------------------------------------ */
