@@ -139,6 +139,34 @@ export async function updateForm(id: string, data: Partial<Form>) {
 export async function deleteForm(id: string) {
   try {
     const client = await getAuthedDirectusOrThrow();
+    
+    // Get all versions for this form
+    const versions = await listFormVersions(id);
+    const versionIds = versions.map(v => v.id);
+    
+    // Delete all responses for all versions of this form
+    if (versionIds.length > 0) {
+      // Get all responses for all versions
+      const allResponses = await client.request(
+        readItems("form_responses", {
+          fields: ["id"],
+          filter: { form_version_id: { _in: versionIds } },
+          limit: -1, // Get all responses
+        })
+      ) as unknown as FormResponse[];
+      
+      // Delete each response
+      for (const response of allResponses) {
+        await client.request(deleteItem("form_responses", response.id));
+      }
+    }
+    
+    // Delete all versions
+    for (const versionId of versionIds) {
+      await client.request(deleteItem("form_versions", versionId));
+    }
+    
+    // Finally, delete the form itself
     await client.request(deleteItem("forms", id));
     return true;
   } catch (error) {
@@ -243,6 +271,22 @@ export async function updateFormVersion(id: string, data: Partial<FormVersion>) 
 export async function deleteFormVersion(id: string) {
   try {
     const client = await getAuthedDirectusOrThrow();
+    
+    // Get all responses for this version
+    const responses = await client.request(
+      readItems("form_responses", {
+        fields: ["id"],
+        filter: { form_version_id: { _eq: id } },
+        limit: -1, // Get all responses
+      })
+    ) as unknown as FormResponse[];
+    
+    // Delete all responses for this version
+    for (const response of responses) {
+      await client.request(deleteItem("form_responses", response.id));
+    }
+    
+    // Delete the version itself
     await client.request(deleteItem("form_versions", id));
     return true;
   } catch (error) {

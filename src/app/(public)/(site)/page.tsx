@@ -22,7 +22,6 @@ export default function HomePage() {
 
     return (
         <>
-            <Header onViewAll={() => setViewAllEvents(true)} />
             <Hero />
             {viewAllEvents ? (
                 <AllEvents onBack={() => setViewAllEvents(false)} />
