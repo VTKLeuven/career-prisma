@@ -50,12 +50,22 @@ export async function sendEmail({
   html: string;
   from?: string;
 }) {
+  console.log("[SMTP] Starting email send process");
+  console.log("[SMTP] Recipient:", to);
+  console.log("[SMTP] Subject:", subject);
+
   const smtpHost = process.env.SMTP_HOST || "smtp-relay.gmail.com";
   const smtpPort = parseInt(process.env.SMTP_PORT || "587", 10);
   const defaultFromEmail = process.env.SMTP_FROM_EMAIL;
 
+  console.log("[SMTP] Configuration:");
+  console.log("[SMTP]   Host:", smtpHost);
+  console.log("[SMTP]   Port:", smtpPort);
+  console.log("[SMTP]   From email (env):", defaultFromEmail || "not set");
+
   // Determine the from email: function parameter > env variable > fallback
   const fromEmail = from || defaultFromEmail || "noreply@example.com";
+  console.log("[SMTP]   From email (final):", fromEmail);
 
   // Build transporter config
   interface SMTPTransportOptions {
@@ -85,10 +95,16 @@ export async function sendEmail({
       rejectUnauthorized: false,
       minVersion: "TLSv1.2",
     },
-    // Optional: Enable connection logging for debugging
-    logger: process.env.NODE_ENV === "development",
-    debug: process.env.NODE_ENV === "development",
+    // Enable connection logging for debugging
+    logger: true,
+    debug: true,
   };
+
+  console.log("[SMTP] Transport config:");
+  console.log("[SMTP]   Secure (SSL):", transportConfig.secure);
+  console.log("[SMTP]   Require TLS:", transportConfig.requireTLS);
+  console.log("[SMTP]   TLS min version:", transportConfig.tls.minVersion);
+  console.log("[SMTP]   TLS reject unauthorized:", transportConfig.tls.rejectUnauthorized);
 
   // Add authentication if credentials are provided (optional for relay services)
   const smtpUser = process.env.SMTP_USER;
@@ -98,22 +114,74 @@ export async function sendEmail({
       user: smtpUser,
       pass: smtpPass,
     };
+    console.log("[SMTP]   Authentication: enabled (user:", smtpUser, ")");
+  } else {
+    console.log("[SMTP]   Authentication: disabled (no credentials provided)");
   }
 
+  console.log("[SMTP] Creating transporter...");
   const transporter = nodemailer.createTransport(transportConfig as nodemailer.TransportOptions);
+  console.log("[SMTP] Transporter created successfully");
 
-  // Skip verification for relay services - it can cause connection issues
-  // Just attempt to send the email directly
-  try {
-    await transporter.sendMail({
-      from: fromEmail,
-      to,
-      subject,
-      html,
-    });
-    console.log(`Email sent successfully to ${to}`);
-  } catch (error) {
-    console.error("Failed to send email:", error);
-    throw error;
+  // Retry logic for rate-limited connections
+  const maxRetries = 3;
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    console.log(`[SMTP] Attempt ${attempt}/${maxRetries} - Preparing to send email...`);
+    
+    try {
+      console.log("[SMTP] Calling transporter.sendMail()...");
+      const startTime = Date.now();
+      
+      await transporter.sendMail({
+        from: fromEmail,
+        to,
+        subject,
+        html,
+      });
+      
+      const duration = Date.now() - startTime;
+      console.log(`[SMTP] Email sent successfully to ${to} (took ${duration}ms)`);
+      return; // Success, exit function
+    } catch (error) {
+      const err = error as Error & { code?: string; responseCode?: number; response?: string; command?: string };
+      lastError = err;
+      
+      console.error(`[SMTP] Attempt ${attempt} failed:`);
+      console.error("[SMTP]   Error type:", err.constructor.name);
+      console.error("[SMTP]   Error message:", err.message);
+      console.error("[SMTP]   Error code:", err.code || "not set");
+      console.error("[SMTP]   Response code:", err.responseCode || "not set");
+      console.error("[SMTP]   Command:", err.command || "not set");
+      if (err.response) {
+        console.error("[SMTP]   Response:", err.response);
+      }
+      if (err.stack) {
+        console.error("[SMTP]   Stack trace:", err.stack);
+      }
+
+      const errorCode = err.code;
+      const responseCode = err.responseCode;
+
+      // If it's a rate limit error (421) and we have retries left, wait and retry
+      if ((errorCode === 'ECONNECTION' || responseCode === 421) && attempt < maxRetries) {
+        const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+        console.log(`[SMTP] Rate limited (421/ECONNECTION), will retry in ${waitTime}ms (attempt ${attempt}/${maxRetries})...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        console.log(`[SMTP] Retry wait complete, attempting again...`);
+        continue;
+      }
+
+      // For other errors or final attempt, throw immediately
+      console.error("[SMTP] Fatal error or max retries reached, throwing error");
+      throw error;
+    }
+  }
+
+  // If we exhausted all retries, throw the last error
+  if (lastError) {
+    console.error("[SMTP] All retry attempts exhausted, throwing last error");
+    throw lastError;
   }
 }

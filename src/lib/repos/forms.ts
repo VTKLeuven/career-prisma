@@ -107,14 +107,9 @@ export async function createForm(data: Partial<Form>) {
 export async function updateForm(id: string, data: Partial<Form>) {
   try {
     const client = await getAuthedDirectusOrThrow();
-    console.log('[updateForm] Updating form:', id, 'with data:', data);
-    const result = await client.request(
+    await client.request(
       updateItem("forms", id, data)
-    ) as unknown as Form;
-    console.log('[updateForm] Update successful, result:', result);
-    console.log('[updateForm] Result keys:', Object.keys(result as unknown as Record<string, unknown>));
-    console.log('[updateForm] Result has is_active:', 'is_active' in (result as unknown as Record<string, unknown>));
-    console.log('[updateForm] Result is_active value:', (result as unknown as Form).is_active);
+    );
     
     // Refetch to get updated data with all fields
     const updated = await client.request(
@@ -122,7 +117,6 @@ export async function updateForm(id: string, data: Partial<Form>) {
         fields: ["*", "form_versions.*"],
       })
     ) as unknown as Form;
-    console.log('[updateForm] Refetched form is_active:', updated.is_active);
     return updated;
   } catch (error) {
     console.error("Error updating form:", error);

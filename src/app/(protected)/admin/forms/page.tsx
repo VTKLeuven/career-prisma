@@ -705,9 +705,7 @@ function ToggleFormStatusMenuItem({ form, onUpdate }: { form: FormRow; onUpdate:
       // If form is currently active (is_active is true or undefined), disable it
       // If form is disabled (is_active is false), enable it
       const newStatus = form.is_active === false ? true : false;
-      console.log('[ToggleFormStatus] Toggling form:', form.id, 'from', form.is_active, 'to', newStatus);
-      const result = await updateFormAction(form.id, { is_active: newStatus });
-      console.log('[ToggleFormStatus] Update result:', result);
+      await updateFormAction(form.id, { is_active: newStatus });
       onUpdate();
     } catch (error) {
       console.error("Error toggling form status:", error);
