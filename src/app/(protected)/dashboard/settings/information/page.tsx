@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { IconCheck, IconRefresh } from "@tabler/icons-react";
+import Link from "next/link";
 import type { Company, Master } from "@/lib/schema";
 import { fetchMastersAction } from "@/app/actions/features";
 import { updateCompanyAction, fetchCompanyByIdAction, uploadCompanyLogo } from "@/app/actions/companies";
@@ -35,6 +36,7 @@ export default function CompanyForm() {
   const [selectedMasters, setSelectedMasters] = useState<string[]>([]);
   const [masters, setMasters] = useState<Master[]>([]);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [pageImagePreview, setPageImagePreview] = useState<string | null>(null);
 
   const [savedSnapshot, setSavedSnapshot] = useState<{
     company: Company;
@@ -45,6 +47,7 @@ export default function CompanyForm() {
     id: "",
     name: "New Company",
     logo: "",
+    page_image: "",
     short_description: "",
     long_description: "",
     category: [],
@@ -82,14 +85,32 @@ export default function CompanyForm() {
         const fetchedCompany = await fetchCompanyByIdAction(user.company.id);
         if (fetchedCompany) {
           setCompany(fetchedCompany);
-          // category is already transformed to string[] by fetchCompanyByIdAction
-          const categoryIds = Array.isArray(fetchedCompany.category)
-            ? (fetchedCompany.category as (string | Master | { master_id: string })[]).map(c =>
-                typeof c === 'string' ? c : 'id' in c ? c.id : c.master_id
-              )
-            : [];
+          // Extract category IDs from junction objects or direct Master objects
+          const categoryIds: string[] = [];
+          if (Array.isArray(fetchedCompany.category)) {
+            for (const c of fetchedCompany.category) {
+              if (typeof c === 'string') {
+                categoryIds.push(c);
+              } else if (c && typeof c === 'object') {
+                // Check if it's a junction object: { master_id: Master }
+                if ('master_id' in c) {
+                  const masterId = (c as { master_id: Master | string | null }).master_id;
+                  if (typeof masterId === 'string') {
+                    categoryIds.push(masterId);
+                  } else if (masterId && typeof masterId === 'object' && 'id' in masterId) {
+                    categoryIds.push(masterId.id);
+                  }
+                } 
+                // Check if it's a Master object directly: { id: string, ... }
+                else if ('id' in c && typeof (c as { id: unknown }).id === 'string') {
+                  categoryIds.push((c as { id: string }).id);
+                }
+              }
+            }
+          }
           setSelectedMasters(categoryIds);
           setLogoPreview(typeof fetchedCompany.logo === "string" ? getDirectusImageUrl(fetchedCompany.logo) ?? null : null);
+          setPageImagePreview(typeof fetchedCompany.page_image === "string" ? getDirectusImageUrl(fetchedCompany.page_image) ?? null : null);
           setSavedSnapshot({
             company: fetchedCompany,
             selectedMasters: categoryIds,
@@ -98,6 +119,7 @@ export default function CompanyForm() {
           setCompany(null);
           setSelectedMasters([]);
           setLogoPreview(null);
+          setPageImagePreview(null);
           setSavedSnapshot(null);
         }
       } catch (err) {
@@ -105,6 +127,7 @@ export default function CompanyForm() {
         setCompany(null);
         setSelectedMasters([]);
         setLogoPreview(null);
+        setPageImagePreview(null);
         setSavedSnapshot(null);
       }
     }
@@ -127,6 +150,19 @@ export default function CompanyForm() {
     const url = URL.createObjectURL(file);
     setLogoPreview(url);
     updateField("logo", file as unknown as string);
+  }
+
+  // --- Page Image Upload ---
+  function handlePageImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      e.target.value = "";
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPageImagePreview(url);
+    updateField("page_image", file as unknown as string);
   }
 
   // --- Toggle Masters ---
@@ -192,12 +228,20 @@ export default function CompanyForm() {
     if (!company) return;
 
     let logoId: string | undefined = undefined;
+    let pageImageId: string | undefined = undefined;
 
     if (isFileLike(company.logo)) {
       const uploaded = await uploadCompanyLogo(company.logo);
       logoId = uploaded ?? undefined;
     } else if (typeof company.logo === "string") {
       logoId = company.logo;
+    }
+
+    if (isFileLike(company.page_image)) {
+      const uploadedBg = await uploadCompanyLogo(company.page_image);
+      pageImageId = uploadedBg ?? undefined;
+    } else if (typeof company.page_image === "string") {
+      pageImageId = company.page_image;
     }
 
     const payload: Partial<Company> = {
@@ -208,6 +252,7 @@ export default function CompanyForm() {
       location: company.location,
       website: company.website,
       logo: logoId,
+      page_image: pageImageId,
     };
 
     try {
@@ -228,6 +273,11 @@ export default function CompanyForm() {
             ? getDirectusImageUrl(updated.logo) ?? null
             : null
         );
+        setPageImagePreview(
+          typeof updated.page_image === "string"
+            ? getDirectusImageUrl(updated.page_image) ?? null
+            : null
+        );
       }
     } catch (err) {
       console.error("Error updating company:", err);
@@ -240,6 +290,7 @@ export default function CompanyForm() {
     setCompany({ ...savedSnapshot.company });
     setSelectedMasters([...savedSnapshot.selectedMasters]);
     setLogoPreview(typeof savedSnapshot.company.logo === "string" ? getDirectusImageUrl(savedSnapshot.company.logo) ?? null : null);
+    setPageImagePreview(typeof savedSnapshot.company.page_image === "string" ? getDirectusImageUrl(savedSnapshot.company.page_image) ?? null : null);
     shortDescEditor?.commands.setContent(savedSnapshot.company.short_description || "");
   }
 
@@ -248,11 +299,31 @@ export default function CompanyForm() {
     <div className="w-full gap-4 flex flex-col">
       {/* Company Information Section */}
       <Card className="rounded-2xl shadow-md">
-        <CardHeader>
-          <CardTitle className="text-xl">Company Information</CardTitle>
-          <CardDescription>
-            Provide general company details. This information will be visible on your profile and used for events.
-          </CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div className="flex-1">
+            <CardTitle className="text-xl">Company Information</CardTitle>
+            <CardDescription>
+              Provide general company details. This information will be visible on your profile and used for events.
+            </CardDescription>
+          </div>
+          {company && (
+            <Link
+              href={company.page_on_platform 
+                ? `/company/${(company.name ?? "")
+                    .toLowerCase()
+                    .trim()
+                    .replace(/\s+/g, "-")
+                    .replace(/[^a-z0-9-]/g, "")
+                    .replace(/-+/g, "-")
+                    .replace(/^-|-$/g, "")}`
+                : "/dashboard/settings/information/request-page"
+              }
+            >
+              <Button type="button" variant="outline" className="cursor-pointer">
+                {company.page_on_platform ? "View Company Page" : "Request Company Page"}
+              </Button>
+            </Link>
+          )}
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-8">
@@ -268,6 +339,9 @@ export default function CompanyForm() {
                 />
               </div>
 
+              {/* Empty space to keep grid layout */}
+              <div></div>
+
               {/* Logo */}
               <div className="space-y-3">
                 <Label>Company Logo (PNG)</Label>
@@ -276,20 +350,20 @@ export default function CompanyForm() {
                     <NextImage
                       src={logoPreview}
                       alt="Company Logo"
-                      width={48}
-                      height={48}
-                      className="h-12 w-12 object-contain rounded-md"
+                      width={320}
+                      height={180}
+                      className="h-32 w-full max-w-sm object-contain rounded-md"
                     />
                   ) : formCompany.logo ? (
                     <NextImage
                       src={getDirectusImageUrl(formCompany.logo) ?? ""}
                       alt="Company Logo"
-                      width={48}
-                      height={48}
-                      className="h-12 w-12 object-contain rounded-md"
+                      width={320}
+                      height={180}
+                      className="h-32 w-full max-w-sm object-contain rounded-md"
                     />
                   ) : (
-                    <div className="h-12 w-12 flex items-center justify-center rounded-md bg-gray-100 text-gray-500 text-sm whitespace-nowrap">
+                    <div className="h-32 w-full max-w-sm flex items-center justify-center rounded-md bg-gray-100 text-gray-500 text-sm whitespace-nowrap">
                       No logo
                     </div>
                   )}
@@ -327,6 +401,68 @@ export default function CompanyForm() {
                   accept=".png"
                   className="hidden"
                   onChange={handleLogoUpload}
+                />
+              </div>
+
+              {/* Page Background Image */}
+              <div className="space-y-3">
+                <Label>Page Background Image</Label>
+                <div className="flex flex-col items-center gap-2">
+                  {pageImagePreview ? (
+                    <NextImage
+                      src={pageImagePreview}
+                      alt="Page Background"
+                      width={320}
+                      height={180}
+                      className="h-32 w-full max-w-sm object-cover rounded-md"
+                    />
+                  ) : formCompany.page_image ? (
+                    <NextImage
+                      src={getDirectusImageUrl(formCompany.page_image) ?? ""}
+                      alt="Page Background"
+                      width={320}
+                      height={180}
+                      className="h-32 w-full max-w-sm object-cover rounded-md"
+                    />
+                  ) : (
+                    <div className="h-32 w-full max-w-sm flex items-center justify-center rounded-md bg-gray-100 text-gray-500 text-sm whitespace-nowrap">
+                      No background image
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="cursor-pointer"
+                      onClick={() =>
+                        document.getElementById("hidden-page-image-input")?.click()
+                      }
+                    >
+                      {pageImagePreview || formCompany.page_image ? "Change Image" : "Upload Image"}
+                    </Button>
+                    {(pageImagePreview || formCompany.page_image) && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="cursor-pointer"
+                        onClick={() => {
+                          setPageImagePreview(null);
+                          updateField("page_image", "");
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <input
+                  id="hidden-page-image-input"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handlePageImageUpload}
                 />
               </div>
 

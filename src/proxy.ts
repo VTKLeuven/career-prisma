@@ -1,4 +1,4 @@
-// middleware.ts
+// proxy.ts
 import { NextResponse, NextRequest } from "next/server";
 
 const PREFIX = process.env.AUTH_COOKIE_PREFIX ?? "directus";
@@ -17,7 +17,7 @@ function decodeJwtPayload(token: string) {
   }
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const res = NextResponse.next();
 
   const access = req.cookies.get(ACCESS_COOKIE)?.value;
@@ -38,7 +38,7 @@ export async function middleware(req: NextRequest) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: refresh }),
-      // Middleware runs at the edge; keep it simple.
+      // Proxy runs at the edge; keep it simple.
     });
 
     if (!r.ok) {
@@ -81,3 +81,4 @@ export const config = {
   // Skip static assets and Next internals for performance
   matcher: ["/((?!_next/|.*\\.(?:png|jpg|jpeg|svg|gif|ico|css|js|map|txt)).*)"],
 };
+
