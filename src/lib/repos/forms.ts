@@ -36,7 +36,15 @@ export async function listForms(opts?: {
 
 export async function getFormById(id: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
+    // Try authenticated first, fall back to public client for public form access
+    let client;
+    try {
+      client = await getAuthedDirectusOrThrow();
+    } catch {
+      // If auth fails, use public client for public form submissions
+      client = directus;
+    }
+    
     return client.request(
       readItem("forms", id, {
         fields: ["*", "form_versions.*"],
@@ -195,7 +203,15 @@ export async function listFormVersions(formId: string) {
 
 export async function getFormVersionById(id: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
+    // Try authenticated first, fall back to public client for public form access
+    let client;
+    try {
+      client = await getAuthedDirectusOrThrow();
+    } catch {
+      // If auth fails, use public client for public form submissions
+      client = directus;
+    }
+    
     return client.request(
       readItem("form_versions", id, {
         fields: ["*", "form_id.*"],
@@ -380,6 +396,17 @@ export async function createFormResponse(data: {
   }
 }
 
+export async function deleteFormResponse(id: string) {
+  try {
+    const client = await getAuthedDirectusOrThrow();
+    await client.request(deleteItem("form_responses", id));
+    return true;
+  } catch (error) {
+    console.error("Error deleting form response:", error);
+    throw error;
+  }
+}
+
 export async function countFormResponses(formId: string) {
   try {
     const client = await getAuthedDirectusOrThrow();
@@ -405,6 +432,40 @@ export async function countFormResponses(formId: string) {
     return responses.length;
   } catch (error) {
     console.error("Error counting form responses:", error);
+    return 0; // Return 0 on error to avoid breaking the UI
+  }
+}
+
+export async function countFormVersionResponses(formVersionId: string, usePublic = false) {
+  try {
+    // Use public client if requested, otherwise try authenticated
+    let client;
+    if (usePublic) {
+      const { directus } = await import("@/lib/directus");
+      client = directus;
+    } else {
+      try {
+        client = await getAuthedDirectusOrThrow();
+      } catch {
+        // Fall back to public client if auth fails
+        const { directus } = await import("@/lib/directus");
+        client = directus;
+      }
+    }
+    
+    // Count responses for a specific form version
+    const { readItems } = await import("@directus/sdk");
+    const responses = await client.request(
+      readItems("form_responses", {
+        fields: ["id"],
+        filter: { form_version_id: { _eq: formVersionId } },
+        limit: -1, // Get all to count
+      })
+    ) as unknown as FormResponse[];
+    
+    return responses.length;
+  } catch (error) {
+    console.error("Error counting form version responses:", error);
     return 0; // Return 0 on error to avoid breaking the UI
   }
 }

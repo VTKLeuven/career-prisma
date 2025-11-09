@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { useState } from "react";
 import { useRouter } from "next/navigation"
 import NextImage from "next/image";
@@ -10,6 +11,7 @@ import NextImage from "next/image";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter()
@@ -23,7 +25,7 @@ export default function LoginPage() {
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, rememberMe }),
       });
 
       const data = await res.json();
@@ -74,6 +76,19 @@ export default function LoginPage() {
                     </a>
                   </div>
                   <Input id="password" type="password" required onChange={(e) => setPassword(e.target.value)} />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="rememberMe"
+                    checked={rememberMe}
+                    onCheckedChange={(checked) => setRememberMe(checked === true)}
+                  />
+                  <Label
+                    htmlFor="rememberMe"
+                    className="text-sm font-normal cursor-pointer"
+                  >
+                    Remember me
+                  </Label>
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? "Signing in…" : "Sign in"}

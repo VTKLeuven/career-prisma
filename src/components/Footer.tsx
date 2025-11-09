@@ -11,7 +11,6 @@ export function Footer() {
                     {/* VTK Career Hub Info */}
                     <div className="space-y-3">
                         <div className="flex items-center gap-3">
-                            <div className="relative h-8 w-8 overflow-hidden rounded-xl border bg-vtk-light" />
                             <span className="font-semibold text-vtk-blue">VTK Career Hub</span>
                         </div>
                         <p className="max-w-xs text-sm text-neutral-700">

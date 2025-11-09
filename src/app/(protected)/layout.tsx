@@ -9,6 +9,16 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { UserProvider } from "@/providers/UserProvider";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  robots: {
+    index: false,
+    follow: false,
+    noarchive: true,
+    nosnippet: true,
+  },
+};
 
 export default async function WithSidebarLayout({ children }: { children: React.ReactNode }) {
   const user = await getUserFromCookies();

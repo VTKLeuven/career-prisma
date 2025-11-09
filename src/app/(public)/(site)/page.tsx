@@ -88,7 +88,14 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
   const eventsMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-      fetchEventsAction().then(setEvents);
+      // Use API route for better caching
+      fetch('/api/homepage')
+        .then(res => res.json())
+        .then((data) => setEvents(data.events ?? []))
+        .catch(() => {
+          // Fallback to direct action
+          fetchEventsAction().then(setEvents);
+        });
   }, []);
 
   // Close menus when clicking outside
@@ -125,7 +132,14 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
       <div className="mx-auto max-w-7xl px-2 sm:px-4">
         <div className="flex items-center justify-between gap-2 sm:gap-3 rounded-xl sm:rounded-2xl border bg-white/85 px-2 sm:px-3 md:px-5 py-1.5 sm:py-2 md:py-3 shadow-[0_12px_40px_rgba(0,0,0,0.10)] ring-1 ring-black/5 backdrop-blur-md">
           <Link href="/" className="flex shrink-0 items-center gap-1 sm:gap-2 rounded-full px-1 sm:px-2">
-            <span className="text-xs sm:text-sm font-semibold tracking-tight text-vtk-blue">VTK Career</span>
+            <Image 
+              src="/career_blue.png" 
+              alt="VTK Career" 
+              width={120} 
+              height={40} 
+              className="h-6 sm:h-8 w-auto self-center"
+              priority
+            />
           </Link>
 
           <nav className="hidden items-center gap-2 md:flex">
@@ -414,6 +428,9 @@ function Hero() {
                     alt="VTK Career events crowd"
                     fill
                     priority
+                    fetchPriority="high"
+                    loading="eager"
+                    sizes="100vw"
                     className="object-cover"
                 />
             </motion.div>
@@ -454,9 +471,19 @@ function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
 
     useEffect(() => {
         let alive = true;
-        fetchEventsAction()
-          .then((rows) => { if (!alive) return; setEvents(rows ?? []); })
-          .catch((err) => console.error("Error fetching events:", err))
+        // Use API route for better caching
+        fetch('/api/homepage')
+          .then(res => res.json())
+          .then((data) => { 
+            if (!alive) return; 
+            setEvents(data.events ?? []); 
+          })
+          .catch(() => {
+            // Fallback to direct action
+            return fetchEventsAction()
+              .then((rows) => { if (!alive) return; setEvents(rows ?? []); })
+              .catch((err) => console.error("Error fetching events:", err));
+          })
           .finally(() => setLoading(false));
         return () => { alive = false; };
     }, []);
@@ -497,22 +524,50 @@ function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-                    {upcomingEvents.map((event, i) => (
-                        <motion.a
+                    {upcomingEvents.map((event, i) => {
+                      const imageUrl = event.image ? getDirectusImageUrl(event.image) : null
+                      return (
+                        <motion.div
                             key={event.name}
-                            href={event.href ?? '#'}
                             whileHover={{ y: -8, rotate: i % 2 ? -1 : 1 }}
                             transition={{ type: 'spring', stiffness: 260, damping: 18 }}
                             className="group relative block"
+                            onMouseEnter={() => {
+                              // Prefetch image on hover for faster navigation
+                              // Using prefetch (not preload) to avoid console warnings
+                              if (imageUrl && typeof window !== 'undefined') {
+                                // Debounce to avoid too many requests
+                                setTimeout(() => {
+                                  // Check if link already exists
+                                  const existing = document.querySelector(`link[href="${imageUrl}"]`)
+                                  if (!existing) {
+                                    const link = document.createElement('link')
+                                    link.rel = 'prefetch'
+                                    link.as = 'image'
+                                    link.href = imageUrl
+                                    document.head.appendChild(link)
+                                  }
+                                }, 300) // Slightly longer delay to reduce warnings
+                              }
+                            }}
                         >
+                            <Link
+                                href={event.href ?? '#'}
+                                prefetch={true}
+                                className="block"
+                            >
                             <div className="rounded-[28px] bg-white/90 p-3 shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md">
                                 <div className="relative overflow-hidden rounded-[20px]">
-                                    <div className="aspect-[4/3]">
+                                    <div className="relative aspect-[4/3]">
                                       {event.image && (
                                       <Image
                                         src={getDirectusImageUrl(event.image)!}
                                         alt={event.name}
-                                        fill className="object-cover transition-transform duration-300 group-hover:scale-105"
+                                        fill 
+                                        priority={i < 3} // Priority for first 3 images
+                                        fetchPriority={i < 3 ? "high" : "auto"}
+                                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                                        className="object-cover transition-transform duration-300 group-hover:scale-105"
                                       />
                                       )}
                                     </div>
@@ -528,8 +583,10 @@ function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
                                 </div>
                             </div>
                             <div aria-hidden className="absolute inset-x-6 -bottom-3 h-6 rounded-full bg-black/10 blur-md opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-                        </motion.a>
-                    ))}
+                            </Link>
+                        </motion.div>
+                      )
+                    })}
                 </div>
 
                 {/* All events button - below cards on mobile only */}
@@ -548,9 +605,16 @@ function AllEvents({ onBack }: { onBack?: () => void }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchEventsAction()
-      .then((rows) => setEvents(rows ?? []))
-      .catch((err) => console.error("Error fetching events:", err))
+    // Use API route for better caching
+    fetch('/api/homepage')
+      .then(res => res.json())
+      .then((data) => setEvents(data.events ?? []))
+      .catch(() => {
+        // Fallback to direct action
+        return fetchEventsAction()
+          .then((rows) => setEvents(rows ?? []))
+          .catch((err) => console.error("Error fetching events:", err));
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -591,9 +655,19 @@ function TeamOverview() {
 
     useEffect(() => {
       let alive = true;
-      fetchSalespersonsAction()
-        .then((rows) => { if (!alive) return; setTeam(rows ?? []); })
-        .catch((err) => console.error("Error fetching salespersons:", err))
+      // Use API route for better caching (shares cache with events)
+      fetch('/api/homepage')
+        .then(res => res.json())
+        .then((data) => { 
+          if (!alive) return; 
+          setTeam(data.salespersons ?? []); 
+        })
+        .catch(() => {
+          // Fallback to direct action
+          return fetchSalespersonsAction()
+            .then((rows) => { if (!alive) return; setTeam(rows ?? []); })
+            .catch((err) => console.error("Error fetching salespersons:", err));
+        })
         .finally(() => setLoading(false));
       return () => { alive = false; };
     }, []);
@@ -633,6 +707,7 @@ function TeamOverview() {
                     alt={`${m.first_name} ${m.last_name}`}
                     width={96}
                     height={96}
+                    loading="lazy"
                     className="h-full w-full object-cover"
                   />
                   )}

@@ -341,7 +341,14 @@ function Header() {
       <div className="mx-auto max-w-7xl px-2 sm:px-4">
         <div className="flex items-center justify-between gap-2 sm:gap-3 rounded-xl sm:rounded-2xl border bg-white/85 px-2 sm:px-3 md:px-5 py-1.5 sm:py-2 md:py-3 shadow-[0_12px_40px_rgba(0,0,0,0.10)] ring-1 ring-black/5 backdrop-blur-md">
           <Link href="/" className="flex shrink-0 items-center gap-1 sm:gap-2 rounded-full px-1 sm:px-2">
-            <span className="text-xs sm:text-sm font-semibold tracking-tight text-vtk-blue">VTK Career</span>
+            <Image 
+              src="/career_blue.png" 
+              alt="VTK Career" 
+              width={120} 
+              height={40} 
+              className="h-6 sm:h-8 w-auto self-center"
+              priority
+            />
           </Link>
 
           <nav className="hidden items-center gap-2 md:flex">

@@ -17,7 +17,9 @@ import {
   listFormResponses,
   getFormResponseById,
   createFormResponse,
+  deleteFormResponse,
   countFormResponses,
+  countFormVersionResponses,
 } from "@/lib/repos/forms";
 import type { Form, FormVersion, FormSchema, FormMetadata } from "@/lib/schema";
 
@@ -177,12 +179,21 @@ export async function createFormVersionAction(data: {
     const versions = await listFormVersions(data.form_id);
     const maxVersion = Math.max(...versions.map((v) => v.version_number), 0);
     
+    // If metadata is not provided, preserve metadata from the previous active version
+    let metadataToUse = data.metadata;
+    if (!metadataToUse) {
+      const activeVersion = versions.find((v) => v.is_active);
+      if (activeVersion && activeVersion.metadata) {
+        metadataToUse = activeVersion.metadata as FormMetadata;
+      }
+    }
+    
     return await createFormVersion({
       form_id: data.form_id,
       schema: data.schema,
       version_number: maxVersion + 1,
       is_active: data.is_active ?? false,
-      metadata: data.metadata,
+      metadata: metadataToUse,
     });
   } catch (error) {
     console.error("Error creating form version:", error);
@@ -240,6 +251,15 @@ export async function fetchFormResponseByIdAction(id: string) {
   }
 }
 
+export async function deleteFormResponseAction(id: string) {
+  try {
+    return await deleteFormResponse(id);
+  } catch (error) {
+    console.error("Error deleting form response:", error);
+    throw error;
+  }
+}
+
 export async function submitFormResponseAction(data: {
   form_version_id: string;
   user_id?: string;
@@ -247,27 +267,99 @@ export async function submitFormResponseAction(data: {
   attachments?: string[];
 }) {
   try {
+    // Get the form version to check metadata (including max_entries)
+    const formVersion = await getFormVersionById(data.form_version_id);
+    const versionMetadata = (formVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata;
+
+    // Check max_entries limit before creating the response
+    // Always check server-side using server client (works for both authenticated and public submissions)
+    if (versionMetadata?.max_entries) {
+      const maxEntries = versionMetadata.max_entries as number;
+      try {
+        // Use server client which has elevated permissions for counting
+        const { getServerDirectusClient } = await import("@/lib/directus");
+        const serverClient = await getServerDirectusClient();
+        
+        // Count using server client - we need to call it directly with the client
+        const { readItems } = await import("@directus/sdk");
+        const responses = await serverClient.request(
+          readItems("form_responses", {
+            fields: ["id"],
+            filter: { form_version_id: { _eq: data.form_version_id } },
+            limit: -1, // Get all to count
+          })
+        ) as unknown as Array<{ id: string }>;
+        
+        const currentCount = responses.length;
+        
+        if (currentCount >= maxEntries) {
+          throw new Error(`This form has reached its maximum capacity and is no longer accepting new submissions.`);
+        }
+      } catch (error) {
+        // If it's the "form is full" error, re-throw it
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (errorMessage.includes('maximum capacity')) {
+          throw error;
+        }
+        
+        // Check if this is an authentication error (401)
+        const errorAny = error as any;
+        const responseStatus = errorAny?.response?.status ?? errorAny?.status;
+        const isAuthError = responseStatus === 401 || 
+                          errorMessage.includes('Invalid user credentials') || 
+                          errorMessage.includes('Unauthorized');
+        
+        if (isAuthError) {
+          console.error('[submitFormResponseAction] Authentication error checking form capacity');
+          throw new Error("Unable to verify form capacity due to authentication error. Please contact support if this persists.");
+        } else {
+          console.error("Error checking form capacity:", errorMessage);
+          throw new Error("Unable to verify form capacity. Please try again or contact support.");
+        }
+      }
+    }
+
+    // Check deadline
+    if (versionMetadata?.deadline) {
+      const deadline = new Date(versionMetadata.deadline as string);
+      const now = new Date();
+      if (now > deadline) {
+        throw new Error(`This form's deadline has passed. The deadline was ${new Date(versionMetadata.deadline as string).toLocaleString()}.`);
+      }
+    }
+
     const response = await createFormResponse(data);
     
     // If this is an event registration form, send confirmation email
     if (response && data.data.email) {
-      // Get the form version to check if it's an event registration
-      const formVersion = await getFormVersionById(data.form_version_id);
+      if (versionMetadata?.is_event_registration) {
+        // Get form name - prefer from loaded relation, otherwise fetch it
+        let formName: string;
+        if (typeof formVersion.form_id !== 'string' && formVersion.form_id?.name) {
+          // Form relation is already loaded in formVersion
+          formName = formVersion.form_id.name;
+        } else {
+          // Need to fetch form separately
+          const formId = typeof formVersion.form_id === 'string' ? formVersion.form_id : formVersion.form_id.id;
+          try {
+            const form = await getFormById(formId);
+            formName = form.name;
+          } catch (error) {
+            console.warn("Could not get form details, using fallback name:", error);
+            formName = 'Event'; // Last resort fallback
+          }
+        }
 
-      if (formVersion?.metadata?.is_event_registration) {
-        const formId = typeof formVersion.form_id === 'string' ? formVersion.form_id : formVersion.form_id.id;
-        const form = await getFormById(formId);
-        const versionMetadata = (formVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata;
-
-        if (versionMetadata?.is_event_registration) {
+        if (versionMetadata.is_event_registration) {
           await sendEventConfirmationEmail({
             to: data.data.email as string,
             name: (data.data.name as string) || '',
             surname: (data.data.surname as string) || '',
-            formName: form.name,
-            subject: (versionMetadata.event_email_subject as string) || 'Event Registration Confirmation',
+            formName: formName,
+            subject: (versionMetadata.event_email_subject as string) || `${formName} - Registration Confirmation`,
             content: (versionMetadata.event_email_content as string) || 'Thank you for registering!',
             eventDate: versionMetadata.event_date as string | undefined,
+            eventEndDate: versionMetadata.event_end_date as string | undefined,
             eventLocation: versionMetadata.event_location as string | undefined,
           });
         }
@@ -289,6 +381,7 @@ async function sendEventConfirmationEmail({
   subject,
   content,
   eventDate,
+  eventEndDate,
   eventLocation,
 }: {
   to: string;
@@ -298,16 +391,12 @@ async function sendEventConfirmationEmail({
   subject: string;
   content: string;
   eventDate?: string;
+  eventEndDate?: string;
   eventLocation?: string;
 }) {
   try {
     const { sendEmail } = await import("@/lib/repos/directus");
-    
-    // Generate calendar link
-    const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
-    const calendarUrl = eventDate 
-      ? `${formDomain}/api/calendar?title=${encodeURIComponent(formName)}&date=${encodeURIComponent(eventDate)}&location=${encodeURIComponent(eventLocation || '')}`
-      : null;
+    const { generateEventConfirmationEmailHtml } = await import("@/lib/email-templates");
     
     const fullName = `${name} ${surname}`.trim() || 'Guest';
     
@@ -317,41 +406,21 @@ async function sendEventConfirmationEmail({
     let personalizedContent = content
       .replace(/{name}/g, name || 'Guest')
       .replace(/{surname}/g, surname || '');
-
+    
     // Only convert newlines if content doesn't appear to be HTML
     if (!personalizedContent.includes('<') || !personalizedContent.includes('>')) {
       personalizedContent = personalizedContent.replace(/\n/g, '<br>');
     }
     
-    const emailHtml = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .button { display: inline-block; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
-            .button:hover { background-color: #0056b3; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h2>${subject}</h2>
-            <p>Dear ${fullName},</p>
-            <div>${personalizedContent}</div>
-            ${eventDate ? `<p><strong>Event Date:</strong> ${new Date(eventDate).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' })}</p>` : ''}
-            ${eventLocation ? `<p><strong>Location:</strong> ${eventLocation}</p>` : ''}
-            ${calendarUrl ? `
-              <p>
-                <a href="${calendarUrl}" class="button">📅 Add to Calendar</a>
-              </p>
-            ` : ''}
-            <p>Best regards,<br>The ${formName} Team</p>
-          </div>
-        </body>
-      </html>
-    `;
+    const emailHtml = generateEventConfirmationEmailHtml({
+      subject,
+      fullName,
+      personalizedContent,
+      eventDate: eventDate || undefined,
+      eventEndDate: eventEndDate || undefined,
+      eventLocation: eventLocation || undefined,
+      formName,
+    });
     
     await sendEmail({
       to,
@@ -452,17 +521,65 @@ export async function fetchPublicFormBySlugAction(slug: string) {
       return null;
     }
 
+    const versionMetadata = (activeVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata;
+    
+    // Check if form is full using server client (works for both authenticated and public access)
+    let isFull = false;
+    if (versionMetadata?.max_entries) {
+      try {
+        // Use server client which has elevated permissions for counting
+        const { getServerDirectusClient } = await import("@/lib/directus");
+        const serverClient = await getServerDirectusClient();
+        
+        // Check if server token is available
+        const hasServerToken = !!process.env.DIRECTUS_SERVER_TOKEN;
+        if (!hasServerToken) {
+          console.warn('[fetchPublicFormBySlugAction] DIRECTUS_SERVER_TOKEN not set, capacity check may fail');
+        }
+        
+        const { readItems } = await import("@directus/sdk");
+        const responses = await serverClient.request(
+          readItems("form_responses", {
+            fields: ["id"],
+            filter: { form_version_id: { _eq: activeVersion.id } },
+            limit: -1, // Get all to count
+          })
+        ) as unknown as Array<{ id: string }>;
+        
+        const currentCount = responses.length;
+        const maxEntries = versionMetadata.max_entries as number;
+        isFull = currentCount >= maxEntries;
+      } catch (error) {
+        // If we can't check, log but don't block form loading
+        // The submission action will also check and block if needed
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorAny = error as any;
+        const responseStatus = errorAny?.response?.status ?? errorAny?.status;
+        const isAuthError = responseStatus === 401 || 
+                          errorMessage.includes('Invalid user credentials') || 
+                          errorMessage.includes('Unauthorized');
+        
+        if (isAuthError) {
+          console.error('[fetchPublicFormBySlugAction] Authentication error checking form capacity');
+        } else {
+          console.error('[fetchPublicFormBySlugAction] Could not check form capacity:', errorMessage);
+        }
+        // Don't set isFull to true on error - let the form load and handle capacity check on submission
+      }
+    }
+
     return {
       id: form.id,
       name: form.name,
       slug: form.slug,
       description: form.description,
-      metadata: (activeVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata, // Get metadata from active version
+      metadata: versionMetadata, // Get metadata from active version
       activeVersion: {
         id: activeVersion.id,
         version_number: activeVersion.version_number,
         schema: activeVersion.schema,
       },
+      isFull, // Indicates if form has reached max capacity
     };
   } catch (error) {
     // Log detailed error for debugging

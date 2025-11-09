@@ -139,10 +139,12 @@ export type Form = {
 
 export type FormMetadata = {
   deadline?: string; // ISO date string
+  max_entries?: number; // Maximum number of submissions allowed
   is_event_registration?: boolean; // If true, this form is for event registration
   event_email_subject?: string; // Email subject for event confirmation
   event_email_content?: string; // Email content for event confirmation
-  event_date?: string; // Event date/time (ISO string)
+  event_date?: string; // Event start date/time (ISO string)
+  event_end_date?: string; // Event end date/time (ISO string)
   event_location?: string; // Event location
   [key: string]: unknown; // Allow other metadata fields
 };

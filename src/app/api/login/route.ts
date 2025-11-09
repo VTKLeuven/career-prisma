@@ -12,10 +12,13 @@ const ALLOWED_ROLE_IDS = new Set<string>([
 
 export async function POST(req: Request) {
   try {
-    const { email, password } = await req.json();
+    const { email, password, rememberMe } = await req.json();
     if (!email || !password) {
       return NextResponse.json({ error: "Email and password are required." }, { status: 400 });
     }
+
+    // Ensure rememberMe is a boolean
+    const shouldRemember = Boolean(rememberMe);
 
     const rawBase = process.env.DIRECTUS_URL;
     if (!rawBase) {
@@ -88,12 +91,23 @@ export async function POST(req: Request) {
     const isSecure =
       url.protocol === "https:" || xfProto.includes("https") || process.env.NODE_ENV === "production";
 
+    // Extend cookie expiration if "remember me" is checked
+    // Default: 14 days for refresh token, access token uses Directus expires
+    // With remember me: 90 days for refresh token, extend access token to 7 days
+    const refreshMaxAge = shouldRemember
+      ? 60 * 60 * 24 * 90 // 90 days
+      : 60 * 60 * 24 * 14; // 14 days
+
+    const finalAccessMaxAge = shouldRemember
+      ? 60 * 60 * 24 * 7 // 7 days when remember me is checked
+      : accessMaxAge; // Use Directus expires otherwise
+
     res.cookies.set(ACCESS_COOKIE, access_token, {
       httpOnly: true,
       sameSite: "lax",
       secure: isSecure,
       path: "/",
-      maxAge: accessMaxAge, // seconds
+      maxAge: finalAccessMaxAge, // seconds
     });
 
     res.cookies.set(REFRESH_COOKIE, refresh_token, {
@@ -101,12 +115,13 @@ export async function POST(req: Request) {
       sameSite: "lax",
       secure: isSecure,
       path: "/",
-      maxAge: 60 * 60 * 24 * 14, // 14 days
+      maxAge: refreshMaxAge,
     });
 
     return res;
-  } catch {
+  } catch (error) {
     // Body parse errors, network issues, unexpected shapes, etc.
+    console.error("Login error:", error);
     return NextResponse.json({ error: "Unexpected error during login." }, { status: 500 });
   }
 }

@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import type { FormField, FormSchema } from "@/lib/schema";
@@ -29,6 +30,7 @@ type PublicForm = {
   description?: string;
   metadata?: {
     deadline?: string;
+    max_entries?: number;
     [key: string]: unknown;
   };
   activeVersion: {
@@ -36,6 +38,7 @@ type PublicForm = {
     version_number: number;
     schema: FormSchema;
   };
+  isFull?: boolean; // Indicates if form has reached max capacity
 };
 
 export default function PublicFormPage() {
@@ -107,6 +110,9 @@ export default function PublicFormPage() {
       }
     }
 
+    // Note: Max entries check is handled server-side in submitFormResponseAction
+    // Client-side check removed since we can't count responses with public permissions
+
     setSubmitting(true);
     try {
       await submitFormResponseAction({
@@ -117,7 +123,8 @@ export default function PublicFormPage() {
       setSubmitted(true);
     } catch (error) {
       console.error("Error submitting form:", error);
-      alert("Failed to submit form. Please try again.");
+      const errorMessage = error instanceof Error ? error.message : "Failed to submit form. Please try again.";
+      alert(errorMessage);
     } finally {
       setSubmitting(false);
     }
@@ -143,6 +150,10 @@ export default function PublicFormPage() {
       return false;
     }
   }, [form?.metadata?.deadline]);
+
+  const isFormFull = React.useMemo(() => {
+    return form?.isFull === true;
+  }, [form?.isFull]);
 
   const handleFieldChange = (fieldName: string, value: unknown) => {
     setFormData((prev) => ({ ...prev, [fieldName]: value }));
@@ -176,6 +187,24 @@ export default function PublicFormPage() {
               <h2 className="text-2xl font-bold mb-2">Form Not Found</h2>
               <p className="text-muted-foreground mb-4">
                 The form you&apos;re looking for doesn&apos;t exist or is not currently available.
+              </p>
+              <Button onClick={() => router.push("/")}>Go Home</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isFormFull && form.metadata?.max_entries) {
+    return (
+      <div className="container mx-auto p-8">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center py-12">
+              <h2 className="text-2xl font-bold mb-2">Form Full</h2>
+              <p className="text-muted-foreground mb-4">
+                This form has reached its maximum capacity and is no longer accepting new entries.
               </p>
               <Button onClick={() => router.push("/")}>Go Home</Button>
             </div>
@@ -230,6 +259,13 @@ export default function PublicFormPage() {
             <div className="mb-4 p-4 bg-muted border border-border rounded-md">
               <p className="text-muted-foreground">
                 This form's deadline has passed. Submissions are no longer accepted. The deadline was {formatDateTimeBE(form.metadata.deadline)}.
+              </p>
+            </div>
+          )}
+          {isFormFull && form.metadata?.max_entries && (
+            <div className="mb-4 p-4 bg-muted border border-border rounded-md">
+              <p className="text-muted-foreground">
+                This form has reached its maximum capacity and is no longer accepting new entries.
               </p>
             </div>
           )}
@@ -292,7 +328,7 @@ export default function PublicFormPage() {
                           value={formData[field.name]}
                           onChange={(value) => handleFieldChange(field.name, value)}
                           error={errors[field.name]}
-                          disabled={isDeadlinePassed}
+                          disabled={isDeadlinePassed || isFormFull}
                         />
                         {errors[field.name] && (
                           <p className="text-sm text-destructive">{errors[field.name]}</p>
@@ -308,7 +344,7 @@ export default function PublicFormPage() {
               <Button type="button" variant="outline" onClick={() => router.back()}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting || isDeadlinePassed}>
+              <Button type="submit" disabled={submitting || isDeadlinePassed || isFormFull}>
                 {submitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -509,29 +545,28 @@ function FormFieldRenderer({
 
     case "radio":
       return (
-        <div className="space-y-2">
+        <RadioGroup
+          value={(value as string) || ""}
+          onValueChange={onChange}
+          required={field.required}
+          disabled={disabled}
+        >
           {(field.options || []).map((option, index) => (
             <div key={index} className="flex items-center space-x-2">
-              <input
-                type="radio"
+              <RadioGroupItem
                 id={`${field.id}-${index}`}
-                name={field.name}
                 value={option}
-                checked={value === option}
-                onChange={(e) => onChange(e.target.value)}
-                required={field.required}
-                className="cursor-pointer"
                 disabled={disabled}
               />
               <Label
                 htmlFor={`${field.id}-${index}`}
-                className="text-sm font-normal cursor-pointer"
+                className="text-sm font-normal cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-50"
               >
                 {option}
               </Label>
             </div>
           ))}
-        </div>
+        </RadioGroup>
       );
 
     case "file":
