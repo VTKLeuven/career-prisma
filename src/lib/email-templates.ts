@@ -107,19 +107,33 @@ export function generateEventConfirmationEmailHtml({
     );
 
     calendarLinksHtml = `
-      <div class="calendar-buttons">
-        <a href="${calendarUrls.google}" class="calendar-button google" target="_blank" rel="noopener noreferrer">
-          <span class="button-icon">📅</span>
-          <span class="button-text">Add to Google Calendar</span>
-        </a>
-        <a href="${calendarUrls.outlook}" class="calendar-button outlook" target="_blank" rel="noopener noreferrer">
-          <span class="button-icon">📅</span>
-          <span class="button-text">Add to Outlook</span>
-        </a>
-        <a href="${calendarUrls.ics}" class="calendar-button ics" target="_blank" rel="noopener noreferrer">
-          <span class="button-icon">📥</span>
-          <span class="button-text">Download .ics file</span>
-        </a>
+      <div class="calendar-buttons" style="margin: 30px 0;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+          <tr>
+            <td align="center" style="padding-bottom: 12px;">
+              <a href="${calendarUrls.google}" class="calendar-button google" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 14px 24px; background-color: #4285f4; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; text-align: center; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">
+                <span style="font-size: 18px; margin-right: 8px;">📅</span>
+                <span>Add to Google Calendar</span>
+              </a>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding-bottom: 12px;">
+              <a href="${calendarUrls.outlook}" class="calendar-button outlook" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 14px 24px; background-color: #0078d4; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; text-align: center; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">
+                <span style="font-size: 18px; margin-right: 8px;">📅</span>
+                <span>Add to Outlook</span>
+              </a>
+            </td>
+          </tr>
+          <tr>
+            <td align="center">
+              <a href="${calendarUrls.ics}" class="calendar-button ics" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 14px 24px; background-color: #6b7280; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; text-align: center; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">
+                <span style="font-size: 18px; margin-right: 8px;">📥</span>
+                <span>Download .ics file</span>
+              </a>
+            </td>
+          </tr>
+        </table>
       </div>
     `;
   }
@@ -146,23 +160,16 @@ export function generateEventConfirmationEmailHtml({
             background-color: #ffffff;
           }
           .calendar-buttons {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
             margin: 30px 0;
           }
           .calendar-button {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
+            display: inline-block;
             padding: 14px 24px;
             text-decoration: none;
             border-radius: 8px;
             font-weight: 600;
             font-size: 15px;
             text-align: center;
-            transition: all 0.2s;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
           }
           .calendar-button.google {
@@ -192,13 +199,6 @@ export function generateEventConfirmationEmailHtml({
             background-color: #4b5563;
             box-shadow: 0 2px 6px rgba(107, 114, 128, 0.3);
           }
-          .button-icon {
-            font-size: 18px;
-            line-height: 1;
-          }
-          .button-text {
-            line-height: 1;
-          }
           .event-details {
             background-color: #f9fafb;
             border-left: 4px solid #2563eb;
@@ -226,7 +226,7 @@ export function generateEventConfirmationEmailHtml({
       </head>
       <body>
         <div class="container">
-          <h2>${subject}</h2>
+          <h2>${formName}</h2>
           <p>Dear ${fullName},</p>
           <div>${personalizedContent}</div>
           ${eventDate || eventLocation ? `

@@ -304,7 +304,7 @@ export async function submitFormResponseAction(data: {
             name: (data.data.name as string) || '',
             surname: (data.data.surname as string) || '',
             formName: form.name,
-            subject: (versionMetadata.event_email_subject as string) || 'Event Registration Confirmation',
+            subject: (versionMetadata.event_email_subject as string) || `${form.name} - Registration Confirmation`,
             content: (versionMetadata.event_email_content as string) || 'Thank you for registering!',
             eventDate: versionMetadata.event_date as string | undefined,
             eventEndDate: versionMetadata.event_end_date as string | undefined,
