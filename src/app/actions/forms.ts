@@ -272,34 +272,42 @@ export async function submitFormResponseAction(data: {
     const versionMetadata = (formVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata;
 
     // Check max_entries limit before creating the response
-    // Use authenticated client on server side (even for public submissions, server can check)
+    // Always check server-side using server client (works for both authenticated and public submissions)
     if (versionMetadata?.max_entries) {
       const maxEntries = versionMetadata.max_entries as number;
       try {
-        // Use authenticated client (false = try authenticated first)
-        // Server-side code can use authenticated access even for public form submissions
-        const currentCount = await countFormVersionResponses(data.form_version_id, false);
+        // Use server client which has elevated permissions for counting
+        const { getServerDirectusClient } = await import("@/lib/directus");
+        const serverClient = await getServerDirectusClient();
+        
+        // Temporarily override the client in countFormVersionResponses
+        // We'll need to pass the client or modify the function to accept it
+        const { countFormVersionResponses } = await import("@/lib/repos/forms");
+        
+        // Count using server client - we need to call it directly with the client
+        const { readItems } = await import("@directus/sdk");
+        const responses = await serverClient.request(
+          readItems("form_responses", {
+            fields: ["id"],
+            filter: { form_version_id: { _eq: data.form_version_id } },
+            limit: -1, // Get all to count
+          })
+        ) as unknown as Array<{ id: string }>;
+        
+        const currentCount = responses.length;
         
         if (currentCount >= maxEntries) {
           throw new Error(`This form has reached its maximum capacity and is no longer accepting new submissions.`);
         }
       } catch (error) {
-        // If it's a permission error, try with public client as fallback
+        // If it's the "form is full" error, re-throw it
         const errorMessage = error instanceof Error ? error.message : String(error);
-        if (errorMessage.includes('permission') || errorMessage.includes('Forbidden')) {
-          try {
-            const currentCount = await countFormVersionResponses(data.form_version_id, true);
-            if (currentCount >= maxEntries) {
-              throw new Error(`This form has reached its maximum capacity and is no longer accepting new submissions.`);
-            }
-          } catch (publicError) {
-            // If public client also fails, log but don't block (max_entries check won't work)
-            console.warn("Could not check form capacity - ensure authenticated access or public read permission on form_responses:", publicError);
-          }
-        } else {
-          // Re-throw if it's not a permission error (e.g., form is actually full)
+        if (errorMessage.includes('maximum capacity')) {
           throw error;
         }
+        // For permission errors, log and re-throw (shouldn't happen with server token)
+        console.error("Error checking form capacity:", errorMessage);
+        throw new Error("Unable to verify form capacity. Please try again or contact support.");
       }
     }
 
@@ -507,16 +515,29 @@ export async function fetchPublicFormBySlugAction(slug: string) {
 
     const versionMetadata = (activeVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata;
     
-    // Check if form is full using authenticated client (for admin check)
+    // Check if form is full using server client (works for both authenticated and public access)
     let isFull = false;
     if (versionMetadata?.max_entries) {
       try {
-        // Use authenticated client to check count (this is a server-side check)
-        const currentCount = await countFormVersionResponses(activeVersion.id, false);
+        // Use server client which has elevated permissions for counting
+        const { getServerDirectusClient } = await import("@/lib/directus");
+        const serverClient = await getServerDirectusClient();
+        
+        const { readItems } = await import("@directus/sdk");
+        const responses = await serverClient.request(
+          readItems("form_responses", {
+            fields: ["id"],
+            filter: { form_version_id: { _eq: activeVersion.id } },
+            limit: -1, // Get all to count
+          })
+        ) as unknown as Array<{ id: string }>;
+        
+        const currentCount = responses.length;
         const maxEntries = versionMetadata.max_entries as number;
         isFull = currentCount >= maxEntries;
       } catch (error) {
-        // If we can't check (e.g., no auth), we'll let the submission action handle it
+        // If we can't check, log but don't block form loading
+        // The submission action will also check and block if needed
         console.error('[fetchPublicFormBySlugAction] Could not check form capacity:', error);
       }
     }

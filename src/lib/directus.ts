@@ -34,3 +34,26 @@ export async function getAuthedDirectusOrThrow() {
   }
   return client;
 }
+
+/**
+ * Server-side client with static token for server operations.
+ * Uses DIRECTUS_SERVER_TOKEN from environment for operations that need
+ * elevated permissions (e.g., counting form responses for max_entries check).
+ * Falls back to authenticated user token if available, otherwise uses server token.
+ */
+export async function getServerDirectusClient() {
+  // First try to get authenticated user token (for logged-in users)
+  const userClient = await getDirectusWithToken();
+  if (userClient) {
+    return userClient;
+  }
+  
+  // Fall back to server token for public operations
+  const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
+  if (serverToken) {
+    return createDirectus(DIRECTUS_URL).with(staticToken(serverToken)).with(rest());
+  }
+  
+  // If no server token, use public client (may have limited permissions)
+  return directus;
+}
