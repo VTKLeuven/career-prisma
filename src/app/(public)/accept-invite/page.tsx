@@ -44,8 +44,27 @@ export default function AcceptInvitePage() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.errors?.[0]?.message || "Failed to request password reset");
+        // Safely parse JSON response, handling non-JSON error responses
+        // Read response as text first (can always read text)
+        const text = await res.text();
+        let errorMessage = "Failed to request password reset";
+        
+        // Try to parse as JSON if content-type suggests it
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          try {
+            const data = JSON.parse(text);
+            errorMessage = data.errors?.[0]?.message || errorMessage;
+          } catch {
+            // If JSON parsing fails, use the text as error message
+            errorMessage = text || errorMessage;
+          }
+        } else {
+          // Response is not JSON (e.g., plain text "Network error")
+          errorMessage = text || errorMessage;
+        }
+        
+        throw new Error(errorMessage);
       }
 
       // Success - Directus will send an email with the token
@@ -84,8 +103,27 @@ export default function AcceptInvitePage() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.errors?.[0]?.message || "Failed to set password");
+        // Safely parse JSON response, handling non-JSON error responses
+        // Read response as text first (can always read text)
+        const text = await res.text();
+        let errorMessage = "Failed to set password";
+        
+        // Try to parse as JSON if content-type suggests it
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          try {
+            const data = JSON.parse(text);
+            errorMessage = data.errors?.[0]?.message || errorMessage;
+          } catch {
+            // If JSON parsing fails, use the text as error message
+            errorMessage = text || errorMessage;
+          }
+        } else {
+          // Response is not JSON (e.g., plain text "Network error")
+          errorMessage = text || errorMessage;
+        }
+        
+        throw new Error(errorMessage);
       }
 
       // ✅ Success — redirect to login
