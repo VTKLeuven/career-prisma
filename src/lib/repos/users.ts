@@ -353,6 +353,10 @@ export async function waitForApproval(salespersonId: string, repPayload: Partial
       company: repPayload?.company?.id ?? null,
       salesperson: salespersonId,
       status: "pending",
+      first_name: repPayload?.first_name || null,
+      last_name: repPayload?.last_name || null,
+      tel: repPayload?.tel || null,
+      title: repPayload?.title || null,
     }),
   });
 
@@ -368,11 +372,78 @@ export async function waitForApproval(salespersonId: string, repPayload: Partial
     throw new Error("Rep request creation returned empty data");
   }
 
-  // 2️⃣ Email salesperson
+  // 2️⃣ Email salesperson with full company and user details
   const salesperson = await fetchSalespersonByID(salespersonId);
-  const approvalUrl = `${process.env.DIRECTUS_URL}/api/approve-rep?requestId=${request.id}&action=approve`;
-  const rejectUrl = `${process.env.DIRECTUS_URL}/api/approve-rep?requestId=${request.id}&action=reject`;
-  console.log("Salesperson object:", salesperson);
+  
+  // Fetch full company details
+  let companyDetails = null;
+  if (repPayload?.company?.id) {
+    try {
+      const { fetchCompanyByIdAction } = await import("@/app/actions/companies");
+      companyDetails = await fetchCompanyByIdAction(repPayload.company.id);
+    } catch (err) {
+      console.error("Failed to fetch company details for email:", err);
+    }
+  }
+
+  // Format company address
+  const formatCompanyAddress = (company: typeof companyDetails) => {
+    if (!company) return "N/A";
+    const parts = [
+      company.address_street && company.address_number 
+        ? `${company.address_street} ${company.address_number}`.trim()
+        : company.address_street || company.address_number || "",
+      company.address_zip && company.address_city
+        ? `${company.address_zip} ${company.address_city}`.trim()
+        : company.address_zip || company.address_city || "",
+      company.address_country || "",
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(", ") : "N/A";
+  };
+
+  // Format salesperson name
+  const salespersonName = salesperson 
+    ? `${salesperson.first_name || ""} ${salesperson.last_name || ""}`.trim() || salesperson.email
+    : "N/A";
+
+  // Get frontend URL for API routes (use NEXT_PUBLIC_APP_URL or construct from DIRECTUS_URL domain)
+  // In production, this should be set as an environment variable
+  const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
+    || process.env.NEXT_PUBLIC_FORM_DOMAIN 
+    || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
+  
+  const approvalUrl = `${frontendBaseUrl}/api/approve-rep?requestId=${request.id}&action=approve`;
+  const rejectUrl = `${frontendBaseUrl}/api/approve-rep?requestId=${request.id}&action=reject`;
+  
+  // Build enhanced email HTML
+  const emailHtml = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #333;">New User Request Approval</h2>
+      
+      <div style="background-color: #f5f5f5; padding: 20px; border-radius: 5px; margin: 20px 0;">
+        <h3 style="margin-top: 0; color: #555;">Company Information</h3>
+        <p><strong>Company Name:</strong> ${companyDetails?.name || "N/A"}</p>
+        <p><strong>VAT Number:</strong> ${companyDetails?.VAT || "N/A"}</p>
+        <p><strong>Address:</strong> ${formatCompanyAddress(companyDetails)}</p>
+        <p><strong>Salesperson:</strong> ${salespersonName}</p>
+      </div>
+
+      <div style="background-color: #e8f4f8; padding: 20px; border-radius: 5px; margin: 20px 0;">
+        <h3 style="margin-top: 0; color: #555;">New User Information</h3>
+        <p><strong>First Name:</strong> ${repPayload?.first_name || "N/A"}</p>
+        <p><strong>Last Name:</strong> ${repPayload?.last_name || "N/A"}</p>
+        <p><strong>Email:</strong> ${repPayload?.email || "N/A"}</p>
+        <p><strong>Phone:</strong> ${repPayload?.tel || "N/A"}</p>
+        <p><strong>Function/Title:</strong> ${repPayload?.title || "N/A"}</p>
+        <p><strong>Company:</strong> ${companyDetails?.name || "N/A"}</p>
+      </div>
+
+      <div style="margin: 30px 0; text-align: center;">
+        <a href="${approvalUrl}" style="background-color: #4CAF50; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin-right: 10px; display: inline-block;">✅ Approve</a>
+        <a href="${rejectUrl}" style="background-color: #f44336; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">❌ Reject</a>
+      </div>
+    </div>
+  `;
 
   try {
     console.log("[ApprovalEmail] Attempting to send approval email");
@@ -380,14 +451,8 @@ export async function waitForApproval(salespersonId: string, repPayload: Partial
     console.log("[ApprovalEmail] Rep email:", repPayload?.email);
     await sendEmail({
       to: salesperson?.email ?? "matthijs.dehaeck@vtk.be",
-      subject: `Approval needed for new Rep: ${repPayload?.email}`,
-      html: `
-        <p>A new Rep request for <b>${repPayload?.email}</b> is pending.</p>
-        <p>
-          <a href="${approvalUrl}">✅ Approve</a> |
-          <a href="${rejectUrl}">❌ Reject</a>
-        </p>
-      `,
+      subject: `Approval needed for new Rep: ${repPayload?.first_name || ""} ${repPayload?.last_name || ""} (${repPayload?.email})`,
+      html: emailHtml,
     });
     console.log("[ApprovalEmail] Approval email sent successfully");
   } catch (err) {
@@ -514,5 +579,121 @@ export async function fetchSalespersonByID(salesperson_id: string, opts?: {
   } catch (err) {
     console.error("Failed to fetch public salesperson:", err instanceof Error ? err.message : "Unknown error");
     return null;
+  }
+}
+
+// Type for pending approval request
+export type PendingApprovalRequest = {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  date_created?: string;
+  company: {
+    id: string;
+    name: string;
+    VAT: string | null;
+    address_street: string | null;
+    address_number: string | null;
+    address_zip: string | null;
+    address_city: string | null;
+    address_country: string | null;
+  } | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  tel?: string | null;
+  title?: string | null;
+};
+
+// Fetch pending approval requests for a salesperson
+export async function fetchPendingApprovalRequests(salespersonId: string): Promise<PendingApprovalRequest[]> {
+  const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? 'directus'}_access`;
+  const cookieStore = await cookies();
+  const token = cookieStore.get(ACCESS_COOKIE)?.value;
+
+  if (!token) {
+    throw new Error("No token available");
+  }
+
+  const baseUrl = process.env.DIRECTUS_URL;
+  if (!baseUrl) {
+    throw new Error("DIRECTUS_URL not configured");
+  }
+
+  const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
+
+  try {
+    // Fetch pending requests with company details
+    const params = new URLSearchParams({
+      fields: [
+        "id",
+        "email",
+        "role",
+        "status",
+        "date_created",
+        "first_name",
+        "last_name",
+        "tel",
+        "title",
+        "company.id",
+        "company.name",
+        "company.VAT",
+        "company.address_street",
+        "company.address_number",
+        "company.address_zip",
+        "company.address_city",
+        "company.address_country",
+      ].join(","),
+      filter: JSON.stringify({
+        salesperson: { _eq: salespersonId },
+        status: { _eq: "pending" },
+      }),
+      sort: "-date_created",
+    });
+
+    const res = await fetch(`${normalizedBase}items/company_user_requests?${params}`, {
+      headers: {
+        "Authorization": `Bearer ${token}`,
+      },
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      console.error("Failed to fetch pending approval requests:", error);
+      return [];
+    }
+
+    const json = await res.json();
+    const requests = json.data || [];
+
+    // Fetch user details for each request (first_name, last_name, tel, title)
+    // These might be stored in the request or we need to extract from email lookup
+    // For now, we'll return what we have - the request should have these fields if stored
+    const enrichedRequests: PendingApprovalRequest[] = requests.map((req: any) => ({
+      id: req.id,
+      email: req.email,
+      role: req.role,
+      status: req.status,
+      date_created: req.date_created,
+      company: req.company ? {
+        id: req.company.id,
+        name: req.company.name || "",
+        VAT: req.company.VAT || null,
+        address_street: req.company.address_street || null,
+        address_number: req.company.address_number || null,
+        address_zip: req.company.address_zip || null,
+        address_city: req.company.address_city || null,
+        address_country: req.company.address_country || null,
+      } : null,
+      first_name: req.first_name || null,
+      last_name: req.last_name || null,
+      tel: req.tel || null,
+      title: req.title || null,
+    }));
+
+    return enrichedRequests;
+  } catch (err) {
+    console.error("Failed to fetch pending approval requests:", err instanceof Error ? err.message : "Unknown error");
+    return [];
   }
 }

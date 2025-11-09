@@ -1,9 +1,11 @@
 // app/actions/companies.ts
 "use server";
 import { listCompanies, getCompanyById, createCompany, updateCompany } from "@/lib/repos/company";
-import { createRep, updateRep, waitForApproval, deleteUser } from "@/lib/repos/users";
+import { createRep, updateRep, waitForApproval, deleteUser, fetchPendingApprovalRequests, type PendingApprovalRequest } from "@/lib/repos/users";
 import { Company, CompanyRep, CareerEventOption } from "@/lib/schema";
 import { uploadDirectusFile } from "@/lib/repos/directus";
+import { getUserFromCookies } from "@/lib/auth-server";
+import { cookies } from "next/headers";
 
 
 
@@ -17,6 +19,67 @@ function formatAddress(c: Company) {
     .filter((p) => p.length > 0);
 
   return parts.length ? parts.join(", ") : "Not set";
+}
+
+/**
+ * Check if company has all required information filled in for publishing
+ * Required fields: name, VAT, all address fields, logo, short_description, website, location, at least one category
+ * Excluded: page_image, long_description
+ */
+function isCompanyInfoComplete(company: Company): boolean {
+  // Check name
+  if (!company.name || company.name.trim().length === 0) {
+    return false;
+  }
+
+  // Check VAT
+  if (!company.VAT || company.VAT.trim().length === 0) {
+    return false;
+  }
+
+  // Check all address fields
+  if (!company.address_street || company.address_street.trim().length === 0) {
+    return false;
+  }
+  if (!company.address_number || company.address_number.trim().length === 0) {
+    return false;
+  }
+  if (!company.address_zip || company.address_zip.trim().length === 0) {
+    return false;
+  }
+  if (!company.address_city || company.address_city.trim().length === 0) {
+    return false;
+  }
+  if (!company.address_country || company.address_country.trim().length === 0) {
+    return false;
+  }
+
+  // Check logo
+  if (!company.logo || (typeof company.logo === "string" && company.logo.trim().length === 0)) {
+    return false;
+  }
+
+  // Check short_description
+  if (!company.short_description || company.short_description.trim().length === 0) {
+    return false;
+  }
+
+  // Check website
+  if (!company.website || company.website.trim().length === 0) {
+    return false;
+  }
+
+  // Check location
+  if (!company.location || company.location.trim().length === 0) {
+    return false;
+  }
+
+  // Check category (at least one master category)
+  if (!company.category || !Array.isArray(company.category) || company.category.length === 0) {
+    return false;
+  }
+
+  return true;
 }
 
 export async function fetchCompaniesAction() {
@@ -94,6 +157,12 @@ export async function fetchCompanyBySlugAction(slug: string): Promise<Company | 
 }
 
 export async function createCompanyAction(companyPayload: Partial<Company>, repPayload?: Partial<CompanyRep>) {
+  // Ensure new companies start unpublished
+  const payloadWithStatus = {
+    ...companyPayload,
+    page_on_platform: false,
+  };
+
   if (repPayload && (repPayload.email || repPayload.first_name || repPayload.last_name)) {
     const newRep = await createRep(repPayload);
     const updatedRep = await updateRep(newRep.id, {
@@ -103,13 +172,13 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
 
     // Create a mutable payload with representatives as string array for the API
     const payload = {
-      ...companyPayload,
+      ...payloadWithStatus,
       representatives: [updatedRep.id] as unknown as CompanyRep[]
     };
 
     return await createCompany(payload as Partial<Company>);
   }
-  return await createCompany(companyPayload);
+  return await createCompany(payloadWithStatus);
 }
 
 export async function createCompanyRepAction(companyId: string, repPayload: Partial<CompanyRep>) {
@@ -155,7 +224,11 @@ export async function requestRepAction(repPayload: Partial<CompanyRep>) {
     throw new Error("Salesperson ID not found");
   }
 
-  // 1️⃣ Create approval request and wait for salesperson’s approval
+  if (!repPayload.company?.id) {
+    throw new Error("Company ID not found");
+  }
+
+  // 1️⃣ Create approval request and wait for salesperson's approval
   const approved = await waitForApproval(salespersonId, repPayload);
 
   if (!approved) {
@@ -166,10 +239,40 @@ export async function requestRepAction(repPayload: Partial<CompanyRep>) {
   // 2️⃣ Once approved, create Directus user
   const newRep = await createRep(repPayload);
 
-  // 3️⃣ Optionally update the rep data (name, etc.)
+  if (!newRep) {
+    throw new Error("Failed to create user");
+  }
+
+  // 3️⃣ Update the rep data (name, etc.)
   await updateRep(newRep.id, {
     first_name: repPayload.first_name,
     last_name: repPayload.last_name,
+    tel: repPayload.tel,
+    title: repPayload.title,
+  });
+
+  // 4️⃣ Add the new rep to the company's representatives list
+  const company = await fetchCompanyByIdAction(repPayload.company.id);
+  if (!company) {
+    throw new Error("Company not found");
+  }
+
+  // Build representatives array as string IDs
+  let representativeIds: string[] = [];
+  if (company.representatives) {
+    representativeIds = (company.representatives as (CompanyRep | string)[]).map((item: CompanyRep | string) => {
+      return typeof item === 'string' ? item : item?.id ?? '';
+    }).filter(Boolean);
+  }
+
+  // Add the new rep if not already present
+  if (!representativeIds.includes(newRep.id)) {
+    representativeIds.push(newRep.id);
+  }
+
+  // Update company with new representative
+  await updateCompanyAction(repPayload.company.id, {
+    representatives: representativeIds as unknown as CompanyRep[]
   });
 
   return newRep;
@@ -179,7 +282,25 @@ export async function updateCompanyAction(
   id: string,
   payload: Partial<Company>
 ): Promise<Company | null> {
-  const res = await updateCompany(id, payload);
+  // Fetch current company to check if info is complete
+  const currentCompany = await fetchCompanyByIdAction(id);
+  if (!currentCompany) {
+    return null;
+  }
+
+  // Merge payload with current company to check completeness
+  const updatedCompany = { ...currentCompany, ...payload } as Company;
+
+  // Check if company info is now complete
+  const isComplete = isCompanyInfoComplete(updatedCompany);
+
+  // Update payload with page_on_platform status
+  const payloadWithStatus = {
+    ...payload,
+    page_on_platform: isComplete,
+  };
+
+  const res = await updateCompany(id, payloadWithStatus);
   return res as Company | null;
 }
 
@@ -355,4 +476,209 @@ export async function removeUserFromCompanyAction(companyId: string, userId: str
   return deleteResult.success
     ? { success: true }
     : { success: false, error: deleteResult.error || "Failed to delete user" };
+}
+
+// Fetch pending approval requests for the current salesperson
+export async function fetchPendingApprovalRequestsAction(): Promise<PendingApprovalRequest[]> {
+  try {
+    const user = await getUserFromCookies();
+    if (!user || !user.id) {
+      return [];
+    }
+
+    // Get the user's role ID from Directus to check if they're a salesperson
+    const { getDirectusWithToken } = await import("@/lib/directus");
+    const directus = await getDirectusWithToken();
+    if (!directus) {
+      return [];
+    }
+
+    const { readMe } = await import("@directus/sdk");
+    const me = await directus.request(readMe({ fields: ["role.id"] }));
+    
+    // Check if user is a salesperson (role ID: 7b128ef4-f530-47d2-8f4c-ef82518eb313)
+    // This is the same role ID used in listSalespersons
+    // Also allow admins to see pending requests
+    const salespersonRoleId = "7b128ef4-f530-47d2-8f4c-ef82518eb313";
+    const isSalesperson = (me.role?.id === salespersonRoleId) || user.admin;
+    
+    if (!isSalesperson) {
+      return [];
+    }
+
+    return await fetchPendingApprovalRequests(user.id);
+  } catch (error) {
+    console.error("Failed to fetch pending approval requests:", error);
+    return [];
+  }
+}
+
+// Helper function to create user from approved request (can be called from multiple places)
+export async function createUserFromApprovedRequest(request: any): Promise<void> {
+  try {
+    if (!request.company?.id) {
+      return;
+    }
+
+    const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? 'directus'}_access`;
+    const cookieStore = await cookies();
+    const token = cookieStore.get(ACCESS_COOKIE)?.value;
+
+    if (!token) {
+      return;
+    }
+
+    const baseUrl = process.env.DIRECTUS_URL;
+    if (!baseUrl) {
+      return;
+    }
+
+    const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
+
+    // Check if user already exists
+    const checkUserRes = await fetch(
+      `${normalizedBase}users?filter[email][_eq]=${request.email}&fields=id`,
+      {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (!checkUserRes.ok) {
+      return;
+    }
+
+    const userData = await checkUserRes.json();
+    const existingUser = userData.data?.[0];
+
+    const company = await fetchCompanyByIdAction(request.company.id);
+    if (!company) {
+      return;
+    }
+
+    let userId: string | undefined;
+
+    if (!existingUser) {
+      // User doesn't exist, create it
+      const repPayload: Partial<CompanyRep> = {
+        email: request.email,
+        role: request.role,
+        first_name: request.first_name || undefined,
+        last_name: request.last_name || undefined,
+        tel: request.tel || undefined,
+        title: request.title || undefined,
+        company: company,
+      };
+
+      const newRep = await createRep(repPayload);
+      if (newRep) {
+        userId = newRep.id;
+        await updateRep(newRep.id, {
+          first_name: request.first_name || undefined,
+          last_name: request.last_name || undefined,
+          tel: request.tel || undefined,
+          title: request.title || undefined,
+        });
+      } else {
+        return; // Failed to create user
+      }
+    } else {
+      userId = existingUser.id;
+    }
+
+    // Ensure user is in company's representatives list
+    let representativeIds: string[] = [];
+    if (company.representatives) {
+      representativeIds = (company.representatives as (CompanyRep | string)[]).map((item: CompanyRep | string) => {
+        return typeof item === 'string' ? item : item?.id ?? '';
+      }).filter(Boolean);
+    }
+
+    if (userId && !representativeIds.includes(userId)) {
+      representativeIds.push(userId);
+      await updateCompanyAction(request.company.id, {
+        representatives: representativeIds as unknown as CompanyRep[]
+      });
+    }
+  } catch (error) {
+    console.error("Error creating user from approved request:", error);
+  }
+}
+
+// Approve or reject a rep request
+export async function approveRepRequestAction(
+  requestId: string,
+  action: 'approve' | 'reject'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? 'directus'}_access`;
+    const cookieStore = await cookies();
+    const token = cookieStore.get(ACCESS_COOKIE)?.value;
+
+    if (!token) {
+      return { success: false, error: "No token available" };
+    }
+
+    const baseUrl = process.env.DIRECTUS_URL;
+    if (!baseUrl) {
+      return { success: false, error: "DIRECTUS_URL not configured" };
+    }
+
+    const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
+
+    // Fetch the request to get details
+    const getRequestRes = await fetch(
+      `${normalizedBase}items/company_user_requests/${requestId}?fields=*,company.id`,
+      {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (!getRequestRes.ok) {
+      return { success: false, error: "Failed to fetch request" };
+    }
+
+    const requestData = await getRequestRes.json();
+    const request = requestData.data;
+
+    if (!request) {
+      return { success: false, error: "Request not found" };
+    }
+
+    // Update status
+    const status = action === "approve" ? "approved" : "rejected";
+    const updateRes = await fetch(
+      `${normalizedBase}items/company_user_requests/${requestId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status }),
+      }
+    );
+
+    if (!updateRes.ok) {
+      const error = await updateRes.json().catch(() => null);
+      console.error("Failed to update request status:", error);
+      return { success: false, error: "Failed to update request status" };
+    }
+
+    // If approved, create the user and add to company (if not already created)
+    if (action === "approve") {
+      await createUserFromApprovedRequest(request);
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error in approveRepRequestAction:", error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : "Unknown error" 
+    };
+  }
 }
