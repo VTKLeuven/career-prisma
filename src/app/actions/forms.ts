@@ -272,12 +272,34 @@ export async function submitFormResponseAction(data: {
     const versionMetadata = (formVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata;
 
     // Check max_entries limit before creating the response
+    // Use authenticated client on server side (even for public submissions, server can check)
     if (versionMetadata?.max_entries) {
       const maxEntries = versionMetadata.max_entries as number;
-      const currentCount = await countFormVersionResponses(data.form_version_id, false);
-      
-      if (currentCount >= maxEntries) {
-        throw new Error(`This form has reached its maximum capacity and is no longer accepting new submissions.`);
+      try {
+        // Use authenticated client (false = try authenticated first)
+        // Server-side code can use authenticated access even for public form submissions
+        const currentCount = await countFormVersionResponses(data.form_version_id, false);
+        
+        if (currentCount >= maxEntries) {
+          throw new Error(`This form has reached its maximum capacity and is no longer accepting new submissions.`);
+        }
+      } catch (error) {
+        // If it's a permission error, try with public client as fallback
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (errorMessage.includes('permission') || errorMessage.includes('Forbidden')) {
+          try {
+            const currentCount = await countFormVersionResponses(data.form_version_id, true);
+            if (currentCount >= maxEntries) {
+              throw new Error(`This form has reached its maximum capacity and is no longer accepting new submissions.`);
+            }
+          } catch (publicError) {
+            // If public client also fails, log but don't block (max_entries check won't work)
+            console.warn("Could not check form capacity - ensure authenticated access or public read permission on form_responses:", publicError);
+          }
+        } else {
+          // Re-throw if it's not a permission error (e.g., form is actually full)
+          throw error;
+        }
       }
     }
 
@@ -295,16 +317,30 @@ export async function submitFormResponseAction(data: {
     // If this is an event registration form, send confirmation email
     if (response && data.data.email) {
       if (versionMetadata?.is_event_registration) {
-        const formId = typeof formVersion.form_id === 'string' ? formVersion.form_id : formVersion.form_id.id;
-        const form = await getFormById(formId);
+        // Get form name - prefer from loaded relation, otherwise fetch it
+        let formName: string;
+        if (typeof formVersion.form_id !== 'string' && formVersion.form_id?.name) {
+          // Form relation is already loaded in formVersion
+          formName = formVersion.form_id.name;
+        } else {
+          // Need to fetch form separately
+          const formId = typeof formVersion.form_id === 'string' ? formVersion.form_id : formVersion.form_id.id;
+          try {
+            const form = await getFormById(formId);
+            formName = form.name;
+          } catch (error) {
+            console.warn("Could not get form details, using fallback name:", error);
+            formName = 'Event'; // Last resort fallback
+          }
+        }
 
         if (versionMetadata.is_event_registration) {
           await sendEventConfirmationEmail({
             to: data.data.email as string,
             name: (data.data.name as string) || '',
             surname: (data.data.surname as string) || '',
-            formName: form.name,
-            subject: (versionMetadata.event_email_subject as string) || `${form.name} - Registration Confirmation`,
+            formName: formName,
+            subject: (versionMetadata.event_email_subject as string) || `${formName} - Registration Confirmation`,
             content: (versionMetadata.event_email_content as string) || 'Thank you for registering!',
             eventDate: versionMetadata.event_date as string | undefined,
             eventEndDate: versionMetadata.event_end_date as string | undefined,

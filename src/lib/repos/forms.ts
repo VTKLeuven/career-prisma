@@ -36,7 +36,15 @@ export async function listForms(opts?: {
 
 export async function getFormById(id: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
+    // Try authenticated first, fall back to public client for public form access
+    let client;
+    try {
+      client = await getAuthedDirectusOrThrow();
+    } catch {
+      // If auth fails, use public client for public form submissions
+      client = directus;
+    }
+    
     return client.request(
       readItem("forms", id, {
         fields: ["*", "form_versions.*"],
@@ -195,7 +203,15 @@ export async function listFormVersions(formId: string) {
 
 export async function getFormVersionById(id: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
+    // Try authenticated first, fall back to public client for public form access
+    let client;
+    try {
+      client = await getAuthedDirectusOrThrow();
+    } catch {
+      // If auth fails, use public client for public form submissions
+      client = directus;
+    }
+    
     return client.request(
       readItem("form_versions", id, {
         fields: ["*", "form_id.*"],

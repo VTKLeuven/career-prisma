@@ -93,20 +93,30 @@ export function generateEventConfirmationEmailHtml({
 }) {
   let calendarLinksHtml = "";
   
+  // Check if eventDate exists and is valid
   if (eventDate) {
-    const startDate = new Date(eventDate);
-    const endDate = eventEndDate 
-      ? new Date(eventEndDate)
-      : new Date(startDate.getTime() + 60 * 60 * 1000); // Default 1 hour
+    try {
+      const startDate = new Date(eventDate);
+      // Validate the date
+      if (isNaN(startDate.getTime())) {
+        console.warn("Invalid event date provided:", eventDate);
+      } else {
+        const endDate = eventEndDate 
+          ? new Date(eventEndDate)
+          : new Date(startDate.getTime() + 60 * 60 * 1000); // Default 1 hour
+        
+        // Validate end date
+        if (isNaN(endDate.getTime())) {
+          console.warn("Invalid event end date provided:", eventEndDate);
+        } else {
+          const calendarUrls = generateCalendarUrls(
+            formName,
+            startDate,
+            endDate,
+            eventLocation
+          );
 
-    const calendarUrls = generateCalendarUrls(
-      formName,
-      startDate,
-      endDate,
-      eventLocation
-    );
-
-    calendarLinksHtml = `
+          calendarLinksHtml = `
       <div class="calendar-buttons" style="margin: 30px 0;">
         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
           <tr>
@@ -136,6 +146,11 @@ export function generateEventConfirmationEmailHtml({
         </table>
       </div>
     `;
+        }
+      }
+    } catch (error) {
+      console.error("Error generating calendar links:", error);
+    }
   }
 
   return `

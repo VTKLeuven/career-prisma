@@ -242,6 +242,18 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
     }
   }, [open, isClient, emailEditor, isEventRegistration, eventEmailContent]);
 
+  // Update email subject when form name changes and event registration is enabled
+  useEffect(() => {
+    if (isEventRegistration && name.trim()) {
+      // Capitalize first letter of form name
+      const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
+      // Only update if subject is still the default or empty
+      if (!eventEmailSubject || eventEmailSubject === "Event Registration Confirmation") {
+        setEventEmailSubject(`${capitalizedName} - Registration Confirmation`);
+      }
+    }
+  }, [name, isEventRegistration]);
+
   const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
   const formUrl = `${formDomain}/forms/${slug || "your-slug"}`;
 
