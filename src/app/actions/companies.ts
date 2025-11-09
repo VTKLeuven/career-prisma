@@ -165,6 +165,12 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
 
   if (repPayload && (repPayload.email || repPayload.first_name || repPayload.last_name)) {
     const newRep = await createRep(repPayload);
+    
+    if (!newRep || !newRep.id) {
+      console.error("Failed to create representative");
+      throw new Error("Failed to create representative");
+    }
+    
     const updatedRep = await updateRep(newRep.id, {
       first_name: repPayload.first_name,
       last_name: repPayload.last_name,
@@ -176,7 +182,43 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
       representatives: [updatedRep.id] as unknown as CompanyRep[]
     };
 
-    return await createCompany(payload as Partial<Company>);
+    const createdCompany = await createCompany(payload as Partial<Company>);
+
+    // Send invitation email to the representative
+    if (repPayload.email) {
+      try {
+        // Build accept invite URL
+        const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
+          || process.env.NEXT_PUBLIC_FORM_DOMAIN 
+          || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
+        
+        const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?email=${encodeURIComponent(repPayload.email)}`;
+        
+        // Send custom invitation email using our SMTP setup
+        const { sendEmail } = await import("@/lib/repos/directus");
+        const { generateInvitationEmailHtml } = await import("@/lib/email-templates");
+        
+        const emailHtml = generateInvitationEmailHtml({
+          firstName: repPayload.first_name,
+          lastName: repPayload.last_name,
+          companyName: companyPayload.name,
+          acceptInviteUrl,
+        });
+        
+        await sendEmail({
+          to: repPayload.email,
+          subject: `Welcome to VTK Career Platform${companyPayload.name ? ` - ${companyPayload.name}` : ''}`,
+          html: emailHtml,
+        });
+        
+        console.log(`Invitation email sent to ${repPayload.email}`);
+      } catch (err) {
+        console.error("Error sending invitation email to representative:", err);
+        // Don't throw - email failure shouldn't prevent company creation
+      }
+    }
+
+    return createdCompany;
   }
   return await createCompany(payloadWithStatus);
 }
@@ -184,6 +226,12 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
 export async function createCompanyRepAction(companyId: string, repPayload: Partial<CompanyRep>) {
   if (!repPayload) return null;
   const newRep = await createRep(repPayload);
+  
+  if (!newRep || !newRep.id) {
+    console.error("Failed to create representative");
+    return null;
+  }
+  
   await updateRep(newRep.id, {
     first_name: repPayload.first_name,
     last_name: repPayload.last_name,
@@ -208,7 +256,43 @@ export async function createCompanyRepAction(companyId: string, repPayload: Part
 
   console.log(representativeIds)
 
-  return await updateCompanyAction(companyId, {representatives: representativeIds as unknown as CompanyRep[]});
+  const result = await updateCompanyAction(companyId, {representatives: representativeIds as unknown as CompanyRep[]});
+
+  // Send invitation email to the representative
+  if (repPayload.email) {
+    try {
+      // Build accept invite URL
+      const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
+        || process.env.NEXT_PUBLIC_FORM_DOMAIN 
+        || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
+      
+      const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?email=${encodeURIComponent(repPayload.email)}`;
+      
+      // Send custom invitation email using our SMTP setup
+      const { sendEmail } = await import("@/lib/repos/directus");
+      const { generateInvitationEmailHtml } = await import("@/lib/email-templates");
+      
+      const emailHtml = generateInvitationEmailHtml({
+        firstName: repPayload.first_name,
+        lastName: repPayload.last_name,
+        companyName: company.name,
+        acceptInviteUrl,
+      });
+      
+      await sendEmail({
+        to: repPayload.email,
+        subject: `Welcome to VTK Career Platform${company.name ? ` - ${company.name}` : ''}`,
+        html: emailHtml,
+      });
+      
+      console.log(`Invitation email sent to ${repPayload.email}`);
+    } catch (err) {
+      console.error("Error sending invitation email to representative:", err);
+      // Don't throw - email failure shouldn't prevent rep creation
+    }
+  }
+
+  return result;
 }
 
 export async function requestRepAction(repPayload: Partial<CompanyRep>) {

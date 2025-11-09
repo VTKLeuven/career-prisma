@@ -75,8 +75,15 @@ export function getAdminDirectusClient() {
 
 /**
  * Get the folder ID for the "Form_uploads" folder.
- * First checks environment variable DIRECTUS_FORM_UPLOADS_FOLDER_ID.
- * If not set, queries Directus to find the folder by name.
+ * 
+ * Configuration:
+ * Set DIRECTUS_FORM_UPLOADS_FOLDER_ID in your .env file with the folder UUID.
+ * You can find the folder ID in the Directus admin URL: /admin/files/folders/{folder-id}
+ * 
+ * Example:
+ * DIRECTUS_FORM_UPLOADS_FOLDER_ID=0b249c3e-9cf5-4f43-bf06-2a1f5f52b653
+ * 
+ * If not set, attempts to query Directus to find the folder by name "Form_uploads".
  * Returns null if folder is not found.
  */
 let cachedFormUploadsFolderId: string | null | undefined = undefined;
@@ -87,97 +94,61 @@ export async function getFormUploadsFolderId(): Promise<string | null> {
     return cachedFormUploadsFolderId;
   }
 
-  // Check environment variable first
+  // Check environment variable first (recommended approach)
   const envFolderId = process.env.DIRECTUS_FORM_UPLOADS_FOLDER_ID;
   if (envFolderId && envFolderId.trim() !== '') {
     cachedFormUploadsFolderId = envFolderId.trim();
+    console.log('[getFormUploadsFolderId] Using folder ID from DIRECTUS_FORM_UPLOADS_FOLDER_ID:', cachedFormUploadsFolderId);
     return cachedFormUploadsFolderId;
   }
 
+  // Fallback: Try to find folder by name (requires DIRECTUS_SERVER_TOKEN)
+  console.warn('[getFormUploadsFolderId] DIRECTUS_FORM_UPLOADS_FOLDER_ID not set. Attempting to find folder by name...');
+  console.warn('[getFormUploadsFolderId] To avoid this lookup, set DIRECTUS_FORM_UPLOADS_FOLDER_ID in your .env file');
+  
   try {
-    // Try to get folder by name using server client (has permissions to query folders)
-    const client = await getServerDirectusClient();
-    console.log('[getFormUploadsFolderId] Querying Directus for folder "Form_uploads"');
+    // Use admin client for folder lookup (requires elevated permissions)
+    const adminClient = getAdminDirectusClient();
+    if (!adminClient) {
+      console.warn('[getFormUploadsFolderId] No admin client available (DIRECTUS_SERVER_TOKEN not set). Cannot lookup folders.');
+      console.warn('[getFormUploadsFolderId] Please set DIRECTUS_FORM_UPLOADS_FOLDER_ID in your .env file');
+      cachedFormUploadsFolderId = null;
+      return null;
+    }
+
+    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
+    const directusUrl = process.env.DIRECTUS_URL || process.env.NEXT_PUBLIC_DIRECTUS_URL;
     
-    // Try both "directus_folders" and "folders" collection names
-    const collectionNames = ["directus_folders", "folders"];
-    let folders: Array<{ id: string; name: string }> = [];
-    let usedCollection = "";
+    if (serverToken && directusUrl) {
+      // Try REST API endpoint first
+      const foldersUrl = `${directusUrl.replace(/\/$/, '')}/folders?filter[name][_eq]=Form_uploads&fields=id,name&limit=1`;
+      const foldersResponse = await fetch(foldersUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${serverToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
 
-    for (const collectionName of collectionNames) {
-      try {
-        const result = await client.request(
-          readItems(collectionName as any, {
-            fields: ["id", "name"],
-            filter: {
-              name: {
-                _eq: "Form_uploads",
-              },
-            },
-            limit: 1,
-          })
-        ) as Array<{ id: string; name: string }>;
+      if (foldersResponse.ok) {
+        const foldersData = await foldersResponse.json();
+        const folders = foldersData?.data || [];
         
-        if (result && result.length > 0) {
-          folders = result;
-          usedCollection = collectionName;
-          console.log(`[getFormUploadsFolderId] Found folder using collection "${collectionName}":`, folders);
-          break;
-        }
-      } catch (err) {
-        console.log(`[getFormUploadsFolderId] Collection "${collectionName}" not accessible or error:`, err);
-        continue;
-      }
-    }
-
-    if (folders && folders.length > 0) {
-      cachedFormUploadsFolderId = folders[0].id;
-      console.log('[getFormUploadsFolderId] Using folder ID:', cachedFormUploadsFolderId);
-      return cachedFormUploadsFolderId;
-    }
-
-    // Folder not found - try case-insensitive search or check all folders
-    console.warn('[getFormUploadsFolderId] Folder "Form_uploads" not found. Checking all folders...');
-    for (const collectionName of collectionNames) {
-      try {
-        const allFolders = await client.request(
-          readItems(collectionName as any, {
-            fields: ["id", "name"],
-            limit: 100,
-          })
-        ) as Array<{ id: string; name: string }>;
-        
-        console.log(`[getFormUploadsFolderId] All folders from "${collectionName}":`, allFolders.map(f => ({ id: f.id, name: f.name })));
-        
-        // Try case-insensitive match and variations
-        const matchingFolder = allFolders.find(f => {
-          const folderNameLower = f.name.toLowerCase().trim();
-          return folderNameLower === "form_uploads" || 
-                 folderNameLower === "form uploads" ||
-                 folderNameLower === "formuploads" ||
-                 f.name === "Form_uploads";
-        });
-        
-        if (matchingFolder) {
-          cachedFormUploadsFolderId = matchingFolder.id;
-          console.log('[getFormUploadsFolderId] Found matching folder (case-insensitive):', matchingFolder.name, 'ID:', cachedFormUploadsFolderId);
+        if (folders && folders.length > 0) {
+          cachedFormUploadsFolderId = folders[0].id;
+          console.log('[getFormUploadsFolderId] Found folder via REST API:', folders[0].name, 'ID:', cachedFormUploadsFolderId);
           return cachedFormUploadsFolderId;
         }
-        break; // If we got results from one collection, don't try the other
-      } catch (err) {
-        console.log(`[getFormUploadsFolderId] Error querying all folders from "${collectionName}":`, err);
-        continue;
       }
     }
-
-    // Folder not found
-    console.warn('[getFormUploadsFolderId] Form_uploads folder not found in Directus. Files will be uploaded to root.');
-    cachedFormUploadsFolderId = null;
-    return null;
   } catch (error) {
-    console.error('[getFormUploadsFolderId] Error fetching Form_uploads folder ID:', error);
-    // Cache null to avoid repeated failed queries
-    cachedFormUploadsFolderId = null;
-    return null;
+    console.error('[getFormUploadsFolderId] Error looking up folder by name:', error);
   }
+
+  // Folder not found
+  console.error('[getFormUploadsFolderId] Form_uploads folder not found.');
+  console.error('[getFormUploadsFolderId] Please set DIRECTUS_FORM_UPLOADS_FOLDER_ID in your .env file');
+  console.error('[getFormUploadsFolderId] Example: DIRECTUS_FORM_UPLOADS_FOLDER_ID=0b249c3e-9cf5-4f43-bf06-2a1f5f52b653');
+  cachedFormUploadsFolderId = null;
+  return null;
 }
