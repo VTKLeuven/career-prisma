@@ -13,7 +13,7 @@ import { getDirectusImageUrl } from "@/components/Images";
 import { CareerEventPage, Company, CareerEvent } from '@/lib/schema'
 import dynamic from "next/dynamic"
 import HeroiconDynamic from "@/components/HeroiconDynamic"
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, MapPin, Car, ExternalLink } from 'lucide-react'
 import { useBannerPage } from '@/hooks/use-banner-page'
 import { usePageLayout } from '../../layout'
 
@@ -263,7 +263,7 @@ function HomepageHeader() {
           </Link>
 
           <nav className="hidden items-center gap-2 md:flex">
-            <Link href="#" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">Home</Link>
+            <Link href="/" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">Home</Link>
 
             <div className="relative">
               <button
@@ -279,12 +279,13 @@ function HomepageHeader() {
               </button>
             </div>
 
-            <Link href="#students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Services</Link>
+            <Link href="/our-students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
+            <Link href="/vacancies" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
 
           {/* Mobile nav - Events as simple button */}
           <nav className="md:hidden flex items-center gap-2">
-            <Link href="#" className="rounded-full bg-vtk-blue px-3 py-1.5 text-xs font-medium text-white">Home</Link>
+            <Link href="/" className="rounded-full bg-vtk-blue px-3 py-1.5 text-xs font-medium text-white">Home</Link>
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -292,7 +293,8 @@ function HomepageHeader() {
             >
               Events
             </button>
-            <Link href="#students" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Services</Link>
+            <Link href="/our-students" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
+            <Link href="/vacancies" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
@@ -1001,6 +1003,10 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
   const lat = page?.location?.coordinates?.[1]
   const lng = page?.location?.coordinates?.[0]
 
+  const getDirectionsUrl = lat && lng 
+    ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
+    : null
+
   return (
     <section id="events" className="relative border-t bg-white">
       <div className="relative mx-auto max-w-7xl px-4 py-16">
@@ -1008,18 +1014,63 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
           <div className="text-2xl font-semibold tracking-tight md:text-3xl">Practical Information</div>
 
           <div className="grid grid-cols-1 gap-6 sm:gap-8 md:grid-cols-2">
-            <div className="flex flex-col gap-4">
-              <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-4">Location</h2>
-              <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 shadow-sm flex flex-col gap-2">
+            <div className="flex flex-col gap-6">
+              <h2 className="text-xl sm:text-2xl font-semibold tracking-tight">Location</h2>
+              
+              {/* Location Card */}
+              <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
                 {page?.event.location && (
-                  <h3 className="font-semibold text-neutral-900">{page?.event.location}</h3>
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold text-neutral-900 mb-1">{page.event.location}</h3>
+                  </div>
                 )}
-                {page?.address && <p className="text-neutral-700 flex items-center gap-2">📍 Address: {page.address}</p>}
-                {page?.parking && <p className="text-neutral-700 flex items-center gap-2">🅿️ Parking: {page.parking}</p>}
+                
+                <div className="space-y-4">
+                  {page?.address && (
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 flex-shrink-0">
+                        <MapPin className="h-5 w-5 text-vtk-blue" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1">Address</div>
+                        <div className="text-sm text-neutral-700 leading-relaxed">{page.address}</div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {page?.parking && (
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 flex-shrink-0">
+                        <Car className="h-5 w-5 text-vtk-blue" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1">Parking</div>
+                        <div className="text-sm text-neutral-700 leading-relaxed">{page.parking}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {getDirectionsUrl && (
+                  <div className="mt-5 pt-4 border-t border-neutral-100">
+                    <Button
+                      asChild
+                      variant="outline"
+                      className="w-full rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5"
+                    >
+                      <a href={getDirectionsUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2">
+                        <MapPin className="h-4 w-4" />
+                        Get Directions
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </Button>
+                  </div>
+                )}
               </div>
 
+              {/* Map */}
               {lat && lng && (
-                <div className="rounded-lg border border-neutral-200 overflow-hidden shadow-sm mt-4">
+                <div className="rounded-2xl border border-neutral-200 overflow-hidden shadow-sm">
                   <EventMap lat={lat} lng={lng} />
                 </div>
               )}
