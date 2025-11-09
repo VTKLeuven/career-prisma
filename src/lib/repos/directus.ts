@@ -85,10 +85,10 @@ function getTransporter(): nodemailer.Transporter {
     },
     // Connection pooling to reuse connections and reduce EHLO commands
     pool: true,
-    maxConnections: 5, // Limit concurrent connections
-    maxMessages: 100, // Max messages per connection before closing
+    maxConnections: 3, // Reduced from 5 to be less aggressive
+    maxMessages: 50, // Reduced from 100 to close connections more frequently
     rateDelta: 1000, // Time window for rate limiting (1 second)
-    rateLimit: 5, // Max 5 messages per rateDelta window
+    rateLimit: 3, // Reduced from 5 to be more conservative
     // Optional: Enable connection logging for debugging
     logger: process.env.NODE_ENV === "development",
     debug: process.env.NODE_ENV === "development",
@@ -108,6 +108,37 @@ function getTransporter(): nodemailer.Transporter {
   return cachedTransporter;
 }
 
+// Reset transporter to clear bad connections (e.g., after rate limit errors)
+function resetTransporter() {
+  if (cachedTransporter) {
+    cachedTransporter.close();
+    cachedTransporter = null;
+  }
+}
+
+// Check if error is a rate limit error
+function isRateLimitError(error: Error & { code?: string; responseCode?: number; response?: string }): boolean {
+  const errorCode = error.code;
+  const responseCode = error.responseCode;
+  const response = error.response?.toLowerCase() || '';
+  
+  // Check for 421 rate limit errors (Google SMTP)
+  if (responseCode === 421) {
+    return true;
+  }
+  
+  // Check for ECONNECTION with rate limit message
+  if (errorCode === 'ECONNECTION' && (
+    response.includes('rate limit') ||
+    response.includes('try again later') ||
+    response.includes('421')
+  )) {
+    return true;
+  }
+  
+  return false;
+}
+
 export async function sendEmail({
   to,
   subject,
@@ -124,14 +155,16 @@ export async function sendEmail({
   // Determine the from email: function parameter > env variable > fallback
   const fromEmail = from || defaultFromEmail || "noreply@example.com";
 
-  const transporter = getTransporter();
-
   // Retry logic for rate-limited connections
-  const maxRetries = 3;
+  // Google SMTP rate limits can require 60+ seconds to recover
+  const maxRetries = 4;
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
+      // Get a fresh transporter (will reuse cached one if available)
+      const transporter = getTransporter();
+      
       await transporter.sendMail({
         from: fromEmail,
         to,
@@ -143,13 +176,22 @@ export async function sendEmail({
       const err = error as Error & { code?: string; responseCode?: number; response?: string; command?: string };
       lastError = err;
 
-      const errorCode = err.code;
-      const responseCode = err.responseCode;
-
-      // If it's a rate limit error (421) and we have retries left, wait and retry
-      if ((errorCode === 'ECONNECTION' || responseCode === 421) && attempt < maxRetries) {
-        const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
-        console.warn(`Email send attempt ${attempt} failed with rate limit. Retrying in ${waitTime}ms...`);
+      // Check if this is a rate limit error
+      if (isRateLimitError(err) && attempt < maxRetries) {
+        // Reset transporter to clear bad connections
+        resetTransporter();
+        
+        // Exponential backoff with jitter: 30s, 60s, 120s
+        // Add jitter (±20%) to prevent synchronized retries
+        const baseWaitTime = Math.min(30 * Math.pow(2, attempt - 1) * 1000, 120000); // Cap at 120s
+        const jitter = baseWaitTime * 0.2 * (Math.random() * 2 - 1); // ±20% jitter
+        const waitTime = Math.floor(baseWaitTime + jitter);
+        
+        console.warn(
+          `Email send attempt ${attempt}/${maxRetries} failed with rate limit (${err.responseCode || err.code}). ` +
+          `Retrying in ${Math.round(waitTime / 1000)}s...`
+        );
+        
         await new Promise(resolve => setTimeout(resolve, waitTime));
         continue;
       }

@@ -45,12 +45,27 @@ self.addEventListener('fetch', (event) => {
           if (cachedResponse) {
             return cachedResponse;
           }
-          return fetch(request).then((response) => {
-            if (response.ok) {
-              cache.put(request, response.clone());
-            }
-            return response;
-          });
+          return fetch(request)
+            .then((response) => {
+              if (response.ok) {
+                cache.put(request, response.clone());
+              }
+              return response;
+            })
+            .catch((error) => {
+              // If fetch fails, try to return cached response
+              return cache.match(request).then((fallbackResponse) => {
+                if (fallbackResponse) {
+                  return fallbackResponse;
+                }
+                // If no cache and fetch failed, return a proper error response
+                return new Response('Network error', {
+                  status: 503,
+                  statusText: 'Service Unavailable',
+                  headers: { 'Content-Type': 'text/plain' }
+                });
+              });
+            });
         });
       })
     );
@@ -69,7 +84,17 @@ self.addEventListener('fetch', (event) => {
             return response;
           })
           .catch(() => {
-            return cache.match(request);
+            return cache.match(request).then((cachedResponse) => {
+              if (cachedResponse) {
+                return cachedResponse;
+              }
+              // If no cache available, return a proper error response
+              return new Response('Network error', {
+                status: 503,
+                statusText: 'Service Unavailable',
+                headers: { 'Content-Type': 'text/plain' }
+              });
+            });
           });
       })
     );
@@ -79,7 +104,17 @@ self.addEventListener('fetch', (event) => {
   // For other requests, use network-first strategy
   event.respondWith(
     fetch(request).catch(() => {
-      return caches.match(request);
+      return caches.match(request).then((cachedResponse) => {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        // If no cache available, return a proper error response
+        return new Response('Network error', {
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: { 'Content-Type': 'text/plain' }
+        });
+      });
     })
   );
 });
