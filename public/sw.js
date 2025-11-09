@@ -1,5 +1,5 @@
 // Service Worker for caching
-const CACHE_NAME = 'career-frontend-v1';
+const CACHE_NAME = 'career-frontend-v2';
 const IMAGE_CACHE_NAME = 'career-images-v1';
 
 // Assets to cache on install
@@ -101,7 +101,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // For other requests, use network-first strategy
+  // Skip navigation requests (page loads) - let them go to network
+  // Service worker should only intercept resource requests, not page navigation
+  if (request.mode === 'navigate') {
+    return; // Let the browser handle navigation requests normally
+  }
+
+  // For other requests (resources, API calls), use network-first strategy
   event.respondWith(
     fetch(request).catch(() => {
       return caches.match(request).then((cachedResponse) => {

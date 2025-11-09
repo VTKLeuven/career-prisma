@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   description: "Welcome to the new VTK career platform",
 };
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>

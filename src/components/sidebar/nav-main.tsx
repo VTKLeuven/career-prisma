@@ -12,6 +12,7 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
@@ -28,9 +29,11 @@ export function NavMain({
     url: string
     icon?: TablerIcon
     isActive?: boolean
+    badge?: number
     items?: {
       title: string
       url: string
+      badge?: number
     }[]
   }[]
 }) {
@@ -52,6 +55,9 @@ export function NavMain({
                     <SidebarMenuButton tooltip={item.title}>
                       {item.icon && <item.icon />}
                       <span>{item.title}</span>
+                      {item.badge !== undefined && item.badge > 0 && (
+                        <SidebarMenuBadge>{item.badge}</SidebarMenuBadge>
+                      )}
                       <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                     </SidebarMenuButton>
                   </CollapsibleTrigger>
@@ -62,6 +68,9 @@ export function NavMain({
                           <SidebarMenuSubButton asChild>
                             <a href={subItem.url}>
                               <span>{subItem.title}</span>
+                              {subItem.badge !== undefined && subItem.badge > 0 && (
+                                <SidebarMenuBadge>{subItem.badge}</SidebarMenuBadge>
+                              )}
                             </a>
                           </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
@@ -74,6 +83,9 @@ export function NavMain({
                   <Link href={item.url}>
                     {item.icon && <item.icon />}
                     <span>{item.title}</span>
+                    {item.badge !== undefined && item.badge > 0 && (
+                      <SidebarMenuBadge>{item.badge}</SidebarMenuBadge>
+                    )}
                   </Link>
                 </SidebarMenuButton>
               )}

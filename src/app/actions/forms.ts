@@ -22,6 +22,7 @@ import {
   countFormVersionResponses,
 } from "@/lib/repos/forms";
 import type { Form, FormVersion, FormSchema, FormMetadata } from "@/lib/schema";
+import { getFormUploadsFolderId } from "@/lib/directus";
 
 // ===================== FORM ACTIONS =====================
 
@@ -462,9 +463,16 @@ export async function uploadFileAction(formData: FormData) {
     const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
     const token = cookieStore.get(ACCESS_COOKIE)?.value;
 
+    // Get Form_uploads folder ID
+    const folderId = await getFormUploadsFolderId();
+
     // Recreate FormData for upload
     const uploadFormData = new FormData();
     uploadFormData.append('file', file);
+    // Add folder parameter if folder ID is available
+    if (folderId) {
+      uploadFormData.append('folder', folderId);
+    }
 
     // Prepare headers
     const headers: HeadersInit = {};
@@ -487,10 +495,35 @@ export async function uploadFileAction(formData: FormData) {
 
     const result = await response.json();
     
-    // Extract file ID from Directus response
+    // Extract file ID and check if folder was set
     const fileId = result?.data?.id || result?.id;
+    const uploadedFolderId = result?.data?.folder || result?.folder;
+    
     if (!fileId) {
       throw new Error('Failed to extract file ID from upload result');
+    }
+
+    // Update the file to set the folder if needed (fallback in case folder parameter wasn't processed during upload)
+    if (folderId && token && uploadedFolderId !== folderId) {
+      try {
+        const updateUrl = `${directusUrl.replace(/\/$/, '')}/files/${fileId}`;
+        const updateResponse = await fetch(updateUrl, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ folder: folderId }),
+        });
+
+        if (!updateResponse.ok) {
+          const updateError = await updateResponse.json().catch(() => ({ message: 'Update failed' }));
+          console.warn('[uploadFileAction] Failed to update file folder:', updateError);
+        }
+      } catch (updateError) {
+        console.warn('[uploadFileAction] Error updating file folder:', updateError);
+        // Don't fail the upload if folder update fails
+      }
     }
 
     return { id: fileId };

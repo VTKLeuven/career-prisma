@@ -1,9 +1,11 @@
 // app/actions/companies.ts
 "use server";
 import { listCompanies, getCompanyById, createCompany, updateCompany } from "@/lib/repos/company";
-import { createRep, updateRep, waitForApproval, deleteUser } from "@/lib/repos/users";
+import { createRep, updateRep, waitForApproval, deleteUser, fetchPendingApprovalRequests, type PendingApprovalRequest } from "@/lib/repos/users";
 import { Company, CompanyRep, CareerEventOption } from "@/lib/schema";
 import { uploadDirectusFile } from "@/lib/repos/directus";
+import { getUserFromCookies } from "@/lib/auth-server";
+import { cookies } from "next/headers";
 
 
 
@@ -17,6 +19,67 @@ function formatAddress(c: Company) {
     .filter((p) => p.length > 0);
 
   return parts.length ? parts.join(", ") : "Not set";
+}
+
+/**
+ * Check if company has all required information filled in for publishing
+ * Required fields: name, VAT, all address fields, logo, short_description, website, location, at least one category
+ * Excluded: page_image, long_description
+ */
+function isCompanyInfoComplete(company: Company): boolean {
+  // Check name
+  if (!company.name || company.name.trim().length === 0) {
+    return false;
+  }
+
+  // Check VAT
+  if (!company.VAT || company.VAT.trim().length === 0) {
+    return false;
+  }
+
+  // Check all address fields
+  if (!company.address_street || company.address_street.trim().length === 0) {
+    return false;
+  }
+  if (!company.address_number || company.address_number.trim().length === 0) {
+    return false;
+  }
+  if (!company.address_zip || company.address_zip.trim().length === 0) {
+    return false;
+  }
+  if (!company.address_city || company.address_city.trim().length === 0) {
+    return false;
+  }
+  if (!company.address_country || company.address_country.trim().length === 0) {
+    return false;
+  }
+
+  // Check logo
+  if (!company.logo || (typeof company.logo === "string" && company.logo.trim().length === 0)) {
+    return false;
+  }
+
+  // Check short_description
+  if (!company.short_description || company.short_description.trim().length === 0) {
+    return false;
+  }
+
+  // Check website
+  if (!company.website || company.website.trim().length === 0) {
+    return false;
+  }
+
+  // Check location
+  if (!company.location || company.location.trim().length === 0) {
+    return false;
+  }
+
+  // Check category (at least one master category)
+  if (!company.category || !Array.isArray(company.category) || company.category.length === 0) {
+    return false;
+  }
+
+  return true;
 }
 
 export async function fetchCompaniesAction() {
@@ -94,27 +157,109 @@ export async function fetchCompanyBySlugAction(slug: string): Promise<Company | 
 }
 
 export async function createCompanyAction(companyPayload: Partial<Company>, repPayload?: Partial<CompanyRep>) {
+  // Ensure new companies start unpublished
+  const payloadWithStatus = {
+    ...companyPayload,
+    page_on_platform: false,
+  };
+
   if (repPayload && (repPayload.email || repPayload.first_name || repPayload.last_name)) {
     const newRep = await createRep(repPayload);
+    
+    if (!newRep || !newRep.id) {
+      console.error("[createCompanyAction] Failed to create representative:", repPayload.email);
+      throw new Error("Failed to create representative");
+    }
+    
+    console.log(`[createCompanyAction] Representative created successfully: ${newRep.id} (${repPayload.email})`);
+    
     const updatedRep = await updateRep(newRep.id, {
       first_name: repPayload.first_name,
       last_name: repPayload.last_name,
     });
+    
+    // Use newRep.id since updatedRep might be null if update failed
+    // The user is created successfully even if the name update fails
+    const repIdForCompany = updatedRep?.id || newRep.id;
+    
+    if (!updatedRep) {
+      console.warn(`[createCompanyAction] Failed to update rep details for ${newRep.id}, but continuing with user creation...`);
+    }
 
     // Create a mutable payload with representatives as string array for the API
     const payload = {
-      ...companyPayload,
-      representatives: [updatedRep.id] as unknown as CompanyRep[]
+      ...payloadWithStatus,
+      representatives: [repIdForCompany] as unknown as CompanyRep[]
     };
 
-    return await createCompany(payload as Partial<Company>);
+    const createdCompany = await createCompany(payload as Partial<Company>);
+
+    // Send invitation email to the representative
+    if (repPayload.email && newRep?.id) {
+      try {
+        console.log(`[createCompanyAction] Generating invite token for user ${newRep.id} (${repPayload.email})`);
+        
+        // Small delay to ensure user is fully created in Directus
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Generate secure invite token
+        const { generateInviteToken } = await import("@/lib/repos/users");
+        const tokenData = await generateInviteToken(newRep.id);
+
+        if (tokenData && tokenData.token) {
+          console.log(`[createCompanyAction] Token generated successfully for ${repPayload.email}`);
+          
+          // Build accept invite URL with token
+          const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
+            || process.env.NEXT_PUBLIC_FORM_DOMAIN 
+            || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
+          
+          const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(tokenData.token)}`;
+          
+          // Send custom invitation email using our SMTP setup
+          const { sendEmail } = await import("@/lib/repos/directus");
+          const { generateInvitationEmailHtml } = await import("@/lib/email-templates");
+          
+          const emailHtml = generateInvitationEmailHtml({
+            firstName: repPayload.first_name ?? undefined,
+            lastName: repPayload.last_name ?? undefined,
+            companyName: companyPayload.name,
+            acceptInviteUrl,
+          });
+          
+          await sendEmail({
+            to: repPayload.email,
+            subject: `Welcome to VTK Career Platform${companyPayload.name ? ` - ${companyPayload.name}` : ''}`,
+            html: emailHtml,
+          });
+          
+          console.log(`[createCompanyAction] Invitation email sent to ${repPayload.email}`);
+        } else {
+          console.error(`[createCompanyAction] Failed to generate invite token for user ${newRep.id} (${repPayload.email}) - tokenData is null or missing token`);
+        }
+      } catch (err) {
+        console.error(`[createCompanyAction] Error sending invitation email to ${repPayload.email}:`, err);
+        if (err instanceof Error) {
+          console.error(`[createCompanyAction] Error stack:`, err.stack);
+        }
+        // Don't throw - email failure shouldn't prevent company creation
+      }
+    }
+
+    return createdCompany;
   }
-  return await createCompany(companyPayload);
+  return await createCompany(payloadWithStatus);
 }
 
 export async function createCompanyRepAction(companyId: string, repPayload: Partial<CompanyRep>) {
   if (!repPayload) return null;
   const newRep = await createRep(repPayload);
+  
+  if (!newRep || !newRep.id) {
+    console.error("Failed to create representative");
+    return null;
+  }
+  
   await updateRep(newRep.id, {
     first_name: repPayload.first_name,
     last_name: repPayload.last_name,
@@ -139,7 +284,61 @@ export async function createCompanyRepAction(companyId: string, repPayload: Part
 
   console.log(representativeIds)
 
-  return await updateCompanyAction(companyId, {representatives: representativeIds as unknown as CompanyRep[]});
+  const result = await updateCompanyAction(companyId, {representatives: representativeIds as unknown as CompanyRep[]});
+
+  // Send invitation email to the representative
+  if (repPayload.email && newRep?.id) {
+    try {
+      console.log(`[createCompanyRepAction] Generating invite token for user ${newRep.id} (${repPayload.email})`);
+      
+      // Small delay to ensure user is fully created in Directus
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Generate secure invite token
+      const { generateInviteToken } = await import("@/lib/repos/users");
+      const tokenData = await generateInviteToken(newRep.id);
+
+      if (tokenData && tokenData.token) {
+        console.log(`[createCompanyRepAction] Token generated successfully for ${repPayload.email}`);
+        
+        // Build accept invite URL with token
+        const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
+          || process.env.NEXT_PUBLIC_FORM_DOMAIN 
+          || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
+        
+        const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(tokenData.token)}`;
+        
+        // Send custom invitation email using our SMTP setup
+        const { sendEmail } = await import("@/lib/repos/directus");
+        const { generateInvitationEmailHtml } = await import("@/lib/email-templates");
+        
+        const emailHtml = generateInvitationEmailHtml({
+          firstName: repPayload.first_name ?? undefined,
+          lastName: repPayload.last_name ?? undefined,
+          companyName: company.name,
+          acceptInviteUrl,
+        });
+        
+        await sendEmail({
+          to: repPayload.email,
+          subject: `Welcome to VTK Career Platform${company.name ? ` - ${company.name}` : ''}`,
+          html: emailHtml,
+        });
+        
+        console.log(`[createCompanyRepAction] Invitation email sent to ${repPayload.email}`);
+      } else {
+        console.error(`[createCompanyRepAction] Failed to generate invite token for user ${newRep.id} (${repPayload.email}) - tokenData is null or missing token`);
+      }
+    } catch (err) {
+      console.error(`[createCompanyRepAction] Error sending invitation email to ${repPayload.email}:`, err);
+      if (err instanceof Error) {
+        console.error(`[createCompanyRepAction] Error stack:`, err.stack);
+      }
+      // Don't throw - email failure shouldn't prevent rep creation
+    }
+  }
+
+  return result;
 }
 
 export async function requestRepAction(repPayload: Partial<CompanyRep>) {
@@ -155,7 +354,15 @@ export async function requestRepAction(repPayload: Partial<CompanyRep>) {
     throw new Error("Salesperson ID not found");
   }
 
-  // 1️⃣ Create approval request and wait for salesperson’s approval
+  if (!repPayload.company?.id) {
+    throw new Error("Company ID not found");
+  }
+
+  if (!repPayload.email) {
+    throw new Error("Email is required");
+  }
+
+  // 1️⃣ Create approval request and wait for salesperson's approval
   const approved = await waitForApproval(salespersonId, repPayload);
 
   if (!approved) {
@@ -163,23 +370,170 @@ export async function requestRepAction(repPayload: Partial<CompanyRep>) {
     return { status: "rejected" };
   }
 
-  // 2️⃣ Once approved, create Directus user
-  const newRep = await createRep(repPayload);
+  // 2️⃣ Once approved, check if user was already created by approveRepRequestAction
+  // If not, create it. This handles the case where approval happens via the admin UI
+  // and createUserFromApprovedRequest already created the user.
+  const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? 'directus'}_access`;
+  const cookieStore = await cookies();
+  const token = cookieStore.get(ACCESS_COOKIE)?.value;
 
-  // 3️⃣ Optionally update the rep data (name, etc.)
-  await updateRep(newRep.id, {
-    first_name: repPayload.first_name,
-    last_name: repPayload.last_name,
-  });
+  if (!token) {
+    throw new Error("No token available");
+  }
 
-  return newRep;
+  const baseUrl = process.env.DIRECTUS_URL;
+  if (!baseUrl) {
+    throw new Error("DIRECTUS_URL not configured");
+  }
+
+  const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
+
+  // Use server token if available for user operations (more reliable permissions)
+  const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
+  const authToken = serverToken || token;
+
+  // Fetch company details (needed for email and adding to representatives)
+  const company = await fetchCompanyByIdAction(repPayload.company.id);
+  if (!company) {
+    throw new Error("Company not found");
+  }
+
+  // Check if user already exists (might have been created by approveRepRequestAction)
+  const checkUserRes = await fetch(
+    `${normalizedBase}users?filter[email][_eq]=${encodeURIComponent(repPayload.email)}&fields=id`,
+    {
+      headers: {
+        "Authorization": `Bearer ${authToken}`,
+      },
+    }
+  );
+
+  let userId: string | undefined;
+
+  if (checkUserRes.ok) {
+    const userData = await checkUserRes.json();
+    const existingUser = userData.data?.[0];
+
+    if (existingUser) {
+      // User already exists (created by approveRepRequestAction)
+      userId = existingUser.id;
+      console.log(`[requestRepAction] User already exists: ${userId} (${repPayload.email})`);
+    }
+  }
+
+  // If user doesn't exist, create it (fallback for cases where approval happened but user wasn't created)
+  if (!userId) {
+    console.log(`[requestRepAction] Creating user for ${repPayload.email}`);
+    const newRep = await createRep(repPayload);
+
+    if (!newRep || !newRep.id) {
+      throw new Error("Failed to create user");
+    }
+
+    userId = newRep.id;
+
+    // Update the rep data (name, etc.)
+    await updateRep(newRep.id, {
+      first_name: repPayload.first_name,
+      last_name: repPayload.last_name,
+      tel: repPayload.tel,
+      title: repPayload.title,
+    });
+
+    // Send invitation email (same process as first rep)
+    if (repPayload.email && newRep.id) {
+      try {
+        console.log(`[requestRepAction] Generating invite token for user ${newRep.id} (${repPayload.email})`);
+        
+        // Small delay to ensure user is fully created in Directus
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Generate secure invite token
+        const { generateInviteToken } = await import("@/lib/repos/users");
+        const tokenData = await generateInviteToken(newRep.id);
+
+        if (tokenData && tokenData.token) {
+          console.log(`[requestRepAction] Token generated successfully for ${repPayload.email}`);
+          
+          // Build accept invite URL with token
+          const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
+            || process.env.NEXT_PUBLIC_FORM_DOMAIN 
+            || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
+          
+          const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(tokenData.token)}`;
+          
+          // Send custom invitation email using our SMTP setup
+          const { sendEmail } = await import("@/lib/repos/directus");
+          const { generateInvitationEmailHtml } = await import("@/lib/email-templates");
+          
+          const emailHtml = generateInvitationEmailHtml({
+            firstName: repPayload.first_name ?? undefined,
+            lastName: repPayload.last_name ?? undefined,
+            companyName: company.name,
+            acceptInviteUrl,
+          });
+          
+          await sendEmail({
+            to: repPayload.email,
+            subject: `Welcome to VTK Career Platform${company.name ? ` - ${company.name}` : ''}`,
+            html: emailHtml,
+          });
+          
+          console.log(`[requestRepAction] Invitation email sent to ${repPayload.email}`);
+        } else {
+          console.error(`[requestRepAction] Failed to generate invite token for user ${newRep.id} (${repPayload.email})`);
+        }
+      } catch (err) {
+        console.error(`[requestRepAction] Error sending invitation email to ${repPayload.email}:`, err);
+        // Don't throw - email failure shouldn't prevent user creation
+      }
+    }
+  }
+
+  // 3️⃣ Add the user to the company's representatives list (if not already added)
+
+  // Build representatives array as string IDs
+  let representativeIds: string[] = [];
+  if (company.representatives) {
+    representativeIds = (company.representatives as (CompanyRep | string)[]).map((item: CompanyRep | string) => {
+      return typeof item === 'string' ? item : item?.id ?? '';
+    }).filter(Boolean);
+  }
+
+  // Add the user if not already present
+  if (userId && !representativeIds.includes(userId)) {
+    representativeIds.push(userId);
+    await updateCompanyAction(repPayload.company.id, {
+      representatives: representativeIds as unknown as CompanyRep[]
+    });
+  }
+
+  return { id: userId, email: repPayload.email };
 }
 
 export async function updateCompanyAction(
   id: string,
   payload: Partial<Company>
 ): Promise<Company | null> {
-  const res = await updateCompany(id, payload);
+  // Fetch current company to check if info is complete
+  const currentCompany = await fetchCompanyByIdAction(id);
+  if (!currentCompany) {
+    return null;
+  }
+
+  // Merge payload with current company to check completeness
+  const updatedCompany = { ...currentCompany, ...payload } as Company;
+
+  // Check if company info is now complete
+  const isComplete = isCompanyInfoComplete(updatedCompany);
+
+  // Update payload with page_on_platform status
+  const payloadWithStatus = {
+    ...payload,
+    page_on_platform: isComplete,
+  };
+
+  const res = await updateCompany(id, payloadWithStatus);
   return res as Company | null;
 }
 
@@ -355,4 +709,321 @@ export async function removeUserFromCompanyAction(companyId: string, userId: str
   return deleteResult.success
     ? { success: true }
     : { success: false, error: deleteResult.error || "Failed to delete user" };
+}
+
+// Fetch pending approval requests for the current salesperson
+// This is a convenience wrapper that ensures we use the authenticated user's ID
+// All authorization is handled in fetchPendingApprovalRequests()
+export async function fetchPendingApprovalRequestsAction(): Promise<PendingApprovalRequest[]> {
+  try {
+    const user = await getUserFromCookies();
+    if (!user || !user.id) {
+      return [];
+    }
+
+    // fetchPendingApprovalRequests will validate authorization server-side
+    // and ensure the user can only see their own requests (unless they're an admin)
+    return await fetchPendingApprovalRequests(user.id);
+  } catch (error) {
+    // Log full error details for debugging
+    if (error instanceof Error) {
+      console.error("Failed to fetch pending approval requests (action):", error.message, error.stack);
+    } else {
+      console.error("Failed to fetch pending approval requests (action) - non-Error object:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
+    }
+    return [];
+  }
+}
+
+// Helper function to create user from approved request (can be called from multiple places)
+// This follows the same process as the first representative: creates user, sends invitation email with token
+export async function createUserFromApprovedRequest(request: any): Promise<void> {
+  try {
+    if (!request.company?.id) {
+      console.error("[createUserFromApprovedRequest] No company ID in request");
+      return;
+    }
+
+    if (!request.email) {
+      console.error("[createUserFromApprovedRequest] No email in request");
+      return;
+    }
+
+    const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? 'directus'}_access`;
+    const cookieStore = await cookies();
+    const token = cookieStore.get(ACCESS_COOKIE)?.value;
+
+    if (!token) {
+      console.error("[createUserFromApprovedRequest] No token available");
+      return;
+    }
+
+    const baseUrl = process.env.DIRECTUS_URL;
+    if (!baseUrl) {
+      console.error("[createUserFromApprovedRequest] DIRECTUS_URL not configured");
+      return;
+    }
+
+    const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
+
+    // Use server token if available for user operations (more reliable permissions)
+    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
+    const authToken = serverToken || token;
+
+    // Fetch company details
+    const company = await fetchCompanyByIdAction(request.company.id);
+    if (!company) {
+      console.error("[createUserFromApprovedRequest] Company not found:", request.company.id);
+      return;
+    }
+
+    // Use default company rep role if role is not available in request
+    const DEFAULT_COMPANY_REP_ROLE = "d5475bf4-a77f-48de-b06c-fac199b0f631";
+    const userRole = request.role || DEFAULT_COMPANY_REP_ROLE;
+
+    // Check if user already exists
+    const checkUserRes = await fetch(
+      `${normalizedBase}users?filter[email][_eq]=${encodeURIComponent(request.email)}&fields=id,status,role`,
+      {
+        headers: {
+          "Authorization": `Bearer ${authToken}`,
+        },
+      }
+    );
+
+    let userId: string | undefined;
+    let isNewUser = false;
+
+    if (checkUserRes.ok) {
+      const userData = await checkUserRes.json();
+      const existingUser = userData.data?.[0];
+
+      if (existingUser) {
+        // User already exists - use existing user ID
+        userId = existingUser.id;
+        console.log(`[createUserFromApprovedRequest] User already exists: ${userId} (${request.email})`);
+        
+        // Update user status to "invited" if it's not already set
+        // Also update role if needed
+        try {
+          const updatePayload: any = {};
+          if (existingUser.status !== "invited") {
+            updatePayload.status = "invited";
+          }
+          if (existingUser.role !== userRole) {
+            updatePayload.role = userRole;
+          }
+          
+          if (Object.keys(updatePayload).length > 0) {
+            const updateUserRes = await fetch(
+              `${normalizedBase}users/${userId}`,
+              {
+                method: "PATCH",
+                headers: {
+                  "Authorization": `Bearer ${authToken}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(updatePayload),
+              }
+            );
+            
+            if (!updateUserRes.ok) {
+              console.warn(`[createUserFromApprovedRequest] Failed to update user status/role for ${userId}`);
+            }
+          }
+        } catch (err) {
+          console.warn(`[createUserFromApprovedRequest] Error updating existing user:`, err);
+        }
+      } else {
+        // User doesn't exist, create it
+        isNewUser = true;
+        console.log(`[createUserFromApprovedRequest] Creating new user for ${request.email}`);
+        
+        const repPayload: Partial<CompanyRep> = {
+          email: request.email,
+          role: userRole,
+          first_name: request.first_name || undefined,
+          last_name: request.last_name || undefined,
+          tel: request.tel || undefined,
+          title: request.title || undefined,
+          company: company,
+        };
+
+        const newRep = await createRep(repPayload);
+        if (newRep && newRep.id) {
+          userId = newRep.id;
+          console.log(`[createUserFromApprovedRequest] User created successfully: ${userId}`);
+          
+          // Update rep details (name, etc.)
+          await updateRep(newRep.id, {
+            first_name: request.first_name || undefined,
+            last_name: request.last_name || undefined,
+            tel: request.tel || undefined,
+            title: request.title || undefined,
+          });
+        } else {
+          console.error(`[createUserFromApprovedRequest] Failed to create user for ${request.email}`);
+          return; // Failed to create user
+        }
+      }
+    } else {
+      console.error(`[createUserFromApprovedRequest] Failed to check if user exists:`, checkUserRes.status);
+      return;
+    }
+
+    if (!userId) {
+      console.error(`[createUserFromApprovedRequest] No user ID available for ${request.email}`);
+      return;
+    }
+
+    // Ensure user is in company's representatives list
+    let representativeIds: string[] = [];
+    if (company.representatives) {
+      representativeIds = (company.representatives as (CompanyRep | string)[]).map((item: CompanyRep | string) => {
+        return typeof item === 'string' ? item : item?.id ?? '';
+      }).filter(Boolean);
+    }
+
+    if (!representativeIds.includes(userId)) {
+      representativeIds.push(userId);
+      await updateCompanyAction(request.company.id, {
+        representatives: representativeIds as unknown as CompanyRep[]
+      });
+      console.log(`[createUserFromApprovedRequest] Added user ${userId} to company ${request.company.id}`);
+    }
+
+    // Send invitation email with invite token (same process as first rep)
+    if (request.email && userId) {
+      try {
+        console.log(`[createUserFromApprovedRequest] Generating invite token for user ${userId} (${request.email})`);
+        
+        // Small delay to ensure user is fully created/updated in Directus
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Generate secure invite token
+        const { generateInviteToken } = await import("@/lib/repos/users");
+        const tokenData = await generateInviteToken(userId);
+
+        if (tokenData && tokenData.token) {
+          console.log(`[createUserFromApprovedRequest] Token generated successfully for ${request.email}`);
+          
+          // Build accept invite URL with token
+          const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
+            || process.env.NEXT_PUBLIC_FORM_DOMAIN 
+            || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
+          
+          const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(tokenData.token)}`;
+          
+          // Send custom invitation email using our SMTP setup
+          const { sendEmail } = await import("@/lib/repos/directus");
+          const { generateInvitationEmailHtml } = await import("@/lib/email-templates");
+          
+          const emailHtml = generateInvitationEmailHtml({
+            firstName: request.first_name ?? undefined,
+            lastName: request.last_name ?? undefined,
+            companyName: company.name,
+            acceptInviteUrl,
+          });
+          
+          await sendEmail({
+            to: request.email,
+            subject: `Welcome to VTK Career Platform${company.name ? ` - ${company.name}` : ''}`,
+            html: emailHtml,
+          });
+          
+          console.log(`[createUserFromApprovedRequest] Invitation email sent to ${request.email}`);
+        } else {
+          console.error(`[createUserFromApprovedRequest] Failed to generate invite token for user ${userId} (${request.email}) - tokenData is null or missing token`);
+        }
+      } catch (err) {
+        console.error(`[createUserFromApprovedRequest] Error sending invitation email to ${request.email}:`, err);
+        if (err instanceof Error) {
+          console.error(`[createUserFromApprovedRequest] Error stack:`, err.stack);
+        }
+        // Don't throw - email failure shouldn't prevent user creation
+      }
+    }
+  } catch (error) {
+    console.error("[createUserFromApprovedRequest] Error creating user from approved request:", error);
+    if (error instanceof Error) {
+      console.error("[createUserFromApprovedRequest] Error stack:", error.stack);
+    }
+  }
+}
+
+// Approve or reject a rep request
+export async function approveRepRequestAction(
+  requestId: string,
+  action: 'approve' | 'reject'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? 'directus'}_access`;
+    const cookieStore = await cookies();
+    const token = cookieStore.get(ACCESS_COOKIE)?.value;
+
+    if (!token) {
+      return { success: false, error: "No token available" };
+    }
+
+    const baseUrl = process.env.DIRECTUS_URL;
+    if (!baseUrl) {
+      return { success: false, error: "DIRECTUS_URL not configured" };
+    }
+
+    const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
+
+    // Fetch the request to get details
+    const getRequestRes = await fetch(
+      `${normalizedBase}items/company_user_requests/${requestId}?fields=*,company.id`,
+      {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (!getRequestRes.ok) {
+      return { success: false, error: "Failed to fetch request" };
+    }
+
+    const requestData = await getRequestRes.json();
+    const request = requestData.data;
+
+    if (!request) {
+      return { success: false, error: "Request not found" };
+    }
+
+    // Update status
+    const status = action === "approve" ? "approved" : "rejected";
+    const updateRes = await fetch(
+      `${normalizedBase}items/company_user_requests/${requestId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status }),
+      }
+    );
+
+    if (!updateRes.ok) {
+      const error = await updateRes.json().catch(() => null);
+      console.error("Failed to update request status:", error);
+      return { success: false, error: "Failed to update request status" };
+    }
+
+    // If approved, create the user and add to company (if not already created)
+    if (action === "approve") {
+      await createUserFromApprovedRequest(request);
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error in approveRepRequestAction:", error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : "Unknown error" 
+    };
+  }
 }

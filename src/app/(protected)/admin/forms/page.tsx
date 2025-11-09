@@ -55,7 +55,7 @@ import { useUser } from "@/providers/UserProvider";
 import type { FormSchema, FormField, Form } from "@/lib/schema";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
-import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
+import { formatDateBE, formatDateTimeBE, utcToLocalDateTimeLocal, localDateTimeLocalToUtc } from "@/lib/date-utils";
 
 type FormRow = {
   id: string;
@@ -308,10 +308,10 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
         metadata.event_email_subject = eventEmailSubject || 'Event Registration Confirmation';
         metadata.event_email_content = eventEmailContent || 'Thank you for registering!';
         if (eventDate) {
-          metadata.event_date = new Date(eventDate).toISOString();
+          metadata.event_date = localDateTimeLocalToUtc(eventDate);
         }
         if (eventEndDate) {
-          metadata.event_end_date = new Date(eventEndDate).toISOString();
+          metadata.event_end_date = localDateTimeLocalToUtc(eventEndDate);
         }
         if (eventLocation) {
           metadata.event_location = eventLocation;
@@ -326,8 +326,8 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
       }
 
       if (deadline) {
-        // Convert datetime-local value to ISO string
-        metadata.deadline = new Date(deadline).toISOString();
+        // Convert datetime-local value to UTC ISO string
+        metadata.deadline = localDateTimeLocalToUtc(deadline);
       }
 
       await createFormAction({
@@ -630,7 +630,7 @@ function EditFormDialog({
   const [slug, setSlug] = useState(form.slug);
   const [description, setDescription] = useState(form.description);
   const [deadline, setDeadline] = useState(
-    form.metadata?.deadline ? new Date(form.metadata.deadline).toISOString().slice(0, 16) : ''
+    form.metadata?.deadline ? utcToLocalDateTimeLocal(form.metadata.deadline as string) : ''
   );
   const [deadlineDateDisplay, setDeadlineDateDisplay] = useState("");
   const [deadlineTimeDisplay, setDeadlineTimeDisplay] = useState("");
@@ -644,10 +644,10 @@ function EditFormDialog({
     (form.metadata?.event_email_content as string) || ''
   );
   const [eventDate, setEventDate] = useState(
-    form.metadata?.event_date ? new Date(form.metadata.event_date as string).toISOString().slice(0, 16) : ''
+    form.metadata?.event_date ? utcToLocalDateTimeLocal(form.metadata.event_date as string) : ''
   );
   const [eventEndDate, setEventEndDate] = useState(
-    form.metadata?.event_end_date ? new Date(form.metadata.event_end_date as string).toISOString().slice(0, 16) : ''
+    form.metadata?.event_end_date ? utcToLocalDateTimeLocal(form.metadata.event_end_date as string) : ''
   );
   const [eventLocation, setEventLocation] = useState(
     (form.metadata?.event_location as string) || ''
@@ -696,13 +696,13 @@ function EditFormDialog({
       setName(form.name);
       setSlug(form.slug);
       setDescription(form.description);
-      setDeadline(form.metadata?.deadline ? new Date(form.metadata.deadline).toISOString().slice(0, 16) : '');
+      setDeadline(form.metadata?.deadline ? utcToLocalDateTimeLocal(form.metadata.deadline as string) : '');
       setMaxEntries(form.metadata?.max_entries ? String(form.metadata.max_entries) : '');
       setIsEventRegistration(form.metadata?.is_event_registration === true);
       setEventEmailSubject((form.metadata?.event_email_subject as string) || '');
       setEventEmailContent((form.metadata?.event_email_content as string) || '');
-      setEventDate(form.metadata?.event_date ? new Date(form.metadata.event_date as string).toISOString().slice(0, 16) : '');
-      setEventEndDate(form.metadata?.event_end_date ? new Date(form.metadata.event_end_date as string).toISOString().slice(0, 16) : '');
+      setEventDate(form.metadata?.event_date ? utcToLocalDateTimeLocal(form.metadata.event_date as string) : '');
+      setEventEndDate(form.metadata?.event_end_date ? utcToLocalDateTimeLocal(form.metadata.event_end_date as string) : '');
       setEventLocation((form.metadata?.event_location as string) || '');
     }
   }, [open, form]);
@@ -725,8 +725,8 @@ function EditFormDialog({
         let metadata: { [key: string]: unknown } | undefined = form.metadata ? { ...form.metadata } : undefined;
         
         if (deadline) {
-          // Convert datetime-local value to ISO string
-          metadata = { ...metadata, deadline: new Date(deadline).toISOString() };
+          // Convert datetime-local value to UTC ISO string
+          metadata = { ...metadata, deadline: localDateTimeLocalToUtc(deadline) };
         } else if (metadata?.deadline) {
           delete metadata.deadline;
         }
@@ -749,8 +749,8 @@ function EditFormDialog({
             is_event_registration: true,
             event_email_subject: eventEmailSubject || 'Event Registration Confirmation',
             event_email_content: eventEmailContent || 'Thank you for registering!',
-            ...(eventDate ? { event_date: new Date(eventDate).toISOString() } : {}),
-            ...(eventEndDate ? { event_end_date: new Date(eventEndDate).toISOString() } : {}),
+            ...(eventDate ? { event_date: localDateTimeLocalToUtc(eventDate) } : {}),
+            ...(eventEndDate ? { event_end_date: localDateTimeLocalToUtc(eventEndDate) } : {}),
             ...(eventLocation ? { event_location: eventLocation } : {}),
           };
         } else {

@@ -64,7 +64,7 @@ export default function CompanyPage() {
         const fetched = await fetchCompanyBySlugAction(companyName ?? "");
         if (fetched) {
           // Check if company has page_on_platform enabled
-          if (!fetched.page_on_platform) {
+          if (!fetched?.page_on_platform) {
             setCompany(null);
             setLoading(false);
             return;

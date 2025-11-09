@@ -341,7 +341,7 @@ export default function PublicFormPage() {
             })()}
 
             <div className="flex justify-end gap-4 pt-4">
-              <Button type="button" variant="outline" onClick={() => router.back()}>
+              <Button type="button" variant="outline" onClick={() => router.push("/")}>
                 Cancel
               </Button>
               <Button type="submit" disabled={submitting || isDeadlinePassed || isFormFull}>

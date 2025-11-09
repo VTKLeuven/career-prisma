@@ -60,24 +60,13 @@ export default function ContactPage() {
   }
 
   return (
-    <div className="min-h-screen relative">
-      {/* Fixed Background Image */}
-      <div 
-        className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat"
-        style={{
-          backgroundImage: 'url(https://directustest.vtk.be/assets/39d8fd46-fcc7-4d1f-84cf-38093d96cb93)',
-          backgroundAttachment: 'fixed',
-        }}
-      >
-      </div>
-
-      {/* Content Container - Scrolls over background */}
-      <div className="relative z-10">
-        <div className="min-h-screen py-16 sm:py-24">
-          <div className="container mx-auto px-4">
-            <div className="max-w-4xl mx-auto">
-              {/* Header Card */}
-              <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-6 shadow-sm mb-12">
+    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-white to-vtk-blue/5">
+      {/* Content Container */}
+      <div className="min-h-screen py-16 sm:py-24">
+        <div className="container mx-auto px-4">
+          <div className="max-w-4xl mx-auto">
+            {/* Header Card */}
+            <div className="rounded-2xl border bg-white p-6 shadow-sm mb-12">
                 <div className="text-center">
                   <div className="flex justify-center mb-4">
                     <div className="rounded-full bg-vtk-blue/10 p-4">
@@ -95,7 +84,7 @@ export default function ContactPage() {
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Contact Information Card */}
-                <div className="rounded-2xl border bg-white/85 backdrop-blur-sm shadow-sm">
+                <div className="rounded-2xl border bg-white shadow-sm">
                   <div className="p-6">
                     <h2 className="text-2xl font-semibold text-neutral-900 mb-2">Get in Touch</h2>
                     <p className="text-neutral-600 mb-6">
@@ -147,7 +136,7 @@ export default function ContactPage() {
                 </div>
 
                 {/* Contact Form Card */}
-                <div className="rounded-2xl border bg-white/85 backdrop-blur-sm shadow-sm">
+                <div className="rounded-2xl border bg-white shadow-sm">
                   <div className="p-6">
                     <h2 className="text-2xl font-semibold text-neutral-900 mb-2">Send us a Message</h2>
                     <p className="text-neutral-600 mb-6">
@@ -257,7 +246,6 @@ export default function ContactPage() {
             </div>
           </div>
         </div>
-      </div>
     </div>
   )
 }
