@@ -308,16 +308,17 @@ export function generateInvitationEmailHtml({
           <h2>Welcome to VTK Career Platform</h2>
           <p>Dear ${displayName},</p>
           ${companyName ? `<p>You have been invited to represent <strong>${companyName}</strong> on the VTK Career Platform.</p>` : '<p>You have been invited to join the VTK Career Platform.</p>'}
-          <p>To get started, please set up your account by clicking the button below:</p>
+          <p>To get started, please click the button below to set up your account and create your password:</p>
           <div style="text-align: center;">
             <a href="${acceptInviteUrl}" class="button" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff !important; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: 500;">Set Up Your Account</a>
           </div>
           <div class="info-box">
             <p><strong>What's next?</strong></p>
-            <p>After setting up your account, you'll be able to manage your company profile, post job vacancies, and interact with students.</p>
+            <p>After setting up your password, you'll be able to manage your company profile, post job vacancies, and interact with students.</p>
           </div>
           <p>If the button doesn't work, you can copy and paste this link into your browser:</p>
           <p style="word-break: break-all; color: #2563eb;">${acceptInviteUrl}</p>
+          <p style="font-size: 12px; color: #6b7280; margin-top: 20px;">This invitation link will expire in 7 days for security reasons.</p>
           <div class="signature">
             <p>Best regards,<br>The VTK Career Team</p>
           </div>

@@ -23,8 +23,13 @@ function PendingApprovalsSection() {
   const [pendingRequests, setPendingRequests] = React.useState<PendingApprovalRequest[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [processing, setProcessing] = React.useState<string | null>(null);
+  const [errorCount, setErrorCount] = React.useState(0);
+  const [lastError, setLastError] = React.useState<string | null>(null);
 
   const shouldShow = user?.admin;
+  const MAX_CONSECUTIVE_ERRORS = 3;
+  const POLLING_INTERVAL = 10000; // 10 seconds
+  const ERROR_BACKOFF_MULTIPLIER = 2;
 
   React.useEffect(() => {
     if (!shouldShow) {
@@ -33,30 +38,59 @@ function PendingApprovalsSection() {
     }
 
     let alive = true;
-    fetchPendingApprovalRequestsAction()
-      .then((requests) => {
-        if (!alive) return;
-        setPendingRequests(requests);
-      })
-      .catch(console.error)
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
+    let consecutiveErrors = 0;
+    let pollTimeout: NodeJS.Timeout | null = null;
 
-    // Refresh every 10 seconds for faster updates
-    const interval = setInterval(() => {
+    const fetchRequests = async () => {
       if (!alive) return;
-      fetchPendingApprovalRequestsAction()
-        .then((requests) => {
-          if (!alive) return;
-          setPendingRequests(requests);
-        })
-        .catch(console.error);
-    }, 10000);
+      
+      try {
+        const requests = await fetchPendingApprovalRequestsAction();
+        if (!alive) return;
+        
+        setPendingRequests(requests);
+        setErrorCount(0);
+        setLastError(null);
+        consecutiveErrors = 0;
+        
+        // Schedule next fetch with normal polling interval
+        if (alive) {
+          pollTimeout = setTimeout(fetchRequests, POLLING_INTERVAL);
+        }
+      } catch (error) {
+        if (!alive) return;
+        
+        consecutiveErrors++;
+        setErrorCount(consecutiveErrors);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        setLastError(errorMessage);
+        
+        console.error(`Failed to fetch pending approval requests (attempt ${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, error);
+        
+        // Stop polling after too many consecutive errors
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          console.error(`Stopped polling after ${MAX_CONSECUTIVE_ERRORS} consecutive errors. Please refresh the page to retry.`);
+          return; // Don't schedule another fetch
+        }
+        
+        // Exponential backoff: wait longer between retries after errors
+        const backoffDelay = POLLING_INTERVAL * ERROR_BACKOFF_MULTIPLIER * consecutiveErrors;
+        if (alive) {
+          pollTimeout = setTimeout(fetchRequests, backoffDelay);
+        }
+      }
+    };
+
+    // Initial fetch
+    fetchRequests().finally(() => {
+      if (alive) setLoading(false);
+    });
 
     return () => {
       alive = false;
-      clearInterval(interval);
+      if (pollTimeout) {
+        clearTimeout(pollTimeout);
+      }
     };
   }, [shouldShow]);
 

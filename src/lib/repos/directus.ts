@@ -88,13 +88,64 @@ function getTransporter(): nodemailer.Transporter {
   }
 
   // Check if SMTP credentials are provided for Google SMTP
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASS;
+  const smtpUser = process.env.SMTP_USER?.trim();
+  const smtpPass = process.env.SMTP_PASS?.trim();
+  const isDevelopment = process.env.NODE_ENV === "development";
+  const explicitSmtpHost = process.env.SMTP_HOST?.trim();
   
-  // If credentials are provided, use Google SMTP (smtp.gmail.com)
-  // Otherwise, use the configured SMTP_HOST or default to smtp-relay.gmail.com
-  const smtpHost = process.env.SMTP_HOST || (smtpUser && smtpPass ? "smtp.gmail.com" : "smtp-relay.gmail.com");
+  // Determine SMTP host with priority:
+  // 1. If SMTP_USER and SMTP_PASS are provided, ALWAYS use Google SMTP (smtp.gmail.com)
+  //    This overrides SMTP_HOST to ensure authentication works properly
+  // 2. Otherwise, use SMTP_HOST if explicitly configured
+  // 3. Finally, default to smtp-relay.gmail.com (requires relay server setup)
+  let smtpHost: string;
+  const hasCredentials = smtpUser && smtpPass;
+  
+  if (hasCredentials) {
+    // Force Google SMTP when credentials are provided (required for authentication)
+    smtpHost = "smtp.gmail.com";
+    if (isDevelopment) {
+      console.log("[SMTP] ✓ Using Google SMTP (smtp.gmail.com) with authentication");
+      console.log("[SMTP] ✓ From email will be:", smtpUser);
+      if (explicitSmtpHost && explicitSmtpHost !== "smtp.gmail.com") {
+        console.warn(
+          `[SMTP] ⚠ SMTP_HOST=${explicitSmtpHost} is set but ignored because SMTP_USER/SMTP_PASS are provided.\n` +
+          `[SMTP] Using smtp.gmail.com instead for authenticated Google SMTP.`
+        );
+      }
+    }
+  } else if (explicitSmtpHost) {
+    // Use explicitly configured host if no credentials
+    smtpHost = explicitSmtpHost;
+    if (isDevelopment) {
+      console.log(`[SMTP] Using configured SMTP_HOST: ${smtpHost}`);
+      console.warn(
+        "[SMTP] ⚠ No SMTP_USER/SMTP_PASS provided. Authentication may fail.\n" +
+        "For development with Gmail, set SMTP_USER and SMTP_PASS to use Google SMTP with authentication."
+      );
+    }
+  } else {
+    // Fallback to relay server (requires network configuration, no auth)
+    smtpHost = "smtp-relay.gmail.com";
+    if (isDevelopment) {
+      console.warn(
+        "[SMTP] ⚠ No SMTP_USER/SMTP_PASS provided. Using smtp-relay.gmail.com which requires relay server setup.\n" +
+        "For development, set SMTP_USER and SMTP_PASS environment variables to use Google SMTP directly.\n" +
+        "Note: For Gmail, you need to use an App Password (not your regular password) if 2FA is enabled.\n" +
+        "      Generate one at: https://myaccount.google.com/apppasswords"
+      );
+    }
+  }
+  
   const smtpPort = parseInt(process.env.SMTP_PORT || "587", 10);
+  
+  // Log configuration in development
+  if (isDevelopment) {
+    console.log(`[SMTP] Configuration: host=${smtpHost}, port=${smtpPort}, hasAuth=${hasCredentials}`);
+    if (hasCredentials) {
+      console.log(`[SMTP] User: ${smtpUser}, Password: ${smtpPass ? "***" : "NOT SET"}`);
+    }
+  }
 
   // Build transporter config with connection pooling
   interface SMTPTransportOptions {
@@ -141,11 +192,19 @@ function getTransporter(): nodemailer.Transporter {
   };
 
   // Add authentication if credentials are provided
-  if (smtpUser && smtpPass) {
+  if (hasCredentials) {
     transportConfig.auth = {
-      user: smtpUser,
-      pass: smtpPass,
+      user: smtpUser!,
+      pass: smtpPass!,
     };
+  } else if (smtpHost === "smtp.gmail.com") {
+    // Warn if trying to use smtp.gmail.com without credentials
+    if (isDevelopment) {
+      console.error(
+        "[SMTP] ERROR: smtp.gmail.com requires authentication but SMTP_USER/SMTP_PASS are not set!\n" +
+        "Please set SMTP_USER and SMTP_PASS environment variables."
+      );
+    }
   }
 
   cachedTransporter = nodemailer.createTransport(transportConfig as nodemailer.TransportOptions);
@@ -195,13 +254,24 @@ export async function sendEmail({
   from?: string;
 }) {
   // Determine the from email priority:
-  // 1. Explicit 'from' parameter
+  // 1. Explicit 'from' parameter (highest priority)
   // 2. SMTP_FROM_EMAIL env variable
-  // 3. SMTP_USER (username from credentials) if credentials are provided
+  // 3. SMTP_USER (Gmail account email) if using Google SMTP with credentials
   // 4. Fallback to noreply@example.com
-  const smtpUser = process.env.SMTP_USER;
-  const defaultFromEmail = process.env.SMTP_FROM_EMAIL;
+  const smtpUser = process.env.SMTP_USER?.trim();
+  const defaultFromEmail = process.env.SMTP_FROM_EMAIL?.trim();
   const fromEmail = from || defaultFromEmail || smtpUser || "noreply@example.com";
+  
+  // Log in development for debugging
+  if (process.env.NODE_ENV === "development") {
+    console.log(`[Email] Sending email from: ${fromEmail} to: ${to}`);
+    if (!smtpUser && !defaultFromEmail && !from) {
+      console.warn(
+        `[Email] No 'from' address specified. Using fallback: ${fromEmail}\n` +
+        `Set SMTP_FROM_EMAIL or SMTP_USER to customize the sender address.`
+      );
+    }
+  }
 
   // Retry logic for rate-limited connections
   // Google SMTP rate limits can require 60+ seconds to recover
@@ -244,7 +314,27 @@ export async function sendEmail({
         continue;
       }
 
-      // For other errors or final attempt, throw immediately
+      // For other errors or final attempt, provide helpful error message
+      const errorMessage = err.message || String(error);
+      
+      // Check for common authentication errors and provide helpful guidance
+      if (err.code === 'EAUTH' || errorMessage.includes('Application-specific password')) {
+        console.error(
+          "[Email] Authentication failed. Common causes:\n" +
+          "1. Gmail requires an App Password (not your regular password) if 2FA is enabled\n" +
+          "2. Generate an App Password at: https://myaccount.google.com/apppasswords\n" +
+          "3. Make sure SMTP_USER and SMTP_PASS are set correctly in your .env.local file\n" +
+          "4. Ensure you're using smtp.gmail.com (not smtp-relay.gmail.com) with credentials"
+        );
+      } else if (errorMessage.includes('Invalid login')) {
+        console.error(
+          "[Email] Invalid login credentials. Please check:\n" +
+          "1. SMTP_USER should be your full Gmail address (e.g., yourname@gmail.com)\n" +
+          "2. SMTP_PASS should be an App Password (16 characters, no spaces)\n" +
+          "3. Make sure 2-Step Verification is enabled in your Google Account"
+        );
+      }
+      
       console.error("Failed to send email:", error);
       throw error;
     }

@@ -113,7 +113,7 @@ function MyEventsSection() {
       )}
 
       {/* --- Discover upcoming events --- */}
-      <h2 className="text-2xl font-semibold tracking-tight md:text-3xl mt-8">
+      <h2 className="text-2xl font-semibold tracking-tight md:text-3xl mt-8 mb-10">
         Discover our upcoming events
       </h2>
 

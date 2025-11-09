@@ -1,87 +1,36 @@
 "use client"
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
-export default function AcceptInvitePage() {
+function AcceptInviteContent() {
   const searchParams = useSearchParams();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
-  const [requestingToken, setRequestingToken] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [email, setEmail] = useState<string | null>(null);
+  const [loadingUser, setLoadingUser] = useState(true);
 
   useEffect(() => {
-    // Check for token or email in URL
+    // Check for token in URL
     const urlToken = searchParams.get("token");
-    const urlEmail = searchParams.get("email");
 
     if (urlToken) {
       setToken(urlToken);
-    } else if (urlEmail) {
-      setEmail(urlEmail);
-      // Don't automatically request - let user click button to request token
+      setLoadingUser(false);
     } else {
-      setError("Invalid or missing invitation link.");
+      setError("Invalid or missing invitation token. Please check your invitation email.");
+      setLoadingUser(false);
     }
   }, [searchParams]);
-
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-  const requestPasswordReset = async (userEmail: string) => {
-    setRequestingToken(true);
-    setError(null);
-    setSuccessMessage(null);
-
-    try {
-      // Request password reset token from Directus
-      const res = await fetch(`${process.env.NEXT_PUBLIC_DIRECTUS_URL}/auth/password/request`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: userEmail }),
-      });
-
-      if (!res.ok) {
-        // Safely parse JSON response, handling non-JSON error responses
-        // Read response as text first (can always read text)
-        const text = await res.text();
-        let errorMessage = "Failed to request password reset";
-        
-        // Try to parse as JSON if content-type suggests it
-        const contentType = res.headers.get("content-type");
-        if (contentType && contentType.includes("application/json")) {
-          try {
-            const data = JSON.parse(text);
-            errorMessage = data.errors?.[0]?.message || errorMessage;
-          } catch {
-            // If JSON parsing fails, use the text as error message
-            errorMessage = text || errorMessage;
-          }
-        } else {
-          // Response is not JSON (e.g., plain text "Network error")
-          errorMessage = text || errorMessage;
-        }
-        
-        throw new Error(errorMessage);
-      }
-
-      // Success - Directus will send an email with the token
-      setSuccessMessage("Password setup link has been sent to your email. Please check your inbox and click the link to set your password.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to request password reset");
-    } finally {
-      setRequestingToken(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     if (!token) {
-      setError("Please check your email for the password reset token and use the link provided.");
+      setError("Invalid invitation token. Please check your invitation email.");
       return;
     }
     if (password !== confirm) {
@@ -96,34 +45,17 @@ export default function AcceptInvitePage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_DIRECTUS_URL}/auth/password/reset`, {
+      // Accept invite and set password via our secure API route
+      const res = await fetch("/api/invite/accept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, password }),
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        // Safely parse JSON response, handling non-JSON error responses
-        // Read response as text first (can always read text)
-        const text = await res.text();
-        let errorMessage = "Failed to set password";
-        
-        // Try to parse as JSON if content-type suggests it
-        const contentType = res.headers.get("content-type");
-        if (contentType && contentType.includes("application/json")) {
-          try {
-            const data = JSON.parse(text);
-            errorMessage = data.errors?.[0]?.message || errorMessage;
-          } catch {
-            // If JSON parsing fails, use the text as error message
-            errorMessage = text || errorMessage;
-          }
-        } else {
-          // Response is not JSON (e.g., plain text "Network error")
-          errorMessage = text || errorMessage;
-        }
-        
-        throw new Error(errorMessage);
+        throw new Error(data?.error || "Failed to set password");
       }
 
       // ✅ Success — redirect to login
@@ -142,9 +74,9 @@ export default function AcceptInvitePage() {
         onSubmit={handleSubmit}
         className="bg-white p-8 rounded-2xl shadow-md w-full max-w-md"
       >
-        <h1 className="text-2xl font-semibold mb-2">Set Your Password</h1>
+        <h1 className="text-2xl font-semibold mb-2">Set Up Your Account</h1>
         <p className="text-gray-600 text-sm mb-6">
-          {email ? `Setting up account for ${email}` : "Create a password for your account"}
+          Create a secure password to complete your account setup
         </p>
         
         {error && (
@@ -153,19 +85,11 @@ export default function AcceptInvitePage() {
           </div>
         )}
 
-        {successMessage && (
-          <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 text-sm">
-            {successMessage}
+        {loadingUser ? (
+          <div className="text-center py-8">
+            <p className="text-gray-600">Loading invitation...</p>
           </div>
-        )}
-
-        {requestingToken && (
-          <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg mb-4 text-sm">
-            Sending password setup link...
-          </div>
-        )}
-
-        {token && (
+        ) : token ? (
           <>
             <div className="mb-4">
               <label className="block mb-2 text-sm font-medium">New Password</label>
@@ -177,6 +101,7 @@ export default function AcceptInvitePage() {
                 required
                 minLength={8}
                 placeholder="At least 8 characters"
+                autoComplete="new-password"
               />
             </div>
 
@@ -190,6 +115,7 @@ export default function AcceptInvitePage() {
                 required
                 minLength={8}
                 placeholder="Confirm your password"
+                autoComplete="new-password"
               />
             </div>
 
@@ -198,33 +124,30 @@ export default function AcceptInvitePage() {
               disabled={loading}
               className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
             >
-              {loading ? "Setting password..." : "Set Password"}
+              {loading ? "Setting up account..." : "Complete Setup"}
             </button>
           </>
-        )}
-
-        {!token && email && (
-          <div className="text-center">
-            <p className="text-gray-600 mb-4">
-              Click the button below to receive a password setup link via email.
-            </p>
-            <button
-              type="button"
-              onClick={() => requestPasswordReset(email)}
-              disabled={requestingToken}
-              className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium mb-2"
-            >
-              {requestingToken ? "Sending..." : "Send Password Setup Link"}
-            </button>
-          </div>
-        )}
-        
-        {!token && !email && (
+        ) : (
           <div className="text-center">
             <p className="text-red-500">Invalid invitation link. Please contact support.</p>
           </div>
         )}
       </form>
     </div>
+  );
+}
+
+export default function AcceptInvitePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="bg-white p-8 rounded-2xl shadow-md w-full max-w-md">
+          <h1 className="text-2xl font-semibold mb-2">Loading...</h1>
+          <p className="text-gray-600 text-sm">Please wait while we load your invitation.</p>
+        </div>
+      </div>
+    }>
+      <AcceptInviteContent />
+    </Suspense>
   );
 }

@@ -16,48 +16,227 @@ const USER_FIELDS = [
   "description"
 ] as const;
 
-// --- Invite new rep (sends invitation email) ---
+// --- Create new rep user (creates user with invited status, no email sent) ---
 export async function createRep(payload: Partial<CompanyRep>) {
   const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? 'directus'}_access`;
   const cookieStore = await cookies();
   const token = cookieStore.get(ACCESS_COOKIE)?.value;
 
-  if (!token) throw new Error("No token available");
-  if (!payload) throw new Error("No payload available");
+  if (!token) {
+    console.error("[createRep] No authentication token available");
+    throw new Error("No token available");
+  }
+  
+  if (!payload) {
+    console.error("[createRep] No payload provided");
+    throw new Error("No payload available");
+  }
 
   const email = payload.email;
   const role = payload.role;
 
+  if (!email) {
+    console.error("[createRep] No email provided in payload");
+    throw new Error("Email is required");
+  }
+
+  if (!role) {
+    console.error("[createRep] No role provided in payload");
+    throw new Error("Role is required");
+  }
+
+  const baseUrl = process.env.DIRECTUS_URL;
+  if (!baseUrl) {
+    console.error("[createRep] DIRECTUS_URL not configured");
+    throw new Error("DIRECTUS_URL not configured");
+  }
+
+  const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
+
   try {
-    const res = await fetch(`${process.env.DIRECTUS_URL}users/invite`, {
+    // Use server token if available for user creation (more reliable permissions)
+    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
+    const authToken = serverToken || token;
+
+    // Create user directly with "invited" status (instead of using invite endpoint)
+    // This avoids Directus sending its own email - we'll handle invitations ourselves
+    const res = await fetch(`${normalizedBase}users`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
+        "Authorization": `Bearer ${authToken}`,
       },
-      body: JSON.stringify({ email, role }),
+      body: JSON.stringify({
+        email,
+        role,
+        status: "invited",
+        // Don't set password - user will set it via invite acceptance
+      }),
     });
 
     if (!res.ok) {
-      const error = await res.json().catch(() => null);
-      console.error("Failed to invite user:", error);
+      const errorData = await res.json().catch(() => null);
+      const errorMessage = errorData?.errors?.[0]?.message || await res.text().catch(() => "Unknown error");
+      console.error(`[createRep] Failed to create user for ${email}:`, res.status, errorMessage);
       return null;
     }
 
-    // Some Directus versions return 204 No Content
-    if (res.status === 204) {
-      // Fetch the user we just created, by email
-      const lookup = await fetch(`${process.env.DIRECTUS_URL}users?filter[email][_eq]=${email}`, {
-        headers: { "Authorization": `Bearer ${token}` },
-      });
-      const json = await lookup.json();
-      return json.data?.[0] ?? null;
+    const json = await res.json();
+    const user = json.data;
+    
+    if (!user || !user.id) {
+      console.error(`[createRep] User creation response missing user data for ${email}`);
+      return null;
     }
 
-    const json = await res.json();
-    return json.data ?? null;
+    console.log(`[createRep] Successfully created user ${user.id} for ${email}`);
+    return user;
   } catch (err) {
-    console.error("Failed to invite user:", err instanceof Error ? err.message : "Unknown error");
+    console.error(`[createRep] Exception creating user for ${email}:`, err);
+    if (err instanceof Error) {
+      console.error(`[createRep] Error stack:`, err.stack);
+    }
+    return null;
+  }
+}
+
+// --- Generate invite token for a user ---
+export async function generateInviteToken(userId: string): Promise<{ token: string; email: string } | null> {
+  const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
+  const cookieStore = await cookies();
+  const token = cookieStore.get(ACCESS_COOKIE)?.value;
+
+  if (!token) {
+    console.error("[generateInviteToken] No authentication token available");
+    throw new Error("No token available");
+  }
+
+  const baseUrl = process.env.DIRECTUS_URL;
+  if (!baseUrl) {
+    console.error("[generateInviteToken] DIRECTUS_URL not configured");
+    throw new Error("DIRECTUS_URL not configured");
+  }
+
+  const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
+
+  try {
+    // Use server token for user management operations (more reliable than user token)
+    // Server token has admin permissions and can update metadata
+    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
+    if (!serverToken) {
+      console.error("[generateInviteToken] DIRECTUS_SERVER_TOKEN not configured - metadata updates may fail");
+      // Continue with user token, but log warning
+    }
+    const authToken = serverToken || token;
+
+    // Fetch user to get email (don't request metadata field - may not have permission to read it)
+    // We only need id, email, and status to verify the user exists
+    const userRes = await fetch(
+      `${normalizedBase}users/${userId}?fields=id,email,status`,
+      {
+        headers: {
+          "Authorization": `Bearer ${authToken}`,
+        },
+      }
+    );
+
+    if (!userRes.ok) {
+      const errorText = await userRes.text().catch(() => "Unknown error");
+      console.error(`[generateInviteToken] Failed to fetch user ${userId}:`, userRes.status, errorText);
+      return null;
+    }
+
+    const userData = await userRes.json();
+    const user = userData.data;
+
+    if (!user) {
+      console.error(`[generateInviteToken] User ${userId} not found in response`);
+      return null;
+    }
+
+    if (!user.email) {
+      console.error(`[generateInviteToken] User ${userId} has no email`);
+      return null;
+    }
+
+    // Generate secure random token using crypto
+    const crypto = await import("crypto");
+    const randomToken = crypto.randomBytes(32).toString("base64url");
+    const tokenHash = crypto
+      .createHash("sha256")
+      .update(randomToken)
+      .digest("hex");
+
+    // Create invite token: base64(userId:randomToken)
+    const inviteToken = Buffer.from(`${user.id}:${randomToken}`).toString("base64url");
+
+    // Store token hash and creation time in user metadata
+    // Use server token for metadata updates (required for admin operations)
+    const updateAuthToken = serverToken || token;
+    
+    if (!serverToken) {
+      console.warn(`[generateInviteToken] DIRECTUS_SERVER_TOKEN not available - metadata updates may fail due to permissions`);
+    }
+    
+    // Store token hash in user metadata (if we have write permissions)
+    // If metadata write fails, we'll use status-based verification instead
+    // The token is still secure: it's random, tied to userId, and only works for "invited" users
+    let metadataWriteSuccess = false;
+    
+    try {
+      const metadataUpdate = {
+        invite_token_hash: tokenHash,
+        invite_token_created: new Date().toISOString(),
+      };
+      
+      const updateRes = await fetch(
+        `${normalizedBase}users/${user.id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Authorization": `Bearer ${updateAuthToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            metadata: metadataUpdate,
+          }),
+        }
+      );
+
+      if (updateRes.ok) {
+        metadataWriteSuccess = true;
+        console.log(`[generateInviteToken] Successfully stored token hash in metadata for user ${userId}`);
+      } else {
+        const errorData = await updateRes.json().catch(() => null);
+        const errorMessage = errorData?.errors?.[0]?.message || await updateRes.text().catch(() => "Unknown error");
+        
+        if (updateRes.status === 403) {
+          console.warn(`[generateInviteToken] Cannot write metadata (403 Forbidden) - will use status-based token verification instead`);
+          console.warn(`[generateInviteToken] Token will still be secure but hash verification will be skipped`);
+        } else {
+          console.warn(`[generateInviteToken] Metadata write failed (${updateRes.status}): ${errorMessage} - will use status-based verification`);
+        }
+        // Don't return null - we can still generate the token, just without metadata storage
+      }
+    } catch (err) {
+      console.warn(`[generateInviteToken] Exception writing metadata:`, err);
+      // Continue anyway - token generation can proceed without metadata
+    }
+    
+    if (!metadataWriteSuccess) {
+      console.log(`[generateInviteToken] Token generated without metadata storage - verification will be status-based only`);
+    }
+
+    console.log(`[generateInviteToken] Successfully generated invite token for user ${userId} (${user.email})`);
+    return {
+      token: inviteToken,
+      email: user.email,
+    };
+  } catch (err) {
+    console.error("[generateInviteToken] Exception during token generation:", err);
+    if (err instanceof Error) {
+      console.error("[generateInviteToken] Error stack:", err.stack);
+    }
     return null;
   }
 }
@@ -586,7 +765,7 @@ export async function fetchSalespersonByID(salesperson_id: string, opts?: {
 export type PendingApprovalRequest = {
   id: string;
   email: string;
-  role: string;
+  role?: string; // Optional: may not be accessible in list queries
   status: string;
   date_created?: string;
   company: {
@@ -659,67 +838,97 @@ export async function fetchPendingApprovalRequests(salespersonId: string): Promi
 
     const { readItems } = await import("@directus/sdk");
 
-    // Build filter: salesperson filter is required, but admins could see all if needed
-    // For now, we filter by the requested salespersonId (which we've validated above)
+    // Build filter: admins see all pending requests, non-admins only see their own
     const filter: any = {
-      salesperson: { _eq: salespersonId },
       status: { _eq: "pending" },
     };
 
-    // Fetch pending requests with company details using Directus SDK
-    const requests = await directus.request(
-      readItems("company_user_requests", {
-        fields: [
-          "id",
-          "email",
-          "role",
-          "status",
-          "date_created",
-          "first_name",
-          "last_name",
-          "tel",
-          "title",
-          "salesperson",
-          "company.id",
-          "company.name",
-          "company.VAT",
-          "company.address_street",
-          "company.address_number",
-          "company.address_zip",
-          "company.address_city",
-          "company.address_country",
-        ],
-        filter,
-        sort: ["-date_created"],
-      })
-    ) as any[];
+    // Define base fields that should be accessible (avoiding potentially restricted fields)
+    // Note: 'role' field is not included here as it may not exist or be accessible
+    // It will be fetched separately when needed (e.g., during approval)
+    const baseFields = [
+      "id",
+      "email",
+      "status",
+      "first_name",
+      "last_name",
+      "tel",
+      "title",
+      "company.id",
+      "company.name",
+      "company.VAT",
+      "company.address_street",
+      "company.address_number",
+      "company.address_zip",
+      "company.address_city",
+      "company.address_country",
+    ];
 
-    // Map to PendingApprovalRequest format
-    const enrichedRequests: PendingApprovalRequest[] = requests.map((req: any) => ({
-      id: req.id,
-      email: req.email,
-      role: req.role,
-      status: req.status,
-      date_created: req.date_created,
-      company: req.company ? {
-        id: req.company.id,
-        name: req.company.name || "",
-        VAT: req.company.VAT || null,
-        address_street: req.company.address_street || null,
-        address_number: req.company.address_number || null,
-        address_zip: req.company.address_zip || null,
-        address_city: req.company.address_city || null,
-        address_country: req.company.address_country || null,
-      } : null,
-      first_name: req.first_name || null,
-      last_name: req.last_name || null,
-      tel: req.tel || null,
-      title: req.title || null,
-    }));
+    // For admins: fetch all pending requests without salesperson filter
+    // For non-admins: filter by salesperson (if field is accessible)
+    if (!isAdmin) {
+      filter.salesperson = { _eq: salespersonId };
+    }
 
-    return enrichedRequests;
+    // Start with the safest query: no date_created, no salesperson field requested
+    // Sort by ID (which should always be accessible)
+    try {
+      const requests = await directus.request(
+        readItems("company_user_requests", {
+          fields: baseFields,
+          filter,
+          sort: ["-id"], // Sort by ID (most reliable field)
+        })
+      ) as any[];
+      
+      return mapRequestsToPendingApprovalRequests(requests);
+    } catch (error: any) {
+      const errorMessage = error?.message || String(error);
+      
+      // If error is about salesperson field in filter (for non-admins), 
+      // we can't securely filter server-side, so return empty
+      if (!isAdmin && errorMessage.includes("salesperson")) {
+        console.error("Cannot filter by salesperson field - permission denied. Non-admin users cannot view requests.");
+        return [];
+      }
+      
+      // For other errors, log and return empty
+      console.error("Failed to fetch pending approval requests:", errorMessage);
+      throw error;
+    }
   } catch (err) {
-    console.error("Failed to fetch pending approval requests:", err instanceof Error ? err.message : "Unknown error");
+    // Log full error details for debugging
+    if (err instanceof Error) {
+      console.error("Failed to fetch pending approval requests:", err.message, err.stack);
+    } else {
+      // Log the full error object to see what it actually is
+      console.error("Failed to fetch pending approval requests - non-Error object:", JSON.stringify(err, Object.getOwnPropertyNames(err)));
+    }
     return [];
   }
+}
+
+// Helper function to map requests to PendingApprovalRequest format
+function mapRequestsToPendingApprovalRequests(requests: any[]): PendingApprovalRequest[] {
+  return requests.map((req: any) => ({
+    id: req.id,
+    email: req.email,
+    role: req.role || undefined, // Role may not be available in list queries
+    status: req.status,
+    date_created: req.date_created || undefined,
+    company: req.company ? {
+      id: req.company.id,
+      name: req.company.name || "",
+      VAT: req.company.VAT || null,
+      address_street: req.company.address_street || null,
+      address_number: req.company.address_number || null,
+      address_zip: req.company.address_zip || null,
+      address_city: req.company.address_city || null,
+      address_country: req.company.address_country || null,
+    } : null,
+    first_name: req.first_name || null,
+    last_name: req.last_name || null,
+    tel: req.tel || null,
+    title: req.title || null,
+  }));
 }

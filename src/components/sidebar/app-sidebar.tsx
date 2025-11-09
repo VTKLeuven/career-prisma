@@ -103,19 +103,55 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       return;
     }
 
+    let alive = true;
+    let consecutiveErrors = 0;
+    let pollTimeout: NodeJS.Timeout | null = null;
+    const MAX_CONSECUTIVE_ERRORS = 3;
+    const POLLING_INTERVAL = 10000; // 10 seconds
+    const ERROR_BACKOFF_MULTIPLIER = 2;
+
     const fetchCount = async () => {
+      if (!alive) return;
+
       try {
         const requests = await fetchPendingApprovalRequestsAction();
+        if (!alive) return;
+        
         setPendingCount(requests.length);
+        consecutiveErrors = 0;
+        
+        // Schedule next fetch with normal polling interval
+        if (alive) {
+          pollTimeout = setTimeout(fetchCount, POLLING_INTERVAL);
+        }
       } catch (error) {
-        console.error("Failed to fetch pending approvals count:", error);
+        if (!alive) return;
+        
+        consecutiveErrors++;
+        console.error(`Failed to fetch pending approvals count (attempt ${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, error);
+        
+        // Stop polling after too many consecutive errors
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          console.error(`Sidebar: Stopped polling after ${MAX_CONSECUTIVE_ERRORS} consecutive errors.`);
+          return; // Don't schedule another fetch
+        }
+        
+        // Exponential backoff: wait longer between retries after errors
+        const backoffDelay = POLLING_INTERVAL * ERROR_BACKOFF_MULTIPLIER * consecutiveErrors;
+        if (alive) {
+          pollTimeout = setTimeout(fetchCount, backoffDelay);
+        }
       }
     };
 
     fetchCount();
-    // Refresh every 10 seconds for faster notification
-    const interval = setInterval(fetchCount, 10000);
-    return () => clearInterval(interval);
+
+    return () => {
+      alive = false;
+      if (pollTimeout) {
+        clearTimeout(pollTimeout);
+      }
+    };
   }, [user?.admin]);
 
   // Add admin sections if user is admin
