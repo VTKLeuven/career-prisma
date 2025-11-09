@@ -280,12 +280,6 @@ export async function submitFormResponseAction(data: {
         const { getServerDirectusClient } = await import("@/lib/directus");
         const serverClient = await getServerDirectusClient();
         
-        // Check if server token is available
-        const hasServerToken = !!process.env.DIRECTUS_SERVER_TOKEN;
-        if (!hasServerToken) {
-          console.warn('[submitFormResponseAction] DIRECTUS_SERVER_TOKEN not set, capacity check may fail');
-        }
-        
         // Count using server client - we need to call it directly with the client
         const { readItems } = await import("@directus/sdk");
         const responses = await serverClient.request(
@@ -309,37 +303,17 @@ export async function submitFormResponseAction(data: {
         }
         
         // Check if this is an authentication error (401)
-        // Directus SDK errors can have different structures
         const errorAny = error as any;
         const responseStatus = errorAny?.response?.status ?? errorAny?.status;
-        const hasInvalidCredentials = errorMessage.includes('Invalid user credentials') || 
-                                      errorMessage.includes('Unauthorized') ||
-                                      errorMessage.includes('401');
-        const isAuthError = responseStatus === 401 || hasInvalidCredentials;
+        const isAuthError = responseStatus === 401 || 
+                          errorMessage.includes('Invalid user credentials') || 
+                          errorMessage.includes('Unauthorized');
         
         if (isAuthError) {
-          // Log detailed error for debugging
-          const hasServerToken = !!process.env.DIRECTUS_SERVER_TOKEN;
-          console.error('[submitFormResponseAction] Authentication error checking form capacity:', {
-            error: errorMessage,
-            responseStatus,
-            hasServerToken,
-            serverTokenLength: hasServerToken ? process.env.DIRECTUS_SERVER_TOKEN?.length : 0,
-            formVersionId: data.form_version_id,
-            hint: 'Check that DIRECTUS_SERVER_TOKEN is set correctly and has READ permission on form_responses collection'
-          });
-          
-          // If server token is set but we still get 401, the token might be invalid
-          // In this case, we should still block submission to prevent overfilling
-          // But provide a more helpful error message
-          if (hasServerToken) {
-            throw new Error("Unable to verify form capacity due to authentication error. Please contact support if this persists.");
-          } else {
-            throw new Error("Unable to verify form capacity. Server configuration error. Please contact support.");
-          }
+          console.error('[submitFormResponseAction] Authentication error checking form capacity');
+          throw new Error("Unable to verify form capacity due to authentication error. Please contact support if this persists.");
         } else {
-          // For other errors, log and throw
-          console.error("Error checking form capacity:", errorMessage, error);
+          console.error("Error checking form capacity:", errorMessage);
           throw new Error("Unable to verify form capacity. Please try again or contact support.");
         }
       }
@@ -581,23 +555,14 @@ export async function fetchPublicFormBySlugAction(slug: string) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         const errorAny = error as any;
         const responseStatus = errorAny?.response?.status ?? errorAny?.status;
-        const hasInvalidCredentials = errorMessage.includes('Invalid user credentials') || 
-                                      errorMessage.includes('Unauthorized') ||
-                                      errorMessage.includes('401');
-        const isAuthError = responseStatus === 401 || hasInvalidCredentials;
+        const isAuthError = responseStatus === 401 || 
+                          errorMessage.includes('Invalid user credentials') || 
+                          errorMessage.includes('Unauthorized');
         
         if (isAuthError) {
-          const hasServerToken = !!process.env.DIRECTUS_SERVER_TOKEN;
-          console.error('[fetchPublicFormBySlugAction] Authentication error checking form capacity:', {
-            error: errorMessage,
-            responseStatus,
-            hasServerToken,
-            serverTokenLength: hasServerToken ? process.env.DIRECTUS_SERVER_TOKEN?.length : 0,
-            formVersionId: activeVersion.id,
-            hint: 'Check that DIRECTUS_SERVER_TOKEN is set correctly and has READ permission on form_responses collection'
-          });
+          console.error('[fetchPublicFormBySlugAction] Authentication error checking form capacity');
         } else {
-          console.error('[fetchPublicFormBySlugAction] Could not check form capacity:', error);
+          console.error('[fetchPublicFormBySlugAction] Could not check form capacity:', errorMessage);
         }
         // Don't set isFull to true on error - let the form load and handle capacity check on submission
       }
