@@ -60,6 +60,20 @@ export async function getServerDirectusClient() {
 }
 
 /**
+ * Server-side client that always uses the server token for admin operations.
+ * This ensures elevated permissions for operations that require access to restricted fields.
+ */
+export function getAdminDirectusClient() {
+  const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
+  if (serverToken && serverToken.trim() !== '') {
+    return createDirectus(DIRECTUS_URL).with(staticToken(serverToken)).with(rest());
+  }
+  
+  // If no server token, return null to indicate admin operations are not available
+  return null;
+}
+
+/**
  * Get the folder ID for the "Form_uploads" folder.
  * First checks environment variable DIRECTUS_FORM_UPLOADS_FOLDER_ID.
  * If not set, queries Directus to find the folder by name.
@@ -83,29 +97,85 @@ export async function getFormUploadsFolderId(): Promise<string | null> {
   try {
     // Try to get folder by name using server client (has permissions to query folders)
     const client = await getServerDirectusClient();
-    const folders = await client.request(
-      readItems("directus_folders", {
-        fields: ["id", "name"],
-        filter: {
-          name: {
-            _eq: "Form_uploads",
-          },
-        },
-        limit: 1,
-      })
-    ) as Array<{ id: string; name: string }>;
+    console.log('[getFormUploadsFolderId] Querying Directus for folder "Form_uploads"');
+    
+    // Try both "directus_folders" and "folders" collection names
+    const collectionNames = ["directus_folders", "folders"];
+    let folders: Array<{ id: string; name: string }> = [];
+    let usedCollection = "";
+
+    for (const collectionName of collectionNames) {
+      try {
+        const result = await client.request(
+          readItems(collectionName as any, {
+            fields: ["id", "name"],
+            filter: {
+              name: {
+                _eq: "Form_uploads",
+              },
+            },
+            limit: 1,
+          })
+        ) as Array<{ id: string; name: string }>;
+        
+        if (result && result.length > 0) {
+          folders = result;
+          usedCollection = collectionName;
+          console.log(`[getFormUploadsFolderId] Found folder using collection "${collectionName}":`, folders);
+          break;
+        }
+      } catch (err) {
+        console.log(`[getFormUploadsFolderId] Collection "${collectionName}" not accessible or error:`, err);
+        continue;
+      }
+    }
 
     if (folders && folders.length > 0) {
       cachedFormUploadsFolderId = folders[0].id;
+      console.log('[getFormUploadsFolderId] Using folder ID:', cachedFormUploadsFolderId);
       return cachedFormUploadsFolderId;
     }
 
+    // Folder not found - try case-insensitive search or check all folders
+    console.warn('[getFormUploadsFolderId] Folder "Form_uploads" not found. Checking all folders...');
+    for (const collectionName of collectionNames) {
+      try {
+        const allFolders = await client.request(
+          readItems(collectionName as any, {
+            fields: ["id", "name"],
+            limit: 100,
+          })
+        ) as Array<{ id: string; name: string }>;
+        
+        console.log(`[getFormUploadsFolderId] All folders from "${collectionName}":`, allFolders.map(f => ({ id: f.id, name: f.name })));
+        
+        // Try case-insensitive match and variations
+        const matchingFolder = allFolders.find(f => {
+          const folderNameLower = f.name.toLowerCase().trim();
+          return folderNameLower === "form_uploads" || 
+                 folderNameLower === "form uploads" ||
+                 folderNameLower === "formuploads" ||
+                 f.name === "Form_uploads";
+        });
+        
+        if (matchingFolder) {
+          cachedFormUploadsFolderId = matchingFolder.id;
+          console.log('[getFormUploadsFolderId] Found matching folder (case-insensitive):', matchingFolder.name, 'ID:', cachedFormUploadsFolderId);
+          return cachedFormUploadsFolderId;
+        }
+        break; // If we got results from one collection, don't try the other
+      } catch (err) {
+        console.log(`[getFormUploadsFolderId] Error querying all folders from "${collectionName}":`, err);
+        continue;
+      }
+    }
+
     // Folder not found
-    console.warn('Form_uploads folder not found in Directus. Files will be uploaded to root.');
+    console.warn('[getFormUploadsFolderId] Form_uploads folder not found in Directus. Files will be uploaded to root.');
     cachedFormUploadsFolderId = null;
     return null;
   } catch (error) {
-    console.error('Error fetching Form_uploads folder ID:', error);
+    console.error('[getFormUploadsFolderId] Error fetching Form_uploads folder ID:', error);
     // Cache null to avoid repeated failed queries
     cachedFormUploadsFolderId = null;
     return null;

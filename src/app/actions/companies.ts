@@ -479,6 +479,8 @@ export async function removeUserFromCompanyAction(companyId: string, userId: str
 }
 
 // Fetch pending approval requests for the current salesperson
+// This is a convenience wrapper that ensures we use the authenticated user's ID
+// All authorization is handled in fetchPendingApprovalRequests()
 export async function fetchPendingApprovalRequestsAction(): Promise<PendingApprovalRequest[]> {
   try {
     const user = await getUserFromCookies();
@@ -486,26 +488,8 @@ export async function fetchPendingApprovalRequestsAction(): Promise<PendingAppro
       return [];
     }
 
-    // Get the user's role ID from Directus to check if they're a salesperson
-    const { getDirectusWithToken } = await import("@/lib/directus");
-    const directus = await getDirectusWithToken();
-    if (!directus) {
-      return [];
-    }
-
-    const { readMe } = await import("@directus/sdk");
-    const me = await directus.request(readMe({ fields: ["role.id"] }));
-    
-    // Check if user is a salesperson (role ID: 7b128ef4-f530-47d2-8f4c-ef82518eb313)
-    // This is the same role ID used in listSalespersons
-    // Also allow admins to see pending requests
-    const salespersonRoleId = "7b128ef4-f530-47d2-8f4c-ef82518eb313";
-    const isSalesperson = (me.role?.id === salespersonRoleId) || user.admin;
-    
-    if (!isSalesperson) {
-      return [];
-    }
-
+    // fetchPendingApprovalRequests will validate authorization server-side
+    // and ensure the user can only see their own requests (unless they're an admin)
     return await fetchPendingApprovalRequests(user.id);
   } catch (error) {
     console.error("Failed to fetch pending approval requests:", error);

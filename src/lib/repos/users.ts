@@ -606,69 +606,95 @@ export type PendingApprovalRequest = {
 };
 
 // Fetch pending approval requests for a salesperson
+// SECURITY: This function validates that the salespersonId matches the authenticated user
+// Only admins can view requests for other salespeople
 export async function fetchPendingApprovalRequests(salespersonId: string): Promise<PendingApprovalRequest[]> {
-  const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? 'directus'}_access`;
-  const cookieStore = await cookies();
-  const token = cookieStore.get(ACCESS_COOKIE)?.value;
-
-  if (!token) {
-    throw new Error("No token available");
-  }
-
-  const baseUrl = process.env.DIRECTUS_URL;
-  if (!baseUrl) {
-    throw new Error("DIRECTUS_URL not configured");
-  }
-
-  const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
-
   try {
-    // Fetch pending requests with company details
-    const params = new URLSearchParams({
-      fields: [
-        "id",
-        "email",
-        "role",
-        "status",
-        "date_created",
-        "first_name",
-        "last_name",
-        "tel",
-        "title",
-        "company.id",
-        "company.name",
-        "company.VAT",
-        "company.address_street",
-        "company.address_number",
-        "company.address_zip",
-        "company.address_city",
-        "company.address_country",
-      ].join(","),
-      filter: JSON.stringify({
-        salesperson: { _eq: salespersonId },
-        status: { _eq: "pending" },
-      }),
-      sort: "-date_created",
-    });
-
-    const res = await fetch(`${normalizedBase}items/company_user_requests?${params}`, {
-      headers: {
-        "Authorization": `Bearer ${token}`,
-      },
-    });
-
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({}));
-      console.error("Failed to fetch pending approval requests:", error);
+    // SECURITY: Validate the user is authenticated and authorized
+    const { getUserFromCookies } = await import("@/lib/auth-server");
+    const user = await getUserFromCookies();
+    
+    if (!user || !user.id) {
+      console.error("Unauthorized: No authenticated user");
       return [];
     }
 
-    const json = await res.json();
-    const requests = json.data || [];
+    // Get user's role to check permissions
+    const { getDirectusWithToken } = await import("@/lib/directus");
+    const userDirectus = await getDirectusWithToken();
+    if (!userDirectus) {
+      console.error("Unauthorized: No Directus client available");
+      return [];
+    }
 
-    // Fetch user details for each request (first_name, last_name, tel, title)
-    // These might be stored in the request or we need to extract from email lookup
-    // For now, we'll return what we have - the request should have these fields if stored
+    const { readMe } = await import("@directus/sdk");
+    const me = await userDirectus.request(readMe({ fields: ["role.id"] }));
+    
+    // Check if user is a salesperson or admin
+    const salespersonRoleId = "7b128ef4-f530-47d2-8f4c-ef82518eb313";
+    const isSalesperson = me.role?.id === salespersonRoleId;
+    const isAdmin = user.admin || false;
+    
+    if (!isSalesperson && !isAdmin) {
+      console.error("Unauthorized: User is not a salesperson or admin");
+      return [];
+    }
+
+    // SECURITY: Non-admin users can only view their own requests
+    // Admins can view requests for any salesperson
+    if (!isAdmin && user.id !== salespersonId) {
+      console.error("Unauthorized: User can only view their own requests");
+      return [];
+    }
+
+    // Use admin Directus client which has elevated permissions to access restricted fields
+    // This is safe because we've already validated authorization above
+    const { getAdminDirectusClient } = await import("@/lib/directus");
+    const directus = getAdminDirectusClient();
+    
+    if (!directus) {
+      console.error("Failed to get admin Directus client - DIRECTUS_SERVER_TOKEN may not be configured");
+      return [];
+    }
+
+    const { readItems } = await import("@directus/sdk");
+
+    // Build filter: salesperson filter is required, but admins could see all if needed
+    // For now, we filter by the requested salespersonId (which we've validated above)
+    const filter: any = {
+      salesperson: { _eq: salespersonId },
+      status: { _eq: "pending" },
+    };
+
+    // Fetch pending requests with company details using Directus SDK
+    const requests = await directus.request(
+      readItems("company_user_requests", {
+        fields: [
+          "id",
+          "email",
+          "role",
+          "status",
+          "date_created",
+          "first_name",
+          "last_name",
+          "tel",
+          "title",
+          "salesperson",
+          "company.id",
+          "company.name",
+          "company.VAT",
+          "company.address_street",
+          "company.address_number",
+          "company.address_zip",
+          "company.address_city",
+          "company.address_country",
+        ],
+        filter,
+        sort: ["-date_created"],
+      })
+    ) as any[];
+
+    // Map to PendingApprovalRequest format
     const enrichedRequests: PendingApprovalRequest[] = requests.map((req: any) => ({
       id: req.id,
       email: req.email,

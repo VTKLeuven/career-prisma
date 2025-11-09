@@ -40,7 +40,39 @@ export async function uploadDirectusFile(file: File): Promise<string | null> {
       return null;
     }
 
-    return data?.data?.id ?? null;
+    const fileId = data?.data?.id ?? null;
+    if (!fileId) {
+      return null;
+    }
+
+    // Update the file to set the folder if needed (fallback in case folder parameter wasn't processed during upload)
+    const uploadedFolderId = data?.data?.folder || data?.folder;
+    if (folderId && token && uploadedFolderId !== folderId) {
+      try {
+        const directusUrl = process.env.NEXT_PUBLIC_DIRECTUS_URL || process.env.DIRECTUS_URL;
+        if (directusUrl) {
+          const updateUrl = `${directusUrl.replace(/\/$/, '')}/files/${fileId}`;
+          const updateRes = await fetch(updateUrl, {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ folder: folderId }),
+          });
+
+          if (!updateRes.ok) {
+            const updateError = await updateRes.json().catch(() => ({ message: 'Update failed' }));
+            console.warn("Failed to update file folder:", updateError);
+          }
+        }
+      } catch (updateErr) {
+        console.warn("Error updating file folder:", updateErr);
+        // Don't fail the upload if folder update fails
+      }
+    }
+
+    return fileId;
   } catch (err) {
     console.error("Error uploading file to Directus:", err);
     return null;
@@ -55,7 +87,13 @@ function getTransporter(): nodemailer.Transporter {
     return cachedTransporter;
   }
 
-  const smtpHost = process.env.SMTP_HOST || "smtp-relay.gmail.com";
+  // Check if SMTP credentials are provided for Google SMTP
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  
+  // If credentials are provided, use Google SMTP (smtp.gmail.com)
+  // Otherwise, use the configured SMTP_HOST or default to smtp-relay.gmail.com
+  const smtpHost = process.env.SMTP_HOST || (smtpUser && smtpPass ? "smtp.gmail.com" : "smtp-relay.gmail.com");
   const smtpPort = parseInt(process.env.SMTP_PORT || "587", 10);
 
   // Build transporter config with connection pooling
@@ -102,9 +140,7 @@ function getTransporter(): nodemailer.Transporter {
     debug: process.env.NODE_ENV === "development",
   };
 
-  // Add authentication if credentials are provided (optional for relay services)
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASS;
+  // Add authentication if credentials are provided
   if (smtpUser && smtpPass) {
     transportConfig.auth = {
       user: smtpUser,
@@ -158,10 +194,14 @@ export async function sendEmail({
   html: string;
   from?: string;
 }) {
+  // Determine the from email priority:
+  // 1. Explicit 'from' parameter
+  // 2. SMTP_FROM_EMAIL env variable
+  // 3. SMTP_USER (username from credentials) if credentials are provided
+  // 4. Fallback to noreply@example.com
+  const smtpUser = process.env.SMTP_USER;
   const defaultFromEmail = process.env.SMTP_FROM_EMAIL;
-
-  // Determine the from email: function parameter > env variable > fallback
-  const fromEmail = from || defaultFromEmail || "noreply@example.com";
+  const fromEmail = from || defaultFromEmail || smtpUser || "noreply@example.com";
 
   // Retry logic for rate-limited connections
   // Google SMTP rate limits can require 60+ seconds to recover

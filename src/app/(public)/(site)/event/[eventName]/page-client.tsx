@@ -902,7 +902,7 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
             ← Back
           </button>
 
-          {selectedCompany.page_on_platform && (
+          {selectedCompany?.page_on_platform && (
             <Link
               href={`/company/${slug}`}
               // (Optional) also stop bubbling on the link itself:

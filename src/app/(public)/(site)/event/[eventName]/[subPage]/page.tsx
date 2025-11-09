@@ -756,7 +756,7 @@ function Popup({ company, onClose }: { company: Company; onClose: () => void }) 
           </div>
         )}
 
-        {company.page_on_platform && (
+        {company?.page_on_platform && (
           <div className="mt-5 flex items-center justify-center gap-3">
             <Link
               href={`/company/${(company.name || "").toLowerCase().replace(/\s+/g, "-")}`}
