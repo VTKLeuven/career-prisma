@@ -120,26 +120,22 @@ export function generateEventConfirmationEmailHtml({
       <div class="calendar-buttons" style="margin: 30px 0;">
         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
           <tr>
-            <td align="center" style="padding-bottom: 12px;">
-              <a href="${calendarUrls.google}" class="calendar-button google" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 14px 24px; background-color: #4285f4; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; text-align: center; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">
-                <span style="font-size: 18px; margin-right: 8px;">📅</span>
-                <span>Add to Google Calendar</span>
+            <td align="center" style="padding: 0 6px;">
+              <a href="${calendarUrls.google}" class="calendar-button google" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 12px 20px; background-color: #4285f4; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px; text-align: center; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15); transition: all 0.2s ease;">
+                <span style="font-size: 16px; margin-right: 6px;">📅</span>
+                <span>Google</span>
               </a>
             </td>
-          </tr>
-          <tr>
-            <td align="center" style="padding-bottom: 12px;">
-              <a href="${calendarUrls.outlook}" class="calendar-button outlook" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 14px 24px; background-color: #0078d4; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; text-align: center; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">
-                <span style="font-size: 18px; margin-right: 8px;">📅</span>
-                <span>Add to Outlook</span>
+            <td align="center" style="padding: 0 6px;">
+              <a href="${calendarUrls.outlook}" class="calendar-button outlook" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 12px 20px; background-color: #0078d4; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px; text-align: center; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15); transition: all 0.2s ease;">
+                <span style="font-size: 16px; margin-right: 6px;">📅</span>
+                <span>Outlook</span>
               </a>
             </td>
-          </tr>
-          <tr>
-            <td align="center">
-              <a href="${calendarUrls.ics}" class="calendar-button ics" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 14px 24px; background-color: #6b7280; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; text-align: center; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">
-                <span style="font-size: 18px; margin-right: 8px;">📥</span>
-                <span>Download .ics file</span>
+            <td align="center" style="padding: 0 6px;">
+              <a href="${calendarUrls.ics}" class="calendar-button ics" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 12px 20px; background-color: #6b7280; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px; text-align: center; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15); transition: all 0.2s ease;">
+                <span style="font-size: 16px; margin-right: 6px;">📥</span>
+                <span>Download</span>
               </a>
             </td>
           </tr>
@@ -179,13 +175,15 @@ export function generateEventConfirmationEmailHtml({
           }
           .calendar-button {
             display: inline-block;
-            padding: 14px 24px;
+            padding: 12px 20px;
             text-decoration: none;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 15px;
+            border-radius: 6px;
+            font-weight: 500;
+            font-size: 14px;
             text-align: center;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+            transition: all 0.2s ease;
+            white-space: nowrap;
           }
           .calendar-button.google {
             background-color: #4285f4;
@@ -194,7 +192,8 @@ export function generateEventConfirmationEmailHtml({
           }
           .calendar-button.google:hover {
             background-color: #357ae8;
-            box-shadow: 0 2px 6px rgba(66, 133, 244, 0.3);
+            box-shadow: 0 3px 8px rgba(66, 133, 244, 0.4);
+            transform: translateY(-1px);
           }
           .calendar-button.outlook {
             background-color: #0078d4;
@@ -203,7 +202,8 @@ export function generateEventConfirmationEmailHtml({
           }
           .calendar-button.outlook:hover {
             background-color: #0064b8;
-            box-shadow: 0 2px 6px rgba(0, 120, 212, 0.3);
+            box-shadow: 0 3px 8px rgba(0, 120, 212, 0.4);
+            transform: translateY(-1px);
           }
           .calendar-button.ics {
             background-color: #6b7280;
@@ -212,7 +212,8 @@ export function generateEventConfirmationEmailHtml({
           }
           .calendar-button.ics:hover {
             background-color: #4b5563;
-            box-shadow: 0 2px 6px rgba(107, 114, 128, 0.3);
+            box-shadow: 0 3px 8px rgba(107, 114, 128, 0.4);
+            transform: translateY(-1px);
           }
           .event-details {
             background-color: #f9fafb;

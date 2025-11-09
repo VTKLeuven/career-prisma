@@ -50,10 +50,11 @@ export async function getServerDirectusClient() {
   
   // Fall back to server token for public operations
   const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-  if (serverToken) {
+  if (serverToken && serverToken.trim() !== '') {
     return createDirectus(DIRECTUS_URL).with(staticToken(serverToken)).with(rest());
   }
   
-  // If no server token, use public client (may have limited permissions)
+  // If no server token, log warning and use public client (may have limited permissions)
+  console.warn('[getServerDirectusClient] DIRECTUS_SERVER_TOKEN not set, falling back to public client. This may cause permission errors.');
   return directus;
 }
