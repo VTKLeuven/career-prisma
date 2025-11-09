@@ -199,8 +199,8 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
         const { generateInvitationEmailHtml } = await import("@/lib/email-templates");
         
         const emailHtml = generateInvitationEmailHtml({
-          firstName: repPayload.first_name,
-          lastName: repPayload.last_name,
+          firstName: repPayload.first_name ?? undefined,
+          lastName: repPayload.last_name ?? undefined,
           companyName: companyPayload.name,
           acceptInviteUrl,
         });
@@ -273,8 +273,8 @@ export async function createCompanyRepAction(companyId: string, repPayload: Part
       const { generateInvitationEmailHtml } = await import("@/lib/email-templates");
       
       const emailHtml = generateInvitationEmailHtml({
-        firstName: repPayload.first_name,
-        lastName: repPayload.last_name,
+        firstName: repPayload.first_name ?? undefined,
+        lastName: repPayload.last_name ?? undefined,
         companyName: company.name,
         acceptInviteUrl,
       });

@@ -91,7 +91,7 @@ let cachedFormUploadsFolderId: string | null | undefined = undefined;
 export async function getFormUploadsFolderId(): Promise<string | null> {
   // Return cached value if available
   if (cachedFormUploadsFolderId !== undefined) {
-    return cachedFormUploadsFolderId;
+    return cachedFormUploadsFolderId ?? null;
   }
 
   // Check environment variable first (recommended approach)
@@ -135,9 +135,10 @@ export async function getFormUploadsFolderId(): Promise<string | null> {
         const folders = foldersData?.data || [];
         
         if (folders && folders.length > 0) {
-          cachedFormUploadsFolderId = folders[0].id;
+          const folderId = folders[0].id ?? null;
+          cachedFormUploadsFolderId = folderId;
           console.log('[getFormUploadsFolderId] Found folder via REST API:', folders[0].name, 'ID:', cachedFormUploadsFolderId);
-          return cachedFormUploadsFolderId;
+          return folderId;
         }
       }
     }
