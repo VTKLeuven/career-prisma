@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { getFormUploadsFolderId } from "@/lib/directus";
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,9 +28,16 @@ export async function POST(request: NextRequest) {
     const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
     const token = cookieStore.get(ACCESS_COOKIE)?.value;
 
+    // Get Form_uploads folder ID
+    const folderId = await getFormUploadsFolderId();
+
     // Recreate FormData for upload
     const uploadFormData = new FormData();
     uploadFormData.append('file', file);
+    // Add folder parameter if folder ID is available
+    if (folderId) {
+      uploadFormData.append('folder', folderId);
+    }
 
     // Prepare headers
     const headers: HeadersInit = {};

@@ -22,6 +22,7 @@ import {
   countFormVersionResponses,
 } from "@/lib/repos/forms";
 import type { Form, FormVersion, FormSchema, FormMetadata } from "@/lib/schema";
+import { getFormUploadsFolderId } from "@/lib/directus";
 
 // ===================== FORM ACTIONS =====================
 
@@ -462,9 +463,16 @@ export async function uploadFileAction(formData: FormData) {
     const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
     const token = cookieStore.get(ACCESS_COOKIE)?.value;
 
+    // Get Form_uploads folder ID
+    const folderId = await getFormUploadsFolderId();
+
     // Recreate FormData for upload
     const uploadFormData = new FormData();
     uploadFormData.append('file', file);
+    // Add folder parameter if folder ID is available
+    if (folderId) {
+      uploadFormData.append('folder', folderId);
+    }
 
     // Prepare headers
     const headers: HeadersInit = {};

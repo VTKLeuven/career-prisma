@@ -3,6 +3,7 @@
 
 import { cookies } from "next/headers";
 import nodemailer from "nodemailer";
+import { getFormUploadsFolderId } from "@/lib/directus";
 
 export async function uploadDirectusFile(file: File): Promise<string | null> {
   const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
@@ -14,8 +15,15 @@ export async function uploadDirectusFile(file: File): Promise<string | null> {
     return null;
   }
 
+  // Get Form_uploads folder ID
+  const folderId = await getFormUploadsFolderId();
+
   const formData = new FormData();
   formData.append("file", file);
+  // Add folder parameter if folder ID is available
+  if (folderId) {
+    formData.append("folder", folderId);
+  }
 
   try {
     const res = await fetch(`${process.env.NEXT_PUBLIC_DIRECTUS_URL}files`, {

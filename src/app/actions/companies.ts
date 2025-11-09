@@ -580,11 +580,28 @@ export async function createUserFromApprovedRequest(request: any): Promise<void>
           tel: request.tel || undefined,
           title: request.title || undefined,
         });
+        // createRep already sends the activation email, so we're good
       } else {
         return; // Failed to create user
       }
     } else {
       userId = existingUser.id;
+      // User exists but might not have been activated - send activation email via password reset
+      try {
+        const baseUrl = process.env.DIRECTUS_URL;
+        if (baseUrl) {
+          const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
+          await fetch(`${normalizedBase}auth/password/request`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ email: request.email }),
+          });
+        }
+      } catch (err) {
+        console.error("Failed to send activation email to existing user:", err);
+      }
     }
 
     // Ensure user is in company's representatives list

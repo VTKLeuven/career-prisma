@@ -24,6 +24,7 @@ import {
 } from "@tabler/icons-react";
 import Link from "next/link";
 import { useUser } from "@/providers/UserProvider";
+import { fetchPendingApprovalRequestsAction } from "@/app/actions/companies";
 
 // Updated sidebar data
 const data = {
@@ -94,10 +95,32 @@ const data = {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { open } = useSidebar();
   const { user } = useUser();
+  const [pendingCount, setPendingCount] = React.useState<number>(0);
+
+  // Fetch pending approvals count for admins/salespeople
+  React.useEffect(() => {
+    if (!user?.admin) {
+      return;
+    }
+
+    const fetchCount = async () => {
+      try {
+        const requests = await fetchPendingApprovalRequestsAction();
+        setPendingCount(requests.length);
+      } catch (error) {
+        console.error("Failed to fetch pending approvals count:", error);
+      }
+    };
+
+    fetchCount();
+    // Refresh every 10 seconds for faster notification
+    const interval = setInterval(fetchCount, 10000);
+    return () => clearInterval(interval);
+  }, [user?.admin]);
 
   // Add admin sections if user is admin
   const navItems = React.useMemo(() => {
-    const items = [...data.navMain];
+    const items: any[] = [...data.navMain];
 
     // Add Forms section for admins
     if (user?.admin) {
@@ -114,12 +137,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             title: "Companies & Events",
             url: "/admin",
           },
+          {
+            title: "Pending Approvals",
+            url: "/admin/approvals",
+            ...(pendingCount > 0 && { badge: pendingCount }),
+          },
         ],
       });
     }
 
     return items;
-  }, [user?.admin]);
+  }, [user?.admin, pendingCount]);
 
   return (
     <Sidebar collapsible="icon" {...props}>

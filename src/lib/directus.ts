@@ -3,6 +3,7 @@ import {
   createDirectus,
   rest,
   staticToken,
+  readItems,
 } from "@directus/sdk";
 import { cookies } from "next/headers";
 
@@ -56,4 +57,57 @@ export async function getServerDirectusClient() {
   
   // If no server token, use public client (may have limited permissions)
   return directus;
+}
+
+/**
+ * Get the folder ID for the "Form_uploads" folder.
+ * First checks environment variable DIRECTUS_FORM_UPLOADS_FOLDER_ID.
+ * If not set, queries Directus to find the folder by name.
+ * Returns null if folder is not found.
+ */
+let cachedFormUploadsFolderId: string | null | undefined = undefined;
+
+export async function getFormUploadsFolderId(): Promise<string | null> {
+  // Return cached value if available
+  if (cachedFormUploadsFolderId !== undefined) {
+    return cachedFormUploadsFolderId;
+  }
+
+  // Check environment variable first
+  const envFolderId = process.env.DIRECTUS_FORM_UPLOADS_FOLDER_ID;
+  if (envFolderId && envFolderId.trim() !== '') {
+    cachedFormUploadsFolderId = envFolderId.trim();
+    return cachedFormUploadsFolderId;
+  }
+
+  try {
+    // Try to get folder by name using server client (has permissions to query folders)
+    const client = await getServerDirectusClient();
+    const folders = await client.request(
+      readItems("directus_folders", {
+        fields: ["id", "name"],
+        filter: {
+          name: {
+            _eq: "Form_uploads",
+          },
+        },
+        limit: 1,
+      })
+    ) as Array<{ id: string; name: string }>;
+
+    if (folders && folders.length > 0) {
+      cachedFormUploadsFolderId = folders[0].id;
+      return cachedFormUploadsFolderId;
+    }
+
+    // Folder not found
+    console.warn('Form_uploads folder not found in Directus. Files will be uploaded to root.');
+    cachedFormUploadsFolderId = null;
+    return null;
+  } catch (error) {
+    console.error('Error fetching Form_uploads folder ID:', error);
+    // Cache null to avoid repeated failed queries
+    cachedFormUploadsFolderId = null;
+    return null;
+  }
 }

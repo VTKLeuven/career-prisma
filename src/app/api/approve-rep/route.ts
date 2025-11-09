@@ -30,14 +30,30 @@ export async function GET(request: NextRequest) {
       // Return HTML page for unauthenticated users (email links)
       return new NextResponse(
         `<!DOCTYPE html>
-        <html>
+        <html lang="en">
           <head>
-            <title>${action === "approve" ? "Approving" : "Rejecting"} Request</title>
-            <meta http-equiv="refresh" content="2;url=/login">
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Authentication Required</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+            <meta http-equiv="refresh" content="3;url=/login">
           </head>
-          <body>
-            <h1>Please log in to ${action === "approve" ? "approve" : "reject"} this request</h1>
-            <p>Redirecting to login page...</p>
+          <body class="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl shadow-lg p-8 md:p-12 max-w-md w-full text-center">
+              <div class="mb-6">
+                <div class="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+                  <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                  </svg>
+                </div>
+              </div>
+              <h1 class="text-2xl font-bold text-gray-900 mb-3">Authentication Required</h1>
+              <p class="text-gray-600 mb-4">Please log in to ${action === "approve" ? "approve" : "reject"} this request.</p>
+              <p class="text-sm text-gray-500 mb-6">Redirecting to login page...</p>
+              <a href="/login" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2.5 rounded-lg transition-colors">
+                Go to Login
+              </a>
+            </div>
           </body>
         </html>`,
         {
@@ -110,54 +126,38 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Return success page
+    // Return success page with site-consistent styling
     return new NextResponse(
       `<!DOCTYPE html>
-      <html>
+      <html lang="en">
         <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>Request ${action === "approve" ? "Approved" : "Rejected"}</title>
+          <script src="https://cdn.tailwindcss.com"></script>
           <style>
             body {
-              font-family: Arial, sans-serif;
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              min-height: 100vh;
-              margin: 0;
-              background-color: #f5f5f5;
-            }
-            .container {
-              background: white;
-              padding: 40px;
-              border-radius: 8px;
-              box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-              text-align: center;
-            }
-            .success {
-              color: #4CAF50;
-              font-size: 48px;
-              margin-bottom: 20px;
-            }
-            .error {
-              color: #f44336;
-              font-size: 48px;
-              margin-bottom: 20px;
-            }
-            h1 {
-              color: #333;
-              margin-bottom: 10px;
-            }
-            p {
-              color: #666;
+              font-family: system-ui, -apple-system, sans-serif;
             }
           </style>
         </head>
-        <body>
-          <div class="container">
-            <div class="${action === "approve" ? "success" : "error"}">${action === "approve" ? "✅" : "❌"}</div>
-            <h1>Request ${action === "approve" ? "Approved" : "Rejected"}</h1>
-            <p>The user request has been ${action === "approve" ? "approved" : "rejected"} successfully.</p>
-            ${action === "approve" ? "<p>The new user will receive an activation email shortly.</p>" : ""}
+        <body class="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+          <div class="bg-white rounded-2xl shadow-lg p-8 md:p-12 max-w-md w-full text-center">
+            <div class="mb-6">
+              ${action === "approve" 
+                ? '<div class="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4"><svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg></div>'
+                : '<div class="mx-auto w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4"><svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></div>'
+              }
+            </div>
+            <h1 class="text-2xl font-bold text-gray-900 mb-3">Request ${action === "approve" ? "Approved" : "Rejected"}</h1>
+            <p class="text-gray-600 mb-4">The user request has been ${action === "approve" ? "approved" : "rejected"} successfully.</p>
+            ${action === "approve" 
+              ? '<p class="text-sm text-gray-500 mb-6">The new user will receive an activation email shortly to set up their account.</p>'
+              : '<p class="text-sm text-gray-500 mb-6">The user request has been declined.</p>'
+            }
+            <a href="/admin/approvals" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2.5 rounded-lg transition-colors">
+              Go to Admin Panel
+            </a>
           </div>
         </body>
       </html>`,
