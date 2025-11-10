@@ -40,7 +40,8 @@
     "react-dom": "^19.2.0",
     "react-leaflet": "^5.0.0",
     "tailwind-merge": "^3.3.1",
-    "vaul": "^1.1.2"
+    "vaul": "^1.1.2",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -51,6 +52,7 @@
     "@types/nodemailer": "^7.0.3",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19",
+    "@types/xlsx": "^0.0.35",
     "eslint": "^9",
     "eslint-config-next": "^16.0.1",
     "husky": "^9.1.7",
