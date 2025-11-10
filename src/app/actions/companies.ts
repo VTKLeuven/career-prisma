@@ -157,11 +157,6 @@ export async function fetchCompanyBySlugAction(slug: string): Promise<Company | 
 }
 
 export async function createCompanyAction(companyPayload: Partial<Company>, repPayload?: Partial<CompanyRep>) {
-  // Ensure new companies start unpublished
-  const payloadWithStatus = {
-    ...companyPayload,
-    page_on_platform: false,
-  };
 
   if (repPayload && (repPayload.email || repPayload.first_name || repPayload.last_name)) {
     const newRep = await createRep(repPayload);
@@ -188,7 +183,7 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
 
     // Create a mutable payload with representatives as string array for the API
     const payload = {
-      ...payloadWithStatus,
+      ...companyPayload,
       representatives: [repIdForCompany] as unknown as CompanyRep[]
     };
 
@@ -248,7 +243,7 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
 
     return createdCompany;
   }
-  return await createCompany(payloadWithStatus);
+  return await createCompany(companyPayload);
 }
 
 export async function createCompanyRepAction(companyId: string, repPayload: Partial<CompanyRep>) {
@@ -515,25 +510,7 @@ export async function updateCompanyAction(
   id: string,
   payload: Partial<Company>
 ): Promise<Company | null> {
-  // Fetch current company to check if info is complete
-  const currentCompany = await fetchCompanyByIdAction(id);
-  if (!currentCompany) {
-    return null;
-  }
-
-  // Merge payload with current company to check completeness
-  const updatedCompany = { ...currentCompany, ...payload } as Company;
-
-  // Check if company info is now complete
-  const isComplete = isCompanyInfoComplete(updatedCompany);
-
-  // Update payload with page_on_platform status
-  const payloadWithStatus = {
-    ...payload,
-    page_on_platform: isComplete,
-  };
-
-  const res = await updateCompany(id, payloadWithStatus);
+  const res = await updateCompany(id, payload);
   return res as Company | null;
 }
 
