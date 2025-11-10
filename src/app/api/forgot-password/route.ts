@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
 
     // Store token hash and expiration in user metadata
     try {
+      // First, try to get existing metadata
       const userRes = await fetch(
         `${normalizedBase}users/${user.id}?fields=metadata`,
         {
@@ -99,6 +100,8 @@ export async function POST(request: NextRequest) {
       if (userRes.ok) {
         const userData = await userRes.json();
         userMetadata = userData.data?.metadata || {};
+      } else {
+        console.warn(`[forgot-password] Could not read metadata for user ${user.id}, creating new metadata object`);
       }
 
       // Store reset token with expiration (1 hour)
@@ -109,7 +112,8 @@ export async function POST(request: NextRequest) {
       userMetadata.password_reset_token_created = new Date().toISOString();
       userMetadata.password_reset_token_expires = expirationTime.toISOString();
 
-      await fetch(
+      // Update user with metadata
+      const updateRes = await fetch(
         `${normalizedBase}users/${user.id}`,
         {
           method: "PATCH",
@@ -122,9 +126,19 @@ export async function POST(request: NextRequest) {
           }),
         }
       );
+
+      if (!updateRes.ok) {
+        const errorText = await updateRes.text().catch(() => "Unknown error");
+        console.error(`[forgot-password] Failed to store reset token in metadata for user ${user.id}:`, updateRes.status, errorText);
+        // Don't throw - we'll still send the email, but token verification might fail
+        // Log this so we can debug metadata permission issues
+      } else {
+        console.log(`[forgot-password] Successfully stored reset token in metadata for user ${user.id}`);
+      }
     } catch (err) {
-      console.error("Error storing reset token:", err);
-      // Continue even if metadata update fails - token is still valid
+      console.error(`[forgot-password] Error storing reset token for user ${user.id}:`, err);
+      // Continue even if metadata update fails - email will still be sent
+      // But token verification will fail if metadata is not accessible
     }
 
     // Generate reset URL

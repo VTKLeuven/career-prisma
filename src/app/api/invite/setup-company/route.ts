@@ -1,7 +1,6 @@
 // app/api/invite/setup-company/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { setupCompanyAction, uploadCompanyLogo } from "@/app/actions/companies";
 import type { Company } from "@/lib/schema";
 
 function isFileLike(value: unknown): value is File {
@@ -133,10 +132,81 @@ export async function POST(request: NextRequest) {
       address_country: formData.get("address_country") as string || null,
     };
 
+    // Helper function to upload file using server token
+    async function uploadFileWithServerToken(file: File): Promise<string | null> {
+      try {
+        // Get Form_uploads folder ID
+        const { getFormUploadsFolderId } = await import("@/lib/directus");
+        const folderId = await getFormUploadsFolderId();
+
+        const uploadFormData = new FormData();
+        uploadFormData.append("file", file);
+        if (folderId) {
+          uploadFormData.append("folder", folderId);
+        }
+
+        const directusUrl = process.env.NEXT_PUBLIC_DIRECTUS_URL || process.env.DIRECTUS_URL;
+        if (!directusUrl) {
+          console.error("DIRECTUS_URL not configured for file upload");
+          return null;
+        }
+
+        const uploadUrl = `${directusUrl.replace(/\/$/, "")}/files`;
+        const uploadRes = await fetch(uploadUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${serverToken}`,
+          },
+          body: uploadFormData,
+        });
+
+        const uploadData = await uploadRes.json();
+        if (!uploadRes.ok) {
+          console.error("Directus file upload failed:", uploadData);
+          return null;
+        }
+
+        const fileId = uploadData?.data?.id ?? null;
+        if (!fileId) {
+          return null;
+        }
+
+        // Update the file to set the folder if needed
+        if (folderId && fileId) {
+          const uploadedFolderId = uploadData?.data?.folder || uploadData?.folder;
+          if (uploadedFolderId !== folderId) {
+            try {
+              const updateUrl = `${directusUrl.replace(/\/$/, "")}/files/${fileId}`;
+              const updateRes = await fetch(updateUrl, {
+                method: "PATCH",
+                headers: {
+                  Authorization: `Bearer ${serverToken}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ folder: folderId }),
+              });
+
+              if (!updateRes.ok) {
+                const updateError = await updateRes.json().catch(() => ({ message: "Update failed" }));
+                console.warn("Failed to update file folder:", updateError);
+              }
+            } catch (updateErr) {
+              console.warn("Error updating file folder:", updateErr);
+            }
+          }
+        }
+
+        return fileId;
+      } catch (err) {
+        console.error("Error uploading file to Directus:", err);
+        return null;
+      }
+    }
+
     // Handle logo upload
     const logoFile = formData.get("logo") as File | null;
     if (logoFile && logoFile.size > 0 && logoFile.name) {
-      const logoId = await uploadCompanyLogo(logoFile);
+      const logoId = await uploadFileWithServerToken(logoFile);
       if (logoId) {
         companyData.logo = logoId;
       } else {
@@ -151,7 +221,7 @@ export async function POST(request: NextRequest) {
     // Handle page image upload (optional)
     const pageImageFile = formData.get("page_image") as File | null;
     if (pageImageFile && pageImageFile.size > 0 && pageImageFile.name) {
-      const pageImageId = await uploadCompanyLogo(pageImageFile);
+      const pageImageId = await uploadFileWithServerToken(pageImageFile);
       if (pageImageId) {
         companyData.page_image = pageImageId;
       } else {
@@ -208,13 +278,58 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update company
-    const result = await setupCompanyAction(companyId, companyData, selectedMasters);
+    // Fetch masters to build category payload
+    const mastersRes = await fetch(
+      `${normalizedBase}items/master?fields=id,name&limit=1000`,
+      {
+        headers: {
+          "Authorization": `Bearer ${serverToken}`,
+        },
+      }
+    );
 
-    if (!result.success) {
+    if (!mastersRes.ok) {
+      console.error("Failed to fetch masters:", await mastersRes.text());
       return NextResponse.json(
-        { error: result.error || "Failed to update company" },
+        { error: "Failed to fetch master categories" },
         { status: 500 }
+      );
+    }
+
+    const mastersData = await mastersRes.json();
+    const masters = mastersData.data || [];
+
+    // Build category payload from selected master IDs
+    const categoryPayload = masters
+      .filter((m: { id: string }) => selectedMasters.includes(m.id))
+      .map((m: { id: string }) => ({ master_id: m.id }));
+
+    // Build the update payload with category and status
+    const updatePayload: Partial<Company> = {
+      ...companyData,
+      category: categoryPayload as unknown as Company['category'],
+      status: "published",
+    };
+
+    // Update company directly using server token
+    const updateRes = await fetch(
+      `${normalizedBase}items/company/${companyId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Authorization": `Bearer ${serverToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(updatePayload),
+      }
+    );
+
+    if (!updateRes.ok) {
+      const errorData = await updateRes.json().catch(() => ({ message: "Update failed" }));
+      console.error("Failed to update company:", errorData);
+      return NextResponse.json(
+        { error: errorData.errors?.[0]?.message || errorData.message || "Failed to update company" },
+        { status: updateRes.status || 500 }
       );
     }
 
