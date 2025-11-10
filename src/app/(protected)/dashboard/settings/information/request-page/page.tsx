@@ -1,12 +1,36 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { requestCompanyPageAction } from "@/app/actions/companies";
 
 export default function RequestCompanyPage() {
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleRequest() {
+    setLoading(true);
+    setError(null);
+    setSuccess(false);
+
+    try {
+      const result = await requestCompanyPageAction();
+      if (result.success) {
+        setSuccess(true);
+      } else {
+        setError(result.error || "Failed to send request");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="container mx-auto max-w-4xl py-8 px-4">
       <Link
@@ -52,15 +76,29 @@ export default function RequestCompanyPage() {
                 <Button
                   size="lg"
                   className="cursor-pointer"
-                  onClick={() => {
-                    // TODO: Implement request functionality
-                    alert("Request functionality will be implemented soon. Please contact your administrator.");
-                  }}
+                  onClick={handleRequest}
+                  disabled={loading || success}
                 >
-                  Request Company Page
+                  {loading ? "Sending Request..." : success ? "Request Sent" : "Request Company Page"}
                 </Button>
               </div>
             </div>
+
+            {success && (
+              <div className="mt-6 p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg">
+                <p className="font-semibold">Request sent successfully!</p>
+                <p className="text-sm mt-1">
+                  Your request has been sent to your salesperson. They will review it and activate your company page once approved.
+                </p>
+              </div>
+            )}
+
+            {error && (
+              <div className="mt-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg">
+                <p className="font-semibold">Error</p>
+                <p className="text-sm mt-1">{error}</p>
+              </div>
+            )}
 
             <div className="mt-6 text-sm text-muted-foreground">
               <p>

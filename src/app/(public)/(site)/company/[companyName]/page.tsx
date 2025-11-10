@@ -438,6 +438,26 @@ function Header() {
                 <div className="mb-4">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-neutral-900">Upcoming events</h3>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5 text-xs px-3"
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        // Check if we're on the homepage
+                        if (window.location.pathname === '/') {
+                          // Dispatch custom event that homepage can listen to
+                          window.dispatchEvent(new CustomEvent('viewAllEvents'));
+                          // Also set hash for URL consistency
+                          window.location.hash = '#all-events';
+                        } else {
+                          // Navigate to homepage with hash
+                          window.location.href = '/#all-events';
+                        }
+                      }}
+                    >
+                      View all
+                    </Button>
                   </div>
                   <ul className="space-y-2 max-h-[50vh] overflow-y-auto">
                     {EVENTS
@@ -520,6 +540,26 @@ function Header() {
                   <div className="md:col-span-2">
                     <div className="mb-4 flex items-center justify-between">
                       <h3 className="text-sm font-medium text-neutral-900">Upcoming events</h3>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5"
+                        onClick={() => {
+                          setOpenMenu(null);
+                          // Check if we're on the homepage
+                          if (window.location.pathname === '/') {
+                            // Dispatch custom event that homepage can listen to
+                            window.dispatchEvent(new CustomEvent('viewAllEvents'));
+                            // Also set hash for URL consistency
+                            window.location.hash = '#all-events';
+                          } else {
+                            // Navigate to homepage with hash
+                            window.location.href = '/#all-events';
+                          }
+                        }}
+                      >
+                        View all
+                      </Button>
                     </div>
                     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       {EVENTS
