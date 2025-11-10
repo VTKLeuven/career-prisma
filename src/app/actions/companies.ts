@@ -3,9 +3,11 @@
 import { listCompanies, getCompanyById, createCompany, updateCompany } from "@/lib/repos/company";
 import { createRep, updateRep, waitForApproval, deleteUser, fetchPendingApprovalRequests, type PendingApprovalRequest } from "@/lib/repos/users";
 import { Company, CompanyRep, CareerEventOption } from "@/lib/schema";
-import { uploadDirectusFile } from "@/lib/repos/directus";
+import { uploadDirectusFile, sendEmail } from "@/lib/repos/directus";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { cookies } from "next/headers";
+import { fetchMastersAction } from "@/app/actions/features";
+import { generateCompanyPageRequestEmailHtml } from "@/lib/email-templates";
 
 
 
@@ -514,6 +516,43 @@ export async function updateCompanyAction(
   return res as Company | null;
 }
 
+export async function setupCompanyAction(
+  companyId: string,
+  payload: Partial<Company>,
+  selectedMasters: string[]
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Fetch masters to get full master objects
+    const masters = await fetchMastersAction();
+    
+    // Build category payload from selected master IDs
+    const categoryPayload = masters
+      .filter((m) => selectedMasters.includes(m.id))
+      .map((m) => ({ master_id: m.id }));
+
+    // Update company with all fields and set status to published
+    const updatePayload: Partial<Company> = {
+      ...payload,
+      category: categoryPayload as unknown as Company['category'],
+      status: "published",
+    };
+
+    const updated = await updateCompanyAction(companyId, updatePayload);
+    
+    if (!updated) {
+      return { success: false, error: "Failed to update company" };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error setting up company:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
 export async function uploadCompanyLogo(file: File) {
   return await uploadDirectusFile(file);
 }
@@ -1001,6 +1040,100 @@ export async function approveRepRequestAction(
     return { 
       success: false, 
       error: error instanceof Error ? error.message : "Unknown error" 
+    };
+  }
+}
+
+export async function requestCompanyPageAction(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const user = await getUserFromCookies();
+    if (!user || !user.company) {
+      return { success: false, error: "User not authenticated or no company associated" };
+    }
+
+    const company = await fetchCompanyByIdAction(user.company.id);
+    if (!company) {
+      return { success: false, error: "Company not found" };
+    }
+
+    // Check if company already has a page
+    if (company.page_on_platform) {
+      return { success: false, error: "Company already has a page on the platform" };
+    }
+
+    // Get salesperson email
+    let salespersonEmail: string | null = null;
+    let salespersonName: string = "Salesperson";
+
+    if (company.salesperson) {
+      const baseUrl = process.env.DIRECTUS_URL;
+      if (!baseUrl) {
+        return { success: false, error: "DIRECTUS_URL not configured" };
+      }
+
+      const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
+      const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
+      
+      if (!serverToken) {
+        return { success: false, error: "Server configuration error" };
+      }
+
+      const salespersonId = typeof company.salesperson === "string" 
+        ? company.salesperson 
+        : company.salesperson.id;
+
+      try {
+        const salespersonRes = await fetch(
+          `${normalizedBase}users/${salespersonId}?fields=id,email,first_name,last_name`,
+          {
+            headers: {
+              "Authorization": `Bearer ${serverToken}`,
+            },
+          }
+        );
+
+        if (salespersonRes.ok) {
+          const salespersonData = await salespersonRes.json();
+          const salesperson = salespersonData.data;
+          salespersonEmail = salesperson.email;
+          salespersonName = [salesperson.first_name, salesperson.last_name]
+            .filter(Boolean)
+            .join(" ") || "Salesperson";
+        }
+      } catch (err) {
+        console.error("Error fetching salesperson:", err);
+      }
+    }
+
+    if (!salespersonEmail) {
+      return { success: false, error: "Salesperson email not found" };
+    }
+
+    // Get requester info
+    const requesterName = user.name || user.email;
+    const requesterEmail = user.email;
+
+    // Generate email HTML
+    const emailHtml = generateCompanyPageRequestEmailHtml({
+      companyName: company.name,
+      requesterName,
+      requesterEmail,
+      salespersonName,
+    });
+
+    // Send email to salesperson
+    await sendEmail({
+      to: salespersonEmail,
+      subject: `Company Page Request: ${company.name}`,
+      html: emailHtml,
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error in requestCompanyPageAction:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
     };
   }
 }

@@ -45,6 +45,7 @@ export type Company = {
   address_city?: string | null;
   address_country?: string | null;
   address: string;
+  status?: string;
   representatives?: CompanyRep[]
   category?: Master[] | { master_id: string; }[]
   options?: CareerEventOption[]
