@@ -282,11 +282,6 @@ function CompanySetupForm({ token, company, masters, onComplete }: {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-8">
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-                  {error}
-                </div>
-              )}
 
               {/* Company Information Section */}
               <div>
@@ -349,7 +344,7 @@ function CompanySetupForm({ token, company, masters, onComplete }: {
                   </div>
 
                   <div className="space-y-3">
-                    <Label>Page Background Image (Optional)</Label>
+                    <Label>Page Background Image</Label>
                     <div className="flex flex-col items-center gap-2">
                       {pageImagePreview ? (
                         <NextImage
@@ -401,7 +396,7 @@ function CompanySetupForm({ token, company, masters, onComplete }: {
 
                   <div className="space-y-3 md:col-span-2">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="long-description">Long Description (Optional)</Label>
+                      <Label htmlFor="long-description">Long Description</Label>
                       <span className={`text-xs ${countWords(longDescriptionText) > LONG_DESC_WORD_LIMIT ? 'text-red-600 font-semibold' : 'text-muted-foreground'}`}>
                         {countWords(longDescriptionText)} / {LONG_DESC_WORD_LIMIT} words
                       </span>
@@ -463,7 +458,7 @@ function CompanySetupForm({ token, company, masters, onComplete }: {
 
               {/* Billing Information Section */}
               <div>
-                <h3 className="text-lg font-semibold mb-4">Billing Information (Optional)</h3>
+                <h3 className="text-lg font-semibold mb-4">Billing Information</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <Label htmlFor="address-street">Street</Label>
@@ -519,10 +514,15 @@ function CompanySetupForm({ token, company, masters, onComplete }: {
               <Button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                className="w-full"
               >
                 {loading ? "Saving..." : "Continue to Password Setup"}
               </Button>
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm" role="alert">
+                  {error}
+                </div>
+              )}
             </form>
           </CardContent>
         </Card>
@@ -584,12 +584,6 @@ function PasswordSetupForm({ token, onComplete }: { token: string; onComplete: (
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit}>
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
-            {error}
-          </div>
-        )}
-
             <div className="mb-4">
               <Label htmlFor="password">New Password</Label>
               <Input
@@ -623,10 +617,15 @@ function PasswordSetupForm({ token, onComplete }: { token: string; onComplete: (
             <Button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              className="w-full"
             >
               {loading ? "Setting up account..." : "Complete Setup"}
             </Button>
+            {error && (
+              <p className="text-center text-sm text-red-600 mt-4" role="alert">
+                {error}
+              </p>
+            )}
       </form>
         </CardContent>
       </Card>
@@ -668,16 +667,35 @@ function AcceptInviteContent() {
       const res = await fetch(`/api/invite/validate?token=${encodeURIComponent(token)}`);
       const data = await res.json();
 
+      console.log(data);
+
       if (!res.ok) {
         throw new Error(data?.error || "Failed to validate invitation");
       }
 
       setCompany(data.company);
+      
+      console.log("[accept-invite] Company data:", {
+        hasCompany: !!data.company,
+        companyId: data.company?.id,
+        companyStatus: data.company?.status,
+        companyName: data.company?.name,
+      });
 
       // Check if company needs setup
-      if (data.company && data.company.status !== "published") {
-        setStep("company-setup");
+      // If company exists but status is not "published", show company setup
+      // If company is null or status is "published", go directly to password setup
+      // If company status is null/undefined (couldn't be fetched), assume it needs setup for safety
+      if (data.company && data.company.id) {
+        if (data.company.status === null || data.company.status === undefined || data.company.status !== "published") {
+          console.log("[accept-invite] Company needs setup (status:", data.company.status, "), showing company-setup form");
+          setStep("company-setup");
+        } else {
+          console.log("[accept-invite] Company is already published, skipping to password setup");
+          setStep("password-setup");
+        }
       } else {
+        console.warn("[accept-invite] No company found for user, skipping to password setup");
         setStep("password-setup");
       }
     } catch (err) {

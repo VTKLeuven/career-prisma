@@ -52,6 +52,14 @@ function ResetPasswordContent() {
         body: JSON.stringify({ token, password }),
       });
 
+      // Check if response is JSON
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await res.text();
+        console.error("Non-JSON response:", text);
+        throw new Error("Invalid response from server. Please try again.");
+      }
+
       const data = await res.json();
 
       if (!res.ok) {
@@ -93,12 +101,6 @@ function ResetPasswordContent() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit}>
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
-                {error}
-              </div>
-            )}
-
             <div className="mb-4">
               <Label htmlFor="password">New Password</Label>
               <Input
@@ -132,10 +134,15 @@ function ResetPasswordContent() {
             <Button
               type="submit"
               disabled={loading || !token}
-              className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              className="w-full"
             >
               {loading ? "Resetting password..." : "Reset Password"}
             </Button>
+            {error && (
+              <p className="text-center text-sm text-red-600 mt-4" role="alert">
+                {error}
+              </p>
+            )}
           </form>
         </CardContent>
       </Card>
