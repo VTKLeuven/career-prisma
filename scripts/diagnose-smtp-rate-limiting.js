@@ -16,11 +16,22 @@ const path = require('path');
 
 // Load .env.local file manually (no dotenv dependency needed)
 function loadEnvFile() {
-  const envPath = path.join(process.cwd(), '.env.local');
+  // Find project root (where .env.local should be)
+  // Script might be run from scripts/ directory or project root
+  let projectRoot = process.cwd();
+  
+  // If we're in scripts/ directory, go up one level
+  if (path.basename(projectRoot) === 'scripts') {
+    projectRoot = path.dirname(projectRoot);
+  }
+  
+  // Try .env.local in project root
+  const envPath = path.join(projectRoot, '.env.local');
   
   if (fs.existsSync(envPath)) {
     const envContent = fs.readFileSync(envPath, 'utf8');
     const lines = envContent.split('\n');
+    let loadedCount = 0;
     
     for (const line of lines) {
       // Skip comments and empty lines
@@ -44,11 +55,18 @@ function loadEnvFile() {
         // Only set if not already in process.env (env vars take precedence)
         if (!process.env[key]) {
           process.env[key] = value;
+          loadedCount++;
         }
       }
     }
+    
+    if (loadedCount > 0 && process.env.NODE_ENV !== 'production') {
+      // Only log in development to avoid cluttering output
+      // console.log(`Loaded ${loadedCount} environment variables from .env.local\n`);
+    }
   } else {
-    console.log('Note: .env.local file not found. Using environment variables only.\n');
+    console.log(`Note: .env.local file not found at ${envPath}`);
+    console.log('      Using environment variables only.\n');
   }
 }
 
