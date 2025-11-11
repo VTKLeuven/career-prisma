@@ -50,24 +50,41 @@ export async function listCompanies(opts?: {
 }
 
 export async function getCompanyById(id: string, usePublic = false) {
-  const client = usePublic ? directus : await getDirectusWithToken();
-  if (!client) return null;
-  
-  return client.request(
-    readItem("company", id, {
-      fields: [
-        "*",
-        "page_image",
-        "representatives.*",
-        "category.master_id.*",
-        "options.career_event_option_id.id",
-        "options.career_event_option_id.name",
-        "options.career_event_option_id.description",
-        "options.career_event_option_id.price",
-        "options.career_event_option_id.event.*",
-      ],
-    })
-  ) as unknown as Company;
+  try {
+    const client = usePublic ? directus : await getDirectusWithToken();
+    if (!client) return null;
+    
+    return client.request(
+      readItem("company", id, {
+        fields: [
+          "*",
+          "page_image",
+          "representatives.*",
+          "category.master_id.*",
+          "options.career_event_option_id.id",
+          "options.career_event_option_id.name",
+          "options.career_event_option_id.description",
+          "options.career_event_option_id.price",
+          "options.career_event_option_id.event.*",
+        ],
+      })
+    ) as unknown as Company;
+  } catch (error: any) {
+    // Handle FORBIDDEN errors gracefully
+    if (error?.errors?.[0]?.extensions?.code === "FORBIDDEN" || 
+        error?.message?.includes("FORBIDDEN") ||
+        error?.message?.includes("permission")) {
+      // Log once but don't throw - return null to indicate the company couldn't be accessed
+      if (process.env.NODE_ENV === "development") {
+        console.warn(`[getCompanyById] Permission denied for company ${id}:`, error.message || "You don't have permission to access this.");
+      }
+      return null;
+    }
+    
+    // For other errors, log and return null
+    console.error(`[getCompanyById] Error fetching company ${id}:`, error);
+    return null;
+  }
 }
 
 // Optional create/update helpers (if your role allows it)
