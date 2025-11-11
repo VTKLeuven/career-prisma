@@ -140,11 +140,23 @@ function getTransporter(): nodemailer.Transporter {
   const isGmailSmtp = smtpHost === "smtp.gmail.com";
   const isGmailRelay = smtpHost === "smtp-relay.gmail.com";
   
+  // Get HELO/EHLO hostname (important to avoid Google throttling)
+  // Should match your server's actual hostname and PTR record
+  const smtpHeloName = process.env.SMTP_HELO_NAME?.trim();
+  
   // Log configuration in development
   if (isDevelopment) {
     console.log(`[SMTP] Configuration: host=${smtpHost}, port=${smtpPort}, hasAuth=${hasCredentials}`);
     if (hasCredentials) {
       console.log(`[SMTP] User: ${smtpUser}, Password: ${smtpPass ? "***" : "NOT SET"}`);
+    }
+    if (smtpHeloName) {
+      console.log(`[SMTP] ✓ HELO/EHLO hostname: ${smtpHeloName}`);
+    } else {
+      console.warn(
+        "[SMTP] ⚠ SMTP_HELO_NAME not set. Using default hostname (may trigger Google throttling).\n" +
+        "[SMTP] ⚠ Set SMTP_HELO_NAME to your server's real hostname (same as PTR record target)."
+      );
     }
     if (isGmailRelay) {
       console.log("[SMTP] ℹ Google Workspace Relay - typically has higher rate limits than smtp.gmail.com");
@@ -157,6 +169,7 @@ function getTransporter(): nodemailer.Transporter {
     port: number;
     secure: boolean;
     requireTLS: boolean;
+    name?: string; // Hostname for HELO/EHLO command (should match server's PTR record)
     tls: {
       rejectUnauthorized: boolean;
       minVersion: string;
@@ -190,6 +203,10 @@ function getTransporter(): nodemailer.Transporter {
     port: smtpPort,
     secure: smtpPort === 465, // true for 465, false for other ports
     requireTLS: smtpPort === 587, // Only require TLS for port 587
+    // Set HELO/EHLO hostname to avoid Google throttling
+    // This should match your server's real hostname (same as PTR record target)
+    // If not set, Nodemailer may use 'localhost' or an IP, which triggers throttling
+    ...(smtpHeloName && { name: smtpHeloName }),
     tls: {
       // Do not fail on invalid certs for development
       rejectUnauthorized: false,
