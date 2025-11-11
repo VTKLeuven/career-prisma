@@ -588,7 +588,7 @@ export async function addOptionToCompanyAction(companyId: string, optionId: stri
     optionJunctions.push({ career_event_option_id: optionId });
   }
 
-  // Check if the option being added is "Jobfair Package" and set page_on_platform to true
+  // Check if the option being added is "Jobfair Package" or "Ultimate Package" and set page_on_platform to true
   // We need to fetch the option to get its name
   const { readItem } = await import("@directus/sdk");
   const { getDirectusWithToken } = await import("@/lib/directus");
@@ -603,7 +603,7 @@ export async function addOptionToCompanyAction(companyId: string, optionId: stri
         })
       ) as { name?: string } | null;
 
-      if (option?.name === "Jobfair Package") {
+      if (option?.name === "Jobfair Package" || option?.name === "Ultimate Package") {
         shouldSetPageOnPlatform = true;
       }
     } catch (error) {
@@ -627,12 +627,14 @@ export async function removeOptionFromCompanyAction(companyId: string, optionId:
 
   if (!company) return null;
 
-  // Check if the option being removed is "Jobfair Package" and set page_on_platform to false
-  const { readItem } = await import("@directus/sdk");
+  // Check if the option being removed is "Jobfair Package" or "Ultimate Package"
+  // and check if company still has the other package before setting page_on_platform to false
+  const { readItem, readItems } = await import("@directus/sdk");
   const { getDirectusWithToken } = await import("@/lib/directus");
   const directus = await getDirectusWithToken();
 
-  let isJobfairPackage = false;
+  let isPackageOption = false;
+  let packageOptionName: string | null = null;
   if (directus) {
     try {
       const option = await directus.request(
@@ -641,8 +643,9 @@ export async function removeOptionFromCompanyAction(companyId: string, optionId:
         })
       ) as { name?: string } | null;
 
-      if (option?.name === "Jobfair Package") {
-        isJobfairPackage = true;
+      if (option?.name === "Jobfair Package" || option?.name === "Ultimate Package") {
+        isPackageOption = true;
+        packageOptionName = option.name;
       }
     } catch (error) {
       console.error("Error fetching option name:", error);
@@ -672,9 +675,45 @@ export async function removeOptionFromCompanyAction(companyId: string, optionId:
     options: optionJunctions as unknown as Company['options']
   };
 
-  // If removing Jobfair Package, set page_on_platform to false
-  if (isJobfairPackage) {
-    updatePayload.page_on_platform = false;
+  // If removing a package option, check if company still has the other package
+  if (isPackageOption && directus) {
+    try {
+      // Get all remaining option IDs
+      const remainingOptionIds = optionJunctions
+        .map(j => j.career_event_option_id)
+        .filter(Boolean);
+
+      if (remainingOptionIds.length > 0) {
+        // Fetch all remaining options to check their names
+        const remainingOptions = await directus.request(
+          readItems("career_event_option", {
+            fields: ["id", "name"],
+            filter: {
+              id: {
+                _in: remainingOptionIds,
+              },
+            },
+          })
+        ) as Array<{ id: string; name: string }> | null;
+
+        // Check if any remaining option is a package option
+        const hasPackageOption = remainingOptions?.some(
+          opt => opt.name === "Jobfair Package" || opt.name === "Ultimate Package"
+        );
+
+        // Only set page_on_platform to false if no package option remains
+        if (!hasPackageOption) {
+          updatePayload.page_on_platform = false;
+        }
+      } else {
+        // No options remain, set page_on_platform to false
+        updatePayload.page_on_platform = false;
+      }
+    } catch (error) {
+      console.error("Error checking remaining package options:", error);
+      // If error checking, assume we should set to false to be safe
+      updatePayload.page_on_platform = false;
+    }
   }
 
   return await updateCompanyAction(companyId, updatePayload);

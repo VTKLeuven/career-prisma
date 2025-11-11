@@ -20,7 +20,22 @@ function MyEventsSection() {
   React.useEffect(() => {
     if (!user?.company?.id) return;
 
-    fetchCompanyByIdAction(user.company.id).then((c) => setCompany(c as Company ?? null));
+    fetchCompanyByIdAction(user.company.id).then((c) => {
+      if (c) {
+        setCompany(c as Company);
+        // Debug: log company options structure
+        console.log("Company options structure:", {
+          optionsCount: c.options?.length || 0,
+          firstOption: c.options?.[0] ? {
+            hasCareerEventOptionId: 'career_event_option_id' in (c.options[0] as any),
+            hasEvents: 'events' in ((c.options[0] as any)?.career_event_option_id || c.options[0] as any),
+            structure: Object.keys(c.options[0] as any),
+          } : null,
+        });
+      } else {
+        setCompany(null);
+      }
+    });
   }, [user?.company?.id]);
 
 
@@ -42,42 +57,133 @@ function MyEventsSection() {
 
   // Company's own events
   const companyEvents = React.useMemo(() => {
-  const companyOptions = company?.options ?? [];
+    const companyOptions = company?.options ?? [];
 
-  // Type guards to avoid any
-  const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
-  const hasEvent = (v: unknown): v is { event: unknown } => isRecord(v) && 'event' in v;
-  const getStringIdFromEventRef = (ref: unknown): string | null => {
-    if (typeof ref === 'string') return ref;
-    if (isRecord(ref)) {
-      const id = ref.id;
-      return typeof id === 'string' ? id : null;
-    }
-    return null;
-  };
+    // Type guards
+    const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+    const hasEvents = (v: unknown): v is { events: unknown } => isRecord(v) && 'events' in v;
+    const hasEvent = (v: unknown): v is { event: unknown } => isRecord(v) && 'event' in v;
+    
+    const getStringIdFromEventRef = (ref: unknown): string | null => {
+      if (typeof ref === 'string') return ref;
+      if (isRecord(ref)) {
+        const id = ref.id;
+        return typeof id === 'string' ? id : null;
+      }
+      return null;
+    };
 
-  // Extract event IDs from the career_event_option objects (handle multiple shapes)
-  const companyEventIds = (companyOptions as unknown[])
-      .map((opt) => {
-        if (!opt) return null;
-        if (isRecord(opt)) {
-          // Shape A: option has event directly
-          if (hasEvent(opt) && opt.event) {
-            return getStringIdFromEventRef(opt.event);
+    // Extract event from junction table entry or direct event object
+    const extractEventFromRef = (eventOrJunction: unknown): CareerEvent | null => {
+      if (!eventOrJunction || !isRecord(eventOrJunction)) return null;
+      
+      // Check if it's a junction table entry with career_event_id field
+      if ('career_event_id' in eventOrJunction) {
+        const junction = eventOrJunction as { career_event_id: CareerEvent | string | null };
+        if (junction.career_event_id) {
+          // If it's already an object (populated), return it
+          if (typeof junction.career_event_id === 'object' && junction.career_event_id !== null) {
+            return junction.career_event_id as CareerEvent;
           }
-          // Shape B: option nested under career_event_option_id
-          if ('career_event_option_id' in opt && opt.career_event_option_id) {
-            const ceo = (opt as Record<string, unknown>).career_event_option_id;
-            if (hasEvent(ceo) && ceo.event) {
-              return getStringIdFromEventRef(ceo.event);
+          // If it's just an ID string, we can't use it here (would need to fetch)
+          return null;
+        }
+      }
+      
+      // Check if it's a direct event object
+      if ('id' in eventOrJunction && 'name' in eventOrJunction) {
+        return eventOrJunction as CareerEvent;
+      }
+      
+      return null;
+    };
+
+    // Extract event IDs from the career_event_option objects (handle multiple events per option)
+    const companyEventIds = new Set<string>();
+    
+    (companyOptions as unknown[]).forEach((opt, index) => {
+      if (!opt || !isRecord(opt)) return;
+      
+      let optionWithEvents: Record<string, unknown> | null = null;
+      
+      // Shape B: option nested under career_event_option_id (junction table format from company)
+      if ('career_event_option_id' in opt && opt.career_event_option_id) {
+        const ceo = opt.career_event_option_id;
+        if (isRecord(ceo)) {
+          optionWithEvents = ceo;
+        }
+      }
+      // Shape A: option has events array directly (already normalized)
+      else if (hasEvents(opt)) {
+        optionWithEvents = opt;
+      }
+      // Shape C: option has event directly (backward compatibility)
+      else if (hasEvent(opt)) {
+        const event = extractEventFromRef(opt.event);
+        if (event?.id) {
+          companyEventIds.add(event.id);
+        }
+        return;
+      }
+      
+      if (!optionWithEvents) {
+        // Debug: log option structure that we couldn't parse
+        if (index === 0) {
+          console.log("Option structure that couldn't be parsed:", Object.keys(opt));
+        }
+        return;
+      }
+      
+      // Extract events from the option
+      if (hasEvents(optionWithEvents) && Array.isArray(optionWithEvents.events)) {
+        optionWithEvents.events.forEach((eventOrJunction: unknown) => {
+          // Handle junction table format: events might be [{ career_event_id: EventObject }]
+          const event = extractEventFromRef(eventOrJunction);
+          if (event?.id) {
+            companyEventIds.add(event.id);
+          } else {
+            // Fallback: try to get ID directly
+            const eventId = getStringIdFromEventRef(eventOrJunction);
+            if (eventId) {
+              companyEventIds.add(eventId);
+            } else if (index === 0) {
+              // Debug: log first event structure that couldn't be parsed
+              console.log("Event structure that couldn't be parsed:", eventOrJunction);
             }
           }
+        });
+      }
+      // Fallback: handle single event (backward compatibility)
+      else if (hasEvent(optionWithEvents)) {
+        const event = extractEventFromRef(optionWithEvents.event);
+        if (event?.id) {
+          companyEventIds.add(event.id);
+        } else {
+          const eventId = getStringIdFromEventRef(optionWithEvents.event);
+          if (eventId) {
+            companyEventIds.add(eventId);
+          }
         }
-        return null;
-      })
-      .filter((v): v is string => typeof v === 'string');             // remove null/undefined
+      } else if (index === 0) {
+        // Debug: log option that has no events
+        console.log("Option with no events field:", {
+          keys: Object.keys(optionWithEvents),
+          option: optionWithEvents,
+        });
+      }
+    });
 
-    return allEvents.filter((e) => companyEventIds.includes(e.id));
+    // Debug: log extracted event IDs
+    if (companyEventIds.size > 0) {
+      console.log(`Extracted ${companyEventIds.size} event IDs:`, Array.from(companyEventIds));
+    } else if (companyOptions.length > 0) {
+      console.warn("No event IDs extracted from company options", {
+        optionsCount: companyOptions.length,
+        firstOption: companyOptions[0],
+      });
+    }
+
+    return allEvents.filter((e) => companyEventIds.has(e.id));
   }, [allEvents, company]);
 
   // Upcoming events (future events sorted by date, showing first 4)

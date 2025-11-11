@@ -72,7 +72,8 @@ export type CareerEventOption = {
   name: string;
   description: string;
   price: string;
-  event: CareerEvent;
+  events?: CareerEvent[];
+  event?: CareerEvent; // Deprecated: use events instead (kept for backward compatibility)
 }
 
 export type CareerEventPage = {

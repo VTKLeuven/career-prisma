@@ -120,13 +120,41 @@ function CompaniesSection() {
           representatives: (r.representatives ?? []).map((rep) => ({ ...rep })) as Partial<CompanyRep>[],
           options: (r.options ?? []).map((opt) => {
             // Handle both direct CareerEventOption and junction table format
+            let rawOption: CareerEventOption | null = null;
             if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
               const junction = opt as { career_event_option_id: CareerEventOption | null };
-              // Preserve the full option including event
-              return junction.career_event_option_id;
+              rawOption = junction.career_event_option_id;
+            } else {
+              rawOption = opt as CareerEventOption;
             }
-            return opt as CareerEventOption;
-          }).filter((opt): opt is CareerEventOption => opt !== null && opt !== undefined),
+            
+            // Ensure we have a valid option with an ID
+            if (!rawOption || !rawOption.id) {
+              return null;
+            }
+            
+            // Create a new object to avoid mutation, preserving all fields
+            const normalizedOption: CareerEventOption = {
+              id: rawOption.id,
+              name: rawOption.name,
+              description: rawOption.description,
+              price: rawOption.price,
+            };
+            
+            // Normalize events: preserve events array if it exists, convert single event to array, or set empty array
+            if (rawOption.events && Array.isArray(rawOption.events)) {
+              // Events array exists (even if empty), preserve it
+              normalizedOption.events = rawOption.events;
+            } else if (rawOption.event) {
+              // Single event exists, convert to array
+              normalizedOption.events = [rawOption.event];
+            } else {
+              // No events, set empty array
+              normalizedOption.events = [];
+            }
+            
+            return normalizedOption;
+          }).filter((opt): opt is CareerEventOption => opt !== null && opt !== undefined && opt.id !== undefined),
         }));
         setData(mapped);
       })
@@ -149,13 +177,41 @@ function CompaniesSection() {
           representatives: (r.representatives ?? []).map((rep) => ({ ...rep })) as Partial<CompanyRep>[],
           options: (r.options ?? []).map((opt) => {
             // Handle both direct CareerEventOption and junction table format
+            let rawOption: CareerEventOption | null = null;
             if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
               const junction = opt as { career_event_option_id: CareerEventOption | null };
-              // Preserve the full option including event
-              return junction.career_event_option_id;
+              rawOption = junction.career_event_option_id;
+            } else {
+              rawOption = opt as CareerEventOption;
             }
-            return opt as CareerEventOption;
-          }).filter((opt): opt is CareerEventOption => opt !== null && opt !== undefined),
+            
+            // Ensure we have a valid option with an ID
+            if (!rawOption || !rawOption.id) {
+              return null;
+            }
+            
+            // Create a new object to avoid mutation, preserving all fields
+            const normalizedOption: CareerEventOption = {
+              id: rawOption.id,
+              name: rawOption.name,
+              description: rawOption.description,
+              price: rawOption.price,
+            };
+            
+            // Normalize events: preserve events array if it exists, convert single event to array, or set empty array
+            if (rawOption.events && Array.isArray(rawOption.events)) {
+              // Events array exists (even if empty), preserve it
+              normalizedOption.events = rawOption.events;
+            } else if (rawOption.event) {
+              // Single event exists, convert to array
+              normalizedOption.events = [rawOption.event];
+            } else {
+              // No events, set empty array
+              normalizedOption.events = [];
+            }
+            
+            return normalizedOption;
+          }).filter((opt): opt is CareerEventOption => opt !== null && opt !== undefined && opt.id !== undefined),
         }));
         setData(mapped);
       })
@@ -769,8 +825,26 @@ function CompanyOptionsTable({ company, onAddOption, onRemoveOption }: { company
       const q = String(filterValue).toLowerCase();
       const name = String(row.getValue("name") ?? "").toLowerCase();
       const description = String(row.getValue("description") ?? "").toLowerCase();
-      const eventName = String(row.original.event?.name ?? "").toLowerCase();
-      return name.includes(q) || description.includes(q) || eventName.includes(q);
+      const option = row.original;
+      // Check events (multiple events)
+      let eventNames: string[] = [];
+      if (option.events && Array.isArray(option.events)) {
+        eventNames = option.events
+          .map(event => {
+            if (typeof event === 'object' && event !== null && 'name' in event) {
+              return String(event.name).toLowerCase();
+            }
+            return null;
+          })
+          .filter((name): name is string => name !== null);
+      } else if (option.event) {
+        // Fallback for backward compatibility
+        if (typeof option.event === 'object' && 'name' in option.event) {
+          eventNames = [String(option.event.name).toLowerCase()];
+        }
+      }
+      const eventMatch = eventNames.some(eventName => eventName.includes(q));
+      return name.includes(q) || description.includes(q) || eventMatch;
     },
   });
 
@@ -910,20 +984,38 @@ function getOptionColumns(onRemoveOption: (optionId: string) => void, companyId:
     },
     {
       id: "event",
-      header: "Event",
+      header: "Events",
       cell: ({ row }) => {
         const option = row.original;
-        // Handle both direct event and nested event structure
-        let eventName = "—";
-        if (option.event) {
-          if (typeof option.event === 'object' && 'name' in option.event) {
-            eventName = String(option.event.name);
-          } else if (typeof option.event === 'string') {
-            // If event is just an ID, we can't display it without fetching
-            eventName = "—";
+        // Handle multiple events
+        if (option.events && Array.isArray(option.events) && option.events.length > 0) {
+          const eventNames = option.events
+            .map(event => {
+              if (typeof event === 'object' && event !== null && 'name' in event) {
+                return String(event.name);
+              }
+              return null;
+            })
+            .filter((name): name is string => name !== null);
+          
+          if (eventNames.length > 0) {
+            return (
+              <div className="font-medium">
+                {eventNames.length === 1 
+                  ? eventNames[0]
+                  : `${eventNames.length} events: ${eventNames.join(', ')}`
+                }
+              </div>
+            );
           }
         }
-        return <div className="font-medium">{eventName}</div>;
+        // Fallback: try to handle single event (for backward compatibility)
+        if (option.event) {
+          if (typeof option.event === 'object' && 'name' in option.event) {
+            return <div className="font-medium">{String(option.event.name)}</div>;
+          }
+        }
+        return <div className="font-medium">—</div>;
       },
     },
     {
@@ -1081,35 +1173,166 @@ function OptionFormDialog({ company, onCreate }: {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
 
-  // Fetch all events and extract all options
+  // Fetch all options directly from career_event_option collection
+  // This handles many-to-many relationships correctly in Directus
   React.useEffect(() => {
     let alive = true;
-    fetchEventsAction()
-      .then((events) => {
+    setLoading(true);
+    
+    // Import the option repository function
+    import("@/lib/repos/option")
+      .then(({ listCareerEventOptions }) => listCareerEventOptions({ limit: 1000 }))
+      .then((options) => {
         if (!alive) return;
-        // Extract all options from all events
-        const options: CareerEventOption[] = [];
-        (events ?? []).forEach((event: CareerEvent) => {
-          if (event.options) {
-            event.options.forEach((option) => {
-              options.push({
-                ...option,
-                event: event,
+        
+        if (!options || options.length === 0) {
+          console.warn("No options found. Trying alternative method through events...");
+          // Fallback: try fetching through events
+          return fetchEventsAction().then((events) => {
+            if (!alive) return null;
+            const optionsMap = new Map<string, CareerEventOption>();
+            
+            (events ?? []).forEach((event: CareerEvent) => {
+              // Handle junction table structure: options might be an array of junction objects
+              let eventOptions: CareerEventOption[] = [];
+              
+              if (event.options && Array.isArray(event.options)) {
+                eventOptions = event.options.map((opt: unknown) => {
+                  // Check if it's a junction table entry
+                  if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
+                    const junction = opt as { career_event_option_id: CareerEventOption | null };
+                    return junction.career_event_option_id;
+                  }
+                  // Direct option
+                  return opt as CareerEventOption;
+                }).filter((opt): opt is CareerEventOption => opt !== null && opt !== undefined && opt.id !== undefined);
+              }
+              
+              eventOptions.forEach((option) => {
+                const optionId = option.id;
+                if (!optionId) return;
+                
+                if (optionsMap.has(optionId)) {
+                  // Option exists, add event to its events array
+                  const existingOption = optionsMap.get(optionId)!;
+                  if (!existingOption.events) {
+                    existingOption.events = [];
+                  }
+                  // Check if event already in array
+                  const hasEvent = existingOption.events.some(e => e.id === event.id);
+                  if (!hasEvent) {
+                    existingOption.events.push(event);
+                  }
+                } else {
+                  // New option
+                  const newOption: CareerEventOption = {
+                    id: option.id,
+                    name: option.name,
+                    description: option.description,
+                    price: option.price,
+                    events: [event],
+                  };
+                  optionsMap.set(optionId, newOption);
+                }
               });
             });
+            
+            return Array.from(optionsMap.values());
+          });
+        }
+        
+        // Normalize options: ensure events array is properly structured
+        // In Directus many-to-many, events come as array of junction table entries
+        return options.map((option: any) => {
+          const normalized: CareerEventOption = {
+            id: option.id,
+            name: option.name,
+            description: option.description,
+            price: option.price,
+            events: [],
+          };
+          
+          // Handle events - could be in junction table format or direct
+          if (option.events && Array.isArray(option.events) && option.events.length > 0) {
+            // Events might be in junction table format
+            normalized.events = option.events
+              .map((eventOrJunction: unknown) => {
+                if (!eventOrJunction || typeof eventOrJunction !== 'object') {
+                  return null;
+                }
+                
+                // Check if it's a junction table entry with career_event_id field
+                if ('career_event_id' in eventOrJunction) {
+                  const junction = eventOrJunction as { career_event_id: CareerEvent | string | null };
+                  if (junction.career_event_id) {
+                    // If it's already an object (populated), return it
+                    if (typeof junction.career_event_id === 'object' && junction.career_event_id !== null) {
+                      return junction.career_event_id as CareerEvent;
+                    }
+                    // If it's just an ID string, we can't use it here (would need to fetch)
+                    return null;
+                  }
+                }
+                
+                // Check if it's a direct event object
+                if ('id' in eventOrJunction && 'name' in eventOrJunction) {
+                  return eventOrJunction as CareerEvent;
+                }
+                
+                return null;
+              })
+              .filter((e: CareerEvent | null | undefined): e is CareerEvent => e !== null && e !== undefined);
+          } else if (option.event) {
+            // Fallback: single event (backward compatibility)
+            if (typeof option.event === 'object' && option.event !== null) {
+              normalized.events = [option.event as CareerEvent];
+            }
           }
-        });
-        setAllOptions(options);
+          
+          return normalized;
+        }).filter((opt): opt is CareerEventOption => opt !== null && opt.id !== undefined);
       })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .then((options) => {
+        if (!alive) return;
+        if (options) {
+          setAllOptions(options);
+          if (options.length === 0) {
+            console.warn("No options found after normalization");
+          } else {
+            console.log(`Loaded ${options.length} options`);
+            // Log first option structure for debugging
+            if (options[0]) {
+              console.log("Sample option structure:", {
+                id: options[0].id,
+                name: options[0].name,
+                hasEvents: !!options[0].events,
+                eventsCount: options[0].events?.length || 0,
+                eventsStructure: options[0].events?.[0] ? Object.keys(options[0].events[0]) : null,
+              });
+            }
+          }
+        } else {
+          setAllOptions([]);
+        }
+      })
+      .catch((error) => {
+        console.error("Error fetching options:", error);
+        setAllOptions([]);
+      })
+      .finally(() => {
+        if (alive) {
+          setLoading(false);
+        }
+      });
+    
     return () => { alive = false; };
   }, []);
 
   // Filter out options that the company already has
   const availableOptions = React.useMemo(() => {
-    const companyOptionIds = new Set((company.options ?? []).map(opt => opt.id));
-    return allOptions.filter(opt => !companyOptionIds.has(opt.id));
+    const companyOptionIds = new Set((company.options ?? []).map(opt => opt?.id).filter((id): id is string => !!id));
+    const filtered = allOptions.filter(opt => opt?.id && !companyOptionIds.has(opt.id));
+    return filtered;
   }, [allOptions, company.options]);
 
   // Filter options based on search query
@@ -1118,12 +1341,36 @@ function OptionFormDialog({ company, onCreate }: {
     const query = searchQuery.toLowerCase();
     return availableOptions.filter(opt => {
       const priceStr = typeof opt.price === 'string' ? opt.price : String(opt.price ?? '');
-      return (
-        opt.name.toLowerCase().includes(query) ||
-        opt.event?.name?.toLowerCase().includes(query) ||
-        (opt.description && stripHtml(opt.description).toLowerCase().includes(query)) ||
-        priceStr.toLowerCase().includes(query)
-      );
+      
+      // Check option name
+      if (opt.name.toLowerCase().includes(query)) return true;
+      
+      // Check description
+      if (opt.description && stripHtml(opt.description).toLowerCase().includes(query)) return true;
+      
+      // Check price
+      if (priceStr.toLowerCase().includes(query)) return true;
+      
+      // Check events (multiple events)
+      if (opt.events && Array.isArray(opt.events)) {
+        const eventNames = opt.events
+          .map(event => {
+            if (typeof event === 'object' && event !== null && 'name' in event) {
+              return String(event.name).toLowerCase();
+            }
+            return null;
+          })
+          .filter((name): name is string => name !== null);
+        if (eventNames.some(name => name.includes(query))) return true;
+      }
+      // Fallback: check single event (backward compatibility)
+      else if (opt.event) {
+        if (typeof opt.event === 'object' && 'name' in opt.event) {
+          if (String(opt.event.name).toLowerCase().includes(query)) return true;
+        }
+      }
+      
+      return false;
     });
   }, [availableOptions, searchQuery]);
 
@@ -1149,7 +1396,27 @@ function OptionFormDialog({ company, onCreate }: {
   const handleOptionSelect = (option: CareerEventOption) => {
     setSelectedOptionId(option.id);
     const priceStr = typeof option.price === 'string' ? option.price : String(option.price ?? '');
-    setSearchQuery(`${option.name} - ${option.event?.name} (${priceStr})`);
+    // Handle multiple events
+    let eventDisplay = '';
+    if (option.events && Array.isArray(option.events) && option.events.length > 0) {
+      const eventNames = option.events
+        .map(event => {
+          if (typeof event === 'object' && event !== null && 'name' in event) {
+            return String(event.name);
+          }
+          return null;
+        })
+        .filter((name): name is string => name !== null);
+      eventDisplay = eventNames.length > 0 
+        ? (eventNames.length === 1 ? eventNames[0] : `${eventNames.length} events`)
+        : '';
+    } else if (option.event) {
+      // Fallback for backward compatibility
+      if (typeof option.event === 'object' && 'name' in option.event) {
+        eventDisplay = String(option.event.name);
+      }
+    }
+    setSearchQuery(eventDisplay ? `${option.name} - ${eventDisplay} (${priceStr})` : `${option.name} (${priceStr})`);
     setShowDropdown(false);
   };
 
@@ -1199,6 +1466,8 @@ function OptionFormDialog({ company, onCreate }: {
             <Label htmlFor="option" className="text-xs">Option*</Label>
             {loading ? (
               <div className="text-sm text-muted-foreground">Loading options...</div>
+            ) : allOptions.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No options found. Please check that events have options configured.</div>
             ) : availableOptions.length === 0 ? (
               <div className="text-sm text-muted-foreground">No available options. All options are already assigned to this company.</div>
             ) : (
@@ -1236,7 +1505,31 @@ function OptionFormDialog({ company, onCreate }: {
                           >
                             <div className="font-medium truncate">{option.name}</div>
                             <div className="text-xs text-muted-foreground truncate">
-                              {option.event?.name} - {priceStr}
+                              {(() => {
+                                // Handle multiple events
+                                if (option.events && Array.isArray(option.events) && option.events.length > 0) {
+                                  const eventNames = option.events
+                                    .map(event => {
+                                      if (typeof event === 'object' && event !== null && 'name' in event) {
+                                        return String(event.name);
+                                      }
+                                      return null;
+                                    })
+                                    .filter((name): name is string => name !== null);
+                                  if (eventNames.length > 0) {
+                                    return eventNames.length === 1 
+                                      ? `${eventNames[0]} - ${priceStr}`
+                                      : `${eventNames.length} events - ${priceStr}`;
+                                  }
+                                }
+                                // Fallback for backward compatibility
+                                if (option.event) {
+                                  if (typeof option.event === 'object' && 'name' in option.event) {
+                                    return `${String(option.event.name)} - ${priceStr}`;
+                                  }
+                                }
+                                return priceStr;
+                              })()}
                             </div>
                           </div>
                         );

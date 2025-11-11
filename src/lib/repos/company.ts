@@ -33,7 +33,8 @@ export async function listCompanies(opts?: {
           "options.career_event_option_id.name",
           "options.career_event_option_id.description",
           "options.career_event_option_id.price",
-          "options.career_event_option_id.event.*",
+          "options.career_event_option_id.events.*",
+          "options.career_event_option_id.event.*", // Fallback for backward compatibility
         ],
         limit,
         page,
@@ -65,7 +66,8 @@ export async function getCompanyById(id: string, usePublic = false) {
           "options.career_event_option_id.name",
           "options.career_event_option_id.description",
           "options.career_event_option_id.price",
-          "options.career_event_option_id.event.*",
+          "options.career_event_option_id.events.*",
+          "options.career_event_option_id.event.*", // Fallback for backward compatibility
         ],
       })
     ) as unknown as Company;
