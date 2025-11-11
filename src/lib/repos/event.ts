@@ -16,7 +16,17 @@ export async function listEvents(opts?: {
     const { search, limit = 25, page = 1, sort = "date" } = opts ?? {};
     return directus.request(
       readItems("career_event", {
-        fields: ["*", "*.*"],
+        fields: [
+          "*",
+          // Try both possible junction table structures for many-to-many
+          "options.career_event_option_id.*",
+          "options.career_event_option_id.id",
+          "options.career_event_option_id.name",
+          "options.career_event_option_id.description",
+          "options.career_event_option_id.price",
+          "options.career_event_option_id.events.*",
+          "options.career_event_option_id.event.*",
+        ],
         limit,
         page,
         sort,
