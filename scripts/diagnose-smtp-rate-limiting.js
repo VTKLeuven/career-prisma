@@ -11,7 +11,54 @@
  * Usage: node scripts/diagnose-smtp-rate-limiting.js
  */
 
-require('dotenv').config({ path: '.env.local' });
+const fs = require('fs');
+const path = require('path');
+
+// Load .env.local file manually (no dotenv dependency needed)
+function loadEnvFile() {
+  const envPath = path.join(process.cwd(), '.env.local');
+  
+  if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    const lines = envContent.split('\n');
+    
+    for (const line of lines) {
+      // Skip comments and empty lines
+      const trimmedLine = line.trim();
+      if (!trimmedLine || trimmedLine.startsWith('#')) {
+        continue;
+      }
+      
+      // Parse KEY=VALUE format
+      const equalIndex = trimmedLine.indexOf('=');
+      if (equalIndex > 0) {
+        const key = trimmedLine.substring(0, equalIndex).trim();
+        let value = trimmedLine.substring(equalIndex + 1).trim();
+        
+        // Remove quotes if present
+        if ((value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1);
+        }
+        
+        // Only set if not already in process.env (env vars take precedence)
+        if (!process.env[key]) {
+          process.env[key] = value;
+        }
+      }
+    }
+  } else {
+    console.log('Note: .env.local file not found. Using environment variables only.\n');
+  }
+}
+
+// Try to load dotenv if available, otherwise use manual parsing
+try {
+  require('dotenv').config({ path: '.env.local' });
+} catch (e) {
+  // dotenv not available, use manual parsing
+  loadEnvFile();
+}
 
 console.log('=== SMTP Rate Limiting Diagnostic Tool ===\n');
 
