@@ -3,9 +3,13 @@
 import { listCompanies, getCompanyById, createCompany, updateCompany } from "@/lib/repos/company";
 import { createRep, updateRep, waitForApproval, deleteUser, fetchPendingApprovalRequests, type PendingApprovalRequest } from "@/lib/repos/users";
 import { Company, CompanyRep, CareerEventOption } from "@/lib/schema";
-import { uploadDirectusFile } from "@/lib/repos/directus";
+import { uploadDirectusFile, sendEmail } from "@/lib/repos/directus";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { cookies } from "next/headers";
+import { fetchMastersAction } from "@/app/actions/features";
+import { generateCompanyPageRequestEmailHtml } from "@/lib/email-templates";
+import { fetchSalespersonsAction } from "@/app/actions/salespeople";
+import { DirectusUser } from "@directus/sdk";
 
 
 
@@ -157,11 +161,6 @@ export async function fetchCompanyBySlugAction(slug: string): Promise<Company | 
 }
 
 export async function createCompanyAction(companyPayload: Partial<Company>, repPayload?: Partial<CompanyRep>) {
-  // Ensure new companies start unpublished
-  const payloadWithStatus = {
-    ...companyPayload,
-    page_on_platform: false,
-  };
 
   if (repPayload && (repPayload.email || repPayload.first_name || repPayload.last_name)) {
     const newRep = await createRep(repPayload);
@@ -188,7 +187,7 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
 
     // Create a mutable payload with representatives as string array for the API
     const payload = {
-      ...payloadWithStatus,
+      ...companyPayload,
       representatives: [repIdForCompany] as unknown as CompanyRep[]
     };
 
@@ -248,7 +247,7 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
 
     return createdCompany;
   }
-  return await createCompany(payloadWithStatus);
+  return await createCompany(companyPayload);
 }
 
 export async function createCompanyRepAction(companyId: string, repPayload: Partial<CompanyRep>) {
@@ -515,26 +514,45 @@ export async function updateCompanyAction(
   id: string,
   payload: Partial<Company>
 ): Promise<Company | null> {
-  // Fetch current company to check if info is complete
-  const currentCompany = await fetchCompanyByIdAction(id);
-  if (!currentCompany) {
-    return null;
-  }
-
-  // Merge payload with current company to check completeness
-  const updatedCompany = { ...currentCompany, ...payload } as Company;
-
-  // Check if company info is now complete
-  const isComplete = isCompanyInfoComplete(updatedCompany);
-
-  // Update payload with page_on_platform status
-  const payloadWithStatus = {
-    ...payload,
-    page_on_platform: isComplete,
-  };
-
-  const res = await updateCompany(id, payloadWithStatus);
+  const res = await updateCompany(id, payload);
   return res as Company | null;
+}
+
+export async function setupCompanyAction(
+  companyId: string,
+  payload: Partial<Company>,
+  selectedMasters: string[]
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Fetch masters to get full master objects
+    const masters = await fetchMastersAction();
+    
+    // Build category payload from selected master IDs
+    const categoryPayload = masters
+      .filter((m) => selectedMasters.includes(m.id))
+      .map((m) => ({ master_id: m.id }));
+
+    // Update company with all fields and set status to published
+    const updatePayload: Partial<Company> = {
+      ...payload,
+      category: categoryPayload as unknown as Company['category'],
+      status: "published",
+    };
+
+    const updated = await updateCompanyAction(companyId, updatePayload);
+    
+    if (!updated) {
+      return { success: false, error: "Failed to update company" };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error setting up company:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
 }
 
 export async function uploadCompanyLogo(file: File) {
@@ -1024,6 +1042,555 @@ export async function approveRepRequestAction(
     return { 
       success: false, 
       error: error instanceof Error ? error.message : "Unknown error" 
+    };
+  }
+}
+
+export async function requestCompanyPageAction(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const user = await getUserFromCookies();
+    if (!user || !user.company) {
+      return { success: false, error: "User not authenticated or no company associated" };
+    }
+
+    const company = await fetchCompanyByIdAction(user.company.id);
+    if (!company) {
+      return { success: false, error: "Company not found" };
+    }
+
+    // Check if company already has a page
+    if (company.page_on_platform) {
+      return { success: false, error: "Company already has a page on the platform" };
+    }
+
+    // Get salesperson email
+    let salespersonEmail: string | null = null;
+    let salespersonName: string = "Salesperson";
+
+    if (company.salesperson) {
+      const baseUrl = process.env.DIRECTUS_URL;
+      if (!baseUrl) {
+        return { success: false, error: "DIRECTUS_URL not configured" };
+      }
+
+      const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
+      const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
+      
+      if (!serverToken) {
+        return { success: false, error: "Server configuration error" };
+      }
+
+      const salespersonId = typeof company.salesperson === "string" 
+        ? company.salesperson 
+        : company.salesperson.id;
+
+      try {
+        const salespersonRes = await fetch(
+          `${normalizedBase}users/${salespersonId}?fields=id,email,first_name,last_name`,
+          {
+            headers: {
+              "Authorization": `Bearer ${serverToken}`,
+            },
+          }
+        );
+
+        if (salespersonRes.ok) {
+          const salespersonData = await salespersonRes.json();
+          const salesperson = salespersonData.data;
+          salespersonEmail = salesperson.email;
+          salespersonName = [salesperson.first_name, salesperson.last_name]
+            .filter(Boolean)
+            .join(" ") || "Salesperson";
+        }
+      } catch (err) {
+        console.error("Error fetching salesperson:", err);
+      }
+    }
+
+    if (!salespersonEmail) {
+      return { success: false, error: "Salesperson email not found" };
+    }
+
+    // Get requester info
+    const requesterName = user.name || user.email;
+    const requesterEmail = user.email;
+
+    // Generate email HTML
+    const emailHtml = generateCompanyPageRequestEmailHtml({
+      companyName: company.name,
+      requesterName,
+      requesterEmail,
+      salespersonName,
+    });
+
+    // Send email to salesperson
+    await sendEmail({
+      to: salespersonEmail,
+      subject: `Company Page Request: ${company.name}`,
+      html: emailHtml,
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error in requestCompanyPageAction:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+/**
+ * Check if a company exists by name (case-insensitive)
+ */
+async function companyExistsByName(name: string): Promise<boolean> {
+  try {
+    const companies = await listCompanies({ limit: 1000, sort: "name" });
+    if (!companies) return false;
+    
+    const normalizedName = name.trim().toLowerCase();
+    return companies.some((c: Company) => c.name?.trim().toLowerCase() === normalizedName);
+  } catch (error) {
+    console.error("Error checking if company exists:", error);
+    return false;
+  }
+}
+
+/**
+ * Parse CSV content into array of objects
+ * Handles quoted fields and commas within quoted values
+ */
+function parseCSV(csvContent: string): Record<string, string>[] {
+  const lines = csvContent.split(/\r?\n/).filter(line => line.trim());
+  if (lines.length === 0) return [];
+
+  // Simple CSV parser that handles quoted fields
+  function parseCSVLine(line: string): string[] {
+    const values: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      const nextChar = line[i + 1];
+      
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          // Escaped quote
+          current += '"';
+          i++; // Skip next quote
+        } else {
+          // Toggle quote state
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        // End of field
+        values.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    
+    // Add last field
+    values.push(current.trim());
+    return values;
+  }
+
+  // Parse header
+  const headers = parseCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, ''));
+  
+  // Parse data rows, filtering out empty rows
+  const rows: Record<string, string>[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCSVLine(lines[i]).map(v => v.replace(/^"|"$/g, ''));
+    if (values.length !== headers.length) continue;
+    
+    // Skip if row is empty or all values are empty
+    if (values.every(v => !v || v.trim() === '')) {
+      continue;
+    }
+    
+    const row: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      row[header] = values[index] || '';
+    });
+    rows.push(row);
+  }
+  
+  return rows;
+}
+
+/**
+ * Parse Excel file content into array of objects
+ */
+async function parseExcel(fileBuffer: ArrayBuffer): Promise<Record<string, string>[]> {
+  try {
+    const XLSX = await import('xlsx');
+    const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+    
+    // Get the first sheet
+    const firstSheetName = workbook.SheetNames[0];
+    if (!firstSheetName) return [];
+    
+    const worksheet = workbook.Sheets[firstSheetName];
+    
+    // Convert to JSON with header row
+    const rows = XLSX.utils.sheet_to_json(worksheet, { 
+      header: 1,
+      defval: '' // Default value for empty cells
+    }) as unknown[][];
+    
+    if (rows.length === 0) return [];
+    
+    // First row is headers
+    const headers = rows[0].map(h => String(h).trim());
+    
+    // Convert rows to objects, filtering out empty rows
+    const result: Record<string, string>[] = [];
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      // Skip if row is empty or all values are empty
+      if (!row || row.length === 0 || row.every(cell => !cell || String(cell).trim() === '')) {
+        continue;
+      }
+      
+      const rowObj: Record<string, string> = {};
+      headers.forEach((header, index) => {
+        rowObj[header] = row[index] ? String(row[index]).trim() : '';
+      });
+      result.push(rowObj);
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Error parsing Excel file:', error);
+    throw new Error('Failed to parse Excel file');
+  }
+}
+
+/**
+ * Find salesperson by name (case-insensitive, supports "First Last" or "First Middle Last")
+ */
+function findSalespersonByName(salespersons: DirectusUser[], name: string): string | null {
+  const normalizedName = name.trim().toLowerCase();
+  const nameParts = normalizedName.split(/\s+/).filter(p => p.length > 0);
+  
+  if (nameParts.length === 0) {
+    return null;
+  }
+  
+  for (const salesperson of salespersons) {
+    const firstName = (salesperson.first_name || '').trim().toLowerCase();
+    const lastName = (salesperson.last_name || '').trim().toLowerCase();
+    
+    if (!firstName && !lastName) {
+      continue;
+    }
+    
+    // Exact match: "First Last" === "first last"
+    const fullName = `${firstName} ${lastName}`.trim();
+    if (fullName === normalizedName) {
+      return salesperson.id;
+    }
+    
+    // Match by first and last name parts (ignore middle names)
+    // "John Middle Doe" matches "John Doe"
+    if (nameParts.length >= 2) {
+      const inputFirst = nameParts[0];
+      const inputLast = nameParts[nameParts.length - 1];
+      
+      if (firstName === inputFirst && lastName === inputLast) {
+        return salesperson.id;
+      }
+    }
+    
+    // Match by first name only (if only one part provided)
+    if (nameParts.length === 1 && firstName === nameParts[0]) {
+      return salesperson.id;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Map CSV/Excel row to company payload
+ * Expected columns (CSV or Excel):
+ * - companyName (required)
+ * - salesperson (required) - should be salesperson name (e.g., "John Doe" or "John")
+ * - vatNumber (optional)
+ * - firstName (optional)
+ * - lastName (optional)
+ * - email (optional)
+ * - street (optional)
+ * - number (optional)
+ * - zip (optional)
+ * - city (optional)
+ * - country (optional, defaults to BE)
+ */
+function mapCSVRowToCompany(
+  row: Record<string, string>,
+  salespersonNameToId: (name: string) => string | null
+): {
+  company: Partial<Company>;
+  rep?: Partial<CompanyRep>;
+  salespersonError?: string;
+} | null {
+  const companyName = row['companyName']?.trim();
+  const salespersonName = row['salesperson']?.trim();
+  
+  // Required fields
+  if (!companyName || !salespersonName) {
+    return null;
+  }
+
+  // Resolve salesperson name to ID
+  const salespersonId = salespersonNameToId(salespersonName);
+  if (!salespersonId) {
+    return {
+      company: { name: companyName } as Partial<Company>,
+      salespersonError: `Salesperson "${salespersonName}" not found`,
+    };
+  }
+
+  const company: Partial<Company> = {
+    name: companyName,
+    salesperson: salespersonId,
+    VAT: row['vatNumber']?.trim() || undefined,
+    address_street: row['street']?.trim() || undefined,
+    address_number: row['number']?.trim() || undefined,
+    address_zip: row['zip']?.trim() || undefined,
+    address_city: row['city']?.trim() || undefined,
+    address_country: row['country']?.trim() || 'BE',
+  };
+
+  // Optional representative
+  let rep: Partial<CompanyRep> | undefined = undefined;
+  const firstName = row['firstName']?.trim();
+  const lastName = row['lastName']?.trim();
+  const email = row['email']?.trim();
+  
+  if (firstName || lastName || email) {
+    rep = {
+      first_name: firstName || undefined,
+      last_name: lastName || undefined,
+      email: email || undefined,
+      role: "d5475bf4-a77f-48de-b06c-fac199b0f631",
+      status: "invited",
+    };
+  }
+
+  return { company, rep };
+}
+
+/**
+ * Process CSV or Excel file and create companies
+ * Returns summary of created/skipped companies with detailed information
+ */
+export async function processCompaniesCSVAction(formData: FormData): Promise<{
+  success: boolean;
+  created: number;
+  skipped: number;
+  errors: string[];
+  skippedCompanies: string[];
+  createdCompanies: string[];
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const file = formData.get('file') as File | null;
+    if (!file) {
+      return {
+        success: false,
+        created: 0,
+        skipped: 0,
+        errors: [],
+        skippedCompanies: [],
+        createdCompanies: [],
+        error: "No file provided",
+      };
+    }
+
+    const fileName = file.name.toLowerCase();
+    const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+    const isCSV = fileName.endsWith('.csv');
+
+    if (!isExcel && !isCSV) {
+      return {
+        success: false,
+        created: 0,
+        skipped: 0,
+        errors: [],
+        skippedCompanies: [],
+        createdCompanies: [],
+        error: "Unsupported file format. Please upload a CSV or Excel file (.csv, .xlsx, .xls)",
+      };
+    }
+
+    let rows: Record<string, string>[] = [];
+
+    try {
+      if (isExcel) {
+        // Parse Excel file
+        const arrayBuffer = await file.arrayBuffer();
+        rows = await parseExcel(arrayBuffer);
+      } else {
+        // Parse CSV file
+        const csvContent = await file.text();
+        rows = parseCSV(csvContent);
+      }
+    } catch (parseError) {
+      console.error("Error parsing file:", parseError);
+      return {
+        success: false,
+        created: 0,
+        skipped: 0,
+        errors: [],
+        skippedCompanies: [],
+        createdCompanies: [],
+        error: `Failed to parse file: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`,
+      };
+    }
+
+    if (rows.length === 0) {
+      return {
+        success: false,
+        created: 0,
+        skipped: 0,
+        errors: [],
+        skippedCompanies: [],
+        createdCompanies: [],
+        error: "File is empty or invalid",
+      };
+    }
+
+    // Fetch salespersons to create name-to-ID mapping
+    let salespersons: DirectusUser[] = [];
+    try {
+      salespersons = await fetchSalespersonsAction() ?? [];
+    } catch (error) {
+      console.error("Error fetching salespersons:", error);
+      return {
+        success: false,
+        created: 0,
+        skipped: 0,
+        errors: [],
+        skippedCompanies: [],
+        createdCompanies: [],
+        error: `Failed to fetch salespersons: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+    }
+
+    const salespersonNameToId = (name: string) => findSalespersonByName(salespersons, name);
+
+    let created = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+    const skippedCompanies: string[] = [];
+    const createdCompanies: string[] = [];
+
+    // Fetch all existing companies once to avoid multiple queries
+    let existingCompanies: Company[] = [];
+    try {
+      existingCompanies = (await listCompanies({ limit: 10000, sort: "name" })) ?? [];
+    } catch (error) {
+      console.error("Error fetching existing companies:", error);
+      // Continue anyway, but we'll check individually which is slower
+    }
+
+    const existingCompanyNames = new Set(
+      existingCompanies.map(c => c.name?.trim().toLowerCase()).filter(Boolean)
+    );
+
+    // Process each row with better error handling
+    const BATCH_SIZE = 50; // Process in batches to avoid timeout
+    for (let batchStart = 0; batchStart < rows.length; batchStart += BATCH_SIZE) {
+      const batchEnd = Math.min(batchStart + BATCH_SIZE, rows.length);
+      const batch = rows.slice(batchStart, batchEnd);
+
+      for (let i = 0; i < batch.length; i++) {
+        const rowIndex = batchStart + i;
+        const row = batch[i];
+        
+        try {
+          const mapped = mapCSVRowToCompany(row, salespersonNameToId);
+          
+          if (!mapped) {
+            errors.push(`Row ${rowIndex + 2}: Missing required fields (companyName, salesperson)`);
+            continue;
+          }
+
+          // Check for salesperson resolution error
+          if (mapped.salespersonError) {
+            const companyName = mapped.company.name || `Row ${rowIndex + 2}`;
+            errors.push(`Row ${rowIndex + 2} (${companyName}): ${mapped.salespersonError}`);
+            continue;
+          }
+
+          const { company, rep } = mapped;
+          const companyName = company.name!;
+
+          // Check if company already exists (use cache first)
+          const normalizedCompanyName = companyName.trim().toLowerCase();
+          let companyExists = existingCompanyNames.has(normalizedCompanyName);
+          
+          // If not found in cache and we haven't loaded all companies, check individually
+          // This is a fallback for very large datasets
+          if (!companyExists) {
+            companyExists = await companyExistsByName(companyName);
+            if (companyExists) {
+              existingCompanyNames.add(normalizedCompanyName);
+            }
+          }
+
+          if (companyExists) {
+            skipped++;
+            skippedCompanies.push(companyName);
+            continue;
+          }
+
+          // Create company
+          try {
+            await createCompanyAction(company, rep);
+            created++;
+            createdCompanies.push(companyName);
+            // Add to existing set to avoid duplicate checks
+            existingCompanyNames.add(companyName.trim().toLowerCase());
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            errors.push(`Row ${rowIndex + 2} (${companyName}): ${errorMsg}`);
+          }
+        } catch (error) {
+          errors.push(`Row ${rowIndex + 2}: Unexpected error - ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+
+      // Small delay between batches to avoid overwhelming the server
+      if (batchEnd < rows.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+
+    return {
+      success: true,
+      created,
+      skipped,
+      errors,
+      skippedCompanies,
+      createdCompanies,
+      message: `Successfully created ${created} companies, skipped ${skipped} duplicates.`,
+    };
+  } catch (error) {
+    console.error("Error processing file:", error);
+    return {
+      success: false,
+      created: 0,
+      skipped: 0,
+      errors: [],
+      skippedCompanies: [],
+      createdCompanies: [],
+      error: error instanceof Error ? error.message : "Unknown error processing file",
     };
   }
 }

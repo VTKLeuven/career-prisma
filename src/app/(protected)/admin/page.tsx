@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { fetchCompaniesAction, createCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, removeUserFromCompanyAction } from "@/app/actions/companies";
+import { fetchCompaniesAction, createCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, removeUserFromCompanyAction, processCompaniesCSVAction } from "@/app/actions/companies";
 import { fetchEventsAction } from "@/app/actions/events";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -18,7 +18,7 @@ import {
   VisibilityState,
 }
 from "@tanstack/react-table";
-import { ChevronDown, MoreHorizontal, X } from "lucide-react";
+import { ChevronDown, MoreHorizontal, Upload, X } from "lucide-react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
@@ -105,6 +105,34 @@ function CompaniesSection() {
   const [rowSelection, setRowSelection] = React.useState({});
   const [selectedCompany, setSelectedCompany] = React.useState<CompanyRow | null>(null);
   const [viewMode, setViewMode] = React.useState<"companies" | "users" | "options">("companies");
+
+  const refreshCompanies = React.useCallback(() => {
+    setLoading(true);
+    fetchCompaniesAction()
+      .then((rows) => {
+        // Normalize representatives to Partial<CompanyRep>[]
+        const mapped: CompanyRow[] = (rows ?? []).map((r: Company) => ({
+          id: r.id,
+          name: r.name,
+          VAT: r.VAT ?? "",
+          address: r.address ?? formatAddress(r),
+          salesperson: r.salesperson ?? "",
+          representatives: (r.representatives ?? []).map((rep) => ({ ...rep })) as Partial<CompanyRep>[],
+          options: (r.options ?? []).map((opt) => {
+            // Handle both direct CareerEventOption and junction table format
+            if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
+              const junction = opt as { career_event_option_id: CareerEventOption | null };
+              // Preserve the full option including event
+              return junction.career_event_option_id;
+            }
+            return opt as CareerEventOption;
+          }).filter((opt): opt is CareerEventOption => opt !== null && opt !== undefined),
+        }));
+        setData(mapped);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
 
   React.useEffect(() => {
     let alive = true;
@@ -259,7 +287,10 @@ function CompaniesSection() {
                 </SelectContent>
               </Select>
 
-              <CompanyFormDialog onCreate={(newRow) => setData(prev => [newRow, ...prev])} />
+              <CompanyFormDialog 
+                onCreate={(newRow) => setData(prev => [newRow, ...prev])} 
+                onRefresh={refreshCompanies}
+              />
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -1239,8 +1270,21 @@ function OptionFormDialog({ company, onCreate }: {
 }
 
 /** Add Company Dialog (controlled) -- unchanged aside from typing */
-function CompanyFormDialog({ onCreate }: { onCreate: (row: CompanyRow) => void }) {
+function CompanyFormDialog({ onCreate, onRefresh }: { onCreate: (row: CompanyRow) => void; onRefresh?: () => void }) {
   const [open, setOpen] = React.useState(false);
+  const [csvUploadOpen, setCsvUploadOpen] = React.useState(false);
+  const [uploading, setUploading] = React.useState(false);
+  const [uploadResult, setUploadResult] = React.useState<{
+    success: boolean;
+    created: number;
+    skipped: number;
+    errors: string[];
+    skippedCompanies?: string[];
+    createdCompanies?: string[];
+    message?: string;
+    error?: string;
+  } | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   // Because shadcn Select is not a native select, keep a local state so it lands in FormData-equivalent
   const [salesperson, setSalesperson] = React.useState<string>("");
   const [salespersons, setSalespersons] = React.useState<DirectusUser[]>([]);
@@ -1313,19 +1357,78 @@ function CompanyFormDialog({ onCreate }: { onCreate: (row: CompanyRow) => void }
     console.log({ companyName, vat, firstName, lastName, email, salesperson, street, number, zip, city, country });
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setUploadResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const result = await processCompaniesCSVAction(formData);
+      setUploadResult(result);
+      
+      // Refresh the companies list if any companies were created
+      if (result.success && result.created > 0 && onRefresh) {
+        onRefresh();
+      }
+    } catch (error) {
+      setUploadResult({
+        success: false,
+        created: 0,
+        skipped: 0,
+        errors: [],
+        skippedCompanies: [],
+        createdCompanies: [],
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button className="ml-auto" variant="outline">
-          <IconPlus /> Add Company
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto">
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
-          <DialogHeader>
-            <DialogTitle>Add a New Company</DialogTitle>
-            <DialogDescription>Fill in the company details below.</DialogDescription>
-          </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <Button className="ml-auto" variant="outline">
+            <IconPlus /> Add Company
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto" showCloseButton={false}>
+          <div className="absolute top-4 right-4 flex gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setCsvUploadOpen(true)}
+              className="h-8 w-8 p-0"
+              title="Upload CSV/Excel"
+            >
+              <Upload size={16} />
+            </Button>
+            <DialogClose asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+              >
+                <X size={16} />
+              </Button>
+            </DialogClose>
+          </div>
+          <form onSubmit={onSubmit} className="flex flex-col gap-4">
+            <DialogHeader>
+              <DialogTitle>Add a New Company</DialogTitle>
+              <DialogDescription>Fill in the company details below.</DialogDescription>
+            </DialogHeader>
 
           {/* Company name */}
           <div className="w-full">
@@ -1472,6 +1575,173 @@ function CompanyFormDialog({ onCreate }: { onCreate: (row: CompanyRow) => void }
         </form>
       </DialogContent>
     </Dialog>
+
+    {/* CSV Upload Dialog */}
+    <Dialog open={csvUploadOpen} onOpenChange={setCsvUploadOpen}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Upload Companies (CSV/Excel)</DialogTitle>
+          <DialogDescription>
+            Upload a CSV or Excel file with company data. Column names should match the form field names.
+            Required columns: companyName, salesperson (salesperson name, e.g., "John Doe").
+            Optional columns: vatNumber, firstName, lastName, email, street, number, zip, city, country.
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="flex flex-col gap-4 flex-1 overflow-hidden">
+          <div>
+            <Label htmlFor="csvFile" className="text-sm font-medium">
+              Select File
+            </Label>
+            <Input
+              id="csvFile"
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              onChange={handleFileUpload}
+              ref={fileInputRef}
+              disabled={uploading}
+              className="mt-2"
+            />
+          </div>
+
+          {uploading && (
+            <div className="text-sm text-muted-foreground flex items-center gap-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
+              Processing file... This may take a while for large files.
+            </div>
+          )}
+
+          {uploadResult && (
+            <div className="flex-1 overflow-y-auto space-y-4">
+              <div className={`p-4 rounded-md ${uploadResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                {uploadResult.success ? (
+                  <div className="space-y-3">
+                    <div className="font-medium text-lg text-green-800">
+                      {uploadResult.message}
+                    </div>
+                    
+                    {/* Summary */}
+                    <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div className="bg-white p-3 rounded border">
+                        <div className="font-semibold text-green-700">Created</div>
+                        <div className="text-2xl font-bold text-green-800">{uploadResult.created}</div>
+                      </div>
+                      <div className="bg-white p-3 rounded border">
+                        <div className="font-semibold text-yellow-700">Skipped</div>
+                        <div className="text-2xl font-bold text-yellow-800">{uploadResult.skipped}</div>
+                      </div>
+                      <div className="bg-white p-3 rounded border">
+                        <div className="font-semibold text-red-700">Errors</div>
+                        <div className="text-2xl font-bold text-red-800">{uploadResult.errors.length}</div>
+                      </div>
+                    </div>
+
+                    {/* Created Companies */}
+                    {uploadResult.createdCompanies && uploadResult.createdCompanies.length > 0 && (
+                      <div className="bg-white p-3 rounded border">
+                        <div className="font-semibold text-green-700 mb-2">
+                          Created Companies ({uploadResult.createdCompanies.length}):
+                        </div>
+                        <div className="max-h-32 overflow-y-auto text-sm">
+                          <ul className="list-disc list-inside space-y-1">
+                            {uploadResult.createdCompanies.map((name, idx) => (
+                              <li key={idx} className="text-green-800">{name}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Skipped Companies */}
+                    {uploadResult.skippedCompanies && uploadResult.skippedCompanies.length > 0 && (
+                      <div className="bg-white p-3 rounded border">
+                        <div className="font-semibold text-yellow-700 mb-2">
+                          Skipped Companies ({uploadResult.skippedCompanies.length}):
+                        </div>
+                        <div className="max-h-32 overflow-y-auto text-sm">
+                          <ul className="list-disc list-inside space-y-1">
+                            {uploadResult.skippedCompanies.map((name, idx) => (
+                              <li key={idx} className="text-yellow-800">{name}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Errors */}
+                    {uploadResult.errors.length > 0 && (
+                      <div className="bg-white p-3 rounded border">
+                        <div className="font-semibold text-red-700 mb-2">
+                          Errors ({uploadResult.errors.length}):
+                        </div>
+                        <div className="max-h-48 overflow-y-auto text-sm">
+                          <ul className="list-disc list-inside space-y-1">
+                            {uploadResult.errors.map((error, idx) => (
+                              <li key={idx} className="text-red-800">{error}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-red-800">
+                    <div className="font-medium text-lg">Error:</div>
+                    <div className="text-sm mt-1">{uploadResult.error}</div>
+                    {uploadResult.errors.length > 0 && (
+                      <div className="mt-3">
+                        <div className="font-semibold mb-2">Details:</div>
+                        <div className="max-h-48 overflow-y-auto text-sm">
+                          <ul className="list-disc list-inside space-y-1">
+                            {uploadResult.errors.map((error, idx) => (
+                              <li key={idx}>{error}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button 
+              type="button" 
+              variant="outline" 
+              disabled={uploading}
+              onClick={() => {
+                setUploadResult(null);
+                if (fileInputRef.current) {
+                  fileInputRef.current.value = '';
+                }
+              }}
+            >
+              {uploadResult ? 'Close' : 'Cancel'}
+            </Button>
+          </DialogClose>
+          {uploadResult && uploadResult.success && (
+            <Button
+              type="button"
+              onClick={() => {
+                setCsvUploadOpen(false);
+                setOpen(false);
+                setUploadResult(null);
+                if (fileInputRef.current) {
+                  fileInputRef.current.value = '';
+                }
+              }}
+            >
+              Done
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

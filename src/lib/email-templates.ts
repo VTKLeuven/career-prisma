@@ -328,3 +328,185 @@ export function generateInvitationEmailHtml({
   `;
 }
 
+/**
+ * Generate company page request email HTML
+ */
+export function generateCompanyPageRequestEmailHtml({
+  companyName,
+  requesterName,
+  requesterEmail,
+  salespersonName,
+}: {
+  companyName: string;
+  requesterName: string;
+  requesterEmail: string;
+  salespersonName: string;
+}) {
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+            line-height: 1.6; 
+            color: #333; 
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+          }
+          .container { 
+            max-width: 600px; 
+            margin: 0 auto; 
+            padding: 40px 20px;
+            background-color: #ffffff;
+          }
+          h2 {
+            color: #111827;
+            margin-top: 0;
+          }
+          .info-box {
+            background-color: #f9fafb;
+            border-left: 4px solid #2563eb;
+            padding: 16px;
+            margin: 20px 0;
+            border-radius: 4px;
+          }
+          .info-box p {
+            margin: 8px 0;
+          }
+          .info-box strong {
+            color: #1f2937;
+          }
+          .signature {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            color: #6b7280;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h2>Company Page Request</h2>
+          <p>Dear ${salespersonName},</p>
+          <p>A company page request has been submitted for <strong>${companyName}</strong>.</p>
+          <div class="info-box">
+            <p><strong>Requested by:</strong> ${requesterName}</p>
+            <p><strong>Email:</strong> ${requesterEmail}</p>
+            <p><strong>Company:</strong> ${companyName}</p>
+          </div>
+          <p>The company representative has requested to have a company page on the VTK Career Platform. This page will include:</p>
+          <ul>
+            <li>Public company profile page</li>
+            <li>Company logo and background image</li>
+            <li>Short and long descriptions</li>
+            <li>Company location and website</li>
+            <li>Master categories</li>
+            <li>Links to the company from event pages</li>
+          </ul>
+          <p><strong>Fee:</strong> €200 (yearly fee, also included in Jobfair Package)</p>
+          <p>Please review this request and activate the company page in the admin panel if approved.</p>
+          <div class="signature">
+            <p>Best regards,<br>The VTK Career Platform</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
+/**
+ * Generate password reset email HTML
+ */
+export function generatePasswordResetEmailHtml({
+  firstName,
+  lastName,
+  resetUrl,
+}: {
+  firstName?: string;
+  lastName?: string;
+  resetUrl: string;
+}) {
+  const fullName = [firstName, lastName].filter(Boolean).join(" ") || "there";
+  const displayName = fullName !== "there" ? fullName : "there";
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+            line-height: 1.6; 
+            color: #333; 
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+          }
+          .container { 
+            max-width: 600px; 
+            margin: 0 auto; 
+            padding: 40px 20px;
+            background-color: #ffffff;
+          }
+          .button {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #2563eb;
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-weight: 500;
+          }
+          .button:hover {
+            background-color: #1d4ed8;
+          }
+          h2 {
+            color: #111827;
+            margin-top: 0;
+          }
+          .info-box {
+            background-color: #f9fafb;
+            border-left: 4px solid #2563eb;
+            padding: 16px;
+            margin: 20px 0;
+            border-radius: 4px;
+          }
+          .signature {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            color: #6b7280;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h2>Reset Your Password</h2>
+          <p>Dear ${displayName},</p>
+          <p>You have requested to reset your password for your VTK Career Platform account.</p>
+          <p>Click the button below to reset your password:</p>
+          <div style="text-align: center;">
+            <a href="${resetUrl}" class="button" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff !important; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: 500;">Reset Password</a>
+          </div>
+          <div class="info-box">
+            <p><strong>Security Notice:</strong></p>
+            <p>This link will expire in 1 hour for security reasons. If you didn't request this password reset, please ignore this email.</p>
+          </div>
+          <p>If the button doesn't work, you can copy and paste this link into your browser:</p>
+          <p style="word-break: break-all; color: #2563eb;">${resetUrl}</p>
+          <div class="signature">
+            <p>Best regards,<br>The VTK Career Team</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+

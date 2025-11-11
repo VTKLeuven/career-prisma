@@ -169,11 +169,12 @@ export default function EventPageClient({
     return () => setHideLayoutHeader(false)
   }, [setHideLayoutHeader])
 
-  const includesFair = page?.event?.name?.toLowerCase().includes("fair")
+  // Check if event has a floorplan to determine which header to show
+  const hasFloorplan = !!page?.floorplan
 
   return (
     <>
-      {includesFair ? (
+      {hasFloorplan ? (
         <Header page={page ?? undefined} />
       ) : (
         <HomepageHeader />
@@ -344,6 +345,16 @@ function HomepageHeader() {
                       className="h-7 rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5 text-xs px-3"
                       onClick={() => {
                         setMobileMenuOpen(false);
+                        // Check if we're on the homepage
+                        if (window.location.pathname === '/') {
+                          // Dispatch custom event that homepage can listen to
+                          window.dispatchEvent(new CustomEvent('viewAllEvents'));
+                          // Also set hash for URL consistency
+                          window.location.hash = '#all-events';
+                        } else {
+                          // Navigate to homepage with hash
+                          window.location.href = '/#all-events';
+                        }
                       }}
                     >
                       View all
@@ -434,7 +445,19 @@ function HomepageHeader() {
                         size="sm"
                         variant="outline"
                         className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5"
-                        onClick={() => setOpenMenu(null)}
+                        onClick={() => {
+                          setOpenMenu(null);
+                          // Check if we're on the homepage
+                          if (window.location.pathname === '/') {
+                            // Dispatch custom event that homepage can listen to
+                            window.dispatchEvent(new CustomEvent('viewAllEvents'));
+                            // Also set hash for URL consistency
+                            window.location.hash = '#all-events';
+                          } else {
+                            // Navigate to homepage with hash
+                            window.location.href = '/#all-events';
+                          }
+                        }}
                       >
                         View all
                       </Button>
@@ -474,7 +497,9 @@ function HomepageHeader() {
                       <div className="text-sm font-medium text-neutral-900">Featured</div>
                       <p className="mt-1 text-sm text-neutral-700">Meet 200+ companies at our flagship jobfair in Leuven.</p>
                       <div className="mt-4">
-                        <Button className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">Explore jobfair</Button>
+                        <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">
+                          <Link href="/event/vtk-jobfair">Explore jobfair</Link>
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -824,14 +849,26 @@ function Hero({
                     Register
                   </Button>
 
-                  {/* Explore companies button */}
-                  <Button
-                    variant="ghost"
-                    className="rounded-full bg-vtk-blue-dark text-white hover:brightness-95 cursor-pointer text-sm sm:text-base"
-                    onClick={handleExploreCompanies}
-                  >
-                    Explore companies
-                  </Button>
+                  {/* Floorplan button if floorplan exists, otherwise Explore companies */}
+                  {page?.floorplan ? (
+                    <Button
+                      asChild
+                      variant="ghost"
+                      className="rounded-full bg-vtk-blue-dark text-white hover:brightness-95 cursor-pointer text-sm sm:text-base"
+                    >
+                      <Link href={`/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}/floorplan`}>
+                        Floorplan
+                      </Link>
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      className="rounded-full bg-vtk-blue-dark text-white hover:brightness-95 cursor-pointer text-sm sm:text-base"
+                      onClick={handleExploreCompanies}
+                    >
+                      Explore companies
+                    </Button>
+                  )}
                 </div>
               </motion.div>
             ) : (

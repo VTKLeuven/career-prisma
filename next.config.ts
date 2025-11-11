@@ -21,6 +21,13 @@ const nextConfig: NextConfig = {
   // Enable experimental features for better caching
   experimental: {
     optimizePackageImports: ['framer-motion', 'lucide-react'],
+    // Increase server action body size limit (default is 1 MB)
+    // This is needed for company information updates that might include large HTML descriptions
+    // Note: File uploads are handled separately via Directus API, not through server actions
+    // However, the payload can still be large due to HTML content from descriptions
+    serverActions: {
+      bodySizeLimit: '10mb',
+    },
   },
 };
 
