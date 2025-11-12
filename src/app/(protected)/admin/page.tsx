@@ -118,7 +118,7 @@ function CompaniesSection() {
           address: r.address ?? formatAddress(r),
           salesperson: r.salesperson ?? "",
           representatives: (r.representatives ?? []).map((rep) => ({ ...rep })) as Partial<CompanyRep>[],
-          options: (r.options ?? []).map((opt) => {
+          options: (r.options ?? []).map((opt, optIndex) => {
             // Handle both direct CareerEventOption and junction table format
             let rawOption: CareerEventOption | null = null;
             if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
@@ -141,16 +141,58 @@ function CompaniesSection() {
               price: rawOption.price,
             };
             
-            // Normalize events: preserve events array if it exists, convert single event to array, or set empty array
+            // Normalize events: handle junction table format and direct events
+            // In Directus many-to-many, events can come in various formats
             if (rawOption.events && Array.isArray(rawOption.events)) {
-              // Events array exists (even if empty), preserve it
-              normalizedOption.events = rawOption.events;
+              // Events might be in junction table format: [{ career_event_id: EventObject }] or direct EventObject[]
+              normalizedOption.events = rawOption.events
+                .map((eventOrJunction: unknown) => {
+                  if (!eventOrJunction || typeof eventOrJunction !== 'object') return null;
+                  
+                  // Check if it's a junction table entry - try multiple possible field names
+                  // Directus junction tables can have different field names
+                  const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
+                  for (const fieldName of possibleJunctionFields) {
+                    if (fieldName in eventOrJunction) {
+                      const junction = eventOrJunction as Record<string, CareerEvent | string | null>;
+                      const eventRef = junction[fieldName];
+                      if (eventRef && typeof eventRef === 'object') {
+                        return eventRef as CareerEvent;
+                      }
+                    }
+                  }
+                  
+                  // Check if it's a direct event object
+                  if ('id' in eventOrJunction && 'name' in eventOrJunction) {
+                    return eventOrJunction as CareerEvent;
+                  }
+                  
+                  return null;
+                })
+                .filter((e): e is CareerEvent => e !== null && e !== undefined);
             } else if (rawOption.event) {
               // Single event exists, convert to array
-              normalizedOption.events = [rawOption.event];
+              if (typeof rawOption.event === 'object' && rawOption.event !== null) {
+                normalizedOption.events = [rawOption.event as CareerEvent];
+              } else {
+                normalizedOption.events = [];
+              }
             } else {
               // No events, set empty array
               normalizedOption.events = [];
+            }
+            
+            // Debug: log first option's events structure
+            if (optIndex === 0 && normalizedOption.events.length === 0 && (rawOption.events || rawOption.event)) {
+              console.log("[Admin] Option events normalization - rawOption structure:", {
+                hasEvents: !!rawOption.events,
+                eventsType: Array.isArray(rawOption.events) ? 'array' : typeof rawOption.events,
+                eventsLength: Array.isArray(rawOption.events) ? rawOption.events.length : 0,
+                firstEvent: Array.isArray(rawOption.events) && rawOption.events[0] ? Object.keys(rawOption.events[0] as any) : null,
+                hasEvent: !!rawOption.event,
+                eventType: typeof rawOption.event,
+                allKeys: Object.keys(rawOption),
+              });
             }
             
             return normalizedOption;
@@ -175,7 +217,7 @@ function CompaniesSection() {
           address: r.address ?? formatAddress(r),
           salesperson: r.salesperson ?? "",
           representatives: (r.representatives ?? []).map((rep) => ({ ...rep })) as Partial<CompanyRep>[],
-          options: (r.options ?? []).map((opt) => {
+          options: (r.options ?? []).map((opt, optIndex) => {
             // Handle both direct CareerEventOption and junction table format
             let rawOption: CareerEventOption | null = null;
             if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
@@ -198,16 +240,58 @@ function CompaniesSection() {
               price: rawOption.price,
             };
             
-            // Normalize events: preserve events array if it exists, convert single event to array, or set empty array
+            // Normalize events: handle junction table format and direct events
+            // In Directus many-to-many, events can come in various formats
             if (rawOption.events && Array.isArray(rawOption.events)) {
-              // Events array exists (even if empty), preserve it
-              normalizedOption.events = rawOption.events;
+              // Events might be in junction table format: [{ career_event_id: EventObject }] or direct EventObject[]
+              normalizedOption.events = rawOption.events
+                .map((eventOrJunction: unknown) => {
+                  if (!eventOrJunction || typeof eventOrJunction !== 'object') return null;
+                  
+                  // Check if it's a junction table entry - try multiple possible field names
+                  // Directus junction tables can have different field names
+                  const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
+                  for (const fieldName of possibleJunctionFields) {
+                    if (fieldName in eventOrJunction) {
+                      const junction = eventOrJunction as Record<string, CareerEvent | string | null>;
+                      const eventRef = junction[fieldName];
+                      if (eventRef && typeof eventRef === 'object') {
+                        return eventRef as CareerEvent;
+                      }
+                    }
+                  }
+                  
+                  // Check if it's a direct event object
+                  if ('id' in eventOrJunction && 'name' in eventOrJunction) {
+                    return eventOrJunction as CareerEvent;
+                  }
+                  
+                  return null;
+                })
+                .filter((e): e is CareerEvent => e !== null && e !== undefined);
             } else if (rawOption.event) {
               // Single event exists, convert to array
-              normalizedOption.events = [rawOption.event];
+              if (typeof rawOption.event === 'object' && rawOption.event !== null) {
+                normalizedOption.events = [rawOption.event as CareerEvent];
+              } else {
+                normalizedOption.events = [];
+              }
             } else {
               // No events, set empty array
               normalizedOption.events = [];
+            }
+            
+            // Debug: log first option's events structure
+            if (optIndex === 0 && normalizedOption.events.length === 0 && (rawOption.events || rawOption.event)) {
+              console.log("[Admin useEffect] Option events normalization - rawOption structure:", {
+                hasEvents: !!rawOption.events,
+                eventsType: Array.isArray(rawOption.events) ? 'array' : typeof rawOption.events,
+                eventsLength: Array.isArray(rawOption.events) ? rawOption.events.length : 0,
+                firstEvent: Array.isArray(rawOption.events) && rawOption.events[0] ? Object.keys(rawOption.events[0] as any) : null,
+                hasEvent: !!rawOption.event,
+                eventType: typeof rawOption.event,
+                allKeys: Object.keys(rawOption),
+              });
             }
             
             return normalizedOption;
@@ -987,15 +1071,35 @@ function getOptionColumns(onRemoveOption: (optionId: string) => void, companyId:
       header: "Events",
       cell: ({ row }) => {
         const option = row.original;
+        
+        // Helper to extract event name from various formats
+        const getEventName = (eventOrJunction: unknown): string | null => {
+          if (!eventOrJunction || typeof eventOrJunction !== 'object') return null;
+          
+          // Check if it's a junction table entry - try multiple possible field names
+          const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
+          for (const fieldName of possibleJunctionFields) {
+            if (fieldName in eventOrJunction) {
+              const junction = eventOrJunction as Record<string, CareerEvent | string | null>;
+              const eventRef = junction[fieldName];
+              if (eventRef && typeof eventRef === 'object' && 'name' in eventRef) {
+                return String(eventRef.name);
+              }
+            }
+          }
+          
+          // Direct event object
+          if ('name' in eventOrJunction) {
+            return String(eventOrJunction.name);
+          }
+          
+          return null;
+        };
+        
         // Handle multiple events
         if (option.events && Array.isArray(option.events) && option.events.length > 0) {
           const eventNames = option.events
-            .map(event => {
-              if (typeof event === 'object' && event !== null && 'name' in event) {
-                return String(event.name);
-              }
-              return null;
-            })
+            .map(getEventName)
             .filter((name): name is string => name !== null);
           
           if (eventNames.length > 0) {
@@ -1009,12 +1113,15 @@ function getOptionColumns(onRemoveOption: (optionId: string) => void, companyId:
             );
           }
         }
+        
         // Fallback: try to handle single event (for backward compatibility)
         if (option.event) {
-          if (typeof option.event === 'object' && 'name' in option.event) {
-            return <div className="font-medium">{String(option.event.name)}</div>;
+          const eventName = getEventName(option.event);
+          if (eventName) {
+            return <div className="font-medium">{eventName}</div>;
           }
         }
+        
         return <div className="font-medium">—</div>;
       },
     },

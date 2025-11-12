@@ -77,16 +77,16 @@ function MyEventsSection() {
     const extractEventFromRef = (eventOrJunction: unknown): CareerEvent | null => {
       if (!eventOrJunction || !isRecord(eventOrJunction)) return null;
       
-      // Check if it's a junction table entry with career_event_id field
-      if ('career_event_id' in eventOrJunction) {
-        const junction = eventOrJunction as { career_event_id: CareerEvent | string | null };
-        if (junction.career_event_id) {
-          // If it's already an object (populated), return it
-          if (typeof junction.career_event_id === 'object' && junction.career_event_id !== null) {
-            return junction.career_event_id as CareerEvent;
+      // Check if it's a junction table entry - try multiple possible field names
+      // Directus junction tables can have different field names
+      const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
+      for (const fieldName of possibleJunctionFields) {
+        if (fieldName in eventOrJunction) {
+          const junction = eventOrJunction as Record<string, CareerEvent | string | null>;
+          const eventRef = junction[fieldName];
+          if (eventRef && typeof eventRef === 'object') {
+            return eventRef as CareerEvent;
           }
-          // If it's just an ID string, we can't use it here (would need to fetch)
-          return null;
         }
       }
       
