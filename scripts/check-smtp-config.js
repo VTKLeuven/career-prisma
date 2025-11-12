@@ -23,6 +23,7 @@ const smtpUser = process.env.SMTP_USER?.trim();
 const smtpPass = process.env.SMTP_PASS?.trim();
 const smtpPort = process.env.SMTP_PORT?.trim() || '587';
 const smtpFromEmail = process.env.SMTP_FROM_EMAIL?.trim();
+const smtpHeloName = process.env.SMTP_HELO_NAME?.trim();
 
 console.log('Environment Variables:');
 console.log(`  SMTP_HOST: ${smtpHost || '(not set)'}`);
@@ -30,6 +31,7 @@ console.log(`  SMTP_USER: ${smtpUser || '(not set)'}`);
 console.log(`  SMTP_PASS: ${smtpPass ? '***' + smtpPass.slice(-4) : '(not set)'}`);
 console.log(`  SMTP_PORT: ${smtpPort}`);
 console.log(`  SMTP_FROM_EMAIL: ${smtpFromEmail || '(not set)'}`);
+console.log(`  SMTP_HELO_NAME: ${smtpHeloName || '(not set - recommended!)'}`);
 console.log('');
 
 // Determine what the code will actually use
@@ -78,7 +80,30 @@ console.log('Actual Configuration (what code will use):');
 console.log(`  Host: ${actualHost}`);
 console.log(`  Port: ${smtpPort}`);
 console.log(`  Auth: ${actualAuth}`);
+if (smtpHeloName) {
+  console.log(`  HELO/EHLO: ${smtpHeloName} ✓`);
+} else {
+  console.log(`  HELO/EHLO: (not set - using default, may trigger throttling) ⚠️`);
+}
 console.log('');
+
+// Check for HELO/EHLO name configuration
+if (!smtpHeloName) {
+  console.log('=== HELO/EHLO Hostname Configuration ===');
+  console.log('');
+  console.log('⚠️  SMTP_HELO_NAME is not set!');
+  console.log('');
+  console.log('This is important to avoid Google throttling:');
+  console.log('1. Set SMTP_HELO_NAME to your server\'s real hostname');
+  console.log('2. This should match your server\'s PTR record (reverse DNS)');
+  console.log('3. Example: SMTP_HELO_NAME=mail.yourdomain.com');
+  console.log('');
+  console.log('Why it matters:');
+  console.log('  → Without it, Nodemailer may send "localhost" or an IP address');
+  console.log('  → Google throttles connections with invalid HELO/EHLO names');
+  console.log('  → Setting it to a real hostname improves deliverability');
+  console.log('');
+}
 
 // Check for Google Workspace relay setup
 if (actualHost === 'smtp-relay.gmail.com') {
@@ -91,7 +116,8 @@ if (actualHost === 'smtp-relay.gmail.com') {
   console.log('   → SMTP relay service → Add your server IP');
   console.log('');
   console.log('2. No authentication required if IP is allowlisted');
-  console.log('3. Rate limits:');
+  console.log('3. Set SMTP_HELO_NAME to your server hostname (matches PTR record)');
+  console.log('4. Rate limits:');
   console.log('   → 2,000 emails per day (free)');
   console.log('   → 10,000+ emails per day (paid plans)');
   console.log('   → No per-minute limits like smtp.gmail.com');
@@ -101,10 +127,11 @@ if (actualHost === 'smtp-relay.gmail.com') {
   console.log('');
   console.log('You are using smtp.gmail.com which:');
   console.log('1. Requires App Password (not regular password)');
-  console.log('2. Has strict rate limits:');
+  console.log('2. Set SMTP_HELO_NAME to your server hostname (important!)');
+  console.log('3. Has strict rate limits:');
   console.log('   → ~100-500 emails per day');
   console.log('   → Rate limited after few emails (421 errors)');
-  console.log('3. This is NOT a relay setup');
+  console.log('4. This is NOT a relay setup');
   console.log('');
   console.log('⚠️  If you want to use Google Workspace relay:');
   console.log('   → Remove SMTP_USER and SMTP_PASS');

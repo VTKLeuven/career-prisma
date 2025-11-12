@@ -21,7 +21,7 @@ import {
   countFormResponses,
   countFormVersionResponses,
 } from "@/lib/repos/forms";
-import type { Form, FormVersion, FormSchema, FormMetadata } from "@/lib/schema";
+import type { Form, FormVersion, FormSchema, FormMetadata, FormResponse } from "@/lib/schema";
 import { getFormUploadsFolderId } from "@/lib/directus";
 
 // ===================== FORM ACTIONS =====================
@@ -269,7 +269,17 @@ export async function submitFormResponseAction(data: {
 }) {
   try {
     // Get the form version to check metadata (including max_entries)
-    const formVersion = await getFormVersionById(data.form_version_id);
+    // Use server client to ensure we always have access to metadata, even for public forms
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const serverClient = await getServerDirectusClient();
+    const { readItem } = await import("@directus/sdk");
+    
+    const formVersion = await serverClient.request(
+      readItem("form_versions", data.form_version_id, {
+        fields: ["*", "form_id.*"],
+      })
+    ) as unknown as FormVersion;
+    
     const versionMetadata = (formVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata;
 
     // Check max_entries limit before creating the response
@@ -277,11 +287,7 @@ export async function submitFormResponseAction(data: {
     if (versionMetadata?.max_entries) {
       const maxEntries = versionMetadata.max_entries as number;
       try {
-        // Use server client which has elevated permissions for counting
-        const { getServerDirectusClient } = await import("@/lib/directus");
-        const serverClient = await getServerDirectusClient();
-        
-        // Count using server client - we need to call it directly with the client
+        // Count using server client - reuse the same client we used to fetch metadata
         const { readItems } = await import("@directus/sdk");
         const responses = await serverClient.request(
           readItems("form_responses", {
@@ -329,41 +335,75 @@ export async function submitFormResponseAction(data: {
       }
     }
 
-    const response = await createFormResponse(data);
+    // Create form response using server client to ensure it works for both logged-in and non-logged-in users
+    // The server client has elevated permissions needed for public form submissions
+    const { createItem } = await import("@directus/sdk");
+    let response: FormResponse | null = null;
+    try {
+      response = await serverClient.request(
+        createItem("form_responses", data)
+      ) as unknown as FormResponse;
+    } catch (error) {
+      console.error('[submitFormResponseAction] Error creating form response:', error);
+      // Re-throw to let the caller handle it
+      throw error;
+    }
+    
+    // Find email field - check common field names (case-insensitive)
+    const formData = data.data || {};
+    let emailValue: string | undefined;
+    
+    // Try exact match first
+    if (formData.email) {
+      emailValue = formData.email as string;
+    } else {
+      // Try case-insensitive search
+      const emailKey = Object.keys(formData).find(
+        key => key.toLowerCase() === 'email'
+      );
+      if (emailKey) {
+        emailValue = formData[emailKey] as string;
+      }
+    }
     
     // If this is an event registration form, send confirmation email
-    if (response && data.data.email) {
-      if (versionMetadata?.is_event_registration) {
-        // Get form name - prefer from loaded relation, otherwise fetch it
-        let formName: string;
-        if (typeof formVersion.form_id !== 'string' && formVersion.form_id?.name) {
-          // Form relation is already loaded in formVersion
-          formName = formVersion.form_id.name;
-        } else {
-          // Need to fetch form separately
-          const formId = typeof formVersion.form_id === 'string' ? formVersion.form_id : formVersion.form_id.id;
-          try {
-            const form = await getFormById(formId);
-            formName = form.name;
-          } catch (error) {
-            console.warn("Could not get form details, using fallback name:", error);
-            formName = 'Event'; // Last resort fallback
-          }
+    if (response && emailValue && versionMetadata?.is_event_registration) {
+      // Get form name - prefer from loaded relation, otherwise fetch it using server client
+      let formName: string;
+      if (typeof formVersion.form_id !== 'string' && formVersion.form_id?.name) {
+        // Form relation is already loaded in formVersion
+        formName = formVersion.form_id.name;
+      } else {
+        // Need to fetch form separately using server client
+        const formId = typeof formVersion.form_id === 'string' ? formVersion.form_id : formVersion.form_id.id;
+        try {
+          const form = await serverClient.request(
+            readItem("forms", formId, {
+              fields: ["name"],
+            })
+          ) as unknown as { name: string };
+          formName = form.name;
+        } catch (error) {
+          console.warn("Could not get form details, using fallback name:", error);
+          formName = 'Event'; // Last resort fallback
         }
+      }
 
-        if (versionMetadata.is_event_registration) {
-          await sendEventConfirmationEmail({
-            to: data.data.email as string,
-            name: (data.data.name as string) || '',
-            surname: (data.data.surname as string) || '',
-            formName: formName,
-            subject: (versionMetadata.event_email_subject as string) || `${formName} - Registration Confirmation`,
-            content: (versionMetadata.event_email_content as string) || 'Thank you for registering!',
-            eventDate: versionMetadata.event_date as string | undefined,
-            eventEndDate: versionMetadata.event_end_date as string | undefined,
-            eventLocation: versionMetadata.event_location as string | undefined,
-          });
-        }
+      try {
+        await sendEventConfirmationEmail({
+          to: emailValue,
+          name: (formData.name as string) || '',
+          surname: (formData.surname as string) || '',
+          formName: formName,
+          subject: (versionMetadata.event_email_subject as string) || `${formName} - Registration Confirmation`,
+          content: (versionMetadata.event_email_content as string) || 'Thank you for registering!',
+          eventDate: versionMetadata.event_date as string | undefined,
+          eventEndDate: versionMetadata.event_end_date as string | undefined,
+          eventLocation: versionMetadata.event_location as string | undefined,
+        });
+      } catch (emailError) {
+        console.error("Error sending event confirmation email:", emailError);
+        // Don't throw - email failure shouldn't prevent form submission
       }
     }
     
