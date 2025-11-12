@@ -29,12 +29,9 @@ export async function listCompanies(opts?: {
           "salesperson.id",
           "salesperson.first_name",
           "salesperson.last_name",
-          "options.career_event_option_id.id",
-          "options.career_event_option_id.name",
-          "options.career_event_option_id.description",
-          "options.career_event_option_id.price",
-          "options.career_event_option_id.events.*",
-          "options.career_event_option_id.event.*", // Fallback for backward compatibility
+          "options.career_event_option_id.*",
+          "options.career_event_option_id.*.*", // Get all nested fields including events junction table
+          "options.career_event_option_id.*.*.*", // Get deeply nested fields
         ],
         limit,
         page,
@@ -62,12 +59,9 @@ export async function getCompanyById(id: string, usePublic = false) {
           "page_image",
           "representatives.*",
           "category.master_id.*",
-          "options.career_event_option_id.id",
-          "options.career_event_option_id.name",
-          "options.career_event_option_id.description",
-          "options.career_event_option_id.price",
-          "options.career_event_option_id.events.*",
-          "options.career_event_option_id.event.*", // Fallback for backward compatibility
+          "options.career_event_option_id.*",
+          "options.career_event_option_id.*.*", // Get all nested fields including events junction table
+          "options.career_event_option_id.*.*.*", // Get deeply nested fields
         ],
       })
     ) as unknown as Company;
