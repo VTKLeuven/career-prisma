@@ -194,7 +194,7 @@ function Header({
               </div>
             </div>
             
-            {/* Bottom row: Search (only for floorplan) or buttons (for company guide) */}
+            {/* Bottom row: Search (only for floorplan) - removed for company guide on mobile */}
             {!isCompanyGuide && (
               <div className="flex flex-col gap-2 rounded-xl border bg-white/85 px-2 sm:px-3 py-1.5 sm:py-2 shadow-md ring-1 ring-black/5 backdrop-blur-md">
                 <div className="relative w-full">
@@ -226,20 +226,6 @@ function Header({
                     </ul>
                   )}
                 </div>
-              </div>
-            )}
-            {isCompanyGuide && (
-              <div className="flex items-center gap-2 rounded-xl border bg-white/85 px-2 sm:px-3 py-1.5 sm:py-2 shadow-md ring-1 ring-black/5 backdrop-blur-md">
-                <Button 
-                  variant="outline" 
-                  className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 text-xs px-3 py-1.5" 
-                  onClick={() => router.push("/dashboard")}
-                >
-                  Company Dashboard
-                </Button>
-                <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark text-xs px-3 py-1.5">
-                  <Link href="/contact">Contact Us</Link>
-                </Button>
               </div>
             )}
           </div>
@@ -741,31 +727,76 @@ function CompanyGuidePage({ page }: { page: CareerEventPage }) {
 }
 
 // ---------------- PDF Viewer Component ----------------
-// Use iframe for perfect PDF rendering - browser's native PDF viewer handles complex graphics correctly
-// Style it to look integrated into the site with scrollable pages
+// Use iframe for perfect PDF rendering with CSS to hide internal scrollbar
 function PDFViewer({ pdfUrl }: { pdfUrl: string }) {
   return (
-    <div className="pt-24 pb-10">
-      <div className="max-w-4xl mx-auto px-4">
-        <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-          {/* Use object tag for better PDF rendering with native browser support */}
-          <object
-            data={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=1`}
-            type="application/pdf"
-            className="w-full min-h-[800px]"
-            style={{ height: 'calc(100vh - 120px)' }}
-          >
-            {/* Fallback if object doesn't work */}
+    <>
+      {/* CSS to completely hide PDF viewer scrollbars */}
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          /* Hide all scrollbars in PDF iframe */
+          .pdf-iframe-container iframe {
+            overflow: hidden !important;
+            scrollbar-width: none !important; /* Firefox */
+            -ms-overflow-style: none !important; /* IE/Edge */
+          }
+          
+          /* Hide scrollbars in WebKit browsers */
+          .pdf-iframe-container iframe::-webkit-scrollbar {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+            background: transparent !important;
+          }
+          
+          /* Hide scrollbar track and thumb */
+          .pdf-iframe-container iframe::-webkit-scrollbar-track,
+          .pdf-iframe-container iframe::-webkit-scrollbar-thumb {
+            display: none !important;
+          }
+          
+          /* Additional CSS to hide PDF.js scrollbars if present */
+          .pdf-iframe-container iframe body,
+          .pdf-iframe-container iframe body * {
+            scrollbar-width: none !important;
+            -ms-overflow-style: none !important;
+          }
+          
+          .pdf-iframe-container iframe body::-webkit-scrollbar,
+          .pdf-iframe-container iframe body *::-webkit-scrollbar {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+          }
+          
+          /* Make iframe content scrollable but hide scrollbar */
+          .pdf-iframe-container iframe {
+            pointer-events: auto !important;
+          }
+        `
+      }} />
+      <div className="pt-24 pb-10">
+        <div className="max-w-4xl mx-auto px-4">
+          <div className="bg-white rounded-lg shadow-sm border overflow-hidden pdf-iframe-container">
+            {/* Use iframe with very large height to make it part of page flow */}
             <iframe
-              src={`${pdfUrl}#toolbar=0&navpanes=0`}
-              className="w-full min-h-[800px] border-0"
-              style={{ height: 'calc(100vh - 120px)' }}
+              src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+              className="w-full border-0"
+              style={{ 
+                minHeight: '800px',
+                height: '20000px', // Very large height to avoid internal scrollbar
+                display: 'block',
+                overflow: 'hidden',
+                border: 'none',
+                pointerEvents: 'auto',
+              }}
               title="Company Guide PDF"
+              scrolling="no"
             />
-          </object>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   )
 }
 
