@@ -573,12 +573,13 @@ function Header({ page }: { page?: CareerEventPage }) {
                 >
                   Floorplan
                 </Link>
-                <Link
-                  href={`/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}/matching-software`}
-                  className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
-                >
-                  Matching Software
-                </Link>
+                {page.company_guide && (
+                  <CompanyGuideButton 
+                    companyGuide={page.company_guide} 
+                    isMobile={false}
+                    eventName={page.event.name.toLowerCase().replace(/\s+/g, "-")}
+                  />
+                )}
               </>
             )}
           </nav>
@@ -596,12 +597,13 @@ function Header({ page }: { page?: CareerEventPage }) {
                 >
                   Floorplan
                 </Link>
-                <Link
-                  href={`/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}/matching-software`}
-                  className="rounded-full px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 whitespace-nowrap shrink-0"
-                >
-                  Matching
-                </Link>
+                {page.company_guide && (
+                  <CompanyGuideButton 
+                    companyGuide={page.company_guide} 
+                    isMobile={true}
+                    eventName={page.event.name.toLowerCase().replace(/\s+/g, "-")}
+                  />
+                )}
               </>
             )}
           </nav>
@@ -939,7 +941,7 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
             ← Back
           </button>
 
-          {selectedCompany?.page_on_platform && (
+          {selectedCompany?.page_on_platform === true && selectedCompany?.status === "published" && (
             <Link
               href={`/company/${slug}`}
               // (Optional) also stop bubbling on the link itself:
@@ -995,6 +997,36 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
 }
 
 
+
+// ---------------- Company Guide Button ----------------
+function CompanyGuideButton({ companyGuide, isMobile, eventName }: { 
+  companyGuide: string | { id?: string } | null | undefined
+  isMobile: boolean
+  eventName: string
+}) {
+  // Handle both string ID and object with id property
+  const fileId = !companyGuide 
+    ? null 
+    : typeof companyGuide === 'string' 
+      ? companyGuide 
+      : companyGuide?.id || null
+
+  if (!fileId) return null
+
+  const href = `/event/${eventName}/company-guide`
+
+  return (
+    <Link
+      href={href}
+      className={isMobile 
+        ? "rounded-full px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 whitespace-nowrap shrink-0"
+        : "rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
+      }
+    >
+      Company Guide
+    </Link>
+  )
+}
 
 // ---------------- Popup ----------------
 function Popup({

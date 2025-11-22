@@ -6,6 +6,7 @@ import { Company, Master, CareerEventOption, CareerEvent } from "@/lib/schema";
 import { getDirectusImageUrl } from "@/components/Images";
 import Image from "next/image";
 import Link from "next/link";
+import { validateExistingPageImage } from "@/lib/utils/image-validation";
 import { Calendar } from "lucide-react";
 import { fetchCompanyBySlugAction } from "@/app/actions/companies";
 import { fetchEventsAction } from "@/app/actions/events";
@@ -40,6 +41,7 @@ export default function CompanyPage() {
   const companyName = Array.isArray(params.companyName) ? params.companyName[0] : params.companyName;
   const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pageImageValid, setPageImageValid] = useState<boolean | null>(null);
 
   // Hide layout header since this page renders its own
   useEffect(() => {
@@ -63,8 +65,8 @@ export default function CompanyPage() {
       try {
         const fetched = await fetchCompanyBySlugAction(companyName ?? "");
         if (fetched) {
-          // Check if company has page_on_platform enabled
-          if (!fetched?.page_on_platform) {
+          // Check if company has page_on_platform enabled and is published
+          if (!fetched?.page_on_platform || fetched?.status !== "published") {
             setCompany(null);
             setLoading(false);
             return;
@@ -106,6 +108,22 @@ export default function CompanyPage() {
     loadCompany();
   }, [companyName, router]);
 
+  // Validate page image when company or page_image changes
+  const bgUrl = company ? getDirectusImageUrl(company.page_image) : null;
+  useEffect(() => {
+    if (bgUrl) {
+      validateExistingPageImage(bgUrl)
+        .then((result) => {
+          setPageImageValid(result.valid);
+        })
+        .catch(() => {
+          setPageImageValid(false);
+        });
+    } else {
+      setPageImageValid(null);
+    }
+  }, [bgUrl]);
+
   if (loading) {
     return (
       <main className="min-h-svh bg-vtk-bg text-neutral-900 pt-24 md:pt-28">
@@ -134,25 +152,27 @@ export default function CompanyPage() {
     );
   }
 
-  const logoUrl = getDirectusImageUrl(company.logo);
-  const categories = (company.category as Master[] | undefined) ?? [];
-  const bgUrl = getDirectusImageUrl(company.page_image);
-  const events: CareerEvent[] = Array.from(
+  const logoUrl = company ? getDirectusImageUrl(company.logo) : null;
+  const categories = company ? ((company.category as Master[] | undefined) ?? []) : [];
+  const events: CareerEvent[] = company ? Array.from(
     new Map(
       ((company.options as CareerEventOption[] | undefined) ?? [])
         .map((opt) => opt?.event)
         .filter((e): e is CareerEvent => !!e)
         .map((e) => [e.id, e])
     ).values()
-  );
+  ) : [];
+
+  // Only use bgUrl if it's valid
+  const validBgUrl = pageImageValid === true ? bgUrl : null;
 
   return (
     <main className="relative min-h-svh bg-vtk-bg text-neutral-900">
       <Header />
       <div className="pt-24 md:pt-28">
-        {bgUrl && (
+        {validBgUrl && (
           <div className="absolute inset-0 z-0">
-            <Image src={bgUrl} alt={company.name} fill className="object-cover" />
+            <Image src={validBgUrl} alt={company.name} fill className="object-cover" />
           </div>
         )}
         <div className="relative z-10">

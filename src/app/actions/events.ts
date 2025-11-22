@@ -5,7 +5,11 @@
 import { listEvents } from "@/lib/repos/event";
 import { listEventPages, getEventPageBySlug } from "@/lib/repos/event";
 import DOMPurify from 'isomorphic-dompurify';
-import type { Company } from "@/lib/schema";
+import type { Company, CareerEvent, CareerEventOption } from "@/lib/schema";
+import { listCompanies } from "@/lib/repos/company";
+import { getOrCreateEventPage } from "@/lib/repos/floorplan";
+import { getDirectusWithToken } from "@/lib/directus";
+import { updateItem, readItems } from "@directus/sdk";
 
 export async function fetchEventsAction() {
     const events = await listEvents({ limit: 50, sort: "date" }) ?? [];
@@ -106,4 +110,156 @@ export async function fetchEventPageBySlugAction(slug: string) {
   page.event.href = `/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}`;
 
   return page;
+}
+
+/**
+ * Find companies that have options registered for a specific event
+ */
+export async function findCompaniesWithEventOptions(eventId: string): Promise<Company[]> {
+  try {
+    // Fetch all companies with their options
+    const allCompanies = await listCompanies({ limit: 1000 }) ?? [];
+    
+    // Filter companies that have options with this event
+    const companiesWithEvent: Company[] = [];
+    
+    for (const company of allCompanies) {
+      if (!company.options || company.options.length === 0) continue;
+      
+      // Check if any option has this event
+      for (const opt of company.options) {
+        let rawOption: CareerEventOption | null = null;
+        
+        // Handle junction table format
+        if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
+          const junction = opt as { career_event_option_id: CareerEventOption | null };
+          rawOption = junction.career_event_option_id;
+        } else {
+          rawOption = opt as CareerEventOption;
+        }
+        
+        if (!rawOption) continue;
+        
+        // Check if option has events array
+        if (rawOption.events && Array.isArray(rawOption.events)) {
+          const hasEvent = rawOption.events.some((eventOrJunction: unknown) => {
+            if (!eventOrJunction || typeof eventOrJunction !== 'object') return false;
+            
+            // Check if it's a junction table entry
+            const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
+            for (const fieldName of possibleJunctionFields) {
+              if (fieldName in eventOrJunction) {
+                const junction = eventOrJunction as Record<string, CareerEvent | string | null>;
+                const eventRef = junction[fieldName];
+                if (eventRef && typeof eventRef === 'object' && 'id' in eventRef) {
+                  return (eventRef as CareerEvent).id === eventId;
+                }
+                if (typeof eventRef === 'string') {
+                  return eventRef === eventId;
+                }
+              }
+            }
+            
+            // Check if it's a direct event object
+            if ('id' in eventOrJunction) {
+              return (eventOrJunction as CareerEvent).id === eventId;
+            }
+            
+            return false;
+          });
+          
+          if (hasEvent) {
+            companiesWithEvent.push(company);
+            break; // Found a matching option, no need to check others
+          }
+        } else if (rawOption.event) {
+          // Fallback for backward compatibility
+          const eventRef = rawOption.event;
+          if (typeof eventRef === 'object' && eventRef !== null && 'id' in eventRef) {
+            if ((eventRef as CareerEvent).id === eventId) {
+              companiesWithEvent.push(company);
+              break;
+            }
+          } else if (typeof eventRef === 'string' && eventRef === eventId) {
+            companiesWithEvent.push(company);
+            break;
+          }
+        }
+      }
+    }
+    
+    return companiesWithEvent;
+  } catch (error) {
+    console.error("Error finding companies with event options:", error);
+    return [];
+  }
+}
+
+/**
+ * Add companies to an event page
+ */
+export async function addCompaniesToEventPageAction(
+  eventId: string,
+  companyIds: string[]
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!companyIds || companyIds.length === 0) {
+      return { success: false, error: "No companies selected" };
+    }
+    
+    const client = await getDirectusWithToken();
+    if (!client) {
+      return { success: false, error: "Not authenticated" };
+    }
+    
+    // Get or create event page
+    const eventPage = await getOrCreateEventPage(eventId);
+    if (!eventPage) {
+      return { success: false, error: "Failed to get or create event page" };
+    }
+    
+    // Get current companies on the event page
+    const currentPage = await client.request(
+      readItems("career_event_page", {
+        fields: ["companies.company_id.id"],
+        filter: {
+          id: { _eq: eventPage.id },
+        },
+        limit: 1,
+      })
+    ) as unknown as Array<{ companies?: Array<{ company_id: { id: string } }> }>;
+    
+    const existingCompanyIds = new Set(
+      (currentPage[0]?.companies ?? []).map((item) => item.company_id.id)
+    );
+    
+    // Filter out companies that are already on the page
+    const newCompanyIds = companyIds.filter((id) => !existingCompanyIds.has(id));
+    
+    if (newCompanyIds.length === 0) {
+      return { success: true }; // All companies already added
+    }
+    
+    // Get all current company IDs (existing + new)
+    const allCompanyIds = [
+      ...Array.from(existingCompanyIds),
+      ...newCompanyIds,
+    ];
+    
+    // Update the event page with all companies
+    // In Directus, many-to-many relationships are updated by passing an array of IDs
+    await client.request(
+      updateItem("career_event_page", eventPage.id, {
+        companies: allCompanyIds.map((id) => ({ company_id: id })),
+      })
+    );
+    
+    return { success: true };
+  } catch (error) {
+    console.error("Error adding companies to event page:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to add companies",
+    };
+  }
 }

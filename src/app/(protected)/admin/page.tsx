@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { fetchCompaniesAction, createCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, removeUserFromCompanyAction, processCompaniesCSVAction } from "@/app/actions/companies";
-import { fetchEventsAction } from "@/app/actions/events";
+import { fetchEventsAction, findCompaniesWithEventOptions, addCompaniesToEventPageAction } from "@/app/actions/events";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
@@ -59,8 +59,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { IconBuilding, IconColumns, IconMail, IconPlus, IconTaxEuro } from "@tabler/icons-react";
-import type { CareerEvent, Company, CompanyRep, CareerEventOption } from "@/lib/schema";
+import { IconBuilding, IconColumns, IconMail, IconPlus, IconTaxEuro, IconFileCv } from "@tabler/icons-react";
+import type { CareerEvent, Company, CompanyRep, CareerEventOption, CareerEventPage, Booth } from "@/lib/schema";
 import { useUser } from "@/providers/UserProvider";
 import { DirectusUser } from "@directus/sdk";
 
@@ -2194,6 +2194,37 @@ function EventsSection() {
 
 function EventCard({ event }: { event: CareerEvent }) {
   const hours = [event.start_hour, event.end_hour].filter(Boolean).join(" – ");
+  const [hasFloorplan, setHasFloorplan] = React.useState<boolean | null>(null);
+  const [hasCompanyGuide, setHasCompanyGuide] = React.useState<boolean | null>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const checkFloorplan = async () => {
+      try {
+        const { getEventPageWithFloorplan } = await import("@/lib/repos/floorplan");
+        const eventPage = await getEventPageWithFloorplan(event.id);
+        setHasFloorplan(!!eventPage?.floorplan);
+        // Check if company_guide exists (could be string ID or object with id)
+        const companyGuide = eventPage?.company_guide;
+        if (companyGuide) {
+          const hasGuide = typeof companyGuide === 'string' 
+            ? !!companyGuide 
+            : !!(companyGuide as { id?: string })?.id;
+          setHasCompanyGuide(hasGuide);
+        } else {
+          setHasCompanyGuide(false);
+        }
+      } catch (error) {
+        console.error("Error checking floorplan:", error);
+        setHasFloorplan(false);
+        setHasCompanyGuide(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+    checkFloorplan();
+  }, [event.id]);
+
   return (
     <Card className="border rounded-lg shadow-sm">
       <CardHeader>
@@ -2210,7 +2241,478 @@ function EventCard({ event }: { event: CareerEvent }) {
           <span># Students</span>
           <span className="font-medium text-foreground">{String(event.num_of_students ?? "–")}</span>
         </div>
+        <div className="flex flex-col gap-2 items-stretch">
+          <AddCompaniesDialog event={event} />
+          <AddCompanyGuideDialog event={event} hasCompanyGuide={hasCompanyGuide} />
+          {loading ? (
+            <Button variant="outline" size="sm" disabled className="w-full">
+              Loading...
+            </Button>
+          ) : hasFloorplan ? (
+            <Button variant="outline" size="sm" asChild className="w-full">
+              <Link href={`/admin/floorplan/${event.id}`}>
+                Edit floorplan
+              </Link>
+            </Button>
+          ) : (
+            <AddFloorplanDialog event={event} />
+          )}
+        </div>
       </CardContent>
     </Card>
   );
 }
+
+function AddFloorplanDialog({ event }: { event: CareerEvent }) {
+  const [open, setOpen] = React.useState(false);
+  const [uploading, setUploading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    
+    const fd = new FormData(e.currentTarget);
+    const name = String(fd.get("name") ?? "").trim();
+    const year = String(fd.get("year") ?? "").trim();
+    const svgFile = fd.get("svg") as File | null;
+
+    if (!name || !year || !svgFile) {
+      setError("Please fill in all fields and select an SVG file");
+      return;
+    }
+
+    if (svgFile.type !== "image/svg+xml" && !svgFile.name.toLowerCase().endsWith(".svg")) {
+      setError("Please select an SVG file");
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("svg", svgFile);
+      formData.append("name", name);
+      formData.append("year", year);
+      formData.append("eventId", event.id);
+
+      const response = await fetch("/api/admin/upload-floorplan", {
+        method: "POST",
+        body: formData,
+      });
+
+      // Check if response is JSON
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        console.error("Non-JSON response:", text);
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to upload floorplan");
+      }
+
+      setOpen(false);
+      (e.target as HTMLFormElement).reset();
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="w-full">
+          <IconPlus className="h-4 w-4 mr-2" />
+          Add floorplan
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto">
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>Add Floorplan</DialogTitle>
+            <DialogDescription>
+              Upload an SVG floorplan for {event.name}. The system will extract booths automatically.
+            </DialogDescription>
+          </DialogHeader>
+
+          {error && (
+            <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
+              {error}
+            </div>
+          )}
+
+          <div className="w-full">
+            <Label htmlFor="name" className="text-xs">Floorplan Name*</Label>
+            <Input name="name" id="name" placeholder="Main Hall Floorplan" required />
+          </div>
+
+          <div className="w-full">
+            <Label htmlFor="year" className="text-xs">Year*</Label>
+            <Input name="year" id="year" placeholder="2025" required />
+          </div>
+
+          <div className="w-full">
+            <Label htmlFor="svg" className="text-xs">SVG File*</Label>
+            <Input
+              ref={fileInputRef}
+              name="svg"
+              id="svg"
+              type="file"
+              accept="image/svg+xml,.svg"
+              required
+              disabled={uploading}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Upload an SVG floorplan file. The system will extract booths automatically.
+            </p>
+          </div>
+
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button type="submit" disabled={uploading} className="w-full sm:w-auto">
+              {uploading ? "Processing..." : "Upload & Process"}
+            </Button>
+            <DialogClose asChild>
+              <Button variant="outline" className="w-full sm:w-auto" disabled={uploading}>
+                Cancel
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AddCompaniesDialog({ event }: { event: CareerEvent }) {
+  const [open, setOpen] = React.useState(false);
+  const [companies, setCompanies] = React.useState<Company[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [adding, setAdding] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [selectedCompanyIds, setSelectedCompanyIds] = React.useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = React.useState("");
+
+  // Load companies when dialog opens
+  React.useEffect(() => {
+    if (open) {
+      setLoading(true);
+      setError(null);
+      findCompaniesWithEventOptions(event.id)
+        .then((companies) => {
+          setCompanies(companies);
+          // All companies selected by default
+          setSelectedCompanyIds(new Set(companies.map((c) => c.id)));
+        })
+        .catch((err) => {
+          console.error("Error loading companies:", err);
+          setError("Failed to load companies");
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    } else {
+      // Reset when dialog closes
+      setCompanies([]);
+      setSelectedCompanyIds(new Set());
+      setSearchQuery("");
+      setError(null);
+    }
+  }, [open, event.id]);
+
+  const toggleCompany = (companyId: string) => {
+    setSelectedCompanyIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(companyId)) {
+        next.delete(companyId);
+      } else {
+        next.add(companyId);
+      }
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedCompanyIds.size === filteredCompanies.length) {
+      setSelectedCompanyIds(new Set());
+    } else {
+      setSelectedCompanyIds(new Set(filteredCompanies.map((c) => c.id)));
+    }
+  };
+
+  const filteredCompanies = React.useMemo(() => {
+    if (!searchQuery.trim()) return companies;
+    const query = searchQuery.toLowerCase();
+    return companies.filter((c) => c.name.toLowerCase().includes(query));
+  }, [companies, searchQuery]);
+
+  const handleAdd = async () => {
+    if (selectedCompanyIds.size === 0) {
+      setError("Please select at least one company");
+      return;
+    }
+
+    setAdding(true);
+    setError(null);
+
+    try {
+      const result = await addCompaniesToEventPageAction(
+        event.id,
+        Array.from(selectedCompanyIds)
+      );
+
+      if (result.success) {
+        setOpen(false);
+      } else {
+        setError(result.error || "Failed to add companies");
+      }
+    } catch (err) {
+      console.error("Error adding companies:", err);
+      setError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="w-full">
+          <IconPlus className="h-4 w-4 mr-2" />
+          Add companies
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Add Companies to {event.name}</DialogTitle>
+          <DialogDescription>
+            Select companies that have registered for this event through career event options.
+            All companies are selected by default, but you can deselect any before adding.
+          </DialogDescription>
+        </DialogHeader>
+
+        {error && (
+          <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
+            {error}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="h-32 grid place-items-center text-sm text-muted-foreground">
+            Loading companies...
+          </div>
+        ) : companies.length === 0 ? (
+          <div className="h-32 grid place-items-center text-sm text-muted-foreground">
+            No companies found with options for this event.
+          </div>
+        ) : (
+          <>
+            <div className="w-full">
+              <Input
+                placeholder="Search companies..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full"
+              />
+            </div>
+
+            <div className="border rounded-lg">
+              <div className="p-3 border-b flex items-center justify-between bg-muted/50">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={
+                      filteredCompanies.length > 0 &&
+                      filteredCompanies.every((c) => selectedCompanyIds.has(c.id))
+                    }
+                    onCheckedChange={toggleAll}
+                  />
+                  <span className="text-sm font-medium">
+                    {selectedCompanyIds.size} of {companies.length} selected
+                  </span>
+                </div>
+              </div>
+
+              <div className="max-h-96 overflow-y-auto">
+                {filteredCompanies.length === 0 ? (
+                  <div className="p-4 text-sm text-muted-foreground text-center">
+                    No companies match your search.
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {filteredCompanies.map((company) => (
+                      <div
+                        key={company.id}
+                        className="p-3 hover:bg-muted/50 flex items-center gap-3 cursor-pointer"
+                        onClick={() => toggleCompany(company.id)}
+                      >
+                        <Checkbox
+                          checked={selectedCompanyIds.has(company.id)}
+                          onCheckedChange={() => toggleCompany(company.id)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <span className="text-sm font-medium flex-1">
+                          {company.name}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button
+            onClick={handleAdd}
+            disabled={adding || selectedCompanyIds.size === 0}
+            className="w-full sm:w-auto"
+          >
+            {adding ? "Adding..." : `Add ${selectedCompanyIds.size} companies`}
+          </Button>
+          <DialogClose asChild>
+            <Button variant="outline" className="w-full sm:w-auto" disabled={adding}>
+              Cancel
+            </Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AddCompanyGuideDialog({ event, hasCompanyGuide }: { event: CareerEvent; hasCompanyGuide?: boolean | null }) {
+  const [open, setOpen] = React.useState(false);
+  const [uploading, setUploading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    
+    const fd = new FormData(e.currentTarget);
+    const pdfFile = fd.get("pdf") as File | null;
+
+    if (!pdfFile) {
+      setError("Please select a PDF file");
+      return;
+    }
+
+    if (pdfFile.type !== "application/pdf" && !pdfFile.name.toLowerCase().endsWith(".pdf")) {
+      setError("Please select a PDF file");
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("pdf", pdfFile);
+      formData.append("eventId", event.id);
+
+      const response = await fetch("/api/admin/upload-company-guide", {
+        method: "POST",
+        body: formData,
+      });
+
+      // Always try to parse as JSON first
+      let result: { success?: boolean; error?: string; message?: string };
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        // If JSON parsing fails, the response is likely an error page
+        // Read as text for debugging, but don't try to parse again
+        const text = await response.text();
+        console.error("Non-JSON response:", text.substring(0, 500)); // Limit log size
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
+      }
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to upload company guide");
+      }
+
+      setOpen(false);
+      (e.target as HTMLFormElement).reset();
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      // Reload the page to show the updated state
+      window.location.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="w-full">
+          {hasCompanyGuide ? (
+            "Edit Company Guide"
+          ) : (
+            <>
+              <IconPlus className="h-4 w-4 mr-2" />
+              Add Company Guide
+            </>
+          )}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto">
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>Add Company Guide</DialogTitle>
+            <DialogDescription>
+              Upload a PDF company guide for {event.name}. Only one company guide per event page.
+            </DialogDescription>
+          </DialogHeader>
+
+          {error && (
+            <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
+              {error}
+            </div>
+          )}
+
+          <div className="w-full">
+            <Label htmlFor="pdf" className="text-xs">PDF File*</Label>
+            <Input
+              ref={fileInputRef}
+              name="pdf"
+              id="pdf"
+              type="file"
+              accept="application/pdf,.pdf"
+              required
+              disabled={uploading}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Upload a PDF file. This will replace any existing company guide for this event.
+            </p>
+          </div>
+
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button type="submit" disabled={uploading} className="w-full sm:w-auto">
+              {uploading ? "Uploading..." : "Upload"}
+            </Button>
+            <DialogClose asChild>
+              <Button variant="outline" className="w-full sm:w-auto" disabled={uploading}>
+                Cancel
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+

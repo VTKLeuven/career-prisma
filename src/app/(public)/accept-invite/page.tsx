@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import NextImage from "next/image";
 import { getDirectusImageUrl } from "@/components/Images";
+import { validatePageImageDimensions } from "@/lib/utils/image-validation";
 import type { Company, Master } from "@/lib/schema";
 
 type CompanyFormData = {
@@ -80,6 +81,16 @@ function CompanySetupForm({ token, company, masters, onComplete }: {
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  
+  // Scroll to error when it appears
+  useEffect(() => {
+    if (error && errorRef.current) {
+      setTimeout(() => {
+        errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
+    }
+  }, [error]);
   
   const [shortDescriptionText, setShortDescriptionText] = useState<string>(
     company?.short_description ? htmlToPlainText(company.short_description) : ""
@@ -153,17 +164,27 @@ function CompanySetupForm({ token, company, masters, onComplete }: {
     setLogoFile(file);
   }
 
-  function handlePageImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handlePageImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     
     if (!file.type.startsWith("image/")) {
       setError("Page image must be an image file.");
+      e.target.value = "";
       return;
     }
     
     if (file.size > MAX_PAGE_IMAGE_SIZE) {
       setError(`Page image file is too large. Maximum size is ${formatFileSize(MAX_PAGE_IMAGE_SIZE)}.`);
+      e.target.value = "";
+      return;
+    }
+    
+    // Validate image dimensions
+    const dimensionValidation = await validatePageImageDimensions(file);
+    if (!dimensionValidation.valid) {
+      setError(dimensionValidation.error || "Invalid image dimensions.");
+      e.target.value = "";
       return;
     }
     
@@ -519,7 +540,7 @@ function CompanySetupForm({ token, company, masters, onComplete }: {
                 {loading ? "Saving..." : "Continue to Password Setup"}
               </Button>
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm" role="alert">
+                <div ref={errorRef} className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm" role="alert">
                   {error}
                 </div>
               )}
@@ -536,6 +557,16 @@ function PasswordSetupForm({ token, onComplete }: { token: string; onComplete: (
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  
+  // Scroll to error when it appears
+  useEffect(() => {
+    if (error && errorRef.current) {
+      setTimeout(() => {
+        errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
+    }
+  }, [error]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -622,7 +653,7 @@ function PasswordSetupForm({ token, onComplete }: { token: string; onComplete: (
               {loading ? "Setting up account..." : "Complete Setup"}
             </Button>
             {error && (
-              <p className="text-center text-sm text-red-600 mt-4" role="alert">
+              <p ref={errorRef} className="text-center text-sm text-red-600 mt-4" role="alert">
                 {error}
               </p>
             )}
@@ -641,6 +672,16 @@ function AcceptInviteContent() {
   const [company, setCompany] = useState<CompanyFormData | null>(null);
   const [masters, setMasters] = useState<Master[]>([]);
   const [step, setStep] = useState<"loading" | "company-setup" | "password-setup" | "complete">("loading");
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  
+  // Scroll to error when it appears
+  useEffect(() => {
+    if (error && errorRef.current) {
+      setTimeout(() => {
+        errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
+    }
+  }, [error]);
 
   useEffect(() => {
     const urlToken = searchParams.get("token");
@@ -731,7 +772,7 @@ function AcceptInviteContent() {
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <Card className="w-full max-w-md">
           <CardContent className="py-8 text-center">
-            <p className="text-red-500">{error}</p>
+            <p ref={errorRef} className="text-red-500">{error}</p>
           </CardContent>
         </Card>
       </div>

@@ -21,10 +21,13 @@ import {
   IconFileCv,
   IconSettings,
   IconColumns,
+  IconAlertTriangle,
 } from "@tabler/icons-react";
 import Link from "next/link";
 import { useUser } from "@/providers/UserProvider";
-import { fetchPendingApprovalRequestsAction } from "@/app/actions/companies";
+import { fetchPendingApprovalRequestsAction, fetchCompanyByIdAction } from "@/app/actions/companies";
+import { validateExistingPageImage } from "@/lib/utils/image-validation";
+import { getDirectusImageUrl } from "@/components/Images";
 
 // Updated sidebar data
 const data = {
@@ -96,6 +99,55 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { open } = useSidebar();
   const { user } = useUser();
   const [pendingCount, setPendingCount] = React.useState<number>(0);
+  const [pageImageInvalid, setPageImageInvalid] = React.useState<boolean>(false);
+
+  // Function to check page image validity
+  const checkPageImage = React.useCallback(async () => {
+    if (!user?.company?.id) {
+      setPageImageInvalid(false);
+      return;
+    }
+
+    try {
+      const company = await fetchCompanyByIdAction(user.company.id);
+      if (!company) {
+        setPageImageInvalid(false);
+        return;
+      }
+
+      const pageImageUrl = company.page_image ? getDirectusImageUrl(company.page_image) : null;
+      if (pageImageUrl) {
+        const validation = await validateExistingPageImage(pageImageUrl);
+        setPageImageInvalid(!validation.valid);
+      } else {
+        setPageImageInvalid(false);
+      }
+    } catch (error) {
+      console.error("Error checking page image validity:", error);
+      setPageImageInvalid(false);
+    }
+  }, [user?.company?.id]);
+
+  // Check if company page image is invalid
+  React.useEffect(() => {
+    checkPageImage();
+  }, [checkPageImage]);
+
+  // Listen for company update events
+  React.useEffect(() => {
+    const handleCompanyUpdate = (event: CustomEvent) => {
+      // Re-check page image validity when company is updated
+      if (event.detail?.companyId === user?.company?.id) {
+        checkPageImage();
+      }
+    };
+
+    window.addEventListener('company-updated', handleCompanyUpdate as EventListener);
+    
+    return () => {
+      window.removeEventListener('company-updated', handleCompanyUpdate as EventListener);
+    };
+  }, [checkPageImage, user?.company?.id]);
 
   // Fetch pending approvals count for admins/salespeople
   React.useEffect(() => {
@@ -158,6 +210,29 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const navItems = React.useMemo(() => {
     const items: any[] = [...data.navMain];
 
+    // Add warning to Settings and Company Information if page image is invalid
+    const settingsIndex = items.findIndex(item => item.title === "Settings");
+    if (settingsIndex !== -1) {
+      // Add warning to Settings parent item
+      items[settingsIndex] = {
+        ...items[settingsIndex],
+        hasWarning: pageImageInvalid,
+      };
+      
+      // Add warning to Company Information sub-item
+      if (items[settingsIndex].items) {
+        const companyInfoIndex = items[settingsIndex].items.findIndex(
+          (item: any) => item.title === "Company Information"
+        );
+        if (companyInfoIndex !== -1) {
+          items[settingsIndex].items[companyInfoIndex] = {
+            ...items[settingsIndex].items[companyInfoIndex],
+            hasWarning: pageImageInvalid,
+          };
+        }
+      }
+    }
+
     // Add Forms section for admins
     if (user?.admin) {
       items.push({
@@ -183,7 +258,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
 
     return items;
-  }, [user?.admin, pendingCount]);
+  }, [user?.admin, pendingCount, pageImageInvalid]);
 
   return (
     <Sidebar collapsible="icon" {...props}>

@@ -57,6 +57,10 @@ export async function listEventPages(opts?: {
           "event.*", // make sure we get event fields
           "timetable.timetable_id.*",
           "companies.company_id.*",
+          "companies.company_id.page_on_platform",
+          "companies.company_id.status",
+          "floorplan.*", // include floorplan relation
+          "company_guide.*", // include company guide file
         ],
         limit,
         page,
@@ -122,6 +126,10 @@ export async function getEventPageBySlug(slug: string): Promise<CareerEventPage 
           "event.*",
           "timetable.timetable_id.*",
           "companies.company_id.*",
+          "companies.company_id.page_on_platform",
+          "companies.company_id.status",
+          "floorplan.*", // include floorplan relation
+          "company_guide.*", // include company guide file
         ],
         filter: {
           event: {

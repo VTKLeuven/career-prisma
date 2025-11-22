@@ -5,6 +5,7 @@ declare module '@tabler/icons-react' {
     size?: number | string;
     stroke?: number | string;
     color?: string;
+    title?: string;
   }
 
   export type TablerIcon = ComponentType<TablerIconProps>;
@@ -25,6 +26,7 @@ declare module '@tabler/icons-react' {
   export const IconPhone: TablerIcon;
   export const IconUser: TablerIcon;
   export const IconTie: TablerIcon;
+  export const IconAlertTriangle: TablerIcon;
 
   // Allow any other icon to be imported
   const icons: Record<string, TablerIcon>;

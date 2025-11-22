@@ -1,6 +1,6 @@
 'use client'
 
-import { ReactNode } from "react"
+import React, { ReactNode } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -13,7 +13,7 @@ interface SectionItem {
 interface SectionLayoutProps {
   title: string
   description?: string
-  items: SectionItem[]
+  items: (SectionItem | ReactNode)[]
   children: ReactNode
 }
 
@@ -31,12 +31,19 @@ export function SectionLayout({ title, description, items, children }: SectionLa
       {/* Navigation Tabs */}
       <div className="border-b">
         <nav className="flex space-x-1" aria-label="Tabs">
-          {items.map((item) => {
-            const isActive = pathname === item.url || pathname?.startsWith(item.url + '/')
+          {items.map((item, index) => {
+            // Check if item is a ReactNode (React element) or a SectionItem
+            if (React.isValidElement(item)) {
+              // It's a ReactNode, render it directly with a key
+              return <div key={index}>{item}</div>;
+            }
+            // It's a SectionItem
+            const sectionItem = item as SectionItem;
+            const isActive = pathname === sectionItem.url || pathname?.startsWith(sectionItem.url + '/')
             return (
               <Link
-                key={item.url}
-                href={item.url}
+                key={sectionItem.url}
+                href={sectionItem.url}
                 className={cn(
                   "px-4 py-2 text-sm font-medium border-b-2 transition-colors",
                   isActive
@@ -44,7 +51,7 @@ export function SectionLayout({ title, description, items, children }: SectionLa
                     : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted"
                 )}
               >
-                {item.title}
+                {sectionItem.title}
               </Link>
             )
           })}

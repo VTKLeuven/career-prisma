@@ -18,7 +18,14 @@ export async function listBooths(
     const { search, limit = 300, page = 1, sort = "booth_number" } = opts ?? {}
     return directus.request(
       readItems("Booths", {
-        fields: ["*", "*.*", "*.*.*", "*.*.*.*"],
+        fields: [
+          "*",
+          "*.*",
+          "*.*.*",
+          "*.*.*.*",
+          "company.page_on_platform",
+          "company.status",
+        ],
         limit,
         page,
         sort,

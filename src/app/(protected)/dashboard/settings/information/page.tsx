@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { IconCheck, IconRefresh } from "@tabler/icons-react";
+import { IconCheck, IconRefresh, IconAlertTriangle } from "@tabler/icons-react";
 import Link from "next/link";
 import type { Company, Master } from "@/lib/schema";
 import { fetchMastersAction } from "@/app/actions/features";
@@ -14,6 +14,7 @@ import { useUser } from "@/providers/UserProvider";
 import { getDirectusImageUrl } from "@/components/Images";
 import NextImage from "next/image";
 import { Textarea } from "@/components/ui/textarea";
+import { validatePageImageDimensions, validateExistingPageImage } from "@/lib/utils/image-validation";
 
 // --- Helpers ---
 function isFileLike(value: unknown): value is File {
@@ -36,6 +37,9 @@ export default function CompanyForm() {
   // File upload error states
   const [logoError, setLogoError] = useState<string | null>(null);
   const [pageImageError, setPageImageError] = useState<string | null>(null);
+  const [pageImageValid, setPageImageValid] = useState<boolean | null>(null); // null = not checked, true = valid, false = invalid
+  const pageImageErrorRef = useRef<HTMLParagraphElement>(null);
+  const logoErrorRef = useRef<HTMLParagraphElement>(null);
 
   const [savedSnapshot, setSavedSnapshot] = useState<{
     company: Company;
@@ -129,7 +133,21 @@ export default function CompanyForm() {
           }
           setSelectedMasters(categoryIds);
           setLogoPreview(typeof fetchedCompany.logo === "string" ? getDirectusImageUrl(fetchedCompany.logo) ?? null : null);
-          setPageImagePreview(typeof fetchedCompany.page_image === "string" ? getDirectusImageUrl(fetchedCompany.page_image) ?? null : null);
+          const pageImageUrl = typeof fetchedCompany.page_image === "string" ? getDirectusImageUrl(fetchedCompany.page_image) ?? null : null;
+          setPageImagePreview(pageImageUrl);
+          
+          // Validate existing page image dimensions
+          if (pageImageUrl) {
+            validateExistingPageImage(pageImageUrl)
+              .then((result) => {
+                setPageImageValid(result.valid);
+              })
+              .catch(() => {
+                setPageImageValid(false);
+              });
+          } else {
+            setPageImageValid(null);
+          }
           
           // Convert HTML to plain text for textareas (only when loading from DB)
           setShortDescriptionText(htmlToPlainText(fetchedCompany.short_description));
@@ -182,6 +200,9 @@ export default function CompanyForm() {
     if (file.type !== "image/png") {
       setLogoError("Logo must be a PNG image file.");
       e.target.value = "";
+      setTimeout(() => {
+        logoErrorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
       return;
     }
     
@@ -189,6 +210,9 @@ export default function CompanyForm() {
     if (file.size > MAX_LOGO_SIZE) {
       setLogoError(`Logo file is too large. Maximum size is ${formatFileSize(MAX_LOGO_SIZE)}. Your file is ${formatFileSize(file.size)}.`);
       e.target.value = "";
+      setTimeout(() => {
+        logoErrorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
       return;
     }
     
@@ -198,7 +222,7 @@ export default function CompanyForm() {
   }
 
   // --- Page Image Upload ---
-  function handlePageImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handlePageImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) {
       setPageImageError(null);
@@ -212,6 +236,9 @@ export default function CompanyForm() {
     if (!file.type.startsWith("image/")) {
       setPageImageError("Page image must be an image file.");
       e.target.value = "";
+      setTimeout(() => {
+        pageImageErrorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
       return;
     }
     
@@ -219,11 +246,28 @@ export default function CompanyForm() {
     if (file.size > MAX_PAGE_IMAGE_SIZE) {
       setPageImageError(`Page image file is too large. Maximum size is ${formatFileSize(MAX_PAGE_IMAGE_SIZE)}. Your file is ${formatFileSize(file.size)}.`);
       e.target.value = "";
+      setTimeout(() => {
+        pageImageErrorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
+      return;
+    }
+    
+    // Validate image dimensions
+    const dimensionValidation = await validatePageImageDimensions(file);
+    if (!dimensionValidation.valid) {
+      setPageImageError(dimensionValidation.error || "Invalid image dimensions.");
+      setPageImageValid(false);
+      e.target.value = "";
+      // Scroll to error after state update
+      setTimeout(() => {
+        pageImageErrorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
       return;
     }
     
     const url = URL.createObjectURL(file);
     setPageImagePreview(url);
+    setPageImageValid(true);
     updateField("page_image", file as unknown as string);
   }
 
@@ -428,11 +472,29 @@ export default function CompanyForm() {
             ? getDirectusImageUrl(updated.logo) ?? null
             : null
         );
-        setPageImagePreview(
-          typeof updated.page_image === "string"
-            ? getDirectusImageUrl(updated.page_image) ?? null
-            : null
-        );
+        const newPageImageUrl = typeof updated.page_image === "string"
+          ? getDirectusImageUrl(updated.page_image) ?? null
+          : null;
+        setPageImagePreview(newPageImageUrl);
+        
+        // Validate new page image if it exists
+        if (newPageImageUrl) {
+          validateExistingPageImage(newPageImageUrl)
+            .then((result) => {
+              setPageImageValid(result.valid);
+            })
+            .catch(() => {
+              setPageImageValid(false);
+            });
+        } else {
+          setPageImageValid(null);
+        }
+        
+        // Dispatch custom event to notify sidebar to refresh
+        window.dispatchEvent(new CustomEvent('company-updated', { 
+          detail: { companyId: company.id } 
+        }));
+        
         // Update saved snapshot text values
         setShortDescriptionText(htmlToPlainText(updated.short_description));
         setLongDescriptionText(htmlToPlainText(updated.long_description));
@@ -569,7 +631,7 @@ export default function CompanyForm() {
                     )}
                   </div>
                   {logoError && (
-                    <p className="text-xs text-red-600 text-center max-w-sm">
+                    <p ref={logoErrorRef} className="text-xs text-red-600 text-center max-w-sm">
                       {logoError}
                     </p>
                   )}
@@ -585,7 +647,12 @@ export default function CompanyForm() {
 
               {/* Page Background Image */}
               <div className="space-y-3">
-                <Label>Page Background Image</Label>
+                <div className="flex items-center gap-2">
+                  <Label>Page Background Image</Label>
+                  {pageImageValid === false && (
+                    <IconAlertTriangle className="h-5 w-5 text-red-600" title="Image dimensions are not suitable for use as a background" />
+                  )}
+                </div>
                 <div className="flex flex-col items-center gap-2">
                   {pageImagePreview ? (
                     <NextImage
@@ -637,7 +704,7 @@ export default function CompanyForm() {
                     )}
                   </div>
                   {pageImageError && (
-                    <p className="text-xs text-red-600 text-center max-w-sm">
+                    <p ref={pageImageErrorRef} className="text-xs text-red-600 text-center max-w-sm">
                       {pageImageError}
                     </p>
                   )}

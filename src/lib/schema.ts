@@ -92,6 +92,7 @@ export type CareerEventPage = {
   };
   companies?: Company[];
   floorplan?: Floorplan;
+  company_guide?: string; // Directus file ID for PDF
 };
 
 export type TimeSlot = {
