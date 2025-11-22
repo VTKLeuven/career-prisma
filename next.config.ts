@@ -28,7 +28,20 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: '10mb',
     },
+    // Increase middleware client body size limit for file uploads (default is 10MB)
+    middlewareClientMaxBodySize: '50mb',
   },
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      // Allow dynamic imports for pdf-into-svg
+      config.externals = config.externals || [];
+      // Don't externalize pdf-into-svg - we want to bundle it
+    }
+    return config;
+  },
+  // Add empty turbopack config to silence the warning
+  // The webpack config is still needed for server-side bundling
+  turbopack: {},
 };
 
 export default nextConfig;

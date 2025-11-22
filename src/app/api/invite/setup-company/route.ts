@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import type { Company } from "@/lib/schema";
+import sharp from "sharp";
+import { validatePageImageDimensionsFromSize } from "@/lib/utils/image-validation";
 
 function isFileLike(value: unknown): value is File {
   return typeof value === "object" && value !== null && "name" in value;
@@ -221,6 +223,29 @@ export async function POST(request: NextRequest) {
     // Handle page image upload (optional)
     const pageImageFile = formData.get("page_image") as File | null;
     if (pageImageFile && pageImageFile.size > 0 && pageImageFile.name) {
+      // Validate image dimensions server-side
+      try {
+        const arrayBuffer = await pageImageFile.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const metadata = await sharp(buffer).metadata();
+        
+        if (metadata.width && metadata.height) {
+          const validation = validatePageImageDimensionsFromSize(metadata.width, metadata.height);
+          if (!validation.valid) {
+            return NextResponse.json(
+              { error: validation.error || "Invalid image dimensions" },
+              { status: 400 }
+            );
+          }
+        }
+      } catch (err) {
+        console.error("Error validating page image dimensions:", err);
+        return NextResponse.json(
+          { error: "Failed to validate image dimensions" },
+          { status: 400 }
+        );
+      }
+      
       const pageImageId = await uploadFileWithServerToken(pageImageFile);
       if (pageImageId) {
         companyData.page_image = pageImageId;

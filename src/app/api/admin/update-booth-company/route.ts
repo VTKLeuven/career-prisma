@@ -1,0 +1,95 @@
+// app/api/admin/update-booth-company/route.ts
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { updateBoothCompany, getBoothsForFloorplan } from "@/lib/repos/floorplan";
+import { readItems } from "@directus/sdk";
+import { getDirectusWithToken } from "@/lib/directus";
+import type { Booth } from "@/lib/schema";
+
+export async function POST(req: Request) {
+  try {
+    const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
+    const cookieStore = await cookies();
+    const token = cookieStore.get(ACCESS_COOKIE)?.value;
+
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { boothId, companyId } = body;
+
+    if (!boothId) {
+      return NextResponse.json(
+        { error: "Missing boothId" },
+        { status: 400 }
+      );
+    }
+
+    // If assigning a company, check if it's already assigned to another booth
+    if (companyId) {
+      // Get the booth first to find its floorplan
+      const client = await getDirectusWithToken();
+      if (!client) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+
+      const currentBooth = await client.request(
+        readItems("Booths", {
+          fields: ["*", "Floorplan.id"],
+          filter: {
+            id: {
+              _eq: boothId,
+            },
+          },
+          limit: 1,
+        })
+      ) as unknown as Booth[];
+
+      if (!currentBooth || currentBooth.length === 0) {
+        return NextResponse.json(
+          { error: "Booth not found" },
+          { status: 404 }
+        );
+      }
+
+      const floorplanId = typeof currentBooth[0].Floorplan === "string" 
+        ? currentBooth[0].Floorplan 
+        : currentBooth[0].Floorplan.id;
+
+      // Get all booths for the same floorplan
+      const floorplanBooths = await getBoothsForFloorplan(floorplanId);
+      
+      // Check if company is already assigned to another booth
+      const existingBooth = floorplanBooths.find(b => b.company?.id === companyId && b.id !== boothId);
+      if (existingBooth) {
+        // Remove company from the other booth first
+        await updateBoothCompany(existingBooth.id, null);
+      }
+    }
+
+    // Update the booth
+    const updated = await updateBoothCompany(boothId, companyId || null);
+
+    if (!updated) {
+      return NextResponse.json(
+        { error: "Failed to update booth" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      booth: updated,
+    });
+  } catch (error) {
+    console.error("Error updating booth company:", error);
+    return NextResponse.json(
+      { 
+        error: error instanceof Error ? error.message : "Internal server error"
+      },
+      { status: 500 }
+    );
+  }
+}
+

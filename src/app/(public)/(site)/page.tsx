@@ -173,7 +173,6 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
             >
               Events
             </button>
-            <Link href="/our-students" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
             <Link href="/vacancies" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
 
@@ -290,6 +289,14 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
 
                 {/* Other Links */}
                 <div className="border-t pt-4 space-y-2">
+                  <Button 
+                    asChild 
+                    variant="outline"
+                    className="rounded-full border-neutral-300 text-neutral-800 hover:bg-neutral-100 w-full"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <Link href="/our-students">Our students</Link>
+                  </Button>
                   <Button 
                     variant="outline" 
                     className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full" 

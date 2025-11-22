@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from "react"
-import { useParams, usePathname } from "next/navigation"
+import { useParams, usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import NextImage from "next/image"
 import { fetchEventPagesAction } from "@/app/actions/events"
@@ -27,13 +27,14 @@ export default function SubPage() {
   const eventName = Array.isArray(params.eventName) ? params.eventName[0] : params.eventName
   const subPage = Array.isArray(params.subPage) ? params.subPage[0] : params.subPage
   const isFloorplanPage = pathname.endsWith("/floorplan")
+  const isCompanyGuidePage = pathname.endsWith("/company-guide")
   const isMatchingSoftwarePage = subPage === "matching-software"
 
-  // Hide layout header when rendering floorplan header
+  // Hide layout header when rendering floorplan or company guide header
   useEffect(() => {
-    setHideLayoutHeader(isFloorplanPage)
+    setHideLayoutHeader(isFloorplanPage || isCompanyGuidePage)
     return () => setHideLayoutHeader(false)
-  }, [isFloorplanPage, setHideLayoutHeader])
+  }, [isFloorplanPage, isCompanyGuidePage, setHideLayoutHeader])
 
   useEffect(() => {
     async function load() {
@@ -108,7 +109,11 @@ export default function SubPage() {
         />
       )}
 
-      {!isFloorplanPage && !isMatchingSoftwarePage && (
+      {isCompanyGuidePage && page && (
+        <CompanyGuidePage page={page} />
+      )}
+
+      {!isFloorplanPage && !isCompanyGuidePage && !isMatchingSoftwarePage && (
         <div className="p-10 text-center text-neutral-700">
           <h1 className="text-2xl font-semibold">Subpage</h1>
           <p className="mt-2 text-sm text-neutral-500">
@@ -132,6 +137,7 @@ function Header({
   booths,
   triggerFlicker,
   eventName,
+  isCompanyGuide = false,
 }: {
   categories: Master[]
   selectedCategories: string[]
@@ -139,6 +145,7 @@ function Header({
   booths: Booth[]
   triggerFlicker: (companyId: string) => void
   eventName: string
+  isCompanyGuide?: boolean
 }) {
   const toggleCategory = (short_name: string) => {
     if (selectedCategories.includes(short_name)) {
@@ -148,10 +155,11 @@ function Header({
     }
   }
 
+  const router = useRouter()
   const [searchTerm, setSearchTerm] = useState("")
   const [isFocused, setIsFocused] = useState(false)
 
-  const matchingCompanies = isFocused
+  const matchingCompanies = isFocused && !isCompanyGuide
     ? booths.filter(b => b.company)
       .filter(b =>
         searchTerm
@@ -167,15 +175,15 @@ function Header({
         <div className="mx-auto max-w-7xl px-2 sm:px-4">
           {/* Mobile: Stack layout */}
           <div className="md:hidden flex flex-col gap-2">
-            {/* Top row: Floorplan label + VTK Jobfair + Home */}
+            {/* Top row: Page label + VTK Jobfair + Home */}
             <div className="flex items-center justify-between gap-2 rounded-xl border bg-white/85 px-2 sm:px-3 py-1.5 sm:py-2 shadow-md ring-1 ring-black/5 backdrop-blur-md">
-              <span className="text-xs font-semibold text-neutral-800">Floorplan</span>
+              <span className="text-xs font-semibold text-neutral-800">{isCompanyGuide ? 'Company page' : 'Floorplan'}</span>
               <div className="flex items-center gap-2">
                 <Link
                   href={`/event/${eventName.toLowerCase().replace(/\s+/g, "-")}`}
                   className="rounded-full bg-vtk-blue px-2.5 py-1 text-xs font-medium text-white cursor-pointer whitespace-nowrap"
                 >
-                  VTK Jobfair
+                  {eventName}
                 </Link>
                 <Link
                   href="/"
@@ -186,9 +194,78 @@ function Header({
               </div>
             </div>
             
-            {/* Bottom row: Search only (categories moved to bottom of page on mobile) */}
-            <div className="flex flex-col gap-2 rounded-xl border bg-white/85 px-2 sm:px-3 py-1.5 sm:py-2 shadow-md ring-1 ring-black/5 backdrop-blur-md">
-              <div className="relative w-full">
+            {/* Bottom row: Search (only for floorplan) or buttons (for company guide) */}
+            {!isCompanyGuide && (
+              <div className="flex flex-col gap-2 rounded-xl border bg-white/85 px-2 sm:px-3 py-1.5 sm:py-2 shadow-md ring-1 ring-black/5 backdrop-blur-md">
+                <div className="relative w-full">
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => setTimeout(() => setIsFocused(false), 200)}
+                    placeholder="Search company..."
+                    className="w-full rounded-full border border-gray-300 px-3 py-1.5 text-xs"
+                  />
+                  {matchingCompanies.length > 0 && (
+                    <ul className="absolute top-full left-0 w-full mt-1 max-h-60 overflow-auto rounded-lg border bg-white shadow-lg z-50">
+                      {matchingCompanies.map(b => (
+                        <li
+                          key={b.company!.id}
+                          className="px-4 py-2 hover:bg-vtk-blue/10 cursor-pointer flex justify-between"
+                          onClick={() => {
+                            triggerFlicker(b.company!.id)
+                            setSearchTerm("")
+                            setIsFocused(false)
+                          }}
+                        >
+                          <span>{b.company!.name}</span>
+                          <span className="text-gray-500">{b.booth_number}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+            {isCompanyGuide && (
+              <div className="flex items-center gap-2 rounded-xl border bg-white/85 px-2 sm:px-3 py-1.5 sm:py-2 shadow-md ring-1 ring-black/5 backdrop-blur-md">
+                <Button 
+                  variant="outline" 
+                  className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 text-xs px-3 py-1.5" 
+                  onClick={() => router.push("/dashboard")}
+                >
+                  Company Dashboard
+                </Button>
+                <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark text-xs px-3 py-1.5">
+                  <Link href="/contact">Contact Us</Link>
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Desktop: Horizontal layout */}
+          <div className="hidden md:flex items-center justify-between gap-3 rounded-2xl border bg-white/85 px-5 py-3 shadow-md ring-1 ring-black/5 backdrop-blur-md">
+            {/* Left: Page label + Home + Event */}
+            <div className="flex items-center gap-4">
+              <span className="text-sm font-semibold text-neutral-800">{isCompanyGuide ? 'Company page' : 'Floorplan'}</span>
+              <Link
+                href="/"
+                className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white cursor-pointer"
+              >
+                Home
+              </Link>
+              <Link
+                href={`/event/${eventName.toLowerCase().replace(/\s+/g, "-")}`}
+                className="text-sm font-semibold text-neutral-800 hover:text-vtk-blue cursor-pointer transition-colors"
+              >
+                {eventName}
+              </Link>
+            </div>
+
+            {/* Middle: Search bar (only for floorplan) or empty space (for company guide) */}
+            {!isCompanyGuide && (
+              <div className="relative flex-1 max-w-xs">
                 <input
                   type="text"
                   value={searchTerm}
@@ -196,7 +273,7 @@ function Header({
                   onFocus={() => setIsFocused(true)}
                   onBlur={() => setTimeout(() => setIsFocused(false), 200)}
                   placeholder="Search company..."
-                  className="w-full rounded-full border border-gray-300 px-3 py-1.5 text-xs"
+                  className="w-full rounded-full border border-gray-300 px-4 py-2 text-sm"
                 />
                 {matchingCompanies.length > 0 && (
                   <ul className="absolute top-full left-0 w-full mt-1 max-h-60 overflow-auto rounded-lg border bg-white shadow-lg z-50">
@@ -217,85 +294,50 @@ function Header({
                   </ul>
                 )}
               </div>
-            </div>
-          </div>
+            )}
 
-          {/* Desktop: Horizontal layout - original */}
-          <div className="hidden md:flex items-center justify-between gap-3 rounded-2xl border bg-white/85 px-5 py-3 shadow-md ring-1 ring-black/5 backdrop-blur-md">
-            {/* Left: Floorplan + Home + Event */}
-            <div className="flex items-center gap-4">
-              <span className="text-sm font-semibold text-neutral-800">Floorplan</span>
-              <Link
-                href="/"
-                className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white cursor-pointer"
-              >
-                Home
-              </Link>
-              <Link
-                href={`/event/${eventName.toLowerCase().replace(/\s+/g, "-")}`}
-                className="text-sm font-semibold text-neutral-800 hover:text-vtk-blue cursor-pointer transition-colors"
-              >
-                {eventName}
-              </Link>
-            </div>
-
-            {/* Middle: Search bar */}
-            <div className="relative flex-1 max-w-xs">
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                onFocus={() => setIsFocused(true)}
-                onBlur={() => setTimeout(() => setIsFocused(false), 200)}
-                placeholder="Search company..."
-                className="w-full rounded-full border border-gray-300 px-4 py-2 text-sm"
-              />
-              {matchingCompanies.length > 0 && (
-                <ul className="absolute top-full left-0 w-full mt-1 max-h-60 overflow-auto rounded-lg border bg-white shadow-lg z-50">
-                  {matchingCompanies.map(b => (
-                    <li
-                      key={b.company!.id}
-                      className="px-4 py-2 hover:bg-vtk-blue/10 cursor-pointer flex justify-between"
-                      onClick={() => {
-                        triggerFlicker(b.company!.id)
-                        setSearchTerm("")
-                        setIsFocused(false)
-                      }}
+            {/* Right: Category logos (only for floorplan) or buttons (for company guide) */}
+            {!isCompanyGuide && (
+              <div className="flex flex-wrap items-center gap-2">
+                {categories.map(cat => {
+                  const isSelected = selectedCategories.includes(cat.short_name)
+                  return (
+                    <button
+                      key={cat.short_name}
+                      onClick={() => toggleCategory(cat.short_name)}
+                      className="relative w-10 h-10 rounded-full overflow-hidden border transition-all duration-200 cursor-pointer flex items-center justify-center"
+                      style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
                     >
-                      <span>{b.company!.name}</span>
-                      <span className="text-gray-500">{b.booth_number}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            {/* Right: Category logos */}
-            <div className="flex flex-wrap items-center gap-2">
-              {categories.map(cat => {
-                const isSelected = selectedCategories.includes(cat.short_name)
-                return (
-                  <button
-                    key={cat.short_name}
-                    onClick={() => toggleCategory(cat.short_name)}
-                    className="relative w-10 h-10 rounded-full overflow-hidden border transition-all duration-200 cursor-pointer flex items-center justify-center"
-                    style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
-                  >
-                    <NextImage
-                      src={getDirectusImageUrl(cat.logo) ?? ''}
-                      alt={cat.short_name}
-                      width={32}
-                      height={32}
-                      className={`object-contain transition-all duration-200 transform ${
-                        isSelected
-                          ? 'scale-110 grayscale-0 opacity-100'
-                          : 'scale-90 grayscale-[50%] opacity-70'
-                      }`}
-                    />
-                  </button>
-                )
-              })}
-            </div>
+                      <NextImage
+                        src={getDirectusImageUrl(cat.logo) ?? ''}
+                        alt={cat.short_name}
+                        width={32}
+                        height={32}
+                        className={`object-contain transition-all duration-200 transform ${
+                          isSelected
+                            ? 'scale-110 grayscale-0 opacity-100'
+                            : 'scale-90 grayscale-[50%] opacity-70'
+                        }`}
+                      />
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            {isCompanyGuide && (
+              <div className="ml-auto flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10" 
+                  onClick={() => router.push("/dashboard")}
+                >
+                  Company Dashboard
+                </Button>
+                <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">
+                  <Link href="/contact">Contact Us</Link>
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -565,12 +607,12 @@ function Floorplan({
 
   return (
     <>
-      <div className="pt-32 md:pt-[90px] flex justify-center w-full px-2 sm:px-4 pb-20 md:pb-4">
+      <div className="pt-32 md:pt-[90px] flex justify-center w-full px-2 sm:px-4 pb-4">
         <div className="w-full max-w-full">
           <svg
             ref={svgRef}
             viewBox={viewBox}
-            className="w-full h-auto min-w-0"
+            className="w-full h-auto min-w-0 max-h-[calc(100vh-200px)]"
             xmlns="http://www.w3.org/2000/svg"
             preserveAspectRatio="xMidYMid meet"
           >
@@ -657,6 +699,76 @@ function Floorplan({
 }
 
 // ---------------- Popup ----------------
+function CompanyGuidePage({ page }: { page: CareerEventPage }) {
+  // Get company guide file ID
+  const companyGuide = page.company_guide
+  const fileId = !companyGuide 
+    ? null 
+    : typeof companyGuide === 'string' 
+      ? companyGuide 
+      : (companyGuide as { id?: string })?.id || null
+  
+  // Use API route to proxy PDF to avoid CORS issues
+  const pdfUrl = fileId 
+    ? `/api/pdf-proxy?fileId=${fileId}`
+    : null
+
+  if (!pdfUrl) {
+    return (
+      <div className="p-10 text-center text-neutral-700">
+        <h1 className="text-2xl font-semibold">Company Guide</h1>
+        <p className="mt-2 text-sm text-neutral-500">
+          Company guide not available.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-vtk-bg">
+      <Header
+        categories={[]}
+        selectedCategories={[]}
+        setSelectedCategories={() => {}}
+        booths={[]}
+        triggerFlicker={() => {}}
+        eventName={page.event.name}
+        isCompanyGuide={true}
+      />
+      <PDFViewer pdfUrl={pdfUrl} />
+    </div>
+  )
+}
+
+// ---------------- PDF Viewer Component ----------------
+// Use iframe for perfect PDF rendering - browser's native PDF viewer handles complex graphics correctly
+// Style it to look integrated into the site with scrollable pages
+function PDFViewer({ pdfUrl }: { pdfUrl: string }) {
+  return (
+    <div className="pt-24 pb-10">
+      <div className="max-w-4xl mx-auto px-4">
+        <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+          {/* Use object tag for better PDF rendering with native browser support */}
+          <object
+            data={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+            type="application/pdf"
+            className="w-full min-h-[800px]"
+            style={{ height: 'calc(100vh - 120px)' }}
+          >
+            {/* Fallback if object doesn't work */}
+            <iframe
+              src={`${pdfUrl}#toolbar=0&navpanes=0`}
+              className="w-full min-h-[800px] border-0"
+              style={{ height: 'calc(100vh - 120px)' }}
+              title="Company Guide PDF"
+            />
+          </object>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ComingSoonPage({ title, description, eventName }: { title: string; description: string; eventName: string }) {
   const eventSlug = eventName.toLowerCase().replace(/\s+/g, "-")
   
@@ -756,7 +868,7 @@ function Popup({ company, onClose }: { company: Company; onClose: () => void }) 
           </div>
         )}
 
-        {company?.page_on_platform && (
+        {company?.page_on_platform === true && company?.status === "published" && (
           <div className="mt-5 flex items-center justify-center gap-3">
             <Link
               href={`/company/${(company.name || "").toLowerCase().replace(/\s+/g, "-")}`}
