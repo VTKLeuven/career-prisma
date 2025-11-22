@@ -1013,18 +1013,21 @@ function CompanyGuideButton({ companyGuide, isMobile, eventName }: {
 
   if (!fileId) return null
 
-  const href = `/event/${eventName}/company-guide`
+  // Use the event route for download
+  const eventSlug = eventName.toLowerCase().replace(/\s+/g, "-")
+  const downloadUrl = `/api/event/${eventSlug}/company-guide/download`
 
   return (
-    <Link
-      href={href}
+    <a
+      href={downloadUrl}
+      download
       className={isMobile 
         ? "rounded-full px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 whitespace-nowrap shrink-0"
         : "rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
       }
     >
       Company Guide
-    </Link>
+    </a>
   )
 }
 
