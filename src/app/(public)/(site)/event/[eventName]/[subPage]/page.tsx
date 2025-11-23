@@ -666,8 +666,7 @@ function Floorplan({
             xmlns="http://www.w3.org/2000/svg"
             preserveAspectRatio="xMidYMid meet"
           >
-          <g dangerouslySetInnerHTML={{ __html: svgContent }} />
-
+          {/* First: Render unselected white booths behind SVG */}
           {boothsLocal.map((booth, i) => {
             if (!booth.coords || !booth.company) return null
 
@@ -682,54 +681,110 @@ function Floorplan({
               )
 
             const isFlicker = flickerCompanyId === booth.company.id && flickerState
-
             const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
 
-            // Convert booth percentage coordinates to absolute coordinates
-            // Use original viewBox for booth coordinates since they're stored as percentages of original
+            // Only render unselected booths here (white background)
+            if (isSelected) return null
+
             const origVbParts = originalViewBox.split(/\s+/).map(Number)
             if (origVbParts.length !== 4) return null
             const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
 
-            // Calculate absolute coordinates using original viewBox
+            const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
+            const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
+            const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
+            const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
+
+            return (
+              <rect
+                key={`unselected-${i}`}
+                x={boothX}
+                y={boothY}
+                width={boothWidth}
+                height={boothHeight}
+                fill="white"
+                stroke="#e5e7eb"
+                strokeWidth={1}
+                style={{ cursor: "pointer" }}
+                onClick={() => onBoothClick(booth.company!)}
+                onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
+                onMouseLeave={() => {
+                  setHoveredBoothId(null)
+                  setTooltip(null)
+                }}
+                onMouseMove={(e) => {
+                  if (hoveredBoothId === booth.company?.id && booth.company) {
+                    setTooltip({
+                      companyName: booth.company.name,
+                      x: e.clientX,
+                      y: e.clientY
+                    })
+                  }
+                }}
+              />
+            )
+          })}
+
+          {/* Second: SVG content (with pointer-events: none so it doesn't block clicks) */}
+          <g dangerouslySetInnerHTML={{ __html: svgContent }} style={{ pointerEvents: 'none' }} />
+
+          {/* Third: Render selected booths on top */}
+          {boothsLocal.map((booth, i) => {
+            if (!booth.coords || !booth.company) return null
+
+            const boothCats: Master[] = Array.isArray(booth.company.category)
+              ? booth.company.category.filter((c): c is Master => c !== null)
+              : []
+
+            const isCategorySelected =
+              selectedCategories.length > 0 &&
+              selectedCategories.every(cat =>
+                boothCats.map(c => c.short_name).includes(cat)
+              )
+
+            const isFlicker = flickerCompanyId === booth.company.id && flickerState
+            const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
+
+            // Only render selected booths here
+            if (!isSelected) return null
+
+            const origVbParts = originalViewBox.split(/\s+/).map(Number)
+            if (origVbParts.length !== 4) return null
+            const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
+
             const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
             const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
             const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
             const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
             const isHovered = hoveredBoothId === booth.company?.id
-            
-            // Calculate name position - always above booth, centered
-            const boothCenterX = boothX + boothWidth / 2
-            const boothTop = boothY
 
             return (
-              <g key={i}>
-                <rect
-                  x={boothX}
-                  y={boothY}
-                  width={boothWidth}
-                  height={boothHeight}
-                  fill={isSelected ? "rgba(0,51,102,0.35)" : "transparent"}
-                  stroke={isSelected ? "#003366" : "transparent"}
-                  strokeWidth={isSelected ? 1 : 0}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => onBoothClick(booth.company!)}
-                  onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
-                  onMouseLeave={() => {
-                    setHoveredBoothId(null)
-                    setTooltip(null)
-                  }}
-                  onMouseMove={(e) => {
-                    if (isHovered && booth.company) {
-                      setTooltip({
-                        companyName: booth.company.name,
-                        x: e.clientX,
-                        y: e.clientY
-                      })
-                    }
-                  }}
-                />
-              </g>
+              <rect
+                key={`selected-${i}`}
+                x={boothX}
+                y={boothY}
+                width={boothWidth}
+                height={boothHeight}
+                fill="rgba(0,51,102,0.35)"
+                stroke="#003366"
+                strokeWidth={1}
+                style={{ cursor: "pointer" }}
+                onClick={() => onBoothClick(booth.company!)}
+                onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
+                onMouseLeave={() => {
+                  setHoveredBoothId(null)
+                  setTooltip(null)
+                }}
+                onMouseMove={(e) => {
+                  if (isHovered && booth.company) {
+                    setTooltip({
+                      companyName: booth.company.name,
+                      x: e.clientX,
+                      y: e.clientY
+                    })
+                  }
+                }}
+              />
             )
           })}
           </svg>
@@ -818,9 +873,9 @@ function CompanyList({
       ? company.category.filter((c): c is Master => c !== null)
       : []
     
-    // Company must have ALL selected categories (same as floorplan logic)
-    return selectedCategories.every(catShortName =>
-      companyCats.some(c => c.short_name === catShortName)
+    // Company must have ALL selected categories (exact same logic as floorplan)
+    return selectedCategories.every(cat =>
+      companyCats.map(c => c.short_name).includes(cat)
     )
   }
 
@@ -897,12 +952,15 @@ function CompanyListItem({
       onClick={() => onCompanyClick(company)}
       className={`w-full text-left p-3 rounded-lg border transition-all cursor-pointer ${
         isHighlighted
-          ? 'bg-vtk-blue/10 border-vtk-blue font-bold'
+          ? 'border-vtk-blue font-bold'
           : 'bg-white border-neutral-200 hover:border-vtk-blue/50 hover:bg-neutral-50'
       }`}
+      style={{
+        backgroundColor: isHighlighted ? 'rgba(147, 166, 193, 1)' : 'white',
+      }}
     >
       <div className="flex-1 min-w-0">
-        <div className={`text-sm ${isHighlighted ? 'font-bold text-vtk-blue' : 'font-medium text-neutral-900'}`}>
+        <div className={`text-sm ${isHighlighted ? 'font-bold text-black' : 'font-medium text-neutral-900'}`}>
           {company.name}
         </div>
         <div className="text-xs text-neutral-500 mt-1">
