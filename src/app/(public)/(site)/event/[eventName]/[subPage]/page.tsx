@@ -825,7 +825,7 @@ function CompanyList({
   }
 
   return (
-    <div className="w-full px-2 sm:px-4 pb-4">
+    <div className="w-full px-2 sm:px-4 pb-4 relative z-10">
       <div className="max-w-7xl mx-auto">
         <h2 className="text-xl font-semibold text-neutral-900 mb-4 mt-6">
           Companies ({companiesWithBooths.length})
