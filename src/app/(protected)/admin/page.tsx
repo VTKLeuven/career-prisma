@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { fetchCompaniesAction, createCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, removeUserFromCompanyAction, processCompaniesCSVAction } from "@/app/actions/companies";
+import { fetchCompaniesAction, createCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction } from "@/app/actions/companies";
 import { fetchEventsAction, findCompaniesWithEventOptions, addCompaniesToEventPageAction } from "@/app/actions/events";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -772,6 +772,31 @@ function getUserColumns(onRemoveUser: (userId: string) => void, companyId: strin
       enableHiding: false,
       cell: ({ row }) => {
         const user = row.original;
+        const [isResending, setIsResending] = React.useState(false);
+        const userStatus = user?.status;
+        const isInvited = userStatus === "invited";
+
+        const handleResendInvite = async () => {
+          if (!user?.id) return;
+          
+          setIsResending(true);
+          try {
+            const result = await resendInviteAction(user.id, companyId);
+            if (result.success) {
+              // You could add a toast notification here
+              console.log("Invitation resent successfully");
+            } else {
+              console.error("Failed to resend invitation:", result.error);
+              alert(`Failed to resend invitation: ${result.error || "Unknown error"}`);
+            }
+          } catch (error) {
+            console.error("Error resending invitation:", error);
+            alert(`Error resending invitation: ${error instanceof Error ? error.message : "Unknown error"}`);
+          } finally {
+            setIsResending(false);
+          }
+        };
+
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -780,6 +805,14 @@ function getUserColumns(onRemoveUser: (userId: string) => void, companyId: strin
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
               <DropdownMenuItem onClick={() => console.log("Edit user", user)}>Edit</DropdownMenuItem>
+              {user?.id && isInvited && (
+                <DropdownMenuItem 
+                  onClick={handleResendInvite}
+                  disabled={isResending}
+                >
+                  {isResending ? "Resending..." : "Resend invite"}
+                </DropdownMenuItem>
+              )}
               {user?.id && (
                 <>
                   <DropdownMenuSeparator />

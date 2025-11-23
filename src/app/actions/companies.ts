@@ -764,6 +764,84 @@ export async function removeUserFromCompanyAction(companyId: string, userId: str
     : { success: false, error: deleteResult.error || "Failed to delete user" };
 }
 
+// Resend invitation email to a user
+export async function resendInviteAction(userId: string, companyId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Verify user exists and is in "invited" status
+    const company = await fetchCompanyByIdAction(companyId);
+    if (!company) {
+      return { success: false, error: "Company not found" };
+    }
+
+    // Find the user in the company's representatives
+    const user = company.representatives?.find((rep: CompanyRep | string) => {
+      const repId = typeof rep === 'string' ? rep : rep?.id;
+      return repId === userId;
+    });
+
+    if (!user) {
+      return { success: false, error: "User not found in company" };
+    }
+
+    const userObj = typeof user === 'string' ? null : user;
+    const userStatus = userObj?.status;
+
+    // Only allow resending invites for users with "invited" status
+    if (userStatus !== "invited") {
+      return { success: false, error: `Cannot resend invite: user status is "${userStatus}", not "invited"` };
+    }
+
+    const userEmail = userObj?.email;
+    if (!userEmail) {
+      return { success: false, error: "User email not found" };
+    }
+
+    console.log(`[resendInviteAction] Resending invite to user ${userId} (${userEmail})`);
+
+    // Generate new invite token
+    const { generateInviteToken } = await import("@/lib/repos/users");
+    const tokenData = await generateInviteToken(userId);
+
+    if (!tokenData || !tokenData.token) {
+      return { success: false, error: "Failed to generate invite token" };
+    }
+
+    console.log(`[resendInviteAction] Token generated successfully for ${userEmail}`);
+
+    // Build accept invite URL with token
+    const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
+      || process.env.NEXT_PUBLIC_FORM_DOMAIN 
+      || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
+    
+    const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(tokenData.token)}`;
+
+    // Send custom invitation email using our SMTP setup
+    const { generateInvitationEmailHtml } = await import("@/lib/email-templates");
+
+    const emailHtml = generateInvitationEmailHtml({
+      firstName: userObj.first_name ?? undefined,
+      lastName: userObj.last_name ?? undefined,
+      companyName: company.name,
+      acceptInviteUrl,
+    });
+
+    await sendEmail({
+      to: userEmail,
+      subject: `Welcome to VTK Career Platform${company.name ? ` - ${company.name}` : ''}`,
+      html: emailHtml,
+    });
+
+    console.log(`[resendInviteAction] Invitation email resent to ${userEmail}`);
+    return { success: true };
+  } catch (err) {
+    console.error(`[resendInviteAction] Error resending invitation:`, err);
+    if (err instanceof Error) {
+      console.error(`[resendInviteAction] Error stack:`, err.stack);
+    }
+    return { success: false, error: err instanceof Error ? err.message : "Failed to resend invitation" };
+  }
+}
+
 // Fetch pending approval requests for the current salesperson
 // This is a convenience wrapper that ensures we use the authenticated user's ID
 // All authorization is handled in fetchPendingApprovalRequests()
