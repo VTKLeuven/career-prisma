@@ -1,6 +1,5 @@
 // app/api/forgot-password/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
 import { sendEmail } from "@/lib/repos/directus";
 import { generatePasswordResetEmailHtml } from "@/lib/email-templates";
 
@@ -23,159 +22,128 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-    if (!serverToken) {
-      return NextResponse.json(
-        { error: "Server configuration error" },
-        { status: 500 }
-      );
-    }
-
     const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
 
-    // Find user by email
-    const userRes = await fetch(
-      `${normalizedBase}users?filter[email][_eq]=${encodeURIComponent(email)}&fields=id,email,first_name,last_name,status`,
-      {
-        headers: {
-          "Authorization": `Bearer ${serverToken}`,
-        },
-      }
-    );
+    // Use Directus's public password reset request endpoint
+    // This is a public endpoint that doesn't require authentication
+    // It will generate a reset token and store it in the user's password_reset_token field
+    // Note: Directus will also try to send an email, but we'll send our custom one
+    const resetRequestRes = await fetch(`${normalizedBase}auth/password/request`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email }),
+    });
 
-    if (!userRes.ok) {
-      return NextResponse.json(
-        { error: "Failed to process request" },
-        { status: 500 }
-      );
-    }
+    // Directus's password/request endpoint returns success even if user doesn't exist
+    // (for security reasons - don't reveal if email exists)
+    // So we always return success, but we'll try to send our custom email if user exists
 
-    const userData = await userRes.json();
-    const users = userData.data || [];
+    // Try to fetch user info and token to send our custom email
+    // We need server token for this, but the password reset itself doesn't require it
+    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
+    let resetToken: string | null = null;
+    let user: any = null;
 
-    // Don't reveal if user exists or not for security reasons
-    // Always return success message
-    if (users.length === 0) {
-      // User doesn't exist, but we don't reveal this
-      return NextResponse.json({ 
-        success: true, 
-        message: "If an account with that email exists, a password reset link has been sent." 
-      });
-    }
+    if (serverToken) {
+      try {
+        // Find user by email to get their info for the custom email
+        const userRes = await fetch(
+          `${normalizedBase}users?filter[email][_eq]=${encodeURIComponent(email)}&fields=id,email,first_name,last_name,status,password_reset_token`,
+          {
+            headers: {
+              "Authorization": `Bearer ${serverToken}`,
+            },
+          }
+        );
 
-    const user = users[0];
-
-    // Check if user is active (not suspended, etc.)
-    if (user.status && user.status !== "active" && user.status !== "invited") {
-      // User exists but account is not active - still don't reveal this
-      return NextResponse.json({ 
-        success: true, 
-        message: "If an account with that email exists, a password reset link has been sent." 
-      });
-    }
-
-    // Generate reset token
-    const randomToken = crypto.randomBytes(32).toString("base64url");
-    const tokenHash = crypto
-      .createHash("sha256")
-      .update(randomToken)
-      .digest("hex");
-
-    // Create reset token: base64(userId:randomToken)
-    const resetToken = Buffer.from(`${user.id}:${randomToken}`).toString("base64url");
-
-    // Store token hash and expiration in user metadata
-    try {
-      // First, try to get existing metadata
-      const userRes = await fetch(
-        `${normalizedBase}users/${user.id}?fields=metadata`,
-        {
-          headers: {
-            "Authorization": `Bearer ${serverToken}`,
-          },
+        if (userRes.ok) {
+          const userData = await userRes.json();
+          const users = userData.data || [];
+          
+          if (users.length > 0) {
+            user = users[0];
+            
+            // Check if user is active (not suspended, etc.)
+            if (user.status && (user.status === "active" || user.status === "invited")) {
+              resetToken = user.password_reset_token || null;
+              
+              if (resetToken) {
+                console.log(`[forgot-password] Successfully retrieved reset token for user ${user.id}`);
+              } else {
+                // Token might not be immediately available, wait a bit and try again
+                await new Promise(resolve => setTimeout(resolve, 200));
+                
+                const retryRes = await fetch(
+                  `${normalizedBase}users/${user.id}?fields=password_reset_token`,
+                  {
+                    headers: {
+                      "Authorization": `Bearer ${serverToken}`,
+                    },
+                  }
+                );
+                
+                if (retryRes.ok) {
+                  const retryData = await retryRes.json();
+                  resetToken = retryData.data?.password_reset_token || null;
+                }
+              }
+            }
+          }
         }
-      );
-
-      let userMetadata: Record<string, any> = {};
-      if (userRes.ok) {
-        const userData = await userRes.json();
-        userMetadata = userData.data?.metadata || {};
-      } else {
-        console.warn(`[forgot-password] Could not read metadata for user ${user.id}, creating new metadata object`);
+      } catch (err) {
+        console.warn(`[forgot-password] Error fetching user info for custom email:`, err);
+        // Continue - Directus will have sent its own email
       }
-
-      // Store reset token with expiration (1 hour)
-      const expirationTime = new Date();
-      expirationTime.setHours(expirationTime.getHours() + 1);
-
-      userMetadata.password_reset_token_hash = tokenHash;
-      userMetadata.password_reset_token_created = new Date().toISOString();
-      userMetadata.password_reset_token_expires = expirationTime.toISOString();
-
-      // Update user with metadata
-      const updateRes = await fetch(
-        `${normalizedBase}users/${user.id}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Authorization": `Bearer ${serverToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            metadata: userMetadata,
-          }),
-        }
-      );
-
-      if (!updateRes.ok) {
-        const errorText = await updateRes.text().catch(() => "Unknown error");
-        console.error(`[forgot-password] Failed to store reset token in metadata for user ${user.id}:`, updateRes.status, errorText);
-        // Don't throw - we'll still send the email, but token verification might fail
-        // Log this so we can debug metadata permission issues
-      } else {
-        console.log(`[forgot-password] Successfully stored reset token in metadata for user ${user.id}`);
-      }
-    } catch (err) {
-      console.error(`[forgot-password] Error storing reset token for user ${user.id}:`, err);
-      // Continue even if metadata update fails - email will still be sent
-      // But token verification will fail if metadata is not accessible
     }
 
-    // Generate reset URL
-    const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
-      || process.env.NEXT_PUBLIC_FORM_DOMAIN 
-      || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
-    
-    const resetUrl = `${frontendBaseUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+    // If we have the token and user info, send our custom email
+    if (resetToken && user) {
+      const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
+        || process.env.NEXT_PUBLIC_FORM_DOMAIN 
+        || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
+      
+      const resetUrl = `${frontendBaseUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+      
+      try {
+        const emailHtml = generatePasswordResetEmailHtml({
+          firstName: user.first_name || undefined,
+          lastName: user.last_name || undefined,
+          resetUrl,
+        });
 
-    // Send password reset email
-    try {
-      const emailHtml = generatePasswordResetEmailHtml({
-        firstName: user.first_name || undefined,
-        lastName: user.last_name || undefined,
-        resetUrl,
-      });
-
-      await sendEmail({
-        to: user.email,
-        subject: "Reset Your Password - VTK Career Platform",
-        html: emailHtml,
-      });
-    } catch (emailError) {
-      console.error("Error sending password reset email:", emailError);
-      // Don't reveal email sending failure to user
+        await sendEmail({
+          to: user.email,
+          subject: "Reset Your Password - VTK Career Platform",
+          html: emailHtml,
+        });
+        
+        console.log(`[forgot-password] Custom password reset email sent to ${user.email}`);
+      } catch (emailError) {
+        console.error(`[forgot-password] Error sending custom password reset email:`, emailError);
+        // Don't reveal email sending failure to user
+        // Directus will have sent its own email as fallback
+      }
+    } else {
+      if (user && !resetToken) {
+        console.warn(`[forgot-password] Could not retrieve reset token for user ${user.id}. Directus will send its own email.`);
+      }
+      // If we couldn't get user info or token, Directus will have sent its own email
+      // This is fine - the password reset will still work
     }
 
+    // Always return success (security best practice - don't reveal if email exists)
     return NextResponse.json({ 
       success: true, 
       message: "If an account with that email exists, a password reset link has been sent." 
     });
   } catch (error) {
     console.error("Error in forgot password:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    // Don't reveal errors to user for security
+    return NextResponse.json({ 
+      success: true, 
+      message: "If an account with that email exists, a password reset link has been sent." 
+    });
   }
 }
-
