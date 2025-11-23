@@ -172,7 +172,53 @@ function Header({
 
   return (
     <>
-      <header className="fixed top-2 sm:top-4 inset-x-0 z-50 w-full px-2 sm:px-0">
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          /* Isolate header, categories, and popups from browser zoom */
+          .floorplan-header-isolated,
+          .floorplan-categories-isolated,
+          .floorplan-popup-isolated {
+            position: fixed !important;
+            z-index: 50 !important;
+            /* Use viewport units for positioning */
+            /* These should remain constant regardless of zoom */
+          }
+          
+          .floorplan-header-isolated {
+            top: 0.5rem !important;
+            left: 0 !important;
+            right: 0 !important;
+            width: 100vw !important;
+          }
+          
+          .floorplan-categories-isolated {
+            bottom: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            width: 100vw !important;
+          }
+          
+          .floorplan-popup-isolated {
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 100 !important;
+          }
+          
+          /* Prevent these elements from being affected by parent transforms */
+          .floorplan-header-isolated *,
+          .floorplan-categories-isolated *,
+          .floorplan-popup-isolated * {
+            transform: none !important;
+          }
+        `
+      }} />
+      <header 
+        className="floorplan-header-isolated fixed top-2 sm:top-4 inset-x-0 z-50 w-full px-2 sm:px-0"
+      >
         <div className="mx-auto max-w-7xl px-2 sm:px-4">
           {/* Mobile: Stack layout */}
           <div className="md:hidden flex flex-col gap-2">
@@ -365,6 +411,9 @@ function Floorplan({
   const [originalViewBox, setOriginalViewBox] = useState<string>("0 0 1000 600")
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
+  const [hoveredBoothId, setHoveredBoothId] = useState<string | null>(null)
+  const [tooltip, setTooltip] = useState<{ companyName: string; x: number; y: number } | null>(null)
+  const [zoomLevel, setZoomLevel] = useState(1)
 
   useEffect(() => {
     const loadData = async () => {
@@ -556,6 +605,7 @@ function Floorplan({
     loadData()
   }, [page, setBooths])
 
+
   if (!svgContent) {
     return (
       <>
@@ -563,7 +613,7 @@ function Floorplan({
           <p className="text-neutral-600">Loading floorplan...</p>
         </div>
         {/* Mobile: Categories at bottom while loading */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t px-4 py-3 shadow-lg">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t px-4 py-3 shadow-lg">
           <div className="flex flex-wrap items-center justify-center gap-2">
             {categories.map(cat => {
               const isSelected = selectedCategories.includes(cat.short_name)
@@ -608,7 +658,7 @@ function Floorplan({
         />
       )}
       <div className={`pt-32 md:pt-[90px] flex justify-center w-full px-2 sm:px-4 pb-4 ${backgroundImage ? "relative z-10" : ""}`}>
-        <div className="w-full max-w-full">
+        <div className="relative w-full max-w-full">
           <svg
             ref={svgRef}
             viewBox={viewBox}
@@ -646,28 +696,67 @@ function Floorplan({
             const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
             const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
             const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
+            const isHovered = hoveredBoothId === booth.company?.id
+            
+            // Calculate name position - always above booth, centered
+            const boothCenterX = boothX + boothWidth / 2
+            const boothTop = boothY
 
             return (
-              <rect
-                key={i}
-                x={boothX}
-                y={boothY}
-                width={boothWidth}
-                height={boothHeight}
-                fill={isSelected ? "rgba(0,51,102,0.35)" : "transparent"}
-                stroke={isSelected ? "#003366" : "transparent"}
-                strokeWidth={isSelected ? 1 : 0}
-                style={{ cursor: "pointer" }}
-                onClick={() => onBoothClick(booth.company!)}
-              />
+              <g key={i}>
+                <rect
+                  x={boothX}
+                  y={boothY}
+                  width={boothWidth}
+                  height={boothHeight}
+                  fill={isSelected ? "rgba(0,51,102,0.35)" : "transparent"}
+                  stroke={isSelected ? "#003366" : "transparent"}
+                  strokeWidth={isSelected ? 1 : 0}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => onBoothClick(booth.company!)}
+                  onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
+                  onMouseLeave={() => {
+                    setHoveredBoothId(null)
+                    setTooltip(null)
+                  }}
+                  onMouseMove={(e) => {
+                    if (isHovered && booth.company) {
+                      setTooltip({
+                        companyName: booth.company.name,
+                        x: e.clientX,
+                        y: e.clientY
+                      })
+                    }
+                  }}
+                />
+              </g>
             )
           })}
           </svg>
+          {/* Tooltip that follows mouse */}
+          {tooltip && (
+            <div
+              className="fixed pointer-events-none z-50 bg-neutral-900/80 text-white text-[10px] px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap"
+              style={{
+                left: `${tooltip.x + 8}px`,
+                top: `${tooltip.y + 8}px`,
+              }}
+            >
+              {tooltip.companyName}
+            </div>
+          )}
         </div>
       </div>
 
+      {/* Company List */}
+      <CompanyList 
+        booths={boothsLocal}
+        selectedCategories={selectedCategories}
+        onCompanyClick={onBoothClick}
+      />
+
       {/* Mobile: Categories at bottom */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t px-4 py-3 shadow-lg">
+      <div className="floorplan-categories-isolated md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t px-4 py-3 shadow-lg">
         <div className="flex flex-wrap items-center justify-center gap-2">
           {categories.map(cat => {
             const isSelected = selectedCategories.includes(cat.short_name)
@@ -695,6 +784,132 @@ function Floorplan({
         </div>
       </div>
     </>
+  )
+}
+
+// ---------------- Company List ----------------
+function CompanyList({
+  booths,
+  selectedCategories,
+  onCompanyClick,
+}: {
+  booths: Booth[]
+  selectedCategories: string[]
+  onCompanyClick: (company: Company) => void
+}) {
+  // Filter booths that have companies and sort by booth number
+  const companiesWithBooths = booths
+    .filter(b => b.company && b.booth_number)
+    .map(b => ({
+      company: b.company!,
+      boothNumber: b.booth_number!,
+    }))
+    .sort((a, b) => a.boothNumber - b.boothNumber)
+
+  if (companiesWithBooths.length === 0) {
+    return null
+  }
+
+  // Check if a company has ALL selected categories (same logic as floorplan)
+  const hasSelectedCategory = (company: Company) => {
+    if (selectedCategories.length === 0) return false
+    
+    const companyCats: Master[] = Array.isArray(company.category)
+      ? company.category.filter((c): c is Master => c !== null)
+      : []
+    
+    // Company must have ALL selected categories (same as floorplan logic)
+    return selectedCategories.every(catShortName =>
+      companyCats.some(c => c.short_name === catShortName)
+    )
+  }
+
+  return (
+    <div className="w-full px-2 sm:px-4 pb-4">
+      <div className="max-w-7xl mx-auto">
+        <h2 className="text-xl font-semibold text-neutral-900 mb-4 mt-6">
+          Companies ({companiesWithBooths.length})
+        </h2>
+        <div 
+          className="gap-3"
+          style={{
+            columnCount: 1,
+            columnGap: '0.75rem',
+          }}
+        >
+          <style dangerouslySetInnerHTML={{
+            __html: `
+              @media (min-width: 640px) {
+                .company-list-columns {
+                  column-count: 2 !important;
+                }
+              }
+              @media (min-width: 768px) {
+                .company-list-columns {
+                  column-count: 3 !important;
+                }
+              }
+              @media (min-width: 1024px) {
+                .company-list-columns {
+                  column-count: 4 !important;
+                }
+              }
+              .company-list-columns > * {
+                break-inside: avoid;
+                margin-bottom: 0.75rem;
+              }
+            `
+          }} />
+          <div className="company-list-columns">
+          {companiesWithBooths.map(({ company, boothNumber }) => {
+            const isHighlighted = hasSelectedCategory(company)
+            
+            return (
+              <CompanyListItem
+                key={company.id}
+                company={company}
+                boothNumber={boothNumber}
+                isHighlighted={isHighlighted}
+                onCompanyClick={onCompanyClick}
+              />
+            )
+          })}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CompanyListItem({
+  company,
+  boothNumber,
+  isHighlighted,
+  onCompanyClick,
+}: {
+  company: Company
+  boothNumber: number
+  isHighlighted: boolean
+  onCompanyClick: (company: Company) => void
+}) {
+  return (
+    <button
+      onClick={() => onCompanyClick(company)}
+      className={`w-full text-left p-3 rounded-lg border transition-all cursor-pointer ${
+        isHighlighted
+          ? 'bg-vtk-blue/10 border-vtk-blue font-bold'
+          : 'bg-white border-neutral-200 hover:border-vtk-blue/50 hover:bg-neutral-50'
+      }`}
+    >
+      <div className="flex-1 min-w-0">
+        <div className={`text-sm ${isHighlighted ? 'font-bold text-vtk-blue' : 'font-medium text-neutral-900'}`}>
+          {company.name}
+        </div>
+        <div className="text-xs text-neutral-500 mt-1">
+          Booth {boothNumber}
+        </div>
+      </div>
+    </button>
   )
 }
 
@@ -871,9 +1086,14 @@ function ComingSoonPage({ title, description, eventName }: { title: string; desc
 }
 
 function Popup({ company, onClose }: { company: Company; onClose: () => void }) {
+  // Get company categories/masters
+  const companyCategories: Master[] = Array.isArray(company.category)
+    ? company.category.filter((c): c is Master => c !== null)
+    : []
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      className="floorplan-popup-isolated fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div
@@ -881,12 +1101,11 @@ function Popup({ company, onClose }: { company: Company; onClose: () => void }) 
         onClick={(e) => e.stopPropagation()}
       >
         <button
-          className="absolute top-3 right-3 text-neutral-500 hover:text-neutral-800"
+          className="absolute top-3 right-3 text-neutral-500 hover:text-neutral-800 text-2xl leading-none"
           onClick={onClose}
         >
           ✕
         </button>
-
         {company.logo && (
           <div className="flex justify-center mb-4">
             <NextImage
@@ -902,6 +1121,27 @@ function Popup({ company, onClose }: { company: Company; onClose: () => void }) 
         <h2 className="text-2xl font-semibold text-vtk-blue text-center mb-2">
           {company.name}
         </h2>
+
+        {companyCategories.length > 0 && (
+          <div className="flex flex-wrap items-center justify-center gap-2 mb-4">
+            {companyCategories.map(cat => (
+              <div
+                key={cat.id}
+                className="relative w-10 h-10 rounded-full overflow-hidden border border-neutral-300 flex items-center justify-center bg-white"
+              >
+                {cat.logo && (
+                  <NextImage
+                    src={getDirectusImageUrl(cat.logo) ?? ''}
+                    alt={cat.short_name}
+                    width={32}
+                    height={32}
+                    className="object-contain"
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         {company.short_description && (
           <div className="text-center">
