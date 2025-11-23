@@ -342,7 +342,7 @@ export async function listFormResponses(formVersionId: string, opts?: {
     const client = await getAuthedDirectusOrThrow();
     const { limit = 25, page = 1 } = opts ?? {};
 
-    return client.request(
+    const result = await client.request(
       readItems("form_responses", {
         fields: ["*", "user_id.name", "user_id.email", "form_version_id.form_id.name"],
         filter: { form_version_id: { _eq: formVersionId } },
@@ -351,9 +351,67 @@ export async function listFormResponses(formVersionId: string, opts?: {
         sort: "-submitted_at",
       })
     ) as unknown as FormResponse[];
+
+    return result;
   } catch (error) {
     console.error("Error listing form responses:", error);
     throw error;
+  }
+}
+
+export async function getFormResponsesTotalCount(formVersionId: string) {
+  try {
+    const client = await getAuthedDirectusOrThrow();
+    const responses = await client.request(
+      readItems("form_responses", {
+        fields: ["id"],
+        filter: { form_version_id: { _eq: formVersionId } },
+        limit: -1, // Get all to count
+      })
+    ) as unknown as Array<{ id: string }>;
+    
+    return responses.length;
+  } catch (error) {
+    console.error("Error counting form responses:", error);
+    return 0;
+  }
+}
+
+export async function getFirstFormResponse(formVersionId: string) {
+  try {
+    const client = await getAuthedDirectusOrThrow();
+    const responses = await client.request(
+      readItems("form_responses", {
+        fields: ["submitted_at"],
+        filter: { form_version_id: { _eq: formVersionId } },
+        limit: 1,
+        sort: "submitted_at", // Oldest first
+      })
+    ) as unknown as Array<{ submitted_at: string }>;
+    
+    return responses.length > 0 ? responses[0] : null;
+  } catch (error) {
+    console.error("Error getting first form response:", error);
+    return null;
+  }
+}
+
+export async function getLatestFormResponse(formVersionId: string) {
+  try {
+    const client = await getAuthedDirectusOrThrow();
+    const responses = await client.request(
+      readItems("form_responses", {
+        fields: ["submitted_at"],
+        filter: { form_version_id: { _eq: formVersionId } },
+        limit: 1,
+        sort: "-submitted_at", // Newest first
+      })
+    ) as unknown as Array<{ submitted_at: string }>;
+    
+    return responses.length > 0 ? responses[0] : null;
+  } catch (error) {
+    console.error("Error getting latest form response:", error);
+    return null;
   }
 }
 
