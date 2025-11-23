@@ -28,6 +28,8 @@ import { useUser } from "@/providers/UserProvider";
 import { fetchPendingApprovalRequestsAction, fetchCompanyByIdAction } from "@/app/actions/companies";
 import { validateExistingPageImage } from "@/lib/utils/image-validation";
 import { getDirectusImageUrl } from "@/components/Images";
+import { fetchEventsAction } from "@/app/actions/events";
+import type { CareerEvent, Company } from "@/lib/schema";
 
 // Updated sidebar data
 const data = {
@@ -37,6 +39,12 @@ const data = {
       url: "/dashboard",
       icon: IconCalendarEvent,
       isActive: true,
+      items: [
+        {
+          title: "My Scans",
+          url: "/dashboard/scans",
+        },
+      ],
     },
     {
       title: "Online Interaction",
@@ -100,6 +108,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { user } = useUser();
   const [pendingCount, setPendingCount] = React.useState<number>(0);
   const [pageImageInvalid, setPageImageInvalid] = React.useState<boolean>(false);
+  const [companyEvents, setCompanyEvents] = React.useState<CareerEvent[]>([]);
+  const [company, setCompany] = React.useState<Company | null>(null);
 
   // Function to check page image validity
   const checkPageImage = React.useCallback(async () => {
@@ -206,9 +216,118 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     };
   }, [user?.admin]);
 
+  // Load company events for sidebar
+  React.useEffect(() => {
+    if (!user?.company?.id) {
+      setCompanyEvents([]);
+      return;
+    }
+
+    let alive = true;
+
+    Promise.all([
+      fetchCompanyByIdAction(user.company.id),
+      fetchEventsAction(),
+    ]).then(([companyData, allEvents]) => {
+      if (!alive) return;
+      
+      setCompany(companyData as Company | null);
+      
+      // Extract company events (same logic as dashboard page)
+      const companyOptions = (companyData as Company)?.options ?? [];
+      const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+      const hasEvents = (v: unknown): v is { events: unknown } => isRecord(v) && 'events' in v;
+      const hasEvent = (v: unknown): v is { event: unknown } => isRecord(v) && 'event' in v;
+      
+      const companyEventIds = new Set<string>();
+      
+      companyOptions.forEach((opt: unknown) => {
+        if (!opt || !isRecord(opt)) return;
+        
+        let optionWithEvents: Record<string, unknown> | null = null;
+        
+        if ('career_event_option_id' in opt && opt.career_event_option_id) {
+          const ceo = opt.career_event_option_id;
+          if (isRecord(ceo)) {
+            optionWithEvents = ceo;
+          }
+        } else if (hasEvents(opt)) {
+          optionWithEvents = opt;
+        } else if (hasEvent(opt)) {
+          const eventRef = (opt as { event: unknown }).event;
+          if (isRecord(eventRef) && 'id' in eventRef) {
+            const eventId = (eventRef as { id: string }).id;
+            if (eventId) companyEventIds.add(eventId);
+          }
+          return;
+        }
+        
+        if (!optionWithEvents) return;
+        
+        if (hasEvents(optionWithEvents) && Array.isArray(optionWithEvents.events)) {
+          optionWithEvents.events.forEach((eventOrJunction: unknown) => {
+            if (isRecord(eventOrJunction)) {
+              if ('id' in eventOrJunction) {
+                companyEventIds.add((eventOrJunction as { id: string }).id);
+              } else {
+                // Check junction table fields
+                const possibleFields = ['career_event_id', 'career_event', 'event_id', 'event'];
+                for (const field of possibleFields) {
+                  if (field in eventOrJunction) {
+                    const ref = (eventOrJunction as Record<string, unknown>)[field];
+                    if (isRecord(ref) && 'id' in ref) {
+                      companyEventIds.add((ref as { id: string }).id);
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+          });
+        }
+      });
+      
+      const filteredEvents = (allEvents ?? []).filter((e: CareerEvent) => companyEventIds.has(e.id));
+      setCompanyEvents(filteredEvents);
+    }).catch(console.error);
+
+    return () => {
+      alive = false;
+    };
+  }, [user?.company?.id]);
+
   // Add admin sections if user is admin
   const navItems = React.useMemo(() => {
     const items: any[] = [...data.navMain];
+    
+    // Update Events section with dynamic event scan links
+    const eventsIndex = items.findIndex(item => item.title === "Events");
+    if (eventsIndex !== -1 && companyEvents.length > 0) {
+      items[eventsIndex] = {
+        ...items[eventsIndex],
+        items: [
+          {
+            title: "All Scans",
+            url: "/dashboard/scans/all",
+          },
+          ...companyEvents.map((event: CareerEvent) => ({
+            title: event.name,
+            url: `/dashboard/scans/event/${encodeURIComponent(event.name)}`,
+          })),
+        ],
+      };
+    } else if (eventsIndex !== -1) {
+      // Keep "My Scans" if no events yet
+      items[eventsIndex] = {
+        ...items[eventsIndex],
+        items: [
+          {
+            title: "All Scans",
+            url: "/dashboard/scans/all",
+          },
+        ],
+      };
+    }
 
     // Add warning to Settings and Company Information if page image is invalid
     const settingsIndex = items.findIndex(item => item.title === "Settings");
@@ -258,7 +377,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
 
     return items;
-  }, [user?.admin, pendingCount, pageImageInvalid]);
+  }, [user?.admin, pendingCount, pageImageInvalid, companyEvents]);
 
   return (
     <Sidebar collapsible="icon" {...props}>

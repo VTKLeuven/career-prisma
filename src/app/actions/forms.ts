@@ -300,6 +300,16 @@ export async function deleteFormResponseAction(id: string) {
   }
 }
 
+export async function initializeAttendantUuidsAction(formId?: string) {
+  try {
+    const { initializeAttendantUuids } = await import("@/lib/repos/forms");
+    return await initializeAttendantUuids(formId);
+  } catch (error) {
+    console.error("Error initializing attendant UUIDs:", error);
+    throw error;
+  }
+}
+
 export async function submitFormResponseAction(data: {
   form_version_id: string;
   user_id?: string;
@@ -374,13 +384,24 @@ export async function submitFormResponseAction(data: {
       }
     }
 
+    // Generate UUID for event registration forms
+    let attendantUuid: string | undefined;
+    if (versionMetadata?.is_event_registration) {
+      // Generate a UUID v4
+      attendantUuid = crypto.randomUUID();
+    }
+
     // Create form response using server client to ensure it works for both logged-in and non-logged-in users
     // The server client has elevated permissions needed for public form submissions
     const { createItem } = await import("@directus/sdk");
     let response: FormResponse | null = null;
     try {
+      const responseData = {
+        ...data,
+        ...(attendantUuid ? { attendant_uuid: attendantUuid } : {}),
+      };
       response = await serverClient.request(
-        createItem("form_responses", data)
+        createItem("form_responses", responseData)
       ) as unknown as FormResponse;
     } catch (error) {
       console.error('[submitFormResponseAction] Error creating form response:', error);

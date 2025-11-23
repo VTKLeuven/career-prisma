@@ -4,7 +4,7 @@ import * as React from "react";
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { fetchFormByIdAction, fetchFormVersionsAction, fetchFormResponsesAction, fetchFormResponsesTotalCountAction, fetchAllFormResponsesAction, fetchFirstFormResponseAction, fetchLatestFormResponseAction, deleteFormResponseAction } from "@/app/actions/forms";
+import { fetchFormByIdAction, fetchFormVersionsAction, fetchFormResponsesAction, fetchFormResponsesTotalCountAction, fetchAllFormResponsesAction, fetchFirstFormResponseAction, fetchLatestFormResponseAction, deleteFormResponseAction, initializeAttendantUuidsAction } from "@/app/actions/forms";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Download, Eye, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { ArrowLeft, Download, Eye, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2 } from "lucide-react";
 import type { FormVersion, FormResponse } from "@/lib/schema";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 import * as XLSX from "xlsx";
@@ -54,6 +54,7 @@ export default function FormResponsesPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [firstResponseDate, setFirstResponseDate] = useState<string | null>(null);
   const [latestResponseDate, setLatestResponseDate] = useState<string | null>(null);
+  const [initializingUuids, setInitializingUuids] = useState(false);
   const pageSize = 25; // Constant page size
 
   const loadFormData = useCallback(async () => {
@@ -171,8 +172,12 @@ export default function FormResponsesPage() {
       }
     });
 
+    // Check if this is an event registration form (has attendant_uuid)
+    const isEventRegistration = allResponses.some(r => r.attendant_uuid);
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+
     // Prepare data for XLSX
-    const headerRow = ['Submission Date', 'Response ID', ...fieldNames];
+    const headerRow = ['Submission Date', 'Response ID', ...fieldNames, ...(isEventRegistration ? ['Attendant Link'] : [])];
     
     const dataRows = allResponses.map(response => {
       const date = formatDateTimeBE(response.submitted_at);
@@ -189,7 +194,13 @@ export default function FormResponsesPage() {
         if (Array.isArray(value)) return value.join('; ');
         return String(value);
       });
-      return [date, response.id, ...values];
+      
+      // Add attendant link if UUID exists
+      const attendantLink = response.attendant_uuid 
+        ? `${baseUrl}/attendant/${response.attendant_uuid}`
+        : '';
+      
+      return [date, response.id, ...values, ...(isEventRegistration ? [attendantLink] : [])];
     });
 
     // Create worksheet
@@ -232,6 +243,39 @@ export default function FormResponsesPage() {
       alert("Failed to delete response. Please try again.");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleInitializeUuids = async () => {
+    if (!form) return;
+    
+    const isEventRegistration = selectedVersion?.metadata?.is_event_registration;
+    if (!isEventRegistration) {
+      alert("This form is not an event registration form. UUIDs are only needed for event registration forms.");
+      return;
+    }
+
+    if (!confirm(`Initialize UUIDs for all responses in "${form.name}"? This will generate QR code links for existing responses.`)) {
+      return;
+    }
+
+    setInitializingUuids(true);
+    try {
+      const result = await initializeAttendantUuidsAction(form.id);
+      if (result.success) {
+        alert(result.message);
+        // Reload responses to show updated data
+        if (selectedVersionId) {
+          await loadResponses(selectedVersionId, currentPage);
+        }
+      } else {
+        alert(`Failed: ${result.message}`);
+      }
+    } catch (error) {
+      console.error("Error initializing UUIDs:", error);
+      alert("Failed to initialize UUIDs. Please try again.");
+    } finally {
+      setInitializingUuids(false);
     }
   };
 
@@ -299,6 +343,26 @@ export default function FormResponsesPage() {
                   ))}
                 </SelectContent>
               </Select>
+              {selectedVersion?.metadata?.is_event_registration && (
+                <Button 
+                  variant="outline" 
+                  onClick={handleInitializeUuids} 
+                  disabled={initializingUuids || totalCount === 0}
+                  title="Initialize UUIDs for existing responses to enable QR codes"
+                >
+                  {initializingUuids ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Initializing...
+                    </>
+                  ) : (
+                    <>
+                      <QrCode className="h-4 w-4 mr-2" />
+                      Initialize UUIDs
+                    </>
+                  )}
+                </Button>
+              )}
               <Button variant="outline" onClick={exportToXLSX} disabled={totalCount === 0}>
                 <Download className="h-4 w-4 mr-2" />
                 Export XLSX

@@ -193,6 +193,7 @@ export type FormResponse = {
   data: Record<string, unknown>;
   submitted_at: string;
   attachments?: string[]; // Directus file IDs
+  attendant_uuid?: string; // Unique UUID for event registration attendants
 }
 
 // Optional: Full Directus Schema map (only collections you use)

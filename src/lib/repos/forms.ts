@@ -528,3 +528,117 @@ export async function countFormVersionResponses(formVersionId: string, usePublic
   }
 }
 
+/**
+ * Initialize UUIDs for existing form responses that don't have them.
+ * This is useful for migrating forms created before the UUID feature was added.
+ * Only processes responses for event registration forms.
+ */
+export async function initializeAttendantUuids(formId?: string) {
+  try {
+    const client = await getAuthedDirectusOrThrow();
+    const { readItems, updateItem } = await import("@directus/sdk");
+    
+    // Get all event registration forms
+    const forms = await client.request(
+      readItems("forms", {
+        fields: ["id", "form_versions.id", "form_versions.metadata"],
+      })
+    ) as unknown as Array<{
+      id: string;
+      form_versions?: Array<{
+        id: string;
+        metadata?: { is_event_registration?: boolean };
+      }>;
+    }>;
+
+    // Filter to event registration forms
+    const eventRegistrationFormIds = new Set<string>();
+    const eventRegistrationVersionIds = new Set<string>();
+
+    for (const form of forms) {
+      // If formId is specified, only process that form
+      if (formId && form.id !== formId) continue;
+
+      const versions = form.form_versions || [];
+      for (const version of versions) {
+        const metadata = version.metadata as { is_event_registration?: boolean } | undefined;
+        if (metadata?.is_event_registration) {
+          eventRegistrationFormIds.add(form.id);
+          eventRegistrationVersionIds.add(version.id);
+        }
+      }
+    }
+
+    if (eventRegistrationVersionIds.size === 0) {
+      return {
+        success: true,
+        message: formId 
+          ? "No event registration versions found for this form."
+          : "No event registration forms found.",
+        updated: 0,
+      };
+    }
+
+    // Get all responses for these versions that don't have attendant_uuid
+    const responses = await client.request(
+      readItems("form_responses", {
+        fields: ["id", "attendant_uuid", "form_version_id"],
+        filter: {
+          form_version_id: { _in: Array.from(eventRegistrationVersionIds) },
+          _or: [
+            { attendant_uuid: { _null: true } },
+            { attendant_uuid: { _empty: true } },
+          ],
+        },
+        limit: -1,
+      })
+    ) as unknown as Array<{
+      id: string;
+      attendant_uuid?: string | null;
+      form_version_id: string;
+    }>;
+
+    if (responses.length === 0) {
+      return {
+        success: true,
+        message: "All responses already have UUIDs.",
+        updated: 0,
+      };
+    }
+
+    // Generate UUIDs and update responses
+    let updated = 0;
+    const errors: string[] = [];
+
+    for (const response of responses) {
+      try {
+        const uuid = crypto.randomUUID();
+        await client.request(
+          updateItem("form_responses", response.id, {
+            attendant_uuid: uuid,
+          })
+        );
+        updated++;
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        errors.push(`Failed to update response ${response.id}: ${errorMsg}`);
+        console.error(`Error updating response ${response.id}:`, error);
+      }
+    }
+
+    return {
+      success: true,
+      message: `Successfully initialized ${updated} response(s) with UUIDs.`,
+      updated,
+      errors: errors.length > 0 ? errors : undefined,
+    };
+  } catch (error) {
+    console.error("Error initializing attendant UUIDs:", error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Failed to initialize UUIDs",
+      updated: 0,
+    };
+  }
+}
+
