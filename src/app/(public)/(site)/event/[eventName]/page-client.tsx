@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import { useParams } from "next/navigation"
 import { fetchEventPageBySlugAction, fetchEventsAction } from "@/app/actions/events"
 import { getDirectusImageUrl } from "@/components/Images";
+import { slugifyCompanyName } from "@/lib/utils/slugify";
 import { CareerEventPage, Company, CareerEvent } from '@/lib/schema'
 import dynamic from "next/dynamic"
 import HeroiconDynamic from "@/components/HeroiconDynamic"
@@ -907,13 +908,7 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
 
   if (selectedCompany) {
-    const slug = (selectedCompany.name || '')
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "") // Remove special characters except hyphens
-    .replace(/-+/g, "-") // Replace multiple hyphens with single
-    .replace(/^-|-$/g, ""); // Remove leading/trailing hyphens
+    const slug = slugifyCompanyName(selectedCompany.name);
 
     return (
       <div

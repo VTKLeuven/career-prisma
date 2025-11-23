@@ -110,11 +110,12 @@ export type Floorplan = {
   name: string;
   svg_file: string;
   year: string;
+  background_image?: string;
 }
 
 export type Booth = {
   id: string;
-  booth_number: string;
+  booth_number: number;
   coords: { x_pct: number; y_pct: number; width_pct: number; height_pct: number };
   Floorplan: Floorplan;
   company?: Company;

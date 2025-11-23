@@ -471,8 +471,13 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
       }
 
       if (containing) {
+        const boothNumber = parseInt(boothLabel, 10);
+        if (isNaN(boothNumber)) {
+          console.log(`[SKIP] Invalid booth number: "${boothLabel}"`);
+          continue;
+        }
         const boothData: BoothExtraction = {
-          booth_number: boothLabel,
+          booth_number: boothNumber,
           coords: {
             type: "rect" as const,
             x_pct: Number(((containing.x / width) * 100).toFixed(4)),
@@ -486,7 +491,7 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
             match: "contains",
           },
         };
-        console.log(`[MATCH] Booth ${boothLabel}: text(${tx.toFixed(1)}, ${ty.toFixed(1)}) -> rect(${containing.x.toFixed(1)}, ${containing.y.toFixed(1)}, ${containing.w.toFixed(1)}x${containing.h.toFixed(1)})`);
+        console.log(`[MATCH] Booth ${boothNumber}: text(${tx.toFixed(1)}, ${ty.toFixed(1)}) -> rect(${containing.x.toFixed(1)}, ${containing.y.toFixed(1)}, ${containing.w.toFixed(1)}x${containing.h.toFixed(1)})`);
         booths.push(boothData);
         continue;
       }
@@ -527,8 +532,13 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
         const nearest = rectDistances[0].rect;
         const nearestDist = rectDistances[0].centerDist;
         
+        const boothNumber = parseInt(boothLabel, 10);
+        if (isNaN(boothNumber)) {
+          console.log(`[SKIP] Invalid booth number: "${boothLabel}"`);
+          continue;
+        }
         const boothData: BoothExtraction = {
-          booth_number: boothLabel,
+          booth_number: boothNumber,
           coords: {
             type: "rect" as const,
             x_pct: Number(((nearest.x / width) * 100).toFixed(4)),
@@ -542,7 +552,7 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
             match: "nearest",
           },
         };
-        console.log(`[MATCH] Booth ${boothLabel}: text(${tx.toFixed(1)}, ${ty.toFixed(1)}) -> nearest rect(${nearest.x.toFixed(1)}, ${nearest.y.toFixed(1)}, ${nearest.w.toFixed(1)}x${nearest.h.toFixed(1)}) dist=${nearestDist.toFixed(1)}`);
+        console.log(`[MATCH] Booth ${boothNumber}: text(${tx.toFixed(1)}, ${ty.toFixed(1)}) -> nearest rect(${nearest.x.toFixed(1)}, ${nearest.y.toFixed(1)}, ${nearest.w.toFixed(1)}x${nearest.h.toFixed(1)}) dist=${nearestDist.toFixed(1)}`);
         booths.push(boothData);
       } else {
         // No rects found - create booth with estimated size based on text position
@@ -552,8 +562,13 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
         const boothX = tx - defaultWidth / 2;
         const boothY = ty - defaultHeight / 2;
 
+        const boothNumber = parseInt(boothLabel, 10);
+        if (isNaN(boothNumber)) {
+          console.log(`[SKIP] Invalid booth number: "${boothLabel}"`);
+          continue;
+        }
         booths.push({
-          booth_number: boothLabel,
+          booth_number: boothNumber,
           coords: {
             type: "rect" as const,
             x_pct: Number(((boothX / width) * 100).toFixed(4)),

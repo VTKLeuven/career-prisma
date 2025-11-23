@@ -17,6 +17,7 @@ export async function POST(req: Request) {
 
     const formData = await req.formData();
     const svgFile = formData.get("svg") as File | null;
+    const backgroundFile = formData.get("background") as File | null;
     const name = formData.get("name") as string | null;
     const year = formData.get("year") as string | null;
     const eventId = formData.get("eventId") as string | null;
@@ -44,11 +45,15 @@ export async function POST(req: Request) {
       );
     }
 
-    // Step 2: Read SVG file content
+    // Step 2: Read SVG file content and prepare for upload
     let svgText: string;
     let viewBox: string;
+    let svgFileForUpload: File;
+    
     try {
-      svgText = await svgFile.text();
+      // Read the file as ArrayBuffer first so we can use it multiple times
+      const arrayBuffer = await svgFile.arrayBuffer();
+      svgText = new TextDecoder().decode(arrayBuffer);
       
       // Get dimensions from SVG
       const viewBoxMatch = svgText.match(/viewBox=["']([^"']+)["']/);
@@ -65,6 +70,9 @@ export async function POST(req: Request) {
       } else {
         viewBox = `0 0 ${width} ${height}`;
       }
+      
+      // Create a new File from the ArrayBuffer for upload
+      svgFileForUpload = new File([arrayBuffer], svgFile.name, { type: svgFile.type });
     } catch (svgError) {
       console.error("SVG file reading error:", svgError);
       return NextResponse.json(
@@ -74,7 +82,7 @@ export async function POST(req: Request) {
     }
 
     // Upload SVG file to Directus
-    const svgFileId = await uploadDirectusFile(svgFile);
+    const svgFileId = await uploadDirectusFile(svgFileForUpload);
 
     if (!svgFileId) {
       return NextResponse.json(
@@ -83,11 +91,23 @@ export async function POST(req: Request) {
       );
     }
 
+    // Upload background image if provided
+    let backgroundImageId: string | undefined;
+    if (backgroundFile && backgroundFile.size > 0) {
+      const uploadedId = await uploadDirectusFile(backgroundFile);
+      if (uploadedId) {
+        backgroundImageId = uploadedId;
+      } else {
+        console.warn("Failed to upload background image, continuing without it");
+      }
+    }
+
     // Step 3: Create floorplan entry
     const floorplan = await createFloorplan({
       name,
       year,
       svg_file: svgFileId,
+      background_image: backgroundImageId,
     });
 
     if (!floorplan) {
@@ -108,7 +128,7 @@ export async function POST(req: Request) {
 
     // Step 5: Extract booths from the SVG
     let extractedBooths: Array<{
-      booth_number: string;
+      booth_number: number;
       coords: unknown;
       Floorplan: string;
     }> = [];

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { fetchCompaniesAction, createCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, removeUserFromCompanyAction, processCompaniesCSVAction } from "@/app/actions/companies";
+import { fetchCompaniesAction, createCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction } from "@/app/actions/companies";
 import { fetchEventsAction, findCompaniesWithEventOptions, addCompaniesToEventPageAction } from "@/app/actions/events";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -63,6 +63,7 @@ import { IconBuilding, IconColumns, IconMail, IconPlus, IconTaxEuro, IconFileCv 
 import type { CareerEvent, Company, CompanyRep, CareerEventOption, CareerEventPage, Booth } from "@/lib/schema";
 import { useUser } from "@/providers/UserProvider";
 import { DirectusUser } from "@directus/sdk";
+import { slugifyCompanyName } from "@/lib/utils/slugify";
 
 /**
  * Notes about typing decisions:
@@ -584,7 +585,7 @@ function getCompanyColumns(onViewUsers: (company: CompanyRow) => void, onViewOpt
               <DropdownMenuItem onClick={() => onViewUsers(company)}>View users</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onViewOptions(company)}>View options</DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href={`/company/${(company.name || "").toLowerCase().trim().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "")}`}>
+                <Link href={`/company/${slugifyCompanyName(company.name)}`}>
                   View company page
                 </Link>
               </DropdownMenuItem>
@@ -771,6 +772,31 @@ function getUserColumns(onRemoveUser: (userId: string) => void, companyId: strin
       enableHiding: false,
       cell: ({ row }) => {
         const user = row.original;
+        const [isResending, setIsResending] = React.useState(false);
+        const userStatus = user?.status;
+        const isInvited = userStatus === "invited";
+
+        const handleResendInvite = async () => {
+          if (!user?.id) return;
+          
+          setIsResending(true);
+          try {
+            const result = await resendInviteAction(user.id, companyId);
+            if (result.success) {
+              // You could add a toast notification here
+              console.log("Invitation resent successfully");
+            } else {
+              console.error("Failed to resend invitation:", result.error);
+              alert(`Failed to resend invitation: ${result.error || "Unknown error"}`);
+            }
+          } catch (error) {
+            console.error("Error resending invitation:", error);
+            alert(`Error resending invitation: ${error instanceof Error ? error.message : "Unknown error"}`);
+          } finally {
+            setIsResending(false);
+          }
+        };
+
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -779,6 +805,14 @@ function getUserColumns(onRemoveUser: (userId: string) => void, companyId: strin
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
               <DropdownMenuItem onClick={() => console.log("Edit user", user)}>Edit</DropdownMenuItem>
+              {user?.id && isInvited && (
+                <DropdownMenuItem 
+                  onClick={handleResendInvite}
+                  disabled={isResending}
+                >
+                  {isResending ? "Resending..." : "Resend invite"}
+                </DropdownMenuItem>
+              )}
               {user?.id && (
                 <>
                   <DropdownMenuSeparator />
@@ -2296,6 +2330,12 @@ function AddFloorplanDialog({ event }: { event: CareerEvent }) {
       formData.append("name", name);
       formData.append("year", year);
       formData.append("eventId", event.id);
+      
+      // Add background image if provided
+      const backgroundInput = (e.target as HTMLFormElement).elements.namedItem("background") as HTMLInputElement;
+      if (backgroundInput?.files?.[0]) {
+        formData.append("background", backgroundInput.files[0]);
+      }
 
       const response = await fetch("/api/admin/upload-floorplan", {
         method: "POST",
@@ -2374,6 +2414,20 @@ function AddFloorplanDialog({ event }: { event: CareerEvent }) {
             />
             <p className="text-xs text-muted-foreground mt-1">
               Upload an SVG floorplan file. The system will extract booths automatically.
+            </p>
+          </div>
+
+          <div className="w-full">
+            <Label htmlFor="background" className="text-xs">Background Image (Optional)</Label>
+            <Input
+              name="background"
+              id="background"
+              type="file"
+              accept="image/*"
+              disabled={uploading}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Upload a background image to display behind the floorplan.
             </p>
           </div>
 
