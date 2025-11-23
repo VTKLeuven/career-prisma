@@ -17,6 +17,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import * as XLSX from "xlsx";
+import { fetchEventsAction } from "@/app/actions/events";
+import type { CareerEvent } from "@/lib/schema";
 
 type AttendantScan = {
   id: string;
@@ -34,6 +36,10 @@ type AttendantScan = {
         id: string;
         name: string;
       };
+      metadata?: {
+        event_id?: string;
+        [key: string]: unknown;
+      };
     };
   };
 };
@@ -46,6 +52,25 @@ export default function EventScansPage() {
   const [scans, setScans] = useState<AttendantScan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [eventId, setEventId] = useState<string | null>(null);
+
+  // Find event ID from event name
+  useEffect(() => {
+    if (!eventName) return;
+    
+    fetchEventsAction()
+      .then((events) => {
+        const matchingEvent = events?.find(
+          (e: CareerEvent) => e.name === eventName
+        );
+        if (matchingEvent) {
+          setEventId(matchingEvent.id);
+        }
+      })
+      .catch((err) => {
+        console.error("Error fetching events:", err);
+      });
+  }, [eventName]);
 
   const loadScans = React.useCallback(async () => {
     if (!user?.company?.id) {
@@ -54,7 +79,12 @@ export default function EventScansPage() {
     }
 
     try {
-      const response = await fetch(`/api/scans?event=${encodeURIComponent(eventName)}`);
+      // Use eventId if available (preferred), otherwise fall back to eventName
+      const url = eventId
+        ? `/api/scans?eventId=${encodeURIComponent(eventId)}`
+        : `/api/scans?event=${encodeURIComponent(eventName)}`;
+      
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error("Failed to load scans");
       }
@@ -66,7 +96,7 @@ export default function EventScansPage() {
     } finally {
       setLoading(false);
     }
-  }, [user?.company?.id, eventName]);
+  }, [user?.company?.id, eventName, eventId]);
 
   useEffect(() => {
     loadScans();
@@ -96,9 +126,9 @@ export default function EventScansPage() {
         .trim();
     });
 
-    // Check if both firstname and lastname fields exist
-    const hasFirstNameField = fieldKeys.includes('firstname');
-    const hasLastNameField = fieldKeys.includes('lastname');
+    // Check if both firstname and lastname fields exist (or name and surname for old format)
+    const hasFirstNameField = fieldKeys.includes('firstname') || fieldKeys.includes('name');
+    const hasLastNameField = fieldKeys.includes('lastname') || fieldKeys.includes('surname');
     const shouldCombineName = hasFirstNameField && hasLastNameField;
 
     // Build field names and keys, combining firstname and lastname if both exist
@@ -106,12 +136,13 @@ export default function EventScansPage() {
     const finalFieldKeys: string[] = [];
 
     fieldKeys.forEach(key => {
-      if (shouldCombineName && key === 'lastname') {
-        return; // Skip lastname - it will be combined with firstname
+      if (shouldCombineName && (key === 'lastname' || key === 'surname')) {
+        return; // Skip lastname/surname - it will be combined with firstname/name
       }
-      if (shouldCombineName && key === 'firstname') {
+      if (shouldCombineName && (key === 'firstname' || key === 'name')) {
         finalFieldNames.push('Name');
-        finalFieldKeys.push('firstname');
+        // Use firstname if available, otherwise name
+        finalFieldKeys.push(fieldKeys.includes('firstname') ? 'firstname' : 'name');
       } else {
         finalFieldNames.push(
           key
@@ -134,9 +165,9 @@ export default function EventScansPage() {
 
       const values = finalFieldKeys.map(key => {
         if (shouldCombineName && key === 'firstname') {
-          // Combine firstname and lastname
-          const firstName = response.data['firstname'] || '';
-          const lastName = response.data['lastname'] || '';
+          // Combine firstname and lastname (or name and surname for old format)
+          const firstName = response.data['firstname'] || response.data['name'] || '';
+          const lastName = response.data['lastname'] || response.data['surname'] || '';
           const fullName = `${firstName} ${lastName}`.trim();
           return fullName;
         }
@@ -226,8 +257,9 @@ export default function EventScansPage() {
                 <TableBody>
                   {scans.map((scan) => {
                     const response = scan.form_response_id;
-                    const firstName = response.data.firstname as string || "";
-                    const lastName = response.data.lastname as string || "";
+                    // Support both new format (firstname/lastname) and old format (name/surname)
+                    const firstName = (response.data.firstname as string) || (response.data.name as string) || "";
+                    const lastName = (response.data.lastname as string) || (response.data.surname as string) || "";
                     const name = `${firstName} ${lastName}`.trim() || "Unknown";
                     const email = response.data.email as string || "N/A";
 

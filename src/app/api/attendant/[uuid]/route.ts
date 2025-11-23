@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerDirectusClient } from "@/lib/directus";
+import { getAdminDirectusClient } from "@/lib/directus";
 import { readItems } from "@directus/sdk";
 
 export async function GET(
@@ -17,7 +17,13 @@ export async function GET(
       );
     }
 
-    const client = await getServerDirectusClient();
+    const client = getAdminDirectusClient();
+    if (!client) {
+      return NextResponse.json(
+        { error: "Failed to connect to database. Please try again later." },
+        { status: 500 }
+      );
+    }
     
     // Find the form response by attendant_uuid
     const responses = await client.request(

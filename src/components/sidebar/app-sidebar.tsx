@@ -228,12 +228,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     Promise.all([
       fetchCompanyByIdAction(user.company.id),
       fetchEventsAction(),
-    ]).then(([companyData, allEvents]) => {
+      fetch("/api/scans").then(res => res.ok ? res.json() : []).catch(() => []),
+    ]).then(([companyData, allEvents, scans]) => {
       if (!alive) return;
       
       setCompany(companyData as Company | null);
       
-      // Extract company events (same logic as dashboard page)
+      // Extract company events from purchased options (same logic as dashboard page)
       const companyOptions = (companyData as Company)?.options ?? [];
       const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
       const hasEvents = (v: unknown): v is { events: unknown } => isRecord(v) && 'events' in v;
@@ -286,6 +287,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           });
         }
       });
+
+      // Also add events from scans (so events show up even if company hasn't purchased options)
+      if (Array.isArray(scans)) {
+        scans.forEach((scan: any) => {
+          const metadata = scan.form_response_id?.form_version_id?.metadata;
+          if (metadata && typeof metadata === 'object' && 'event_id' in metadata && metadata.event_id) {
+            companyEventIds.add(metadata.event_id as string);
+          }
+        });
+      }
       
       const filteredEvents = (allEvents ?? []).filter((e: CareerEvent) => companyEventIds.has(e.id));
       setCompanyEvents(filteredEvents);

@@ -117,8 +117,8 @@ export async function fetchEventPageBySlugAction(slug: string) {
  */
 export async function findCompaniesWithEventOptions(eventId: string): Promise<Company[]> {
   try {
-    // Fetch all companies with their options
-    const allCompanies = await listCompanies({ limit: 1000 }) ?? [];
+    // Fetch all companies with their options - use -1 for unlimited
+    const allCompanies = await listCompanies({ limit: -1 }) ?? [];
     
     // Filter companies that have options with this event
     const companiesWithEvent: Company[] = [];

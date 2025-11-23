@@ -80,6 +80,7 @@ export async function createFormAction(data: {
   initialSchema?: FormSchema;
   metadata?: {
     is_event_registration?: boolean;
+    event_id?: string;
     event_email_subject?: string;
     event_email_content?: string;
     event_date?: string;

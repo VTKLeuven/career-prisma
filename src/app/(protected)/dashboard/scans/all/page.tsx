@@ -26,6 +26,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import * as XLSX from "xlsx";
+import { fetchEventsAction } from "@/app/actions/events";
+import type { CareerEvent } from "@/lib/schema";
 
 type AttendantScan = {
   id: string;
@@ -43,6 +45,10 @@ type AttendantScan = {
         id: string;
         name: string;
       };
+      metadata?: {
+        event_id?: string;
+        [key: string]: unknown;
+      };
     };
   };
 };
@@ -55,6 +61,18 @@ export default function AllScansPage() {
   const [scanUrl, setScanUrl] = useState("");
   const [scanDialogOpen, setScanDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [events, setEvents] = useState<CareerEvent[]>([]);
+
+  // Load events to map event_id to event names
+  useEffect(() => {
+    fetchEventsAction()
+      .then((loadedEvents) => {
+        setEvents(loadedEvents || []);
+      })
+      .catch((err) => {
+        console.error("Error loading events:", err);
+      });
+  }, []);
 
   const loadScans = React.useCallback(async () => {
     if (!user?.company?.id) {
@@ -65,13 +83,14 @@ export default function AllScansPage() {
     try {
       const response = await fetch("/api/scans");
       if (!response.ok) {
-        throw new Error("Failed to load scans");
+        const errorData = await response.json().catch(() => ({ error: "Failed to load scans" }));
+        throw new Error(errorData.error || `Failed to load scans (${response.status})`);
       }
       const data = await response.json();
       setScans(data);
     } catch (err) {
       console.error("Error loading scans:", err);
-      setError("Failed to load scans");
+      setError(err instanceof Error ? err.message : "Failed to load scans");
     } finally {
       setLoading(false);
     }
@@ -157,9 +176,20 @@ export default function AllScansPage() {
     
     const dataRows = scans.map(scan => {
       const response = scan.form_response_id;
-      const eventName = typeof response.form_version_id === 'object' && response.form_version_id?.form_id
-        ? (typeof response.form_version_id.form_id === 'object' ? response.form_version_id.form_id.name : '')
-        : '';
+      
+      // Get event name: prefer from linked event_id, fall back to form name
+      let eventName = '';
+      if (typeof response.form_version_id === 'object' && response.form_version_id?.metadata?.event_id) {
+        const linkedEvent = events.find(e => e.id === response.form_version_id.metadata?.event_id);
+        eventName = linkedEvent?.name || '';
+      }
+      
+      // Fall back to form name if no linked event found
+      if (!eventName && typeof response.form_version_id === 'object' && response.form_version_id?.form_id) {
+        eventName = typeof response.form_version_id.form_id === 'object' 
+          ? response.form_version_id.form_id.name 
+          : '';
+      }
       
       const scannedBy = typeof scan.scanned_by === 'object' 
         ? scan.scanned_by.name || scan.scanned_by.email 
@@ -299,7 +329,19 @@ export default function AllScansPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {scans.length === 0 ? (
+          {error && !scanDialogOpen ? (
+            <div className="text-center py-12">
+              <p className="text-destructive mb-4 font-medium">Error loading scans</p>
+              <p className="text-sm text-muted-foreground mb-4">{error}</p>
+              <Button onClick={() => {
+                setError(null);
+                setLoading(true);
+                loadScans();
+              }}>
+                Retry
+              </Button>
+            </div>
+          ) : scans.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-muted-foreground mb-4">No scans yet.</p>
               <Button onClick={() => setScanDialogOpen(true)}>
@@ -322,13 +364,25 @@ export default function AllScansPage() {
                 <TableBody>
                   {scans.map((scan) => {
                     const response = scan.form_response_id;
-                    const firstName = response.data.firstname as string || "";
-                    const lastName = response.data.lastname as string || "";
+                    // Support both new format (firstname/lastname) and old format (name/surname)
+                    const firstName = (response.data.firstname as string) || (response.data.name as string) || "";
+                    const lastName = (response.data.lastname as string) || (response.data.surname as string) || "";
                     const name = `${firstName} ${lastName}`.trim() || "Unknown";
                     const email = response.data.email as string || "N/A";
-                    const eventName = typeof response.form_version_id === 'object' && response.form_version_id?.form_id
-                      ? (typeof response.form_version_id.form_id === 'object' ? response.form_version_id.form_id.name : '')
-                      : '';
+                    
+                    // Get event name: prefer from linked event_id, fall back to form name
+                    let eventName = '';
+                    if (typeof response.form_version_id === 'object' && response.form_version_id?.metadata?.event_id) {
+                      const linkedEvent = events.find(e => e.id === response.form_version_id.metadata?.event_id);
+                      eventName = linkedEvent?.name || '';
+                    }
+                    
+                    // Fall back to form name if no linked event found
+                    if (!eventName && typeof response.form_version_id === 'object' && response.form_version_id?.form_id) {
+                      eventName = typeof response.form_version_id.form_id === 'object' 
+                        ? response.form_version_id.form_id.name 
+                        : '';
+                    }
 
                     return (
                       <TableRow key={scan.id}>
