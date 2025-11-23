@@ -262,15 +262,15 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
     setLoading(true);
 
     try {
-      // Create initial schema - if event registration, add name, surname, email fields
+      // Create initial schema - if event registration, add firstname, lastname, email fields
       let initialFields: FormField[] = [];
       
       if (isEventRegistration) {
         initialFields = [
           {
             id: `field_${Date.now()}_1`,
-            name: "name",
-            label: "Name",
+            name: "firstname",
+            label: "First Name",
             type: "text",
             required: true,
             placeholder: "Enter your first name",
@@ -278,8 +278,8 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
           },
           {
             id: `field_${Date.now()}_2`,
-            name: "surname",
-            label: "Surname",
+            name: "lastname",
+            label: "Last Name",
             type: "text",
             required: true,
             placeholder: "Enter your last name",
@@ -488,7 +488,7 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
                     />
                   )}
                   <p className="text-xs text-muted-foreground">
-                    This content will be sent in the confirmation email. Use {`{name}`} and {`{surname}`} to personalize. You can format text with bold, italic, lists, etc.
+                    This content will be sent in the confirmation email. Use {`{firstname}`} and {`{lastname}`} to personalize. You can format text with bold, italic, lists, etc.
                 </p>
               </div>
               <div className="space-y-2">
@@ -896,7 +896,7 @@ function EditFormDialog({
                     />
                   )}
                   <p className="text-xs text-muted-foreground">
-                    This content will be sent in the confirmation email. Use {`{name}`} and {`{surname}`} to personalize. You can format text with bold, italic, lists, etc.
+                    This content will be sent in the confirmation email. Use {`{firstname}`} and {`{lastname}`} to personalize. You can format text with bold, italic, lists, etc.
                   </p>
                 </div>
                 <div className="space-y-2">
