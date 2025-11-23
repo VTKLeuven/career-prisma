@@ -8,7 +8,7 @@
 // Full PDF processing can be added later with a proper Node.js PDF library
 
 export interface BoothExtraction {
-  booth_number: string;
+  booth_number: number;
   coords: {
     type: "rect";
     x_pct: number;

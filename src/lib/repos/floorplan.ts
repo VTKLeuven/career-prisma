@@ -9,6 +9,7 @@ export async function createFloorplan(payload: {
   name: string;
   year: string;
   svg_file: string;
+  background_image?: string;
 }): Promise<Floorplan | null> {
   try {
     const client = await getDirectusWithToken();
@@ -112,7 +113,7 @@ export async function deleteBoothsForFloorplan(floorplanId: string): Promise<boo
 }
 
 export async function createBooths(booths: Array<{
-  booth_number: string;
+  booth_number: number;
   coords: unknown; // JSON object
   Floorplan: string; // Floorplan ID
 }>, deleteExisting: boolean = true): Promise<Booth[] | null> {

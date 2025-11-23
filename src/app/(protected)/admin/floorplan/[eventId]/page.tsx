@@ -281,7 +281,7 @@ export default function AdminFloorplanPage() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="font-semibold text-lg">
-                  Booth {selectedBooth.booth_number}
+                  Booth {String(selectedBooth.booth_number)}
                 </h3>
                 {selectedBooth.company && (
                   <p className="text-sm text-muted-foreground">

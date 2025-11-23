@@ -8,6 +8,7 @@ import { fetchEventPagesAction } from "@/app/actions/events"
 import { fetchFloorplanAction, fetchMastersAction } from "@/app/actions/features"
 import type { CareerEventPage, Booth, Master, Company } from '@/lib/schema'
 import { getDirectusImageUrl } from "@/components/Images"
+import { slugifyCompanyName } from "@/lib/utils/slugify"
 import { usePageLayout } from '../../../layout'
 import { Button } from "@/components/ui/button"
 import { Clock, ArrowLeft, Users } from "lucide-react"
@@ -166,7 +167,7 @@ function Header({
           ? b.company!.name.toLowerCase().includes(searchTerm.toLowerCase())
           : true
       )
-      .sort((a, b) => (a.booth_number || "").localeCompare(b.booth_number || ""))
+      .sort((a, b) => (a.booth_number || 0) - (b.booth_number || 0))
     : []
 
   return (
@@ -220,7 +221,7 @@ function Header({
                           }}
                         >
                           <span>{b.company!.name}</span>
-                          <span className="text-gray-500">{b.booth_number}</span>
+                          <span className="text-gray-500">{String(b.booth_number)}</span>
                         </li>
                       ))}
                     </ul>
@@ -274,7 +275,7 @@ function Header({
                         }}
                       >
                         <span>{b.company!.name}</span>
-                        <span className="text-gray-500">{b.booth_number}</span>
+                        <span className="text-gray-500">{String(b.booth_number)}</span>
                       </li>
                     ))}
                   </ul>
@@ -362,6 +363,7 @@ function Floorplan({
   const [svgContent, setSvgContent] = useState<string>("")
   const [viewBox, setViewBox] = useState<string>("0 0 1000 600")
   const [originalViewBox, setOriginalViewBox] = useState<string>("0 0 1000 600")
+  const [backgroundImage, setBackgroundImage] = useState<string | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
 
   useEffect(() => {
@@ -374,6 +376,7 @@ function Floorplan({
       setBoothsLocal(boothsData)
       setBooths(boothsData)
       setSvgContent(data.svg || "")
+      setBackgroundImage((data as any).backgroundImage || null)
 
       const parser = new DOMParser()
       const svgDoc = parser.parseFromString(data.svg || "", "image/svg+xml")
@@ -593,7 +596,18 @@ function Floorplan({
 
   return (
     <>
-      <div className="pt-32 md:pt-[90px] flex justify-center w-full px-2 sm:px-4 pb-4">
+      {backgroundImage && (
+        <div
+          className="fixed inset-0 z-0"
+          style={{
+            backgroundImage: `url(${getDirectusImageUrl(backgroundImage) || ""})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+          }}
+        />
+      )}
+      <div className={`pt-32 md:pt-[90px] flex justify-center w-full px-2 sm:px-4 pb-4 ${backgroundImage ? "relative z-10" : ""}`}>
         <div className="w-full max-w-full">
           <svg
             ref={svgRef}
@@ -902,7 +916,7 @@ function Popup({ company, onClose }: { company: Company; onClose: () => void }) 
         {company?.page_on_platform === true && company?.status === "published" && (
           <div className="mt-5 flex items-center justify-center gap-3">
             <Link
-              href={`/company/${(company.name || "").toLowerCase().replace(/\s+/g, "-")}`}
+              href={`/company/${slugifyCompanyName(company.name)}`}
               className="rounded-full bg-vtk-blue text-white px-4 py-2 text-sm font-medium hover:bg-vtk-blueDark"
             >
               View company page

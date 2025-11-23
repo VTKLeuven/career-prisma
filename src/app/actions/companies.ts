@@ -114,14 +114,10 @@ export async function fetchCompanyByIdAction(company_id: string, usePublic = fal
   return company;
 }
 
+import { slugifyCompanyName } from "@/lib/utils/slugify";
+
 function slugifyName(name?: string | null): string {
-  return (name ?? "")
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "") // Remove special characters except hyphens
-    .replace(/-+/g, "-") // Replace multiple hyphens with single
-    .replace(/^-|-$/g, ""); // Remove leading/trailing hyphens
+  return slugifyCompanyName(name);
 }
 
 export async function fetchCompanyBySlugAction(slug: string): Promise<Company | null> {

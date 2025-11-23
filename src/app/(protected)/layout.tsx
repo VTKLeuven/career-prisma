@@ -9,6 +9,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { UserProvider } from "@/providers/UserProvider";
+import { slugifyCompanyName } from "@/lib/utils/slugify";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -50,7 +51,7 @@ export default async function WithSidebarLayout({ children }: { children: React.
                   <Link 
                     href={
                       user.company.page_on_platform
-                        ? `/company/${(user.company.name || "").toLowerCase().trim().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "")}`
+                        ? `/company/${slugifyCompanyName(user.company.name)}`
                         : "/dashboard/settings/information/request-page"
                     }
                     className="underline cursor-pointer hover:text-foreground transition-colors"
