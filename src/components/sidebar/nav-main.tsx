@@ -46,7 +46,9 @@ export function NavMain({
       <SidebarGroupLabel>Platform</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => {
-          const [isOpen, setIsOpen] = useState(item.isActive || item.hasWarning);
+          // Events section should be collapsed by default
+          const defaultOpen = item.title === "Events" ? false : (item.isActive || item.hasWarning);
+          const [isOpen, setIsOpen] = useState(defaultOpen);
           const hasWarningInSubItems = item.items?.some(subItem => subItem.hasWarning) ?? false;
           
           return (
@@ -60,19 +62,29 @@ export function NavMain({
               <SidebarMenuItem>
                 {item.items !== undefined ? (
                   <>
-                    <CollapsibleTrigger asChild>
-                      <SidebarMenuButton tooltip={item.title}>
-                        {item.icon && <item.icon />}
-                        <span>{item.title}</span>
-                        {hasWarningInSubItems && !isOpen && (
-                          <IconAlertTriangle className="h-4 w-4 text-red-600 shrink-0" style={{ color: '#dc2626' }} title="Page background image has invalid dimensions" />
-                        )}
-                        {item.badge !== undefined && item.badge > 0 && (
-                          <SidebarMenuBadge>{item.badge}</SidebarMenuBadge>
-                        )}
-                        <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                    <div className="flex items-center gap-1">
+                      <SidebarMenuButton tooltip={item.title} asChild className="flex-1">
+                        <Link href={item.url}>
+                          {item.icon && <item.icon />}
+                          <span>{item.title}</span>
+                          {hasWarningInSubItems && !isOpen && (
+                            <IconAlertTriangle className="h-4 w-4 text-red-600 shrink-0" style={{ color: '#dc2626' }} title="Page background image has invalid dimensions" />
+                          )}
+                          {item.badge !== undefined && item.badge > 0 && (
+                            <SidebarMenuBadge>{item.badge}</SidebarMenuBadge>
+                          )}
+                        </Link>
                       </SidebarMenuButton>
-                    </CollapsibleTrigger>
+                      <CollapsibleTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-sidebar-accent transition-colors"
+                          aria-label={isOpen ? "Collapse" : "Expand"}
+                        >
+                          <ChevronRight className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                        </button>
+                      </CollapsibleTrigger>
+                    </div>
                     <CollapsibleContent>
                       <SidebarMenuSub>
                         {item.items?.map((subItem) => (

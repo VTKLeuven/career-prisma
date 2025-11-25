@@ -7,6 +7,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { useState } from "react";
 import { useRouter } from "next/navigation"
 import NextImage from "next/image";
+import Link from "next/link";
+import { getDirectusImageUrl } from "@/components/Images";
 import {
   Dialog,
   DialogContent,
@@ -62,9 +64,9 @@ export default function LoginPage() {
     <div className="grid min-h-svh lg:grid-cols-2">
       <div className="flex flex-col gap-4 p-6 md:p-10">
         <div className="flex justify-center gap-2 md:justify-start">
-          <a href="#" className="flex items-center gap-2 font-medium">
+          <Link href="/" className="flex items-center gap-2 font-medium hover:opacity-80 transition-opacity">
             VTK Career
-          </a>
+          </Link>
         </div>
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-xs">
@@ -124,8 +126,8 @@ export default function LoginPage() {
       </div>
       <div className="bg-muted relative hidden lg:block">
         <NextImage
-          src="/placeholder.svg"
-          alt="Image"
+          src={getDirectusImageUrl("875bb00d-d935-4e0b-b2fb-2dc9a9a2b12d") || "/placeholder.svg"}
+          alt="VTK Career"
           fill
           className="object-cover dark:brightness-[0.2] dark:grayscale"
         />

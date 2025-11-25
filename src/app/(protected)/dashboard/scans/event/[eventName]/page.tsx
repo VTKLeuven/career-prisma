@@ -54,53 +54,68 @@ export default function EventScansPage() {
   const [error, setError] = useState<string | null>(null);
   const [eventId, setEventId] = useState<string | null>(null);
 
-  // Find event ID from event name
+  // Find event ID from event name first, then load scans
   useEffect(() => {
-    if (!eventName) return;
-    
-    fetchEventsAction()
-      .then((events) => {
-        const matchingEvent = events?.find(
-          (e: CareerEvent) => e.name === eventName
-        );
-        if (matchingEvent) {
-          setEventId(matchingEvent.id);
-        }
-      })
-      .catch((err) => {
-        console.error("Error fetching events:", err);
-      });
-  }, [eventName]);
-
-  const loadScans = React.useCallback(async () => {
-    if (!user?.company?.id) {
+    if (!eventName || !user?.company?.id) {
       setLoading(false);
       return;
     }
 
-    try {
-      // Use eventId if available (preferred), otherwise fall back to eventName
-      const url = eventId
-        ? `/api/scans?eventId=${encodeURIComponent(eventId)}`
-        : `/api/scans?event=${encodeURIComponent(eventName)}`;
-      
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error("Failed to load scans");
-      }
-      const data = await response.json();
-      setScans(data);
-    } catch (err) {
-      console.error("Error loading scans:", err);
-      setError("Failed to load scans");
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.company?.id, eventName, eventId]);
+    let isMounted = true;
+    setLoading(true);
+    setError(null);
 
-  useEffect(() => {
-    loadScans();
-  }, [loadScans]);
+    async function fetchEventAndScans() {
+      try {
+        // First, find the event by name
+        const events = await fetchEventsAction();
+        if (!isMounted) return;
+
+        const matchingEvent = events?.find(
+          (e: CareerEvent) => e.name === eventName
+        );
+
+        if (matchingEvent) {
+          setEventId(matchingEvent.id);
+          
+          // Load scans using eventId (preferred method)
+          const response = await fetch(`/api/scans?eventId=${encodeURIComponent(matchingEvent.id)}`);
+          if (!isMounted) return;
+          
+          if (!response.ok) {
+            throw new Error("Failed to load scans");
+          }
+          const data = await response.json();
+          setScans(data);
+        } else {
+          // Event not found by name, try using eventName directly (might match form name)
+          console.warn(`Event "${eventName}" not found, trying to match by form name`);
+          const response = await fetch(`/api/scans?event=${encodeURIComponent(eventName)}`);
+          if (!isMounted) return;
+          
+          if (!response.ok) {
+            throw new Error("Failed to load scans");
+          }
+          const data = await response.json();
+          setScans(data);
+        }
+      } catch (err) {
+        if (!isMounted) return;
+        console.error("Error loading scans:", err);
+        setError("Failed to load scans");
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchEventAndScans();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [eventName, user?.company?.id]);
 
   const exportToXLSX = () => {
     if (scans.length === 0) {
