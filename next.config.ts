@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Ensure Next.js treats this project directory as the root for output file tracing
-  outputFileTracingRoot: __dirname,
+  // Enable standalone output for Docker
+  output: 'standalone',
+  // Note: outputFileTracingRoot removed - Next.js handles this automatically in standalone mode
   images: {
     remotePatterns: [
       {
@@ -28,8 +29,8 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: '10mb',
     },
-    // Increase middleware client body size limit for file uploads (default is 10MB)
-    middlewareClientMaxBodySize: '50mb',
+    // Note: proxyClientMaxBodySize is not yet available in Next.js 16.0.1 types
+    // The middleware body size limit is handled by the server configuration
   },
   webpack: (config, { isServer }) => {
     if (isServer) {

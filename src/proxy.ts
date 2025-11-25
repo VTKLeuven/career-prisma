@@ -4,7 +4,7 @@ import { NextResponse, NextRequest } from "next/server";
 const PREFIX = process.env.AUTH_COOKIE_PREFIX ?? "directus";
 const ACCESS_COOKIE = `${PREFIX}_access`;
 const REFRESH_COOKIE = `${PREFIX}_refresh`;
-const DIRECTUS_URL = process.env.DIRECTUS_URL?.replace(/\/?$/, "/"); // ensure trailing slash
+const DIRECTUS_URL = (process.env.DIRECTUS_URL || "http://localhost:8055").replace(/\/?$/, "/"); // ensure trailing slash
 
 // Helper: decode JWT payload without verifying (good enough to check exp)
 function decodeJwtPayload(token: string) {
