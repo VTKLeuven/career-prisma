@@ -52,10 +52,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power, ChevronUp, ChevronDown } from "lucide-react";
 import { useUser } from "@/providers/UserProvider";
-import type { FormSchema, FormField, Form } from "@/lib/schema";
+import type { FormSchema, FormField, Form, CareerEvent } from "@/lib/schema";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatDateBE, formatDateTimeBE, utcToLocalDateTimeLocal, localDateTimeLocalToUtc } from "@/lib/date-utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { fetchEventsAction } from "@/app/actions/events";
 
 type FormRow = {
   id: string;
@@ -203,6 +205,9 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
   const [deadline, setDeadline] = useState("");
   const [maxEntries, setMaxEntries] = useState<string>("");
   const [isEventRegistration, setIsEventRegistration] = useState(false);
+  const [selectedEventId, setSelectedEventId] = useState<string>("");
+  const [events, setEvents] = useState<CareerEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
   const [eventEmailSubject, setEventEmailSubject] = useState("Event Registration Confirmation");
   const [eventEmailContent, setEventEmailContent] = useState("Thank you for registering! We look forward to seeing you at the event.");
   const [eventDate, setEventDate] = useState("");
@@ -254,6 +259,23 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
     }
   }, [name, isEventRegistration]);
 
+  // Load events when dialog opens and event registration is enabled
+  useEffect(() => {
+    if (open && isEventRegistration && events.length === 0 && !eventsLoading) {
+      setEventsLoading(true);
+      fetchEventsAction()
+        .then((loadedEvents) => {
+          setEvents(loadedEvents || []);
+        })
+        .catch((err) => {
+          console.error("Error loading events:", err);
+        })
+        .finally(() => {
+          setEventsLoading(false);
+        });
+    }
+  }, [open, isEventRegistration, events.length, eventsLoading]);
+
   const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
   const formUrl = `${formDomain}/forms/${slug || "your-slug"}`;
 
@@ -262,15 +284,15 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
     setLoading(true);
 
     try {
-      // Create initial schema - if event registration, add name, surname, email fields
+      // Create initial schema - if event registration, add firstname, lastname, email fields
       let initialFields: FormField[] = [];
       
       if (isEventRegistration) {
         initialFields = [
           {
             id: `field_${Date.now()}_1`,
-            name: "name",
-            label: "Name",
+            name: "firstname",
+            label: "First Name",
             type: "text",
             required: true,
             placeholder: "Enter your first name",
@@ -278,8 +300,8 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
           },
           {
             id: `field_${Date.now()}_2`,
-            name: "surname",
-            label: "Surname",
+            name: "lastname",
+            label: "Last Name",
             type: "text",
             required: true,
             placeholder: "Enter your last name",
@@ -305,6 +327,9 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
       
       if (isEventRegistration) {
         metadata.is_event_registration = true;
+        if (selectedEventId && selectedEventId !== "none") {
+          metadata.event_id = selectedEventId;
+        }
         metadata.event_email_subject = eventEmailSubject || 'Event Registration Confirmation';
         metadata.event_email_content = eventEmailContent || 'Thank you for registering!';
         if (eventDate) {
@@ -345,6 +370,7 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
       setDeadline("");
       setMaxEntries("");
       setIsEventRegistration(false);
+      setSelectedEventId("");
       setEventEmailSubject("Event Registration Confirmation");
       setEventEmailContent("Thank you for registering! We look forward to seeing you at the event.");
       setEventDate("");
@@ -458,6 +484,29 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
             <div className="space-y-4 p-4 bg-muted rounded-md border-t">
               <h3 className="font-semibold text-sm">Event Registration Settings</h3>
                 <div className="space-y-2">
+                  <Label htmlFor="event-select">Link to Event (Optional)</Label>
+                  <Select
+                    value={selectedEventId || "none"}
+                    onValueChange={(value) => setSelectedEventId(value === "none" ? "" : value)}
+                    disabled={eventsLoading}
+                  >
+                    <SelectTrigger id="event-select" className="w-full">
+                      <SelectValue placeholder={eventsLoading ? "Loading events..." : "Select an event (optional)"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None (no event linked)</SelectItem>
+                      {events.map((event) => (
+                        <SelectItem key={event.id} value={event.id}>
+                          {event.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Link this registration form to an event so attending companies can see scans for this specific event.
+                  </p>
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="event-email-subject">Email Subject</Label>
                   <Input
                     id="event-email-subject"
@@ -488,7 +537,7 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
                     />
                   )}
                   <p className="text-xs text-muted-foreground">
-                    This content will be sent in the confirmation email. Use {`{name}`} and {`{surname}`} to personalize. You can format text with bold, italic, lists, etc.
+                    This content will be sent in the confirmation email. Use {`{firstname}`} and {`{lastname}`} to personalize. You can format text with bold, italic, lists, etc.
                 </p>
               </div>
               <div className="space-y-2">
@@ -652,6 +701,9 @@ function EditFormDialog({
   const [eventLocation, setEventLocation] = useState(
     (form.metadata?.event_location as string) || ''
   );
+  const [selectedEventId, setSelectedEventId] = useState<string>("");
+  const [events, setEvents] = useState<CareerEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isEventRegistration, setIsEventRegistration] = useState(
     form.metadata?.is_event_registration === true
@@ -663,6 +715,23 @@ function EditFormDialog({
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  // Load events when dialog opens and event registration is enabled
+  useEffect(() => {
+    if (open && isEventRegistration && events.length === 0 && !eventsLoading) {
+      setEventsLoading(true);
+      fetchEventsAction()
+        .then((loadedEvents) => {
+          setEvents(loadedEvents || []);
+        })
+        .catch((err) => {
+          console.error("Error loading events:", err);
+        })
+        .finally(() => {
+          setEventsLoading(false);
+        });
+    }
+  }, [open, isEventRegistration, events.length, eventsLoading]);
 
   const emailEditor = useEditor({
     extensions: [StarterKit],
@@ -699,6 +768,7 @@ function EditFormDialog({
       setDeadline(form.metadata?.deadline ? utcToLocalDateTimeLocal(form.metadata.deadline as string) : '');
       setMaxEntries(form.metadata?.max_entries ? String(form.metadata.max_entries) : '');
       setIsEventRegistration(form.metadata?.is_event_registration === true);
+      setSelectedEventId((form.metadata?.event_id as string) || '');
       setEventEmailSubject((form.metadata?.event_email_subject as string) || '');
       setEventEmailContent((form.metadata?.event_email_content as string) || '');
       setEventDate(form.metadata?.event_date ? utcToLocalDateTimeLocal(form.metadata.event_date as string) : '');
@@ -747,12 +817,17 @@ function EditFormDialog({
           metadata = {
             ...metadata,
             is_event_registration: true,
+            ...(selectedEventId && selectedEventId !== "none" ? { event_id: selectedEventId } : {}),
             event_email_subject: eventEmailSubject || 'Event Registration Confirmation',
             event_email_content: eventEmailContent || 'Thank you for registering!',
             ...(eventDate ? { event_date: localDateTimeLocalToUtc(eventDate) } : {}),
             ...(eventEndDate ? { event_end_date: localDateTimeLocalToUtc(eventEndDate) } : {}),
             ...(eventLocation ? { event_location: eventLocation } : {}),
           };
+          // Remove event_id if it was cleared
+          if ((!selectedEventId || selectedEventId === "none") && metadata.event_id) {
+            delete metadata.event_id;
+          }
         } else {
           // If unchecked, remove event registration flag but keep other metadata
           if (metadata) {
@@ -866,6 +941,29 @@ function EditFormDialog({
               <div className="space-y-4 p-4 bg-muted rounded-md border-t">
                 <h3 className="font-semibold text-sm">Event Registration Settings</h3>
                 <div className="space-y-2">
+                  <Label htmlFor="edit-event-select">Link to Event (Optional)</Label>
+                  <Select
+                    value={selectedEventId || "none"}
+                    onValueChange={(value) => setSelectedEventId(value === "none" ? "" : value)}
+                    disabled={eventsLoading}
+                  >
+                    <SelectTrigger id="edit-event-select" className="w-full">
+                      <SelectValue placeholder={eventsLoading ? "Loading events..." : "Select an event (optional)"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None (no event linked)</SelectItem>
+                      {events.map((event) => (
+                        <SelectItem key={event.id} value={event.id}>
+                          {event.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Link this registration form to an event so attending companies can see scans for this specific event.
+                  </p>
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="edit-event-email-subject">Email Subject</Label>
                   <Input
                     id="edit-event-email-subject"
@@ -896,7 +994,7 @@ function EditFormDialog({
                     />
                   )}
                   <p className="text-xs text-muted-foreground">
-                    This content will be sent in the confirmation email. Use {`{name}`} and {`{surname}`} to personalize. You can format text with bold, italic, lists, etc.
+                    This content will be sent in the confirmation email. Use {`{firstname}`} and {`{lastname}`} to personalize. You can format text with bold, italic, lists, etc.
                   </p>
                 </div>
                 <div className="space-y-2">

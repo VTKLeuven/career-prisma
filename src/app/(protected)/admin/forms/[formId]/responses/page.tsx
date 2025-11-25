@@ -4,7 +4,7 @@ import * as React from "react";
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { fetchFormByIdAction, fetchFormVersionsAction, fetchFormResponsesAction, deleteFormResponseAction } from "@/app/actions/forms";
+import { fetchFormByIdAction, fetchFormVersionsAction, fetchFormResponsesAction, fetchFormResponsesTotalCountAction, fetchAllFormResponsesAction, fetchFirstFormResponseAction, fetchLatestFormResponseAction, deleteFormResponseAction, initializeAttendantUuidsAction } from "@/app/actions/forms";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,9 +31,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Download, Eye, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, Eye, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2 } from "lucide-react";
 import type { FormVersion, FormResponse } from "@/lib/schema";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
+import * as XLSX from "xlsx";
 
 export default function FormResponsesPage() {
   const params = useParams();
@@ -49,6 +50,12 @@ export default function FormResponsesPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [responseToDelete, setResponseToDelete] = useState<FormResponse | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [firstResponseDate, setFirstResponseDate] = useState<string | null>(null);
+  const [latestResponseDate, setLatestResponseDate] = useState<string | null>(null);
+  const [initializingUuids, setInitializingUuids] = useState(false);
+  const pageSize = 25; // Constant page size
 
   const loadFormData = useCallback(async () => {
     setLoading(true);
@@ -78,14 +85,25 @@ export default function FormResponsesPage() {
     }
   }, [formId]);
 
-  const loadResponses = useCallback(async (versionId: string) => {
+  const loadResponses = useCallback(async (versionId: string, page: number = 1) => {
     setLoadingResponses(true);
     try {
-      const responsesData = await fetchFormResponsesAction(versionId);
+      const [responsesData, total, firstResponse, latestResponse] = await Promise.all([
+        fetchFormResponsesAction(versionId, { limit: 25, page }),
+        fetchFormResponsesTotalCountAction(versionId),
+        fetchFirstFormResponseAction(versionId),
+        fetchLatestFormResponseAction(versionId),
+      ]);
       setResponses(responsesData);
+      setTotalCount(total);
+      setFirstResponseDate(firstResponse?.submitted_at || null);
+      setLatestResponseDate(latestResponse?.submitted_at || null);
     } catch (error) {
       console.error("Error loading responses:", error);
       setResponses([]);
+      setTotalCount(0);
+      setFirstResponseDate(null);
+      setLatestResponseDate(null);
     } finally {
       setLoadingResponses(false);
     }
@@ -95,68 +113,111 @@ export default function FormResponsesPage() {
     loadFormData();
   }, [loadFormData]);
 
+  // Reset to page 1 when version changes
   useEffect(() => {
     if (selectedVersionId) {
-      loadResponses(selectedVersionId);
+      setCurrentPage(1);
     }
-  }, [selectedVersionId, loadResponses]);
+  }, [selectedVersionId]);
 
-  const exportToCSV = () => {
-    if (responses.length === 0 || !selectedVersionId) return;
+  // Load responses when version or page changes
+  useEffect(() => {
+    if (selectedVersionId) {
+      loadResponses(selectedVersionId, currentPage);
+    }
+  }, [currentPage, selectedVersionId, loadResponses]);
+
+  const exportToXLSX = async () => {
+    if (!selectedVersionId) return;
 
     const selectedVersion = versions.find(v => v.id === selectedVersionId);
     if (!selectedVersion) return;
 
-    // Check if both name and surname fields exist
-    const hasNameField = selectedVersion.schema.fields.some(f => f.name === 'name');
-    const hasSurnameField = selectedVersion.schema.fields.some(f => f.name === 'surname');
-    const shouldCombineName = hasNameField && hasSurnameField;
+    // Fetch all responses for export
+    let allResponses: FormResponse[];
+    try {
+      allResponses = await fetchAllFormResponsesAction(selectedVersionId);
+    } catch (error) {
+      console.error("Error fetching all responses for export:", error);
+      alert("Failed to fetch all responses. Please try again.");
+      return;
+    }
 
-    // Build field names and keys, combining name and surname if both exist
+    if (allResponses.length === 0) {
+      alert("No responses to export.");
+      return;
+    }
+
+    // Check if both firstname and lastname fields exist
+    const hasFirstNameField = selectedVersion.schema.fields.some(f => f.name === 'firstname');
+    const hasLastNameField = selectedVersion.schema.fields.some(f => f.name === 'lastname');
+    const shouldCombineName = hasFirstNameField && hasLastNameField;
+
+    // Build field names and keys, combining firstname and lastname if both exist
     const fieldNames: string[] = [];
     const fieldKeys: string[] = [];
 
     selectedVersion.schema.fields.forEach(field => {
-      if (shouldCombineName && field.name === 'surname') {
-        // Skip surname - it will be combined with name
+      if (shouldCombineName && field.name === 'lastname') {
+        // Skip lastname - it will be combined with firstname
         return;
       }
-      if (shouldCombineName && field.name === 'name') {
-        // Replace "name" with combined "name" label
+      if (shouldCombineName && field.name === 'firstname') {
+        // Replace "firstname" with combined "Name" label
         fieldNames.push('Name');
-        fieldKeys.push('name');
+        fieldKeys.push('firstname');
       } else {
         fieldNames.push(field.label || field.name);
         fieldKeys.push(field.name);
       }
     });
 
-    const header = ['Submission Date', 'Response ID', ...fieldNames].join(',');
+    // Check if this is an event registration form (has attendant_uuid)
+    const isEventRegistration = allResponses.some(r => r.attendant_uuid);
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
-    const rows = responses.map(response => {
+    // Prepare data for XLSX
+    const headerRow = ['Submission Date', 'Response ID', ...fieldNames, ...(isEventRegistration ? ['Attendant Link'] : [])];
+    
+    const dataRows = allResponses.map(response => {
       const date = formatDateTimeBE(response.submitted_at);
       const values = fieldKeys.map(key => {
-        if (shouldCombineName && key === 'name') {
-          // Combine name and surname
-          const firstName = response.data['name'] || '';
-          const surname = response.data['surname'] || '';
-          const fullName = `${firstName} ${surname}`.trim();
-          return fullName.replace(/"/g, '""');
+        if (shouldCombineName && key === 'firstname') {
+          // Combine firstname and lastname
+          const firstName = response.data['firstname'] || '';
+          const lastName = response.data['lastname'] || '';
+          const fullName = `${firstName} ${lastName}`.trim();
+          return fullName;
         }
         const value = response.data[key];
         if (value === null || value === undefined) return '';
         if (Array.isArray(value)) return value.join('; ');
-        return String(value).replace(/"/g, '""');
+        return String(value);
       });
-      return [date, response.id, ...values].map(v => `"${v}"`).join(',');
+      
+      // Add attendant link if UUID exists
+      const attendantLink = response.attendant_uuid 
+        ? `${baseUrl}/attendant/${response.attendant_uuid}`
+        : '';
+      
+      return [date, response.id, ...values, ...(isEventRegistration ? [attendantLink] : [])];
     });
 
-    const csv = [header, ...rows].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    // Create worksheet
+    const worksheetData = [headerRow, ...dataRows];
+    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+
+    // Create workbook and add worksheet
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Responses');
+
+    // Generate XLSX file
+    const xlsxBuffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
+    const blob = new Blob([xlsxBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${form?.slug}-responses-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `${form?.slug}-responses-${new Date().toISOString().split('T')[0]}.xlsx`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
@@ -172,8 +233,9 @@ export default function FormResponsesPage() {
     setDeleting(true);
     try {
       await deleteFormResponseAction(responseToDelete.id);
-      // Remove the deleted response from the list
+      // Remove the deleted response from the list and update count
       setResponses(responses.filter(r => r.id !== responseToDelete.id));
+      setTotalCount(prev => Math.max(0, prev - 1));
       setDeleteDialogOpen(false);
       setResponseToDelete(null);
     } catch (error) {
@@ -181,6 +243,39 @@ export default function FormResponsesPage() {
       alert("Failed to delete response. Please try again.");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleInitializeUuids = async () => {
+    if (!form) return;
+    
+    const isEventRegistration = selectedVersion?.metadata?.is_event_registration;
+    if (!isEventRegistration) {
+      alert("This form is not an event registration form. UUIDs are only needed for event registration forms.");
+      return;
+    }
+
+    if (!confirm(`Initialize UUIDs for all responses in "${form.name}"? This will generate QR code links for existing responses.`)) {
+      return;
+    }
+
+    setInitializingUuids(true);
+    try {
+      const result = await initializeAttendantUuidsAction(form.id);
+      if (result.success) {
+        alert(result.message);
+        // Reload responses to show updated data
+        if (selectedVersionId) {
+          await loadResponses(selectedVersionId, currentPage);
+        }
+      } else {
+        alert(`Failed: ${result.message}`);
+      }
+    } catch (error) {
+      console.error("Error initializing UUIDs:", error);
+      alert("Failed to initialize UUIDs. Please try again.");
+    } finally {
+      setInitializingUuids(false);
     }
   };
 
@@ -231,7 +326,7 @@ export default function FormResponsesPage() {
             <div>
               <CardTitle>Form Responses</CardTitle>
               <CardDescription>
-                {responses.length} response(s) {selectedVersion && `for version ${selectedVersion.version_number}`}
+                {totalCount} response(s) {selectedVersion && `for version ${selectedVersion.version_number}`}
               </CardDescription>
             </div>
             <div className="flex gap-2">
@@ -248,9 +343,29 @@ export default function FormResponsesPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <Button variant="outline" onClick={exportToCSV} disabled={responses.length === 0}>
+              {selectedVersion?.metadata?.is_event_registration && (
+                <Button 
+                  variant="outline" 
+                  onClick={handleInitializeUuids} 
+                  disabled={initializingUuids || totalCount === 0}
+                  title="Initialize UUIDs for existing responses to enable QR codes"
+                >
+                  {initializingUuids ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Initializing...
+                    </>
+                  ) : (
+                    <>
+                      <QrCode className="h-4 w-4 mr-2" />
+                      Initialize UUIDs
+                    </>
+                  )}
+                </Button>
+              )}
+              <Button variant="outline" onClick={exportToXLSX} disabled={totalCount === 0}>
                 <Download className="h-4 w-4 mr-2" />
-                Export CSV
+                Export XLSX
               </Button>
             </div>
           </div>
@@ -273,16 +388,14 @@ export default function FormResponsesPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Card className="py-3">
                   <CardContent>
-                    <div className="text-2xl font-bold">{responses.length}</div>
+                    <div className="text-2xl font-bold">{totalCount}</div>
                     <div className="text-sm text-muted-foreground">Total Responses</div>
                   </CardContent>
                 </Card>
                 <Card className="py-3">
                   <CardContent>
                     <div className="text-2xl font-bold">
-                      {responses.length > 0
-                        ? formatDateBE(responses[responses.length - 1].submitted_at)
-                        : "N/A"}
+                      {firstResponseDate ? formatDateBE(firstResponseDate) : "N/A"}
                     </div>
                     <div className="text-sm text-muted-foreground">First Response</div>
                   </CardContent>
@@ -290,9 +403,7 @@ export default function FormResponsesPage() {
                 <Card className="py-3">
                   <CardContent>
                     <div className="text-2xl font-bold">
-                      {responses.length > 0
-                        ? formatDateBE(responses[0].submitted_at)
-                        : "N/A"}
+                      {latestResponseDate ? formatDateBE(latestResponseDate) : "N/A"}
                     </div>
                     <div className="text-sm text-muted-foreground">Latest Response</div>
                   </CardContent>
@@ -336,6 +447,56 @@ export default function FormResponsesPage() {
                   </TableBody>
                 </Table>
               </div>
+
+              {/* Pagination Controls */}
+              {totalCount > pageSize && (
+                <div className="flex items-center justify-between border-t pt-4">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} responses
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1 || loadingResponses}
+                      title="First page"
+                    >
+                      <ChevronsLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1 || loadingResponses}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Previous
+                    </Button>
+                    <div className="text-sm text-muted-foreground">
+                      Page {currentPage} of {Math.ceil(totalCount / pageSize)}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.min(Math.ceil(totalCount / pageSize), prev + 1))}
+                      disabled={currentPage >= Math.ceil(totalCount / pageSize) || loadingResponses}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(Math.ceil(totalCount / pageSize))}
+                      disabled={currentPage >= Math.ceil(totalCount / pageSize) || loadingResponses}
+                      title="Last page"
+                    >
+                      <ChevronsRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

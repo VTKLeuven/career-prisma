@@ -80,6 +80,7 @@ export async function createFormAction(data: {
   initialSchema?: FormSchema;
   metadata?: {
     is_event_registration?: boolean;
+    event_id?: string;
     event_email_subject?: string;
     event_email_content?: string;
     event_date?: string;
@@ -243,6 +244,45 @@ export async function fetchFormResponsesAction(formVersionId: string, opts?: {
   }
 }
 
+export async function fetchFormResponsesTotalCountAction(formVersionId: string) {
+  try {
+    const { getFormResponsesTotalCount } = await import("@/lib/repos/forms");
+    return await getFormResponsesTotalCount(formVersionId);
+  } catch (error) {
+    console.error("Error fetching form responses total count:", error);
+    return 0;
+  }
+}
+
+export async function fetchAllFormResponsesAction(formVersionId: string) {
+  try {
+    return await listFormResponses(formVersionId, { limit: -1 });
+  } catch (error) {
+    console.error("Error fetching all form responses:", error);
+    throw error;
+  }
+}
+
+export async function fetchFirstFormResponseAction(formVersionId: string) {
+  try {
+    const { getFirstFormResponse } = await import("@/lib/repos/forms");
+    return await getFirstFormResponse(formVersionId);
+  } catch (error) {
+    console.error("Error fetching first form response:", error);
+    return null;
+  }
+}
+
+export async function fetchLatestFormResponseAction(formVersionId: string) {
+  try {
+    const { getLatestFormResponse } = await import("@/lib/repos/forms");
+    return await getLatestFormResponse(formVersionId);
+  } catch (error) {
+    console.error("Error fetching latest form response:", error);
+    return null;
+  }
+}
+
 export async function fetchFormResponseByIdAction(id: string) {
   try {
     return await getFormResponseById(id);
@@ -257,6 +297,16 @@ export async function deleteFormResponseAction(id: string) {
     return await deleteFormResponse(id);
   } catch (error) {
     console.error("Error deleting form response:", error);
+    throw error;
+  }
+}
+
+export async function initializeAttendantUuidsAction(formId?: string) {
+  try {
+    const { initializeAttendantUuids } = await import("@/lib/repos/forms");
+    return await initializeAttendantUuids(formId);
+  } catch (error) {
+    console.error("Error initializing attendant UUIDs:", error);
     throw error;
   }
 }
@@ -335,13 +385,24 @@ export async function submitFormResponseAction(data: {
       }
     }
 
+    // Generate UUID for event registration forms
+    let attendantUuid: string | undefined;
+    if (versionMetadata?.is_event_registration) {
+      // Generate a UUID v4
+      attendantUuid = crypto.randomUUID();
+    }
+
     // Create form response using server client to ensure it works for both logged-in and non-logged-in users
     // The server client has elevated permissions needed for public form submissions
     const { createItem } = await import("@directus/sdk");
     let response: FormResponse | null = null;
     try {
+      const responseData = {
+        ...data,
+        ...(attendantUuid ? { attendant_uuid: attendantUuid } : {}),
+      };
       response = await serverClient.request(
-        createItem("form_responses", data)
+        createItem("form_responses", responseData)
       ) as unknown as FormResponse;
     } catch (error) {
       console.error('[submitFormResponseAction] Error creating form response:', error);
@@ -392,8 +453,8 @@ export async function submitFormResponseAction(data: {
       try {
         await sendEventConfirmationEmail({
           to: emailValue,
-          name: (formData.name as string) || '',
-          surname: (formData.surname as string) || '',
+          firstname: (formData.firstname as string) || '',
+          lastname: (formData.lastname as string) || '',
           formName: formName,
           subject: (versionMetadata.event_email_subject as string) || `${formName} - Registration Confirmation`,
           content: (versionMetadata.event_email_content as string) || 'Thank you for registering!',
@@ -416,8 +477,8 @@ export async function submitFormResponseAction(data: {
 
 async function sendEventConfirmationEmail({
   to,
-  name,
-  surname,
+  firstname,
+  lastname,
   formName,
   subject,
   content,
@@ -426,8 +487,8 @@ async function sendEventConfirmationEmail({
   eventLocation,
 }: {
   to: string;
-  name: string;
-  surname: string;
+  firstname: string;
+  lastname: string;
   formName: string;
   subject: string;
   content: string;
@@ -439,14 +500,14 @@ async function sendEventConfirmationEmail({
     const { sendEmail } = await import("@/lib/repos/directus");
     const { generateEventConfirmationEmailHtml } = await import("@/lib/email-templates");
     
-    const fullName = `${name} ${surname}`.trim() || 'Guest';
+    const fullName = `${firstname} ${lastname}`.trim() || 'Guest';
     
     // Replace placeholders in email content
     // If content is already HTML (from TipTap), just replace placeholders
     // Otherwise, convert newlines to <br>
     let personalizedContent = content
-      .replace(/{name}/g, name || 'Guest')
-      .replace(/{surname}/g, surname || '');
+      .replace(/{firstname}/g, firstname || 'Guest')
+      .replace(/{lastname}/g, lastname || '');
     
     // Only convert newlines if content doesn't appear to be HTML
     if (!personalizedContent.includes('<') || !personalizedContent.includes('>')) {

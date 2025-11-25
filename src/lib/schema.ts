@@ -145,6 +145,7 @@ export type FormMetadata = {
   deadline?: string; // ISO date string
   max_entries?: number; // Maximum number of submissions allowed
   is_event_registration?: boolean; // If true, this form is for event registration
+  event_id?: string; // ID of the linked career event (for event registration forms)
   event_email_subject?: string; // Email subject for event confirmation
   event_email_content?: string; // Email content for event confirmation
   event_date?: string; // Event start date/time (ISO string)
@@ -193,6 +194,7 @@ export type FormResponse = {
   data: Record<string, unknown>;
   submitted_at: string;
   attachments?: string[]; // Directus file IDs
+  attendant_uuid?: string; // Unique UUID for event registration attendants
 }
 
 // Optional: Full Directus Schema map (only collections you use)
