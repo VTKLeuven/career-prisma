@@ -39,9 +39,12 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED 1
 
 # Accept build args for environment variables needed during build
-# These are only used during build and won't be in the final image
-ARG DIRECTUS_URL=http://localhost:8055
+# NEXT_PUBLIC_* variables are baked into the client bundle at build time
+# These come from docker-compose build args, which read from .env.local
+ARG DIRECTUS_URL
+ARG NEXT_PUBLIC_DIRECTUS_URL
 ENV DIRECTUS_URL=$DIRECTUS_URL
+ENV NEXT_PUBLIC_DIRECTUS_URL=$NEXT_PUBLIC_DIRECTUS_URL
 
 RUN npm run build
 
