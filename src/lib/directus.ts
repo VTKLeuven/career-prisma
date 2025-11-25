@@ -7,7 +7,7 @@ import {
 } from "@directus/sdk";
 import { cookies } from "next/headers";
 
-const DIRECTUS_URL = process.env.DIRECTUS_URL!;
+const DIRECTUS_URL = process.env.DIRECTUS_URL || "http://localhost:8055";
 
 /**
  * Base client (no auth).

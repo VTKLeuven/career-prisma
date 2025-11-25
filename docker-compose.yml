@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Pass DIRECTUS_URL as build arg (non-sensitive, just a URL)
+        # This is needed during Next.js build process
+        DIRECTUS_URL: ${DIRECTUS_URL:-http://localhost:8055}
+    ports:
+      - "3002:3000"
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    env_file:
+      - .env.local
+
