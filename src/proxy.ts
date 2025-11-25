@@ -52,21 +52,53 @@ export async function proxy(req: NextRequest) {
     const newAccess = data?.access_token as string | undefined;
     const newRefresh = data?.refresh_token as string | undefined;
 
+    // Decode the refresh token to check its expiration
+    // This helps us determine if "remember me" was checked
+    // If the refresh token expires in more than 30 days, assume "remember me" was checked
+    let isRememberMe = false;
+    if (refresh) {
+      const refreshPayload = decodeJwtPayload(refresh);
+      if (refreshPayload.exp) {
+        const daysUntilExpiry = (refreshPayload.exp * 1000 - Date.now()) / (1000 * 60 * 60 * 24);
+        isRememberMe = daysUntilExpiry > 30; // More than 30 days suggests "remember me"
+      }
+    }
+    
+    // Set appropriate expiration times
+    // Default to "remember me" behavior (longer expiration) to preserve user sessions
+    const refreshMaxAge = isRememberMe 
+      ? 60 * 60 * 24 * 90 // 90 days (preserve "remember me")
+      : 60 * 60 * 24 * 14; // 14 days default
+    
+    const accessMaxAge = isRememberMe
+      ? 60 * 60 * 24 * 7 // 7 days when "remember me" is active
+      : 60 * 60; // 1 hour default (matches Directus typical expiration)
+
+    // Try to determine if the request is secure (proxy-friendly)
+    const url = new URL(req.url);
+    const xfProto = req.headers.get("x-forwarded-proto") || "";
+    const isSecure = url.protocol === "https:" || xfProto.includes("https") || process.env.NODE_ENV === "production";
+
     if (newAccess) {
+      const accessExpires = new Date(Date.now() + accessMaxAge * 1000);
       res.cookies.set(ACCESS_COOKIE, newAccess, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: isSecure,
         sameSite: "lax",
         path: "/",
-        // Optional: set maxAge to match your Directus config
+        maxAge: accessMaxAge,
+        expires: accessExpires,
       });
     }
     if (newRefresh) {
+      const refreshExpires = new Date(Date.now() + refreshMaxAge * 1000);
       res.cookies.set(REFRESH_COOKIE, newRefresh, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: isSecure,
         sameSite: "lax",
         path: "/",
+        maxAge: refreshMaxAge,
+        expires: refreshExpires,
       });
     }
     return res;
