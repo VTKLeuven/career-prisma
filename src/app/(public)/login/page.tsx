@@ -34,10 +34,13 @@ export default function LoginPage() {
     setError(null);
 
     try {
+      // Ensure rememberMe is explicitly a boolean
+      const rememberMeValue = Boolean(rememberMe);
+      
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, rememberMe }),
+        body: JSON.stringify({ email, password, rememberMe: rememberMeValue }),
       });
 
       const data = await res.json();
@@ -94,11 +97,14 @@ export default function LoginPage() {
                   <Checkbox
                     id="rememberMe"
                     checked={rememberMe}
-                    onCheckedChange={(checked) => setRememberMe(checked === true)}
+                    onCheckedChange={(checked) => {
+                      setRememberMe(checked === true);
+                    }}
                   />
                   <Label
                     htmlFor="rememberMe"
                     className="text-sm font-normal cursor-pointer"
+                    onClick={() => setRememberMe(!rememberMe)}
                   >
                     Remember me
                   </Label>

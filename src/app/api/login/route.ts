@@ -92,7 +92,7 @@ export async function POST(req: Request) {
       url.protocol === "https:" || xfProto.includes("https") || process.env.NODE_ENV === "production";
 
     // Extend cookie expiration if "remember me" is checked
-    // Default: 14 days for refresh token, access token uses Directus expires
+    // Default: 14 days for refresh token, access token uses Directus expires (typically 1 hour)
     // With remember me: 90 days for refresh token, extend access token to 7 days
     const refreshMaxAge = shouldRemember
       ? 60 * 60 * 24 * 90 // 90 days
@@ -100,23 +100,34 @@ export async function POST(req: Request) {
 
     const finalAccessMaxAge = shouldRemember
       ? 60 * 60 * 24 * 7 // 7 days when remember me is checked
-      : accessMaxAge; // Use Directus expires otherwise
+      : accessMaxAge; // Use Directus expires otherwise (typically 1 hour)
 
-    res.cookies.set(ACCESS_COOKIE, access_token, {
+    // Calculate expiration dates for better browser compatibility
+    const accessExpires = new Date(Date.now() + finalAccessMaxAge * 1000);
+    const refreshExpires = new Date(Date.now() + refreshMaxAge * 1000);
+
+    // Cookie options for access token
+    const accessCookieOptions = {
       httpOnly: true,
-      sameSite: "lax",
+      sameSite: "lax" as const,
       secure: isSecure,
       path: "/",
       maxAge: finalAccessMaxAge, // seconds
-    });
+      expires: accessExpires, // Also set expires date for better browser compatibility
+    };
 
-    res.cookies.set(REFRESH_COOKIE, refresh_token, {
+    // Cookie options for refresh token
+    const refreshCookieOptions = {
       httpOnly: true,
-      sameSite: "lax",
+      sameSite: "lax" as const,
       secure: isSecure,
       path: "/",
       maxAge: refreshMaxAge,
-    });
+      expires: refreshExpires, // Also set expires date for better browser compatibility
+    };
+
+    res.cookies.set(ACCESS_COOKIE, access_token, accessCookieOptions);
+    res.cookies.set(REFRESH_COOKIE, refresh_token, refreshCookieOptions);
 
     return res;
   } catch (error) {
