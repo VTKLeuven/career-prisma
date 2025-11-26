@@ -188,11 +188,16 @@ function MyEventsSection() {
     return allEvents.filter((e) => companyEventIds.has(e.id));
   }, [allEvents, company]);
 
-  // Upcoming events (future events sorted by date, showing first 4)
+  // Upcoming events (future events and today's events sorted by date, showing first 4)
   const upcomingEvents = React.useMemo(() => {
     const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // Today at midnight
     return allEvents
-      .filter((e) => new Date(e.date) > now) // assumes `startDate` field exists
+      .filter((e) => {
+        const eventDate = new Date(e.date);
+        const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate()); // Event date at midnight
+        return eventDay >= today; // Include today and future events
+      })
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .slice(0, 4);
   }, [allEvents]);

@@ -375,8 +375,10 @@ function HomepageHeader() {
                       .filter((e) => {
                         try {
                           const eventDate = new Date(e.date);
+                          const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
                           const now = new Date();
-                          return eventDate > now;
+                          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                          return eventDay >= today; // Include today and future events
                         } catch {
                           return false;
                         }
@@ -489,8 +491,10 @@ function HomepageHeader() {
                         .filter((e) => {
                           try {
                             const eventDate = new Date(e.date);
+                            const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
                             const now = new Date();
-                            return eventDate > now;
+                            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                            return eventDay >= today; // Include today and future events
                           } catch {
                             return false;
                           }
