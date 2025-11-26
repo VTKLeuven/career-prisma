@@ -24,10 +24,6 @@ jobs:
             git fetch --all &&
             git reset --hard origin/main &&
 
-            # Build
-            npm install &&
-            npm run build &&
-
-            # Reload PM2
-            pm2 reload all --update-env
+            # Build and restart Docker container
+            docker compose up -d --build
           "
