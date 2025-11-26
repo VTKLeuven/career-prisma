@@ -90,7 +90,7 @@ export function NavMain({
                         {item.items?.map((subItem) => (
                           <SidebarMenuSubItem key={subItem.title}>
                             <SidebarMenuSubButton asChild>
-                              <a href={subItem.url} className="flex items-center gap-2">
+                              <Link href={subItem.url} className="flex items-center gap-2">
                                 <span>{subItem.title}</span>
                                 {subItem.hasWarning && isOpen && (
                                   <IconAlertTriangle className="h-4 w-4 text-red-600 shrink-0" style={{ color: '#dc2626' }} title="Page background image has invalid dimensions" />
@@ -98,7 +98,7 @@ export function NavMain({
                                 {subItem.badge !== undefined && subItem.badge > 0 && (
                                   <SidebarMenuBadge>{subItem.badge}</SidebarMenuBadge>
                                 )}
-                              </a>
+                              </Link>
                             </SidebarMenuSubButton>
                           </SidebarMenuSubItem>
                         ))}

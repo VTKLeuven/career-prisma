@@ -47,7 +47,9 @@ type AttendantScan = {
 export default function EventScansPage() {
   const params = useParams();
   const { user } = useUser();
-  const eventName = decodeURIComponent(params.eventName as string);
+  // Next.js already decodes route parameters, but handle potential double-encoding
+  const rawEventName = params.eventName as string;
+  const eventName = rawEventName ? (rawEventName.includes('%') ? decodeURIComponent(rawEventName) : rawEventName) : '';
   
   const [scans, setScans] = useState<AttendantScan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,13 +69,21 @@ export default function EventScansPage() {
 
     async function fetchEventAndScans() {
       try {
-        // First, find the event by name
+        // First, find the event by name (try exact match first, then case-insensitive)
         const events = await fetchEventsAction();
         if (!isMounted) return;
 
-        const matchingEvent = events?.find(
+        // Try exact match first
+        let matchingEvent = events?.find(
           (e: CareerEvent) => e.name === eventName
         );
+        
+        // If no exact match, try case-insensitive match
+        if (!matchingEvent) {
+          matchingEvent = events?.find(
+            (e: CareerEvent) => e.name?.toLowerCase() === eventName.toLowerCase()
+          );
+        }
 
         if (matchingEvent) {
           setEventId(matchingEvent.id);
