@@ -414,6 +414,16 @@ function Floorplan({
   const [hoveredBoothId, setHoveredBoothId] = useState<string | null>(null)
   const [tooltip, setTooltip] = useState<{ companyName: string; x: number; y: number } | null>(null)
   const [zoomLevel, setZoomLevel] = useState(1)
+  
+  // Mobile zoom state
+  const [mobileZoom, setMobileZoom] = useState(1)
+  const [mobilePan, setMobilePan] = useState({ x: 0, y: 0 })
+  const [lastTouchDistance, setLastTouchDistance] = useState<number | null>(null)
+  const [lastTouchCenter, setLastTouchCenter] = useState<{ x: number; y: number } | null>(null)
+  const [isPanning, setIsPanning] = useState(false)
+  const [lastPanPoint, setLastPanPoint] = useState<{ x: number; y: number } | null>(null)
+  const floorplanContainerRef = useRef<HTMLDivElement>(null)
+  const lastTapTime = useRef<number>(0)
 
   useEffect(() => {
     const loadData = async () => {
@@ -605,6 +615,145 @@ function Floorplan({
     loadData()
   }, [page, setBooths])
 
+  // Calculate distance between two touch points
+  const getTouchDistance = (touch1: React.Touch, touch2: React.Touch) => {
+    const dx = touch2.clientX - touch1.clientX
+    const dy = touch2.clientY - touch1.clientY
+    return Math.sqrt(dx * dx + dy * dy)
+  }
+
+  // Calculate center point between two touches
+  const getTouchCenter = (touch1: React.Touch, touch2: React.Touch) => {
+    return {
+      x: (touch1.clientX + touch2.clientX) / 2,
+      y: (touch1.clientY + touch2.clientY) / 2
+    }
+  }
+
+  // Handle touch start
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      // Single touch - prepare for panning
+      const touch = e.touches[0]
+      if (floorplanContainerRef.current) {
+        const rect = floorplanContainerRef.current.getBoundingClientRect()
+        setLastPanPoint({
+          x: touch.clientX - rect.left,
+          y: touch.clientY - rect.top
+        })
+        setIsPanning(true)
+      }
+      
+      // Double tap to zoom
+      const now = Date.now()
+      const timeSinceLastTap = now - lastTapTime.current
+      if (timeSinceLastTap < 300 && timeSinceLastTap > 0) {
+        // Double tap detected
+        if (mobileZoom === 1) {
+          setMobileZoom(2)
+        } else {
+          setMobileZoom(1)
+          setMobilePan({ x: 0, y: 0 })
+        }
+        lastTapTime.current = 0
+      } else {
+        lastTapTime.current = now
+      }
+    } else if (e.touches.length === 2) {
+      // Two touches - prepare for pinch zoom
+      setIsPanning(false)
+      const distance = getTouchDistance(e.touches[0], e.touches[1])
+      setLastTouchDistance(distance)
+      const center = getTouchCenter(e.touches[0], e.touches[1])
+      if (floorplanContainerRef.current) {
+        const rect = floorplanContainerRef.current.getBoundingClientRect()
+        setLastTouchCenter({
+          x: center.x - rect.left,
+          y: center.y - rect.top
+        })
+      }
+    }
+  }
+
+  // Handle touch move
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault() // Prevent scrolling while zooming/panning
+    
+    if (e.touches.length === 1 && isPanning && mobileZoom > 1) {
+      // Single touch panning (only when zoomed)
+      const touch = e.touches[0]
+      if (floorplanContainerRef.current && lastPanPoint) {
+        const rect = floorplanContainerRef.current.getBoundingClientRect()
+        const currentX = touch.clientX - rect.left
+        const currentY = touch.clientY - rect.top
+        
+        const deltaX = currentX - lastPanPoint.x
+        const deltaY = currentY - lastPanPoint.y
+        
+        setMobilePan(prev => {
+          // Constrain pan to prevent going too far off screen
+          const maxPan = 200 * mobileZoom // Allow some panning but not too much
+          return {
+            x: Math.max(-maxPan, Math.min(maxPan, prev.x + deltaX)),
+            y: Math.max(-maxPan, Math.min(maxPan, prev.y + deltaY))
+          }
+        })
+        
+        setLastPanPoint({ x: currentX, y: currentY })
+      }
+    } else if (e.touches.length === 2) {
+      // Pinch zoom
+      setIsPanning(false)
+      const distance = getTouchDistance(e.touches[0], e.touches[1])
+      
+      if (lastTouchDistance !== null && lastTouchDistance > 0 && lastTouchCenter) {
+        const scaleChange = distance / lastTouchDistance
+        const newZoom = Math.max(1, Math.min(4, mobileZoom * scaleChange))
+        
+        if (floorplanContainerRef.current) {
+          const rect = floorplanContainerRef.current.getBoundingClientRect()
+          const currentCenter = getTouchCenter(e.touches[0], e.touches[1])
+          const centerX = currentCenter.x - rect.left
+          const centerY = currentCenter.y - rect.top
+          
+          // Calculate pan adjustment to zoom towards touch center
+          const zoomDelta = newZoom - mobileZoom
+          const panX = lastTouchCenter.x - centerX
+          const panY = lastTouchCenter.y - centerY
+          
+          setMobilePan(prev => {
+            const newPanX = prev.x - panX * (zoomDelta / mobileZoom)
+            const newPanY = prev.y - panY * (zoomDelta / mobileZoom)
+            const maxPan = 200 * newZoom
+            return {
+              x: Math.max(-maxPan, Math.min(maxPan, newPanX)),
+              y: Math.max(-maxPan, Math.min(maxPan, newPanY))
+            }
+          })
+        }
+        
+        setMobileZoom(newZoom)
+      }
+      
+      setLastTouchDistance(distance)
+      const center = getTouchCenter(e.touches[0], e.touches[1])
+      if (floorplanContainerRef.current) {
+        const rect = floorplanContainerRef.current.getBoundingClientRect()
+        setLastTouchCenter({
+          x: center.x - rect.left,
+          y: center.y - rect.top
+        })
+      }
+    }
+  }
+
+  // Handle touch end
+  const handleTouchEnd = () => {
+    setIsPanning(false)
+    setLastTouchDistance(null)
+    setLastTouchCenter(null)
+    setLastPanPoint(null)
+  }
 
   if (!svgContent) {
     return (
@@ -658,7 +807,19 @@ function Floorplan({
         />
       )}
       <div className={`pt-32 md:pt-[90px] flex justify-center w-full px-2 sm:px-4 pb-4 ${backgroundImage ? "relative z-10" : ""}`}>
-        <div className="relative w-full max-w-full">
+        <div 
+          ref={floorplanContainerRef}
+          className="relative w-full max-w-full md:hidden"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          style={{
+            touchAction: 'none',
+            transform: `scale(${mobileZoom}) translate(${mobilePan.x / mobileZoom}px, ${mobilePan.y / mobileZoom}px)`,
+            transformOrigin: 'center center',
+            overflow: 'hidden',
+          }}
+        >
           <svg
             ref={svgRef}
             viewBox={viewBox}
@@ -800,6 +961,138 @@ function Floorplan({
               {tooltip.companyName}
             </div>
           )}
+        </div>
+        
+        {/* Desktop version without zoom */}
+        <div className="hidden md:block relative w-full max-w-full">
+          <svg
+            viewBox={viewBox}
+            className="w-full h-auto min-w-0 max-h-[calc(100vh-200px)]"
+            xmlns="http://www.w3.org/2000/svg"
+            preserveAspectRatio="xMidYMid meet"
+          >
+          {/* First: Render unselected white booths behind SVG */}
+          {boothsLocal.map((booth, i) => {
+            if (!booth.coords || !booth.company) return null
+
+            const boothCats: Master[] = Array.isArray(booth.company.category)
+              ? booth.company.category.filter((c): c is Master => c !== null)
+              : []
+
+            const isCategorySelected =
+              selectedCategories.length > 0 &&
+              selectedCategories.every(cat =>
+                boothCats.map(c => c.short_name).includes(cat)
+              )
+
+            const isFlicker = flickerCompanyId === booth.company.id && flickerState
+            const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
+
+            // Only render unselected booths here (white background)
+            if (isSelected) return null
+
+            const origVbParts = originalViewBox.split(/\s+/).map(Number)
+            if (origVbParts.length !== 4) return null
+            const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
+
+            const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
+            const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
+            const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
+            const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
+
+            return (
+              <rect
+                key={`unselected-desktop-${i}`}
+                x={boothX}
+                y={boothY}
+                width={boothWidth}
+                height={boothHeight}
+                fill="white"
+                stroke="#e5e7eb"
+                strokeWidth={1}
+                style={{ cursor: "pointer" }}
+                onClick={() => onBoothClick(booth.company!)}
+                onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
+                onMouseLeave={() => {
+                  setHoveredBoothId(null)
+                  setTooltip(null)
+                }}
+                onMouseMove={(e) => {
+                  if (hoveredBoothId === booth.company?.id && booth.company) {
+                    setTooltip({
+                      companyName: booth.company.name,
+                      x: e.clientX,
+                      y: e.clientY
+                    })
+                  }
+                }}
+              />
+            )
+          })}
+
+          {/* Second: SVG content (with pointer-events: none so it doesn't block clicks) */}
+          <g dangerouslySetInnerHTML={{ __html: svgContent }} style={{ pointerEvents: 'none' }} />
+
+          {/* Third: Render selected booths on top */}
+          {boothsLocal.map((booth, i) => {
+            if (!booth.coords || !booth.company) return null
+
+            const boothCats: Master[] = Array.isArray(booth.company.category)
+              ? booth.company.category.filter((c): c is Master => c !== null)
+              : []
+
+            const isCategorySelected =
+              selectedCategories.length > 0 &&
+              selectedCategories.every(cat =>
+                boothCats.map(c => c.short_name).includes(cat)
+              )
+
+            const isFlicker = flickerCompanyId === booth.company.id && flickerState
+            const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
+
+            // Only render selected booths here
+            if (!isSelected) return null
+
+            const origVbParts = originalViewBox.split(/\s+/).map(Number)
+            if (origVbParts.length !== 4) return null
+            const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
+
+            const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
+            const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
+            const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
+            const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
+            const isHovered = hoveredBoothId === booth.company?.id
+
+            return (
+              <rect
+                key={`selected-desktop-${i}`}
+                x={boothX}
+                y={boothY}
+                width={boothWidth}
+                height={boothHeight}
+                fill="rgba(0,51,102,0.35)"
+                stroke="#003366"
+                strokeWidth={1}
+                style={{ cursor: "pointer" }}
+                onClick={() => onBoothClick(booth.company!)}
+                onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
+                onMouseLeave={() => {
+                  setHoveredBoothId(null)
+                  setTooltip(null)
+                }}
+                onMouseMove={(e) => {
+                  if (isHovered && booth.company) {
+                    setTooltip({
+                      companyName: booth.company.name,
+                      x: e.clientX,
+                      y: e.clientY
+                    })
+                  }
+                }}
+              />
+            )
+          })}
+          </svg>
         </div>
       </div>
 
