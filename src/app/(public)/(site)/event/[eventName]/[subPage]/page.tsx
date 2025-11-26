@@ -415,15 +415,17 @@ function Floorplan({
   const [tooltip, setTooltip] = useState<{ companyName: string; x: number; y: number } | null>(null)
   const [zoomLevel, setZoomLevel] = useState(1)
   
-  // Mobile zoom state
+  // Mobile zoom state - use refs for values that don't need re-renders
   const [mobileZoom, setMobileZoom] = useState(1)
   const [mobilePan, setMobilePan] = useState({ x: 0, y: 0 })
-  const [lastTouchDistance, setLastTouchDistance] = useState<number | null>(null)
-  const [lastTouchCenter, setLastTouchCenter] = useState<{ x: number; y: number } | null>(null)
-  const [isPanning, setIsPanning] = useState(false)
-  const [lastPanPoint, setLastPanPoint] = useState<{ x: number; y: number } | null>(null)
   const floorplanContainerRef = useRef<HTMLDivElement>(null)
   const lastTapTime = useRef<number>(0)
+  const zoomStateRef = useRef({ zoom: 1, panX: 0, panY: 0 })
+  const lastTouchDistanceRef = useRef<number | null>(null)
+  const lastTouchCenterRef = useRef<{ x: number; y: number } | null>(null)
+  const isPanningRef = useRef(false)
+  const lastPanPointRef = useRef<{ x: number; y: number } | null>(null)
+  const rafIdRef = useRef<number | null>(null)
 
   useEffect(() => {
     const loadData = async () => {
@@ -615,6 +617,11 @@ function Floorplan({
     loadData()
   }, [page, setBooths])
 
+  // Initialize refs with current state
+  useEffect(() => {
+    zoomStateRef.current = { zoom: mobileZoom, panX: mobilePan.x, panY: mobilePan.y }
+  }, []) // Only on mount
+
   // Calculate distance between two touch points
   const getTouchDistance = (touch1: React.Touch, touch2: React.Touch) => {
     const dx = touch2.clientX - touch1.clientX
@@ -630,18 +637,39 @@ function Floorplan({
     }
   }
 
+  // Update transform directly on DOM for performance (only during touch)
+  const updateTransform = useRef(() => {
+    if (floorplanContainerRef.current) {
+      const { zoom, panX, panY } = zoomStateRef.current
+      // Use translate3d for GPU acceleration
+      floorplanContainerRef.current.style.transform = `translate3d(${panX / zoom}px, ${panY / zoom}px, 0) scale(${zoom})`
+    }
+  }).current
+
+  // Sync ref state to React state (called at end of gesture)
+  const syncState = useRef(() => {
+    const { zoom, panX, panY } = zoomStateRef.current
+    setMobileZoom(zoom)
+    setMobilePan({ x: panX, y: panY })
+  }).current
+
   // Handle touch start
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current)
+      rafIdRef.current = null
+    }
+
     if (e.touches.length === 1) {
       // Single touch - prepare for panning
       const touch = e.touches[0]
       if (floorplanContainerRef.current) {
         const rect = floorplanContainerRef.current.getBoundingClientRect()
-        setLastPanPoint({
+        lastPanPointRef.current = {
           x: touch.clientX - rect.left,
           y: touch.clientY - rect.top
-        })
-        setIsPanning(true)
+        }
+        isPanningRef.current = zoomStateRef.current.zoom > 1
       }
       
       // Double tap to zoom
@@ -649,110 +677,127 @@ function Floorplan({
       const timeSinceLastTap = now - lastTapTime.current
       if (timeSinceLastTap < 300 && timeSinceLastTap > 0) {
         // Double tap detected
-        if (mobileZoom === 1) {
-          setMobileZoom(2)
+        if (zoomStateRef.current.zoom === 1) {
+          zoomStateRef.current.zoom = 2
+          zoomStateRef.current.panX = 0
+          zoomStateRef.current.panY = 0
         } else {
-          setMobileZoom(1)
-          setMobilePan({ x: 0, y: 0 })
+          zoomStateRef.current.zoom = 1
+          zoomStateRef.current.panX = 0
+          zoomStateRef.current.panY = 0
         }
+        updateTransform()
+        syncState()
         lastTapTime.current = 0
       } else {
         lastTapTime.current = now
       }
     } else if (e.touches.length === 2) {
       // Two touches - prepare for pinch zoom
-      setIsPanning(false)
+      isPanningRef.current = false
       const distance = getTouchDistance(e.touches[0], e.touches[1])
-      setLastTouchDistance(distance)
+      lastTouchDistanceRef.current = distance
       const center = getTouchCenter(e.touches[0], e.touches[1])
       if (floorplanContainerRef.current) {
         const rect = floorplanContainerRef.current.getBoundingClientRect()
-        setLastTouchCenter({
+        lastTouchCenterRef.current = {
           x: center.x - rect.left,
           y: center.y - rect.top
-        })
+        }
       }
     }
   }
 
-  // Handle touch move
+  // Handle touch move - use requestAnimationFrame for smooth updates
   const handleTouchMove = (e: React.TouchEvent) => {
     e.preventDefault() // Prevent scrolling while zooming/panning
     
-    if (e.touches.length === 1 && isPanning && mobileZoom > 1) {
-      // Single touch panning (only when zoomed)
-      const touch = e.touches[0]
-      if (floorplanContainerRef.current && lastPanPoint) {
-        const rect = floorplanContainerRef.current.getBoundingClientRect()
-        const currentX = touch.clientX - rect.left
-        const currentY = touch.clientY - rect.top
-        
-        const deltaX = currentX - lastPanPoint.x
-        const deltaY = currentY - lastPanPoint.y
-        
-        setMobilePan(prev => {
-          // Constrain pan to prevent going too far off screen
-          const maxPan = 200 * mobileZoom // Allow some panning but not too much
-          return {
-            x: Math.max(-maxPan, Math.min(maxPan, prev.x + deltaX)),
-            y: Math.max(-maxPan, Math.min(maxPan, prev.y + deltaY))
-          }
-        })
-        
-        setLastPanPoint({ x: currentX, y: currentY })
-      }
-    } else if (e.touches.length === 2) {
-      // Pinch zoom
-      setIsPanning(false)
-      const distance = getTouchDistance(e.touches[0], e.touches[1])
-      
-      if (lastTouchDistance !== null && lastTouchDistance > 0 && lastTouchCenter) {
-        const scaleChange = distance / lastTouchDistance
-        const newZoom = Math.max(1, Math.min(4, mobileZoom * scaleChange))
-        
-        if (floorplanContainerRef.current) {
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current)
+    }
+
+    rafIdRef.current = requestAnimationFrame(() => {
+      if (e.touches.length === 1 && isPanningRef.current && zoomStateRef.current.zoom > 1) {
+        // Single touch panning (only when zoomed)
+        const touch = e.touches[0]
+        if (floorplanContainerRef.current && lastPanPointRef.current) {
           const rect = floorplanContainerRef.current.getBoundingClientRect()
-          const currentCenter = getTouchCenter(e.touches[0], e.touches[1])
-          const centerX = currentCenter.x - rect.left
-          const centerY = currentCenter.y - rect.top
+          const currentX = touch.clientX - rect.left
+          const currentY = touch.clientY - rect.top
           
-          // Calculate pan adjustment to zoom towards touch center
-          const zoomDelta = newZoom - mobileZoom
-          const panX = lastTouchCenter.x - centerX
-          const panY = lastTouchCenter.y - centerY
+          const deltaX = currentX - lastPanPointRef.current.x
+          const deltaY = currentY - lastPanPointRef.current.y
           
-          setMobilePan(prev => {
-            const newPanX = prev.x - panX * (zoomDelta / mobileZoom)
-            const newPanY = prev.y - panY * (zoomDelta / mobileZoom)
+          // Constrain pan to prevent going too far off screen
+          const maxPan = 200 * zoomStateRef.current.zoom
+          zoomStateRef.current.panX = Math.max(-maxPan, Math.min(maxPan, zoomStateRef.current.panX + deltaX))
+          zoomStateRef.current.panY = Math.max(-maxPan, Math.min(maxPan, zoomStateRef.current.panY + deltaY))
+          
+          updateTransform()
+          lastPanPointRef.current = { x: currentX, y: currentY }
+        }
+      } else if (e.touches.length === 2) {
+        // Pinch zoom
+        isPanningRef.current = false
+        const distance = getTouchDistance(e.touches[0], e.touches[1])
+        
+        if (lastTouchDistanceRef.current !== null && lastTouchDistanceRef.current > 0 && lastTouchCenterRef.current) {
+          const scaleChange = distance / lastTouchDistanceRef.current
+          const newZoom = Math.max(1, Math.min(4, zoomStateRef.current.zoom * scaleChange))
+          
+          if (floorplanContainerRef.current) {
+            const rect = floorplanContainerRef.current.getBoundingClientRect()
+            const currentCenter = getTouchCenter(e.touches[0], e.touches[1])
+            const centerX = currentCenter.x - rect.left
+            const centerY = currentCenter.y - rect.top
+            
+            // Calculate pan adjustment to zoom towards touch center
+            const zoomDelta = newZoom - zoomStateRef.current.zoom
+            const panX = lastTouchCenterRef.current.x - centerX
+            const panY = lastTouchCenterRef.current.y - centerY
+            
+            zoomStateRef.current.panX = zoomStateRef.current.panX - panX * (zoomDelta / zoomStateRef.current.zoom)
+            zoomStateRef.current.panY = zoomStateRef.current.panY - panY * (zoomDelta / zoomStateRef.current.zoom)
+            
+            // Constrain pan
             const maxPan = 200 * newZoom
-            return {
-              x: Math.max(-maxPan, Math.min(maxPan, newPanX)),
-              y: Math.max(-maxPan, Math.min(maxPan, newPanY))
-            }
-          })
+            zoomStateRef.current.panX = Math.max(-maxPan, Math.min(maxPan, zoomStateRef.current.panX))
+            zoomStateRef.current.panY = Math.max(-maxPan, Math.min(maxPan, zoomStateRef.current.panY))
+          }
+          
+          zoomStateRef.current.zoom = newZoom
+          updateTransform()
         }
         
-        setMobileZoom(newZoom)
+        lastTouchDistanceRef.current = distance
+        const center = getTouchCenter(e.touches[0], e.touches[1])
+        if (floorplanContainerRef.current) {
+          const rect = floorplanContainerRef.current.getBoundingClientRect()
+          lastTouchCenterRef.current = {
+            x: center.x - rect.left,
+            y: center.y - rect.top
+          }
+        }
       }
       
-      setLastTouchDistance(distance)
-      const center = getTouchCenter(e.touches[0], e.touches[1])
-      if (floorplanContainerRef.current) {
-        const rect = floorplanContainerRef.current.getBoundingClientRect()
-        setLastTouchCenter({
-          x: center.x - rect.left,
-          y: center.y - rect.top
-        })
-      }
-    }
+      rafIdRef.current = null
+    })
   }
 
-  // Handle touch end
+  // Handle touch end - sync state
   const handleTouchEnd = () => {
-    setIsPanning(false)
-    setLastTouchDistance(null)
-    setLastTouchCenter(null)
-    setLastPanPoint(null)
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current)
+      rafIdRef.current = null
+    }
+    
+    isPanningRef.current = false
+    lastTouchDistanceRef.current = null
+    lastTouchCenterRef.current = null
+    lastPanPointRef.current = null
+    
+    // Sync ref state to React state
+    syncState()
   }
 
   if (!svgContent) {
@@ -815,9 +860,10 @@ function Floorplan({
           onTouchEnd={handleTouchEnd}
           style={{
             touchAction: 'none',
-            transform: `scale(${mobileZoom}) translate(${mobilePan.x / mobileZoom}px, ${mobilePan.y / mobileZoom}px)`,
+            transform: `translate3d(${mobilePan.x / mobileZoom}px, ${mobilePan.y / mobileZoom}px, 0) scale(${mobileZoom})`,
             transformOrigin: 'center center',
             overflow: 'hidden',
+            willChange: 'transform',
           }}
         >
           <svg
