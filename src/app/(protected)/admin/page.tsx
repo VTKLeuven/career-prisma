@@ -2455,6 +2455,23 @@ function AddCompaniesDialog({ event }: { event: CareerEvent }) {
   const [error, setError] = React.useState<string | null>(null);
   const [selectedCompanyIds, setSelectedCompanyIds] = React.useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = React.useState("");
+  const [hasExistingCompanies, setHasExistingCompanies] = React.useState(false);
+
+  // Check if event page already has companies
+  React.useEffect(() => {
+    const checkExistingCompanies = async () => {
+      try {
+        const { getEventPageWithFloorplan } = await import("@/lib/repos/floorplan");
+        const eventPage = await getEventPageWithFloorplan(event.id);
+        const companies = eventPage?.companies;
+        setHasExistingCompanies(!!companies && Array.isArray(companies) && companies.length > 0);
+      } catch (error) {
+        console.error("Error checking existing companies:", error);
+        setHasExistingCompanies(false);
+      }
+    };
+    checkExistingCompanies();
+  }, [event.id]);
 
   // Load companies when dialog opens
   React.useEffect(() => {
@@ -2526,6 +2543,8 @@ function AddCompaniesDialog({ event }: { event: CareerEvent }) {
 
       if (result.success) {
         setOpen(false);
+        // Update hasExistingCompanies after successful add
+        setHasExistingCompanies(true);
       } else {
         setError(result.error || "Failed to add companies");
       }
@@ -2542,12 +2561,12 @@ function AddCompaniesDialog({ event }: { event: CareerEvent }) {
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="w-full">
           <IconPlus className="h-4 w-4 mr-2" />
-          Add companies
+          {hasExistingCompanies ? "Edit companies" : "Add companies"}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Add Companies to {event.name}</DialogTitle>
+          <DialogTitle>{hasExistingCompanies ? "Edit Companies" : "Add Companies"} to {event.name}</DialogTitle>
           <DialogDescription>
             Select companies that have registered for this event through career event options.
             All companies are selected by default, but you can deselect any before adding.

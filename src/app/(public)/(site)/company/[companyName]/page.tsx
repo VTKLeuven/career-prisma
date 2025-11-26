@@ -42,12 +42,20 @@ export default function CompanyPage() {
   const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
   const [pageImageValid, setPageImageValid] = useState<boolean | null>(null);
+  const [allEvents, setAllEvents] = useState<CareerEvent[]>([]);
 
   // Hide layout header since this page renders its own
   useEffect(() => {
     setHideLayoutHeader(true)
     return () => setHideLayoutHeader(false)
   }, [setHideLayoutHeader])
+
+  // Fetch all events for matching
+  useEffect(() => {
+    fetchEventsAction()
+      .then((events) => setAllEvents(events ?? []))
+      .catch((err) => console.error("Error fetching events:", err));
+  }, []);
 
   useEffect(() => {
     if (!companyName || typeof companyName !== "string") {
@@ -154,14 +162,113 @@ export default function CompanyPage() {
 
   const logoUrl = company ? getDirectusImageUrl(company.logo) : null;
   const categories = company ? ((company.category as Master[] | undefined) ?? []) : [];
-  const events: CareerEvent[] = company ? Array.from(
-    new Map(
-      ((company.options as CareerEventOption[] | undefined) ?? [])
-        .map((opt) => opt?.event)
-        .filter((e): e is CareerEvent => !!e)
-        .map((e) => [e.id, e])
-    ).values()
-  ) : [];
+  
+  // Extract event IDs from company options using the same logic as dashboard
+  const events: CareerEvent[] = (() => {
+    if (!company || allEvents.length === 0) return [];
+    
+    const companyOptions = company.options ?? [];
+    const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+    const hasEvents = (v: unknown): v is { events: unknown } => isRecord(v) && 'events' in v;
+    const hasEvent = (v: unknown): v is { event: unknown } => isRecord(v) && 'event' in v;
+    
+    const getStringIdFromEventRef = (ref: unknown): string | null => {
+      if (typeof ref === 'string') return ref;
+      if (isRecord(ref)) {
+        const id = ref.id;
+        return typeof id === 'string' ? id : null;
+      }
+      return null;
+    };
+    
+    const extractEventFromRef = (eventOrJunction: unknown): CareerEvent | null => {
+      if (!eventOrJunction || !isRecord(eventOrJunction)) return null;
+      
+      // Check if it's a junction table entry - try multiple possible field names
+      const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
+      for (const fieldName of possibleJunctionFields) {
+        if (fieldName in eventOrJunction) {
+          const junction = eventOrJunction as Record<string, CareerEvent | string | null>;
+          const eventRef = junction[fieldName];
+          if (eventRef && typeof eventRef === 'object') {
+            return eventRef as CareerEvent;
+          }
+        }
+      }
+      
+      // Check if it's a direct event object
+      if ('id' in eventOrJunction && 'name' in eventOrJunction) {
+        return eventOrJunction as CareerEvent;
+      }
+      
+      return null;
+    };
+    
+    const companyEventIds = new Set<string>();
+    
+    (companyOptions as unknown[]).forEach((opt) => {
+      if (!opt || !isRecord(opt)) return;
+      
+      let optionWithEvents: Record<string, unknown> | null = null;
+      
+      // Shape B: option nested under career_event_option_id (junction table format from company)
+      if ('career_event_option_id' in opt && opt.career_event_option_id) {
+        const ceo = opt.career_event_option_id;
+        if (isRecord(ceo)) {
+          optionWithEvents = ceo;
+        }
+      }
+      // Shape A: option has events array directly (already normalized)
+      else if (hasEvents(opt)) {
+        optionWithEvents = opt;
+      }
+      // Shape C: option has event directly (backward compatibility)
+      else if (hasEvent(opt)) {
+        const event = extractEventFromRef(opt.event);
+        if (event?.id) {
+          companyEventIds.add(event.id);
+        } else {
+          const eventId = getStringIdFromEventRef(opt.event);
+          if (eventId) {
+            companyEventIds.add(eventId);
+          }
+        }
+        return;
+      }
+      
+      if (!optionWithEvents) return;
+      
+      // Extract events from the option
+      if (hasEvents(optionWithEvents) && Array.isArray(optionWithEvents.events)) {
+        optionWithEvents.events.forEach((eventOrJunction: unknown) => {
+          const event = extractEventFromRef(eventOrJunction);
+          if (event?.id) {
+            companyEventIds.add(event.id);
+          } else {
+            const eventId = getStringIdFromEventRef(eventOrJunction);
+            if (eventId) {
+              companyEventIds.add(eventId);
+            }
+          }
+        });
+      }
+      // Fallback: handle single event (backward compatibility)
+      else if (hasEvent(optionWithEvents)) {
+        const event = extractEventFromRef(optionWithEvents.event);
+        if (event?.id) {
+          companyEventIds.add(event.id);
+        } else {
+          const eventId = getStringIdFromEventRef(optionWithEvents.event);
+          if (eventId) {
+            companyEventIds.add(eventId);
+          }
+        }
+      }
+    });
+    
+    // Match event IDs with full event objects from allEvents
+    return allEvents.filter((e) => companyEventIds.has(e.id));
+  })();
 
   // Only use bgUrl if it's valid
   const validBgUrl = pageImageValid === true ? bgUrl : null;
@@ -239,10 +346,10 @@ export default function CompanyPage() {
                         <Link
                           key={event.id}
                           href={href}
-                          className="group relative block"
+                          className="group relative block h-full"
                         >
-                          <div className="rounded-[28px] bg-white/90 p-3 shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md transition-transform duration-300 hover:-translate-y-2 hover:rotate-1">
-                            <div className="relative overflow-hidden rounded-[20px]">
+                          <div className="h-full flex flex-col rounded-[28px] bg-white/90 p-3 shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md transition-transform duration-300 hover:-translate-y-2 hover:rotate-1">
+                            <div className="relative overflow-hidden rounded-[20px] flex-shrink-0">
                               <div className="aspect-[4/3]">
                                 {event.image && (
                                   <Image
@@ -260,11 +367,11 @@ export default function CompanyPage() {
                                 </span>
                               ) : null}
                             </div>
-                            <div className="px-2 pb-2 pt-3">
-                              <div className="text-base font-semibold tracking-tight text-neutral-900">{event.name}</div>
+                            <div className="px-2 pb-2 pt-3 flex-1 flex flex-col">
+                              <div className="text-base font-semibold tracking-tight text-neutral-900 line-clamp-2">{event.name}</div>
                               <div className="mt-1 flex items-center gap-2 text-sm text-neutral-700">
-                                <Calendar className="h-4 w-4 text-vtk-blue" />
-                                <span>{event.date} · {event.location}</span>
+                                <Calendar className="h-4 w-4 text-vtk-blue flex-shrink-0" />
+                                <span className="line-clamp-1">{event.date} · {event.location}</span>
                               </div>
                             </div>
                           </div>
@@ -484,8 +591,10 @@ function Header() {
                       .filter((e) => {
                         try {
                           const eventDate = new Date(e.date);
+                          const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
                           const now = new Date();
-                          return eventDate > now;
+                          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                          return eventDay >= today; // Include today and future events
                         } catch {
                           return false;
                         }
@@ -586,8 +695,10 @@ function Header() {
                         .filter((e) => {
                           try {
                             const eventDate = new Date(e.date);
+                            const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
                             const now = new Date();
-                            return eventDate > now;
+                            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                            return eventDay >= today; // Include today and future events
                           } catch {
                             return false;
                           }

@@ -38,7 +38,7 @@ const data = {
       title: "Events",
       url: "/dashboard",
       icon: IconCalendarEvent,
-      isActive: true,
+      isActive: false,
       items: [
         {
           title: "My Scans",

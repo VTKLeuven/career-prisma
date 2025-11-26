@@ -47,6 +47,7 @@ export default function NoSidebarLayout({ children }: { children: React.ReactNod
 
 function Header() {
   const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
+  const [menuOpenedViaClick, setMenuOpenedViaClick] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const router = useRouter()
   const [EVENTS, setEvents] = useState<CareerEvent[]>([]);
@@ -75,6 +76,7 @@ function Header() {
       if (eventsMenuRef.current && !eventsMenuRef.current.contains(event.target as Node) &&
           !(event.target as HTMLElement).closest('button[aria-controls="mega-events"]')) {
         setOpenMenu(null)
+        setMenuOpenedViaClick(false)
       }
     }
 
@@ -90,6 +92,7 @@ function Header() {
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           setOpenMenu(null);
+          setMenuOpenedViaClick(false);
           setMobileMenuOpen(false);
         }
       }}
@@ -115,9 +118,16 @@ function Header() {
             <div className="relative">
               <button
                 type="button"
-                onMouseEnter={() => setOpenMenu('events')}
+                onMouseEnter={() => {
+                  if (!menuOpenedViaClick) {
+                    setOpenMenu('events')
+                  }
+                }}
                 onFocus={() => setOpenMenu('events')}
-                onClick={() => setOpenMenu((s) => (s === 'events' ? null : 'events'))}
+                onClick={() => {
+                  setOpenMenu('events')
+                  setMenuOpenedViaClick(true)
+                }}
                 className="inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
                 aria-expanded={openMenu === 'events'}
                 aria-controls="mega-events"
@@ -140,7 +150,6 @@ function Header() {
             >
               Events
             </button>
-            <Link href="/our-students" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
             <Link href="/vacancies" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
 
@@ -211,8 +220,10 @@ function Header() {
                       .filter((e) => {
                         try {
                           const eventDate = new Date(e.date);
+                          const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
                           const now = new Date();
-                          return eventDate > now;
+                          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                          return eventDay >= today; // Include today and future events
                         } catch {
                           return false;
                         }
@@ -242,6 +253,14 @@ function Header() {
 
                 {/* Other Links */}
                 <div className="border-t pt-4 space-y-2">
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="rounded-full border-neutral-300 text-neutral-800 hover:bg-neutral-100 w-full"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <Link href="/our-students">Our students</Link>
+                  </Button>
                   <Button
                     variant="outline"
                     className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
@@ -279,7 +298,11 @@ function Header() {
             transition={{ duration: 0.18 }}
             className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 hidden md:block"
             onMouseEnter={() => setOpenMenu('events')}
-            onMouseLeave={() => setOpenMenu(null)}
+            onMouseLeave={() => {
+              if (!menuOpenedViaClick) {
+                setOpenMenu(null)
+              }
+            }}
           >
             <div className="mx-auto max-w-7xl px-4">
               <div className="rounded-2xl border bg-white/85 backdrop-blur-md shadow-xl -mx-8">
@@ -313,8 +336,10 @@ function Header() {
                         .filter((e) => {
                           try {
                             const eventDate = new Date(e.date);
+                            const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
                             const now = new Date();
-                            return eventDate > now;
+                            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                            return eventDay >= today; // Include today and future events
                           } catch {
                             return false;
                           }

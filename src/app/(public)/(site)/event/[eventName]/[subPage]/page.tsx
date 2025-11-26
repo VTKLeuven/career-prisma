@@ -414,6 +414,18 @@ function Floorplan({
   const [hoveredBoothId, setHoveredBoothId] = useState<string | null>(null)
   const [tooltip, setTooltip] = useState<{ companyName: string; x: number; y: number } | null>(null)
   const [zoomLevel, setZoomLevel] = useState(1)
+  
+  // Mobile zoom state - use refs for values that don't need re-renders
+  const [mobileZoom, setMobileZoom] = useState(1)
+  const [mobilePan, setMobilePan] = useState({ x: 0, y: 0 })
+  const floorplanContainerRef = useRef<HTMLDivElement>(null)
+  const lastTapTime = useRef<number>(0)
+  const zoomStateRef = useRef({ zoom: 1, panX: 0, panY: 0 })
+  const lastTouchDistanceRef = useRef<number | null>(null)
+  const lastTouchCenterRef = useRef<{ x: number; y: number } | null>(null)
+  const isPanningRef = useRef(false)
+  const lastPanPointRef = useRef<{ x: number; y: number } | null>(null)
+  const rafIdRef = useRef<number | null>(null)
 
   useEffect(() => {
     const loadData = async () => {
@@ -605,6 +617,188 @@ function Floorplan({
     loadData()
   }, [page, setBooths])
 
+  // Initialize refs with current state
+  useEffect(() => {
+    zoomStateRef.current = { zoom: mobileZoom, panX: mobilePan.x, panY: mobilePan.y }
+  }, []) // Only on mount
+
+  // Calculate distance between two touch points
+  const getTouchDistance = (touch1: React.Touch, touch2: React.Touch) => {
+    const dx = touch2.clientX - touch1.clientX
+    const dy = touch2.clientY - touch1.clientY
+    return Math.sqrt(dx * dx + dy * dy)
+  }
+
+  // Calculate center point between two touches
+  const getTouchCenter = (touch1: React.Touch, touch2: React.Touch) => {
+    return {
+      x: (touch1.clientX + touch2.clientX) / 2,
+      y: (touch1.clientY + touch2.clientY) / 2
+    }
+  }
+
+  // Update transform directly on DOM for performance (only during touch)
+  const updateTransform = useRef(() => {
+    if (floorplanContainerRef.current) {
+      const { zoom, panX, panY } = zoomStateRef.current
+      // Use translate3d for GPU acceleration
+      floorplanContainerRef.current.style.transform = `translate3d(${panX / zoom}px, ${panY / zoom}px, 0) scale(${zoom})`
+    }
+  }).current
+
+  // Sync ref state to React state (called at end of gesture)
+  const syncState = useRef(() => {
+    const { zoom, panX, panY } = zoomStateRef.current
+    setMobileZoom(zoom)
+    setMobilePan({ x: panX, y: panY })
+  }).current
+
+  // Handle touch start
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current)
+      rafIdRef.current = null
+    }
+
+    if (e.touches.length === 1) {
+      // Single touch - prepare for panning
+      const touch = e.touches[0]
+      if (floorplanContainerRef.current) {
+        const rect = floorplanContainerRef.current.getBoundingClientRect()
+        lastPanPointRef.current = {
+          x: touch.clientX - rect.left,
+          y: touch.clientY - rect.top
+        }
+        isPanningRef.current = zoomStateRef.current.zoom > 1
+      }
+      
+      // Double tap to zoom
+      const now = Date.now()
+      const timeSinceLastTap = now - lastTapTime.current
+      if (timeSinceLastTap < 300 && timeSinceLastTap > 0) {
+        // Double tap detected
+        if (zoomStateRef.current.zoom === 1) {
+          zoomStateRef.current.zoom = 2
+          zoomStateRef.current.panX = 0
+          zoomStateRef.current.panY = 0
+        } else {
+          zoomStateRef.current.zoom = 1
+          zoomStateRef.current.panX = 0
+          zoomStateRef.current.panY = 0
+        }
+        updateTransform()
+        syncState()
+        lastTapTime.current = 0
+      } else {
+        lastTapTime.current = now
+      }
+    } else if (e.touches.length === 2) {
+      // Two touches - prepare for pinch zoom
+      isPanningRef.current = false
+      const distance = getTouchDistance(e.touches[0], e.touches[1])
+      lastTouchDistanceRef.current = distance
+      const center = getTouchCenter(e.touches[0], e.touches[1])
+      if (floorplanContainerRef.current) {
+        const rect = floorplanContainerRef.current.getBoundingClientRect()
+        lastTouchCenterRef.current = {
+          x: center.x - rect.left,
+          y: center.y - rect.top
+        }
+      }
+    }
+  }
+
+  // Handle touch move - use requestAnimationFrame for smooth updates
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault() // Prevent scrolling while zooming/panning
+    
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current)
+    }
+
+    rafIdRef.current = requestAnimationFrame(() => {
+      if (e.touches.length === 1 && isPanningRef.current && zoomStateRef.current.zoom > 1) {
+        // Single touch panning (only when zoomed)
+        const touch = e.touches[0]
+        if (floorplanContainerRef.current && lastPanPointRef.current) {
+          const rect = floorplanContainerRef.current.getBoundingClientRect()
+          const currentX = touch.clientX - rect.left
+          const currentY = touch.clientY - rect.top
+          
+          const deltaX = currentX - lastPanPointRef.current.x
+          const deltaY = currentY - lastPanPointRef.current.y
+          
+          // Constrain pan to prevent going too far off screen
+          const maxPan = 200 * zoomStateRef.current.zoom
+          zoomStateRef.current.panX = Math.max(-maxPan, Math.min(maxPan, zoomStateRef.current.panX + deltaX))
+          zoomStateRef.current.panY = Math.max(-maxPan, Math.min(maxPan, zoomStateRef.current.panY + deltaY))
+          
+          updateTransform()
+          lastPanPointRef.current = { x: currentX, y: currentY }
+        }
+      } else if (e.touches.length === 2) {
+        // Pinch zoom
+        isPanningRef.current = false
+        const distance = getTouchDistance(e.touches[0], e.touches[1])
+        
+        if (lastTouchDistanceRef.current !== null && lastTouchDistanceRef.current > 0 && lastTouchCenterRef.current) {
+          const scaleChange = distance / lastTouchDistanceRef.current
+          const newZoom = Math.max(1, Math.min(4, zoomStateRef.current.zoom * scaleChange))
+          
+          if (floorplanContainerRef.current) {
+            const rect = floorplanContainerRef.current.getBoundingClientRect()
+            const currentCenter = getTouchCenter(e.touches[0], e.touches[1])
+            const centerX = currentCenter.x - rect.left
+            const centerY = currentCenter.y - rect.top
+            
+            // Calculate pan adjustment to zoom towards touch center
+            const zoomDelta = newZoom - zoomStateRef.current.zoom
+            const panX = lastTouchCenterRef.current.x - centerX
+            const panY = lastTouchCenterRef.current.y - centerY
+            
+            zoomStateRef.current.panX = zoomStateRef.current.panX - panX * (zoomDelta / zoomStateRef.current.zoom)
+            zoomStateRef.current.panY = zoomStateRef.current.panY - panY * (zoomDelta / zoomStateRef.current.zoom)
+            
+            // Constrain pan
+            const maxPan = 200 * newZoom
+            zoomStateRef.current.panX = Math.max(-maxPan, Math.min(maxPan, zoomStateRef.current.panX))
+            zoomStateRef.current.panY = Math.max(-maxPan, Math.min(maxPan, zoomStateRef.current.panY))
+          }
+          
+          zoomStateRef.current.zoom = newZoom
+          updateTransform()
+        }
+        
+        lastTouchDistanceRef.current = distance
+        const center = getTouchCenter(e.touches[0], e.touches[1])
+        if (floorplanContainerRef.current) {
+          const rect = floorplanContainerRef.current.getBoundingClientRect()
+          lastTouchCenterRef.current = {
+            x: center.x - rect.left,
+            y: center.y - rect.top
+          }
+        }
+      }
+      
+      rafIdRef.current = null
+    })
+  }
+
+  // Handle touch end - sync state
+  const handleTouchEnd = () => {
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current)
+      rafIdRef.current = null
+    }
+    
+    isPanningRef.current = false
+    lastTouchDistanceRef.current = null
+    lastTouchCenterRef.current = null
+    lastPanPointRef.current = null
+    
+    // Sync ref state to React state
+    syncState()
+  }
 
   if (!svgContent) {
     return (
@@ -658,7 +852,20 @@ function Floorplan({
         />
       )}
       <div className={`pt-32 md:pt-[90px] flex justify-center w-full px-2 sm:px-4 pb-4 ${backgroundImage ? "relative z-10" : ""}`}>
-        <div className="relative w-full max-w-full">
+        <div 
+          ref={floorplanContainerRef}
+          className="relative w-full max-w-full md:hidden"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          style={{
+            touchAction: 'none',
+            transform: `translate3d(${mobilePan.x / mobileZoom}px, ${mobilePan.y / mobileZoom}px, 0) scale(${mobileZoom})`,
+            transformOrigin: 'center center',
+            overflow: 'hidden',
+            willChange: 'transform',
+          }}
+        >
           <svg
             ref={svgRef}
             viewBox={viewBox}
@@ -666,8 +873,7 @@ function Floorplan({
             xmlns="http://www.w3.org/2000/svg"
             preserveAspectRatio="xMidYMid meet"
           >
-          <g dangerouslySetInnerHTML={{ __html: svgContent }} />
-
+          {/* First: Render unselected white booths behind SVG */}
           {boothsLocal.map((booth, i) => {
             if (!booth.coords || !booth.company) return null
 
@@ -682,54 +888,110 @@ function Floorplan({
               )
 
             const isFlicker = flickerCompanyId === booth.company.id && flickerState
-
             const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
 
-            // Convert booth percentage coordinates to absolute coordinates
-            // Use original viewBox for booth coordinates since they're stored as percentages of original
+            // Only render unselected booths here (white background)
+            if (isSelected) return null
+
             const origVbParts = originalViewBox.split(/\s+/).map(Number)
             if (origVbParts.length !== 4) return null
             const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
 
-            // Calculate absolute coordinates using original viewBox
+            const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
+            const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
+            const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
+            const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
+
+            return (
+              <rect
+                key={`unselected-${i}`}
+                x={boothX}
+                y={boothY}
+                width={boothWidth}
+                height={boothHeight}
+                fill="white"
+                stroke="#e5e7eb"
+                strokeWidth={1}
+                style={{ cursor: "pointer" }}
+                onClick={() => onBoothClick(booth.company!)}
+                onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
+                onMouseLeave={() => {
+                  setHoveredBoothId(null)
+                  setTooltip(null)
+                }}
+                onMouseMove={(e) => {
+                  if (hoveredBoothId === booth.company?.id && booth.company) {
+                    setTooltip({
+                      companyName: booth.company.name,
+                      x: e.clientX,
+                      y: e.clientY
+                    })
+                  }
+                }}
+              />
+            )
+          })}
+
+          {/* Second: SVG content (with pointer-events: none so it doesn't block clicks) */}
+          <g dangerouslySetInnerHTML={{ __html: svgContent }} style={{ pointerEvents: 'none' }} />
+
+          {/* Third: Render selected booths on top */}
+          {boothsLocal.map((booth, i) => {
+            if (!booth.coords || !booth.company) return null
+
+            const boothCats: Master[] = Array.isArray(booth.company.category)
+              ? booth.company.category.filter((c): c is Master => c !== null)
+              : []
+
+            const isCategorySelected =
+              selectedCategories.length > 0 &&
+              selectedCategories.every(cat =>
+                boothCats.map(c => c.short_name).includes(cat)
+              )
+
+            const isFlicker = flickerCompanyId === booth.company.id && flickerState
+            const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
+
+            // Only render selected booths here
+            if (!isSelected) return null
+
+            const origVbParts = originalViewBox.split(/\s+/).map(Number)
+            if (origVbParts.length !== 4) return null
+            const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
+
             const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
             const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
             const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
             const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
             const isHovered = hoveredBoothId === booth.company?.id
-            
-            // Calculate name position - always above booth, centered
-            const boothCenterX = boothX + boothWidth / 2
-            const boothTop = boothY
 
             return (
-              <g key={i}>
-                <rect
-                  x={boothX}
-                  y={boothY}
-                  width={boothWidth}
-                  height={boothHeight}
-                  fill={isSelected ? "rgba(0,51,102,0.35)" : "transparent"}
-                  stroke={isSelected ? "#003366" : "transparent"}
-                  strokeWidth={isSelected ? 1 : 0}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => onBoothClick(booth.company!)}
-                  onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
-                  onMouseLeave={() => {
-                    setHoveredBoothId(null)
-                    setTooltip(null)
-                  }}
-                  onMouseMove={(e) => {
-                    if (isHovered && booth.company) {
-                      setTooltip({
-                        companyName: booth.company.name,
-                        x: e.clientX,
-                        y: e.clientY
-                      })
-                    }
-                  }}
-                />
-              </g>
+              <rect
+                key={`selected-${i}`}
+                x={boothX}
+                y={boothY}
+                width={boothWidth}
+                height={boothHeight}
+                fill="rgba(0,51,102,0.35)"
+                stroke="#003366"
+                strokeWidth={1}
+                style={{ cursor: "pointer" }}
+                onClick={() => onBoothClick(booth.company!)}
+                onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
+                onMouseLeave={() => {
+                  setHoveredBoothId(null)
+                  setTooltip(null)
+                }}
+                onMouseMove={(e) => {
+                  if (isHovered && booth.company) {
+                    setTooltip({
+                      companyName: booth.company.name,
+                      x: e.clientX,
+                      y: e.clientY
+                    })
+                  }
+                }}
+              />
             )
           })}
           </svg>
@@ -745,6 +1007,138 @@ function Floorplan({
               {tooltip.companyName}
             </div>
           )}
+        </div>
+        
+        {/* Desktop version without zoom */}
+        <div className="hidden md:block relative w-full max-w-full">
+          <svg
+            viewBox={viewBox}
+            className="w-full h-auto min-w-0 max-h-[calc(100vh-200px)]"
+            xmlns="http://www.w3.org/2000/svg"
+            preserveAspectRatio="xMidYMid meet"
+          >
+          {/* First: Render unselected white booths behind SVG */}
+          {boothsLocal.map((booth, i) => {
+            if (!booth.coords || !booth.company) return null
+
+            const boothCats: Master[] = Array.isArray(booth.company.category)
+              ? booth.company.category.filter((c): c is Master => c !== null)
+              : []
+
+            const isCategorySelected =
+              selectedCategories.length > 0 &&
+              selectedCategories.every(cat =>
+                boothCats.map(c => c.short_name).includes(cat)
+              )
+
+            const isFlicker = flickerCompanyId === booth.company.id && flickerState
+            const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
+
+            // Only render unselected booths here (white background)
+            if (isSelected) return null
+
+            const origVbParts = originalViewBox.split(/\s+/).map(Number)
+            if (origVbParts.length !== 4) return null
+            const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
+
+            const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
+            const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
+            const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
+            const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
+
+            return (
+              <rect
+                key={`unselected-desktop-${i}`}
+                x={boothX}
+                y={boothY}
+                width={boothWidth}
+                height={boothHeight}
+                fill="white"
+                stroke="#e5e7eb"
+                strokeWidth={1}
+                style={{ cursor: "pointer" }}
+                onClick={() => onBoothClick(booth.company!)}
+                onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
+                onMouseLeave={() => {
+                  setHoveredBoothId(null)
+                  setTooltip(null)
+                }}
+                onMouseMove={(e) => {
+                  if (hoveredBoothId === booth.company?.id && booth.company) {
+                    setTooltip({
+                      companyName: booth.company.name,
+                      x: e.clientX,
+                      y: e.clientY
+                    })
+                  }
+                }}
+              />
+            )
+          })}
+
+          {/* Second: SVG content (with pointer-events: none so it doesn't block clicks) */}
+          <g dangerouslySetInnerHTML={{ __html: svgContent }} style={{ pointerEvents: 'none' }} />
+
+          {/* Third: Render selected booths on top */}
+          {boothsLocal.map((booth, i) => {
+            if (!booth.coords || !booth.company) return null
+
+            const boothCats: Master[] = Array.isArray(booth.company.category)
+              ? booth.company.category.filter((c): c is Master => c !== null)
+              : []
+
+            const isCategorySelected =
+              selectedCategories.length > 0 &&
+              selectedCategories.every(cat =>
+                boothCats.map(c => c.short_name).includes(cat)
+              )
+
+            const isFlicker = flickerCompanyId === booth.company.id && flickerState
+            const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
+
+            // Only render selected booths here
+            if (!isSelected) return null
+
+            const origVbParts = originalViewBox.split(/\s+/).map(Number)
+            if (origVbParts.length !== 4) return null
+            const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
+
+            const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
+            const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
+            const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
+            const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
+            const isHovered = hoveredBoothId === booth.company?.id
+
+            return (
+              <rect
+                key={`selected-desktop-${i}`}
+                x={boothX}
+                y={boothY}
+                width={boothWidth}
+                height={boothHeight}
+                fill="rgba(0,51,102,0.35)"
+                stroke="#003366"
+                strokeWidth={1}
+                style={{ cursor: "pointer" }}
+                onClick={() => onBoothClick(booth.company!)}
+                onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
+                onMouseLeave={() => {
+                  setHoveredBoothId(null)
+                  setTooltip(null)
+                }}
+                onMouseMove={(e) => {
+                  if (isHovered && booth.company) {
+                    setTooltip({
+                      companyName: booth.company.name,
+                      x: e.clientX,
+                      y: e.clientY
+                    })
+                  }
+                }}
+              />
+            )
+          })}
+          </svg>
         </div>
       </div>
 
@@ -818,9 +1212,9 @@ function CompanyList({
       ? company.category.filter((c): c is Master => c !== null)
       : []
     
-    // Company must have ALL selected categories (same as floorplan logic)
-    return selectedCategories.every(catShortName =>
-      companyCats.some(c => c.short_name === catShortName)
+    // Company must have ALL selected categories (exact same logic as floorplan)
+    return selectedCategories.every(cat =>
+      companyCats.map(c => c.short_name).includes(cat)
     )
   }
 
@@ -897,12 +1291,15 @@ function CompanyListItem({
       onClick={() => onCompanyClick(company)}
       className={`w-full text-left p-3 rounded-lg border transition-all cursor-pointer ${
         isHighlighted
-          ? 'bg-vtk-blue/10 border-vtk-blue font-bold'
+          ? 'border-vtk-blue font-bold'
           : 'bg-white border-neutral-200 hover:border-vtk-blue/50 hover:bg-neutral-50'
       }`}
+      style={{
+        backgroundColor: isHighlighted ? 'rgba(147, 166, 193, 1)' : 'white',
+      }}
     >
       <div className="flex-1 min-w-0">
-        <div className={`text-sm ${isHighlighted ? 'font-bold text-vtk-blue' : 'font-medium text-neutral-900'}`}>
+        <div className={`text-sm ${isHighlighted ? 'font-bold text-black' : 'font-medium text-neutral-900'}`}>
           {company.name}
         </div>
         <div className="text-xs text-neutral-500 mt-1">

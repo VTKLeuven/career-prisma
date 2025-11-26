@@ -6,10 +6,12 @@ import { getDirectusImageUrl } from "@/components/Images";
 import { fetchCompanyByIdAction } from "@/app/actions/companies";
 import { fetchEventsAction } from "@/app/actions/events";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { motion } from 'framer-motion'
 import { Calendar } from "lucide-react";
 import type { CareerEvent, Company } from "@/lib/schema";
 import { useUser } from "@/providers/UserProvider";
+import Link from "next/link";
 
 function MyEventsSection() {
   const { user } = useUser();
@@ -186,11 +188,16 @@ function MyEventsSection() {
     return allEvents.filter((e) => companyEventIds.has(e.id));
   }, [allEvents, company]);
 
-  // Upcoming events (future events sorted by date, showing first 4)
+  // Upcoming events (future events and today's events sorted by date, showing first 4)
   const upcomingEvents = React.useMemo(() => {
     const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // Today at midnight
     return allEvents
-      .filter((e) => new Date(e.date) > now) // assumes `startDate` field exists
+      .filter((e) => {
+        const eventDate = new Date(e.date);
+        const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate()); // Event date at midnight
+        return eventDay >= today; // Include today and future events
+      })
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .slice(0, 4);
   }, [allEvents]);
@@ -244,6 +251,7 @@ function MyEventsSection() {
 
 function ManageEventCard({ event }: { event: CareerEvent }) {
   const hours = [event.start_hour, event.end_hour].filter(Boolean).join(" – ");
+  const scansUrl = `/dashboard/scans/event/${encodeURIComponent(event.name)}`;
 
   return (
     <Card className="border rounded-lg shadow-sm">
@@ -260,6 +268,11 @@ function ManageEventCard({ event }: { event: CareerEvent }) {
           <span className="font-medium text-foreground">{String(event.location ?? "TBA")}</span>
           <span># Students</span>
           <span className="font-medium text-foreground">{String(event.num_of_students ?? "–")}</span>
+        </div>
+        <div className="flex items-end">
+          <Button asChild variant="outline" className="w-full">
+            <Link href={scansUrl}>Scans</Link>
+          </Button>
         </div>
       </CardContent>
     </Card>
