@@ -30,6 +30,7 @@ export default function AttendantPage() {
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [isCompanyRep, setIsCompanyRep] = useState(false);
+  const [isUnauthenticated, setIsUnauthenticated] = useState(false);
 
   useEffect(() => {
     if (!uuid) {
@@ -53,14 +54,16 @@ export default function AttendantPage() {
 
         const data = await response.json();
         setAttendant(data);
-        
+
         // Check if user is a company rep and auto-scan
         try {
           const userCheckResponse = await fetch("/api/user/check");
           if (userCheckResponse.ok) {
             const userData = await userCheckResponse.json();
-            if (userData.company && !scanned) {
+            // If authenticated company rep, auto-scan
+            if (userData.authenticated && userData.company && !scanned) {
               setIsCompanyRep(true);
+              setIsUnauthenticated(false);
               setScanning(true);
               try {
                 const scanResponse = await fetch(`/api/attendant/${uuid}/scan`, {
@@ -75,11 +78,15 @@ export default function AttendantPage() {
               } finally {
                 setScanning(false);
               }
+            } else {
+              // Either not authenticated or not a company rep
+              setIsUnauthenticated(true);
             }
           }
         } catch (userErr) {
-          // User check failed - not logged in, that's fine
+          // User check failed - treat as unauthenticated
           console.log("User not authenticated, skipping auto-scan");
+          setIsUnauthenticated(true);
         }
       } catch (err) {
         console.error("Error fetching attendant:", err);
@@ -111,6 +118,26 @@ export default function AttendantPage() {
               <h2 className="text-2xl font-bold mb-2">Attendant Not Found</h2>
               <p className="text-muted-foreground mb-4">{error || "The attendant information could not be found."}</p>
               <Button onClick={() => router.push("/")}>Go to Home</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isUnauthenticated && !isCompanyRep) {
+    return (
+      <div className="container mx-auto p-8">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center py-12 space-y-4">
+              <h2 className="text-2xl font-bold mb-2">Company login required</h2>
+              <p className="text-muted-foreground">
+                To scan and view attendee details, please log in with your company account.
+              </p>
+              <Button onClick={() => router.push("/login")}>
+                Go to company login
+              </Button>
             </div>
           </CardContent>
         </Card>
