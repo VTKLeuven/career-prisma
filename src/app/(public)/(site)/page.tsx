@@ -15,6 +15,7 @@ import { CareerEvent } from '@/lib/schema'
 import { DirectusUser } from "@directus/sdk";
 import { ScrollCue } from '@/components/ScrollCue';
 import { useBannerPage } from '@/hooks/use-banner-page';
+import { getUpcomingEventsWithFallback, type EventWithStatus } from '@/lib/utils/events';
 
 export default function HomePage() {
     const [viewAllEvents, setViewAllEvents] = useState(false);
@@ -513,27 +514,8 @@ function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
         return () => { alive = false; };
     }, []);
 
-    // Filter and sort upcoming events
-    const upcomingEvents = EVENTS
-      .filter((e) => {
-        try {
-          const eventDate = new Date(e.date);
-          const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
-          const now = new Date();
-          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          return eventDay >= today; // Include today and future events
-        } catch {
-          return false;
-        }
-      })
-      .sort((a, b) => {
-        try {
-          return new Date(a.date).getTime() - new Date(b.date).getTime();
-        } catch {
-          return 0;
-        }
-      })
-      .slice(0, 3);
+    // Filter and sort upcoming events, with past events fallback
+    const upcomingEvents = getUpcomingEventsWithFallback(EVENTS, 3);
 
     if (loading) return <section id="events" className="py-16 text-center"><p className="text-sm text-muted-foreground">Loading events…</p></section>;
 
@@ -553,12 +535,13 @@ function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                     {upcomingEvents.map((event, i) => {
                       const imageUrl = event.image ? getDirectusImageUrl(event.image) : null
+                      const isPast = event.isPast ?? false
                       return (
                         <motion.div
                             key={event.name}
-                            whileHover={{ y: -8, rotate: i % 2 ? -1 : 1 }}
+                            whileHover={isPast ? {} : { y: -8, rotate: i % 2 ? -1 : 1 }}
                             transition={{ type: 'spring', stiffness: 260, damping: 18 }}
-                            className="group relative block"
+                            className={`group relative block ${isPast ? 'opacity-60 grayscale' : ''}`}
                             onMouseEnter={() => {
                               // Prefetch image on hover for faster navigation
                               // Using prefetch (not preload) to avoid console warnings

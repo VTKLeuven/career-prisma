@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import { fetchEventsAction } from "@/app/actions/events";
 import { CareerEvent } from '@/lib/schema'
 import { Footer } from '@/components/Footer'
+import { getUpcomingEventsWithFallback } from '@/lib/utils/events';
 
 // Context to allow pages to opt-out of header padding if they have a banner
 // and to hide the layout header if they render their own
