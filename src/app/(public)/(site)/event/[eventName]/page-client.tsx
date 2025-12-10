@@ -17,6 +17,7 @@ import HeroiconDynamic from "@/components/HeroiconDynamic"
 import { ChevronDown, MapPin, Car, ExternalLink } from 'lucide-react'
 import { useBannerPage } from '@/hooks/use-banner-page'
 import { usePageLayout } from '../../layout'
+import { getUpcomingEventsWithFallback } from '@/lib/utils/events';
 
 const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.EventMap), {
   ssr: false,

@@ -87,7 +87,7 @@ function isCompanyInfoComplete(company: Company): boolean {
 }
 
 export async function fetchCompaniesAction() {
-  const companies = (await listCompanies({ limit: 50, sort: "name" })) ?? [];
+  const companies = (await listCompanies({ limit: 10000, sort: "name" })) ?? [];
 
   return companies.map((c: Company) => ({
     id: c.id,

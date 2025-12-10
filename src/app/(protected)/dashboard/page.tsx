@@ -12,6 +12,7 @@ import { Calendar } from "lucide-react";
 import type { CareerEvent, Company } from "@/lib/schema";
 import { useUser } from "@/providers/UserProvider";
 import Link from "next/link";
+import { getUpcomingEventsWithFallback, type EventWithStatus } from '@/lib/utils/events';
 
 function MyEventsSection() {
   const { user } = useUser();
@@ -188,18 +189,9 @@ function MyEventsSection() {
     return allEvents.filter((e) => companyEventIds.has(e.id));
   }, [allEvents, company]);
 
-  // Upcoming events (future events and today's events sorted by date, showing first 4)
+  // Upcoming events (future events and today's events sorted by date, showing first 4, with past events fallback)
   const upcomingEvents = React.useMemo(() => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // Today at midnight
-    return allEvents
-      .filter((e) => {
-        const eventDate = new Date(e.date);
-        const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate()); // Event date at midnight
-        return eventDay >= today; // Include today and future events
-      })
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .slice(0, 4);
+    return getUpcomingEventsWithFallback(allEvents, 4);
   }, [allEvents]);
 
   return (
@@ -240,9 +232,14 @@ function MyEventsSection() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {upcomingEvents.map((event, i) => (
-            <EventCard key={event.id ?? event.name} event={event} i={i} />
-          ))}
+          {upcomingEvents.map((event, i) => {
+            const isPast = event.isPast ?? false
+            return (
+              <div key={event.id ?? event.name} className={isPast ? 'opacity-60 grayscale' : ''}>
+                <EventCard event={event} i={i} />
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
@@ -283,11 +280,13 @@ function EventCard({ event, i }: { event: CareerEvent; i: number }) {
 
   if (!event.href) return null; // skip if no href
 
+  const isPast = (event as EventWithStatus).isPast ?? false
+
   return (
     <motion.a
       key={event.name}
       href={event.href}
-      whileHover={{ y: -8, rotate: i % 2 ? -1 : 1 }}
+      whileHover={isPast ? {} : { y: -8, rotate: i % 2 ? -1 : 1 }}
       transition={{ type: "spring", stiffness: 260, damping: 18 }}
       className="group relative block"
     >
