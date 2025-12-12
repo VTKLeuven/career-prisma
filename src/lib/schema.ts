@@ -182,9 +182,12 @@ export type FormField = {
     pattern?: string;
     maxFileSize?: number; // Max file size in bytes (for file fields)
     allowedFileTypes?: string[]; // Allowed MIME types (for file fields)
+    wordLimit?: number; // Maximum number of words (for textarea fields)
   };
   layout?: 'full' | 'half' | 'third' | 'two-thirds'; // Field width layout
   multiple?: boolean; // For file fields - allow multiple file uploads
+  image?: string; // Directus file ID for field image (useful for material-related forms)
+  description?: string; // Description text to show with the field
 }
 
 export type FormResponse = {
