@@ -1,18 +1,20 @@
 # Use the official Node.js runtime as the base image
-FROM node:20-alpine AS base
+FROM node:20-slim AS base
 
 # Install dependencies only when needed
 FROM base AS deps
 # Install dependencies for canvas, sharp, and pdf libraries
-RUN apk add --no-cache libc6-compat \
-    cairo-dev \
-    jpeg-dev \
-    pango-dev \
-    giflib-dev \
-    pixman-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcairo2-dev \
+    libjpeg-dev \
+    libpango1.0-dev \
+    libgif-dev \
+    librsvg2-dev \
+    libpixman-1-dev \
     python3 \
     make \
-    g++
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 # Install dependencies based on the preferred package manager
@@ -22,15 +24,17 @@ RUN npm ci
 # Rebuild the source code only when needed
 FROM base AS builder
 # Install build dependencies for native modules
-RUN apk add --no-cache \
-    cairo-dev \
-    jpeg-dev \
-    pango-dev \
-    giflib-dev \
-    pixman-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcairo2-dev \
+    libjpeg-dev \
+    libpango1.0-dev \
+    libgif-dev \
+    librsvg2-dev \
+    libpixman-1-dev \
     python3 \
     make \
-    g++
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -57,12 +61,14 @@ ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1
 
 # Install runtime dependencies for canvas and sharp
-RUN apk add --no-cache \
-    cairo \
-    jpeg \
-    pango \
-    giflib \
-    pixman
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcairo2 \
+    libjpeg62-turbo \
+    libpango-1.0-0 \
+    libgif7 \
+    librsvg2-2 \
+    libpixman-1-0 \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
