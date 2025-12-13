@@ -374,7 +374,10 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
       });
   }, [open, isCompanyForm, selectedCompanyFormEventId]);
 
-  const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
+  // Use window.location.origin for client-side, or fallback to env var or localhost
+  const formDomain = typeof window !== 'undefined' 
+    ? window.location.origin 
+    : (process.env.NEXT_PUBLIC_FORM_DOMAIN || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000");
   const getFormUrl = () => {
     if (isCompanyForm && selectedCompanyFormEventId && selectedCompanyFormEventId !== "none") {
       return `${formDomain}/forms/company/${selectedCompanyFormEventId}/${slug || "your-slug"}`;
@@ -1277,7 +1280,10 @@ function EditFormDialog({
     }
   };
 
-  const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
+  // Use window.location.origin for client-side, or fallback to env var or localhost
+  const formDomain = typeof window !== 'undefined' 
+    ? window.location.origin 
+    : (process.env.NEXT_PUBLIC_FORM_DOMAIN || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000");
   const getFormUrl = () => {
     if (form.metadata?.is_company_form && form.metadata?.event_id) {
       return `${formDomain}/forms/company/${form.metadata.event_id}/${slug || "your-slug"}`;
@@ -1690,7 +1696,10 @@ function ToggleFormStatusMenuItem({ form, onUpdate }: { form: FormRow; onUpdate:
 
 function SlugCell({ slug, metadata }: { slug: string; metadata?: { is_company_form?: boolean; event_id?: string; [key: string]: unknown } }) {
   const [copied, setCopied] = useState(false);
-  const domain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
+  // Use window.location.origin for client-side, or fallback to env var or localhost
+  const domain = typeof window !== 'undefined' 
+    ? window.location.origin 
+    : (process.env.NEXT_PUBLIC_FORM_DOMAIN || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000");
   const getFormUrl = () => {
     if (metadata?.is_company_form && metadata?.event_id) {
       return `${domain}/forms/company/${metadata.event_id}/${slug}`;
