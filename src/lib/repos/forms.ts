@@ -344,7 +344,7 @@ export async function listFormResponses(formVersionId: string, opts?: {
 
     const result = await client.request(
       readItems("form_responses", {
-        fields: ["*", "user_id.name", "user_id.email", "form_version_id.form_id.name"],
+        fields: ["*", "user_id.name", "user_id.email", "form_version_id.form_id.name", "company_id.name", "company_id.id"],
         filter: { form_version_id: { _eq: formVersionId } },
         limit,
         page,
@@ -639,6 +639,169 @@ export async function initializeAttendantUuids(formId?: string) {
       message: error instanceof Error ? error.message : "Failed to initialize UUIDs",
       updated: 0,
     };
+  }
+}
+
+// ===================== COMPANY FORMS =====================
+
+export async function getCompanyFormsForEvent(eventId: string, companyOptionIds: string[]) {
+  try {
+    const client = await getAuthedDirectusOrThrow();
+    
+    // Get all forms with active versions
+    const forms = await client.request(
+      readItems("forms", {
+        fields: ["*", "form_versions.*"],
+        filter: {
+          is_active: { _eq: true },
+        },
+      })
+    ) as unknown as Form[];
+
+    console.log(`[getCompanyFormsForEvent] Found ${forms.length} active forms, looking for event ${eventId}`);
+
+    // Filter for company forms linked to this event
+    const companyForms = forms
+      .map((form) => {
+        const activeVersion = form.form_versions?.find((v) => v.is_active);
+        if (!activeVersion) return null;
+        
+        const metadata = (activeVersion as FormVersion & { metadata?: FormMetadata })?.metadata;
+        
+        if (!metadata?.is_company_form) return null;
+        
+        // Debug logging
+        console.log(`[getCompanyFormsForEvent] Checking form "${form.name}":`, {
+          formId: form.id,
+          metadataEventId: metadata.event_id,
+          searchEventId: eventId,
+          eventIdType: typeof metadata.event_id,
+          searchEventIdType: typeof eventId,
+          matchesEvent: String(metadata.event_id) === String(eventId),
+          optionIds: metadata.option_ids,
+        });
+        
+        // Compare as strings to handle type mismatches
+        if (String(metadata.event_id) !== String(eventId)) return null;
+        
+        // Check if company has any of the required options
+        const requiredOptionIds = metadata.option_ids || [];
+        if (requiredOptionIds.length > 0) {
+          // Compare as strings to handle type mismatches
+          const hasRequiredOption = requiredOptionIds.some((optionId) =>
+            companyOptionIds.some((companyOptionId) => String(companyOptionId) === String(optionId))
+          );
+          console.log(`[getCompanyFormsForEvent] Form "${form.name}" requires options:`, {
+            required: requiredOptionIds,
+            companyHas: companyOptionIds,
+            matches: hasRequiredOption,
+          });
+          if (!hasRequiredOption) return null;
+        } else {
+          console.log(`[getCompanyFormsForEvent] Form "${form.name}" has no required options, showing to all companies`);
+        }
+        
+        return {
+          id: form.id,
+          name: form.name,
+          slug: form.slug,
+          description: form.description,
+          metadata,
+          activeVersion: {
+            id: activeVersion.id,
+            version_number: activeVersion.version_number,
+            schema: activeVersion.schema,
+          },
+        };
+      })
+      .filter((form): form is NonNullable<typeof form> => form !== null);
+
+    console.log(`[getCompanyFormsForEvent] Returning ${companyForms.length} company forms for event ${eventId}`);
+    return companyForms;
+  } catch (error) {
+    console.error("[getCompanyFormsForEvent] Error fetching company forms:", error);
+    throw error;
+  }
+}
+
+export async function getCompanyFormBySlugAndEvent(eventId: string, slug: string) {
+  try {
+    // Try authenticated first, fall back to public client for public form access
+    let client;
+    try {
+      client = await getAuthedDirectusOrThrow();
+    } catch {
+      // If auth fails, use public client for public form access
+      client = directus;
+    }
+    
+    // Get form by slug
+    const forms = await client.request(
+      readItems("forms", {
+        fields: ["*", "form_versions.*"],
+        filter: {
+          slug: { _eq: slug },
+          is_active: { _eq: true },
+        },
+        limit: 1,
+      })
+    ) as unknown as Form[];
+
+    if (forms.length === 0) return null;
+    
+    const form = forms[0];
+    const activeVersion = form.form_versions?.find((v) => v.is_active);
+    if (!activeVersion) return null;
+    
+    const metadata = (activeVersion as FormVersion & { metadata?: FormMetadata })?.metadata;
+    if (!metadata?.is_company_form) return null;
+    if (metadata.event_id !== eventId) return null;
+    
+    return {
+      id: form.id,
+      name: form.name,
+      slug: form.slug,
+      description: form.description,
+      metadata,
+      activeVersion: {
+        id: activeVersion.id,
+        version_number: activeVersion.version_number,
+        schema: activeVersion.schema,
+      },
+    };
+  } catch (error) {
+    console.error("[getCompanyFormBySlugAndEvent] Error fetching company form:", error);
+    return null;
+  }
+}
+
+export async function checkCompanyFormCompletion(companyId: string, formVersionIds: string[]) {
+  try {
+    // Use server client to ensure we have permissions to read company_id field
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const serverClient = await getServerDirectusClient();
+    
+    if (formVersionIds.length === 0) return new Set<string>();
+    
+    const { readItems } = await import("@directus/sdk");
+    const responses = await serverClient.request(
+      readItems("form_responses", {
+        fields: ["form_version_id", "company_id"],
+        filter: {
+          _and: [
+            { company_id: { _eq: companyId } },
+            { form_version_id: { _in: formVersionIds } },
+          ],
+        },
+        limit: -1,
+      })
+    ) as unknown as Array<{ form_version_id: string; company_id: string }>;
+    
+    // Return set of completed form version IDs
+    return new Set(responses.map((r) => r.form_version_id));
+  } catch (error) {
+    console.error("[checkCompanyFormCompletion] Error checking form completion:", error);
+    return new Set<string>();
   }
 }
 

@@ -316,6 +316,10 @@ export async function submitFormResponseAction(data: {
   user_id?: string;
   data: Record<string, unknown>;
   attachments?: string[];
+  company_id?: string;
+  submitter_first_name?: string;
+  submitter_last_name?: string;
+  submitter_email?: string;
 }) {
   try {
     // Get the form version to check metadata (including max_entries)
@@ -392,14 +396,25 @@ export async function submitFormResponseAction(data: {
       attendantUuid = crypto.randomUUID();
     }
 
+    // Extract company/submitter info from data if present (for company forms)
+    // Do this before the try block so formData is available for email extraction later
+    const { _company_id, _submitter_first_name, _submitter_last_name, _submitter_email, ...formData } = data.data;
+
     // Create form response using server client to ensure it works for both logged-in and non-logged-in users
     // The server client has elevated permissions needed for public form submissions
     const { createItem } = await import("@directus/sdk");
     let response: FormResponse | null = null;
     try {
       const responseData = {
-        ...data,
+        form_version_id: data.form_version_id,
+        user_id: data.user_id,
+        data: formData, // Remove internal tracking fields from form data
+        attachments: data.attachments,
         ...(attendantUuid ? { attendant_uuid: attendantUuid } : {}),
+        ...(data.company_id || _company_id ? { company_id: data.company_id || _company_id } : {}),
+        ...(data.submitter_first_name || _submitter_first_name ? { submitter_first_name: data.submitter_first_name || _submitter_first_name } : {}),
+        ...(data.submitter_last_name || _submitter_last_name ? { submitter_last_name: data.submitter_last_name || _submitter_last_name } : {}),
+        ...(data.submitter_email || _submitter_email ? { submitter_email: data.submitter_email || _submitter_email } : {}),
       };
       response = await serverClient.request(
         createItem("form_responses", responseData)
@@ -411,19 +426,24 @@ export async function submitFormResponseAction(data: {
     }
     
     // Find email field - check common field names (case-insensitive)
-    const formData = data.data || {};
+    const cleanFormData = formData || {};
     let emailValue: string | undefined;
     
-    // Try exact match first
-    if (formData.email) {
-      emailValue = formData.email as string;
+    // For company forms, prefer submitter_email
+    if (versionMetadata?.is_company_form && (data.submitter_email || _submitter_email)) {
+      emailValue = (data.submitter_email || _submitter_email) as string;
     } else {
-      // Try case-insensitive search
-      const emailKey = Object.keys(formData).find(
-        key => key.toLowerCase() === 'email'
-      );
-      if (emailKey) {
-        emailValue = formData[emailKey] as string;
+      // Try exact match first
+      if (cleanFormData.email) {
+        emailValue = cleanFormData.email as string;
+      } else {
+        // Try case-insensitive search
+        const emailKey = Object.keys(cleanFormData).find(
+          key => key.toLowerCase() === 'email'
+        );
+        if (emailKey) {
+          emailValue = cleanFormData[emailKey] as string;
+        }
       }
     }
     
@@ -453,8 +473,8 @@ export async function submitFormResponseAction(data: {
       try {
         await sendEventConfirmationEmail({
           to: emailValue,
-          firstname: (formData.firstname as string) || '',
-          lastname: (formData.lastname as string) || '',
+          firstname: (cleanFormData.firstname as string) || '',
+          lastname: (cleanFormData.lastname as string) || '',
           formName: formName,
           subject: (versionMetadata.event_email_subject as string) || `${formName} - Registration Confirmation`,
           content: (versionMetadata.event_email_content as string) || 'Thank you for registering!',
@@ -468,10 +488,130 @@ export async function submitFormResponseAction(data: {
       }
     }
     
+    // If this is a company form, send confirmation email (if enabled)
+    if (response && emailValue && versionMetadata?.is_company_form && versionMetadata?.send_company_form_email) {
+      let formName: string;
+      if (typeof formVersion.form_id !== 'string' && formVersion.form_id?.name) {
+        formName = formVersion.form_id.name;
+      } else {
+        const formId = typeof formVersion.form_id === 'string' ? formVersion.form_id : formVersion.form_id.id;
+        try {
+          const form = await serverClient.request(
+            readItem("forms", formId, {
+              fields: ["name"],
+            })
+          ) as unknown as { name: string };
+          formName = form.name;
+        } catch (error) {
+          console.warn("Could not get form details, using fallback name:", error);
+          formName = 'Form';
+        }
+      }
+
+      // Get company name
+      let companyName = 'Your Company';
+      if (_company_id) {
+        try {
+          // Extract company ID - handle both string and object formats
+          const companyId = typeof _company_id === 'string' 
+            ? _company_id 
+            : (typeof _company_id === 'object' && _company_id !== null && 'id' in _company_id)
+            ? (_company_id as { id: string }).id
+            : null;
+          
+          if (companyId) {
+            const company = await serverClient.request(
+              readItem("company", companyId, { fields: ["name"] })
+            ) as unknown as { name: string } | null;
+            if (company?.name) {
+              companyName = company.name;
+            }
+          }
+        } catch (error) {
+          console.warn("Could not get company name:", error);
+        }
+      }
+
+      try {
+        // Get user info if available
+        const { getUserFromCookies } = await import("@/lib/auth-server");
+        const user = await getUserFromCookies();
+        
+        await sendCompanyFormConfirmationEmail({
+          to: emailValue,
+          submitterFirstName: (data.submitter_first_name || _submitter_first_name || (user?.name ? user.name.split(/\s+/)[0] : '')) as string,
+          submitterLastName: (data.submitter_last_name || _submitter_last_name || (user?.name ? user.name.split(/\s+/).slice(1).join(' ') : '')) as string,
+          formName: formName,
+          subject: (versionMetadata.company_form_email_subject as string) || `${formName} - Submission Confirmation`,
+          content: (versionMetadata.company_form_email_content as string) || 'Thank you for your submission!',
+          companyName,
+        });
+      } catch (emailError) {
+        console.error("Error sending company form confirmation email:", emailError);
+        // Don't throw - email failure shouldn't prevent form submission
+      }
+    }
+    
     return response;
   } catch (error) {
     console.error("Error submitting form response:", error);
     throw error;
+  }
+}
+
+async function sendCompanyFormConfirmationEmail({
+  to,
+  submitterFirstName,
+  submitterLastName,
+  formName,
+  subject,
+  content,
+  companyName,
+}: {
+  to: string;
+  submitterFirstName: string;
+  submitterLastName: string;
+  formName: string;
+  subject: string;
+  content: string;
+  companyName: string;
+}) {
+  try {
+    const { sendEmail } = await import("@/lib/repos/directus");
+    const { generateCompanyFormConfirmationEmailHtml } = await import("@/lib/email-templates");
+    
+    // Combine first and last name for display
+    const submitterFullName = [submitterFirstName, submitterLastName].filter(Boolean).join(' ') || 'Guest';
+    
+    // Replace placeholders in email content
+    let personalizedContent = content
+      .replace(/{submitter_name}/g, submitterFullName)
+      .replace(/{submitter_first_name}/g, submitterFirstName || 'Guest')
+      .replace(/{submitter_last_name}/g, submitterLastName || '')
+      .replace(/{form_name}/g, formName)
+      .replace(/{company_name}/g, companyName || 'Your Company');
+    
+    // Only convert newlines if content doesn't appear to be HTML
+    if (!personalizedContent.includes('<') || !personalizedContent.includes('>')) {
+      personalizedContent = personalizedContent.replace(/\n/g, '<br>');
+    }
+    
+    const emailHtml = generateCompanyFormConfirmationEmailHtml({
+      subject,
+      submitterName: submitterFullName,
+      personalizedContent,
+      formName,
+      companyName: companyName || 'Your Company',
+    });
+    
+    await sendEmail({
+      to,
+      subject,
+      html: emailHtml,
+    });
+  } catch (error) {
+    console.error("Error sending company form confirmation email:", error);
+    // Don't throw - email failure shouldn't prevent form submission
   }
 }
 
@@ -631,6 +771,36 @@ export async function uploadFileAction(formData: FormData) {
   } catch (error) {
     console.error('[uploadFileAction] Error uploading file:', error);
     throw error;
+  }
+}
+
+export async function fetchCompanyFormsForEventAction(eventId: string, companyOptionIds: string[]) {
+  try {
+    const { getCompanyFormsForEvent } = await import("@/lib/repos/forms");
+    return await getCompanyFormsForEvent(eventId, companyOptionIds);
+  } catch (error) {
+    console.error("[fetchCompanyFormsForEventAction] Error fetching company forms:", error);
+    throw error;
+  }
+}
+
+export async function fetchCompanyFormBySlugAndEventAction(eventId: string, slug: string) {
+  try {
+    const { getCompanyFormBySlugAndEvent } = await import("@/lib/repos/forms");
+    return await getCompanyFormBySlugAndEvent(eventId, slug);
+  } catch (error) {
+    console.error("[fetchCompanyFormBySlugAndEventAction] Error fetching company form:", error);
+    return null;
+  }
+}
+
+export async function checkCompanyFormCompletionAction(companyId: string, formVersionIds: string[]) {
+  try {
+    const { checkCompanyFormCompletion } = await import("@/lib/repos/forms");
+    return await checkCompanyFormCompletion(companyId, formVersionIds);
+  } catch (error) {
+    console.error("[checkCompanyFormCompletionAction] Error checking form completion:", error);
+    return new Set<string>();
   }
 }
 

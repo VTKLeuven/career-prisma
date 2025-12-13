@@ -159,8 +159,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     };
   }, [checkPageImage, user?.company?.id]);
 
-  // Fetch pending approvals count for admins/salespeople
+  // Fetch pending approvals count for admins/salespeople only
+  // Company reps should not see this, so we check both admin and salesperson status
   React.useEffect(() => {
+    // Only fetch for admins - salespeople will be checked in the action itself
+    // This prevents unnecessary API calls for company reps
     if (!user?.admin) {
       return;
     }

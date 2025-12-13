@@ -50,14 +50,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power, ChevronUp, ChevronDown } from "lucide-react";
+import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power, ChevronUp, ChevronDown, Building2 } from "lucide-react";
 import { useUser } from "@/providers/UserProvider";
-import type { FormSchema, FormField, Form, CareerEvent } from "@/lib/schema";
+import type { FormSchema, FormField, Form, CareerEvent, CareerEventOption } from "@/lib/schema";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatDateBE, formatDateTimeBE, utcToLocalDateTimeLocal, localDateTimeLocalToUtc } from "@/lib/date-utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { fetchEventsAction } from "@/app/actions/events";
+import { fetchEventsAction, fetchOptionsForEventAction } from "@/app/actions/events";
+import Link from "next/link";
 
 type FormRow = {
   id: string;
@@ -118,6 +119,12 @@ export default function AdminFormsPage() {
           <p className="text-muted-foreground">Create and manage forms for external users</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/admin/forms/company-completion">
+              <Building2 className="mr-2 h-4 w-4" />
+              Company Completion
+            </Link>
+          </Button>
           <Button variant="outline" onClick={loadForms} disabled={loading} size="default">
             {loading ? "Refreshing..." : "Refresh"}
           </Button>
@@ -157,7 +164,7 @@ export default function AdminFormsPage() {
                   <TableRow key={form.id}>
                     <TableCell className="font-medium">{form.name}</TableCell>
                     <TableCell>
-                      <SlugCell slug={form.slug} />
+                      <SlugCell slug={form.slug} metadata={form.metadata} />
                     </TableCell>
                     <TableCell>
                       {form.is_active === false ? (
@@ -213,6 +220,14 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
   const [eventDate, setEventDate] = useState("");
   const [eventEndDate, setEventEndDate] = useState("");
   const [eventLocation, setEventLocation] = useState("");
+  const [isCompanyForm, setIsCompanyForm] = useState(false);
+  const [selectedCompanyFormEventId, setSelectedCompanyFormEventId] = useState<string>("");
+  const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([]);
+  const [sendCompanyFormEmail, setSendCompanyFormEmail] = useState(false);
+  const [companyFormEmailSubject, setCompanyFormEmailSubject] = useState("");
+  const [companyFormEmailContent, setCompanyFormEmailContent] = useState("");
+  const [options, setOptions] = useState<Array<{ id: string; name: string; description?: string }>>([]);
+  const [optionsLoading, setOptionsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // TipTap editor for email content - only create when dialog is open and on client
@@ -234,7 +249,22 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
       },
     },
     immediatelyRender: false,
-    editable: open && isClient, // Only editable when dialog is open and on client
+    editable: open && isClient && isEventRegistration, // Only editable when dialog is open and on client
+  });
+
+  const companyFormEmailEditor = useEditor({
+    extensions: [StarterKit],
+    content: companyFormEmailContent,
+    onUpdate({ editor }) {
+      setCompanyFormEmailContent(editor.getHTML());
+    },
+    editorProps: {
+      attributes: {
+        class: "border rounded-md p-3 bg-background text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-ring [&>p:last-child]:mb-0 [&>ul:last-child]:mb-0 [&>ol:last-child]:mb-0",
+      },
+    },
+    immediatelyRender: false,
+    editable: open && isClient && isCompanyForm, // Only editable when dialog is open and on client
   });
 
   // Update editor content when dialog opens
@@ -246,6 +276,16 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
       emailEditor.setEditable(false);
     }
   }, [open, isClient, emailEditor, isEventRegistration, eventEmailContent]);
+
+  // Update company form email editor content when dialog opens
+  useEffect(() => {
+    if (open && isClient && companyFormEmailEditor && isCompanyForm) {
+      companyFormEmailEditor.commands.setContent(companyFormEmailContent);
+      companyFormEmailEditor.setEditable(true);
+    } else if (!open && companyFormEmailEditor) {
+      companyFormEmailEditor.setEditable(false);
+    }
+  }, [open, isClient, companyFormEmailEditor, isCompanyForm, companyFormEmailContent]);
 
   // Update email subject when form name changes and event registration is enabled
   useEffect(() => {
@@ -259,9 +299,36 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
     }
   }, [name, isEventRegistration]);
 
-  // Load events when dialog opens and event registration is enabled
+  // Update company form email content and subject when form name changes and company form is enabled
   useEffect(() => {
-    if (open && isEventRegistration && events.length === 0 && !eventsLoading) {
+    if (isCompanyForm && name.trim()) {
+      const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
+      
+      // Update subject if it's still the default or empty
+      if (!companyFormEmailSubject || companyFormEmailSubject === "Form Submission Confirmation" || companyFormEmailSubject.trim() === "") {
+        setCompanyFormEmailSubject(`${capitalizedName} Submission Confirmation`);
+      }
+      
+      // Update content if it's still the default or empty
+      const currentContent = companyFormEmailContent || '';
+      if (!currentContent || currentContent === "Thank you for your submission!" || currentContent.trim() === "") {
+        const defaultContent = `<p>Dear,</p>
+<p>Thank you for submitting the ${capitalizedName} form!</p>
+<p>If you have any questions, please don't hesitate to contact us.</p>
+<p>Best regards,</p>
+<p>The VTK Career Team</p>`;
+        setCompanyFormEmailContent(defaultContent);
+        // Also update editor if it exists
+        if (companyFormEmailEditor && isClient) {
+          companyFormEmailEditor.commands.setContent(defaultContent);
+        }
+      }
+    }
+  }, [name, isCompanyForm, companyFormEmailEditor, isClient, companyFormEmailContent, companyFormEmailSubject]);
+
+  // Load events when dialog opens and event registration or company form is enabled
+  useEffect(() => {
+    if (open && (isEventRegistration || isCompanyForm) && events.length === 0 && !eventsLoading) {
       setEventsLoading(true);
       fetchEventsAction()
         .then((loadedEvents) => {
@@ -274,10 +341,47 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
           setEventsLoading(false);
         });
     }
-  }, [open, isEventRegistration, events.length, eventsLoading]);
+  }, [open, isEventRegistration, isCompanyForm, events.length, eventsLoading]);
+
+  // Load options when company form event is selected
+  useEffect(() => {
+    if (!open || !isCompanyForm) {
+      setOptions([]);
+      setSelectedOptionIds([]);
+      return;
+    }
+
+    if (!selectedCompanyFormEventId || selectedCompanyFormEventId === "none") {
+      setOptions([]);
+      setSelectedOptionIds([]);
+      return;
+    }
+
+    // Only fetch if we don't already have options for this event
+    if (optionsLoading) return;
+
+    setOptionsLoading(true);
+    fetchOptionsForEventAction(selectedCompanyFormEventId)
+      .then((loadedOptions) => {
+        setOptions(loadedOptions);
+      })
+      .catch((err) => {
+        console.error("Error loading options:", err);
+        setOptions([]);
+      })
+      .finally(() => {
+        setOptionsLoading(false);
+      });
+  }, [open, isCompanyForm, selectedCompanyFormEventId]);
 
   const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
-  const formUrl = `${formDomain}/forms/${slug || "your-slug"}`;
+  const getFormUrl = () => {
+    if (isCompanyForm && selectedCompanyFormEventId && selectedCompanyFormEventId !== "none") {
+      return `${formDomain}/forms/company/${selectedCompanyFormEventId}/${slug || "your-slug"}`;
+    }
+    return `${formDomain}/forms/${slug || "your-slug"}`;
+  };
+  const formUrl = getFormUrl();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -342,6 +446,21 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
           metadata.event_location = eventLocation;
         }
       }
+
+      if (isCompanyForm) {
+        metadata.is_company_form = true;
+        if (selectedCompanyFormEventId && selectedCompanyFormEventId !== "none") {
+          metadata.event_id = selectedCompanyFormEventId;
+        }
+        if (selectedOptionIds.length > 0) {
+          metadata.option_ids = selectedOptionIds;
+        }
+        metadata.send_company_form_email = sendCompanyFormEmail;
+        if (sendCompanyFormEmail) {
+          metadata.company_form_email_subject = companyFormEmailSubject || 'Form Submission Confirmation';
+          metadata.company_form_email_content = companyFormEmailContent || 'Thank you for your submission!';
+        }
+      }
       
       if (maxEntries && maxEntries.trim() !== "") {
         const maxEntriesNum = parseInt(maxEntries, 10);
@@ -376,6 +495,13 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
       setEventDate("");
       setEventEndDate("");
       setEventLocation("");
+      setIsCompanyForm(false);
+      setSelectedCompanyFormEventId("");
+      setSelectedOptionIds([]);
+      setSendCompanyFormEmail(false);
+      setCompanyFormEmailSubject("Form Submission Confirmation");
+      setCompanyFormEmailContent("Thank you for your submission!");
+      setOptions([]);
       onFormCreated();
     } catch (error) {
       console.error("Error creating form:", error);
@@ -473,10 +599,27 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
               <Checkbox
                 id="event-registration"
                 checked={isEventRegistration}
-                onCheckedChange={(checked: boolean) => setIsEventRegistration(checked)}
+                onCheckedChange={(checked: boolean) => {
+                  setIsEventRegistration(checked);
+                  if (checked) setIsCompanyForm(false); // Mutually exclusive
+                }}
               />
               <Label htmlFor="event-registration" className="font-normal cursor-pointer">
                 Use as event registration (sends confirmation emails)
+            </Label>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="company-form"
+              checked={isCompanyForm}
+              onCheckedChange={(checked: boolean) => {
+                setIsCompanyForm(checked);
+                if (checked) setIsEventRegistration(false); // Mutually exclusive
+              }}
+            />
+            <Label htmlFor="company-form" className="font-normal cursor-pointer">
+              Use as company form (for events)
             </Label>
           </div>
 
@@ -575,6 +718,120 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
                 </div>
               </div>
             )}
+
+            {isCompanyForm && (
+              <div className="space-y-4 p-4 bg-muted rounded-md border-t">
+                <h3 className="font-semibold text-sm">Company Form Settings</h3>
+                <div className="space-y-2">
+                  <Label htmlFor="company-form-event-select">Event *</Label>
+                  <Select
+                    value={selectedCompanyFormEventId || "none"}
+                    onValueChange={(value) => setSelectedCompanyFormEventId(value === "none" ? "" : value)}
+                    disabled={eventsLoading}
+                  >
+                    <SelectTrigger id="company-form-event-select" className="w-full">
+                      <SelectValue placeholder={eventsLoading ? "Loading events..." : "Select an event"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Select an event</SelectItem>
+                      {events.map((event) => (
+                        <SelectItem key={event.id} value={event.id}>
+                          {event.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Select the event this form is for. Companies registered for this event will see this form.
+                  </p>
+                </div>
+
+                {selectedCompanyFormEventId && selectedCompanyFormEventId !== "none" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="company-form-options">Career Event Options *</Label>
+                    {optionsLoading ? (
+                      <div className="text-sm text-muted-foreground">Loading options...</div>
+                    ) : options.length === 0 ? (
+                      <div className="text-sm text-muted-foreground">No options found for this event.</div>
+                    ) : (
+                      <div className="space-y-2 max-h-48 overflow-y-auto border rounded-md p-3">
+                        {options.map((option) => (
+                          <div key={option.id} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`option-${option.id}`}
+                              checked={selectedOptionIds.includes(option.id)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedOptionIds([...selectedOptionIds, option.id]);
+                                } else {
+                                  setSelectedOptionIds(selectedOptionIds.filter((id) => id !== option.id));
+                                }
+                              }}
+                            />
+                            <Label htmlFor={`option-${option.id}`} className="text-sm font-normal cursor-pointer flex-1">
+                              {option.name}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Select which career event options this form applies to. Companies with these options will be assigned to this form.
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="send-company-form-email"
+                    checked={sendCompanyFormEmail}
+                    onCheckedChange={(checked: boolean) => setSendCompanyFormEmail(checked)}
+                  />
+                  <Label htmlFor="send-company-form-email" className="font-normal cursor-pointer">
+                    Send confirmation email
+                  </Label>
+                </div>
+
+                {sendCompanyFormEmail && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="company-form-email-subject">Email Subject</Label>
+                      <Input
+                        id="company-form-email-subject"
+                        value={companyFormEmailSubject}
+                        onChange={(e) => setCompanyFormEmailSubject(e.target.value)}
+                        placeholder="[Form Name] Submission Confirmation"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="company-form-email-content">Email Content</Label>
+                      {open && isClient && companyFormEmailEditor && isCompanyForm ? (
+                        <div className="[&_.ProseMirror]:mb-0 [&_.ProseMirror]:pb-0">
+                          <EditorContent editor={companyFormEmailEditor} />
+                        </div>
+                      ) : (
+                        <Textarea
+                          id="company-form-email-content"
+                          value={companyFormEmailContent}
+                          onChange={(e) => {
+                            setCompanyFormEmailContent(e.target.value);
+                            // Also update editor if it exists
+                            if (companyFormEmailEditor && isClient) {
+                              companyFormEmailEditor.commands.setContent(e.target.value);
+                            }
+                          }}
+                          placeholder="Dear,&#10;&#10;Thank you for submitting the [form name] form!&#10;&#10;If you have any questions, please don't hesitate to contact us.&#10;&#10;Best regards,&#10;The VTK Career Team"
+                          rows={6}
+                        />
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        This content will be sent in the confirmation email. Use {`{submitter_name}`} and {`{form_name}`} to personalize. You can format text with bold, italic, lists, etc.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter className="mt-4">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
@@ -620,7 +877,15 @@ function FormActionsMenu({ form, onUpdate }: { form: FormRow; onUpdate: () => vo
             Manage Versions
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
-            <a href={`/forms/${form.slug}`} target="_blank" rel="noopener noreferrer">
+            <a 
+              href={
+                form.metadata?.is_company_form && form.metadata?.event_id
+                  ? `/forms/company/${form.metadata.event_id}/${form.slug}`
+                  : `/forms/${form.slug}`
+              } 
+              target="_blank" 
+              rel="noopener noreferrer"
+            >
               Test Form (Public View)
             </a>
           </DropdownMenuItem>
@@ -708,6 +973,26 @@ function EditFormDialog({
   const [isEventRegistration, setIsEventRegistration] = useState(
     form.metadata?.is_event_registration === true
   );
+  const [isCompanyForm, setIsCompanyForm] = useState(
+    form.metadata?.is_company_form === true
+  );
+  const [selectedCompanyFormEventId, setSelectedCompanyFormEventId] = useState<string>(
+    (form.metadata?.event_id as string) || ""
+  );
+  const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>(
+    (form.metadata?.option_ids as string[]) || []
+  );
+  const [sendCompanyFormEmail, setSendCompanyFormEmail] = useState(
+    form.metadata?.send_company_form_email === true
+  );
+  const [companyFormEmailSubject, setCompanyFormEmailSubject] = useState(
+    (form.metadata?.company_form_email_subject as string) || "Form Submission Confirmation"
+  );
+  const [companyFormEmailContent, setCompanyFormEmailContent] = useState(
+    (form.metadata?.company_form_email_content as string) || "Thank you for your submission!"
+  );
+  const [options, setOptions] = useState<Array<{ id: string; name: string; description?: string }>>([]);
+  const [optionsLoading, setOptionsLoading] = useState(false);
 
   // TipTap editor for email content - only create when dialog is open and on client
   const [isClient, setIsClient] = useState(false);
@@ -716,9 +1001,9 @@ function EditFormDialog({
     setIsClient(true);
   }, []);
 
-  // Load events when dialog opens and event registration is enabled
+  // Load events when dialog opens and event registration or company form is enabled
   useEffect(() => {
-    if (open && isEventRegistration && events.length === 0 && !eventsLoading) {
+    if (open && (isEventRegistration || isCompanyForm) && events.length === 0 && !eventsLoading) {
       setEventsLoading(true);
       fetchEventsAction()
         .then((loadedEvents) => {
@@ -731,7 +1016,37 @@ function EditFormDialog({
           setEventsLoading(false);
         });
     }
-  }, [open, isEventRegistration, events.length, eventsLoading]);
+  }, [open, isEventRegistration, isCompanyForm, events.length, eventsLoading]);
+
+  // Load options when company form event is selected
+  useEffect(() => {
+    if (!open || !isCompanyForm) {
+      setOptions([]);
+      return;
+    }
+
+    if (!selectedCompanyFormEventId || selectedCompanyFormEventId === "none") {
+      setOptions([]);
+      return;
+    }
+
+    // Prevent multiple simultaneous fetches
+    if (optionsLoading) return;
+
+    setOptionsLoading(true);
+    fetchOptionsForEventAction(selectedCompanyFormEventId)
+      .then((loadedOptions) => {
+        setOptions(loadedOptions);
+      })
+      .catch((err) => {
+        console.error("Error loading options:", err);
+        setOptions([]);
+      })
+      .finally(() => {
+        setOptionsLoading(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isCompanyForm, selectedCompanyFormEventId]);
 
   const emailEditor = useEditor({
     extensions: [StarterKit],
@@ -745,7 +1060,22 @@ function EditFormDialog({
       },
     },
     immediatelyRender: false,
-    editable: open && isClient, // Only editable when dialog is open and on client
+    editable: open && isClient && isEventRegistration, // Only editable when dialog is open and on client
+  });
+
+  const companyFormEmailEditor = useEditor({
+    extensions: [StarterKit],
+    content: companyFormEmailContent,
+    onUpdate({ editor }) {
+      setCompanyFormEmailContent(editor.getHTML());
+    },
+    editorProps: {
+      attributes: {
+        class: "border rounded-md p-3 bg-background text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-ring [&>p:last-child]:mb-0 [&>ul:last-child]:mb-0 [&>ol:last-child]:mb-0",
+      },
+    },
+    immediatelyRender: false,
+    editable: open && isClient && isCompanyForm, // Only editable when dialog is open and on client
   });
 
   // Update editor content when form changes or dialog opens
@@ -760,6 +1090,45 @@ function EditFormDialog({
     }
   }, [open, isClient, form, emailEditor, isEventRegistration]);
 
+  // Update company form email editor content when form changes or dialog opens
+  useEffect(() => {
+    if (open && isClient && companyFormEmailEditor && isCompanyForm) {
+      const content = (form.metadata?.company_form_email_content as string) || '';
+      companyFormEmailEditor.commands.setContent(content);
+      setCompanyFormEmailContent(content);
+      companyFormEmailEditor.setEditable(true);
+    } else if (!open && companyFormEmailEditor) {
+      companyFormEmailEditor.setEditable(false);
+    }
+  }, [open, isClient, form, companyFormEmailEditor, isCompanyForm]);
+
+  // Update company form email content and subject when form name changes and company form is enabled
+  useEffect(() => {
+    if (isCompanyForm && name.trim() && open) {
+      const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
+      
+      // Update subject if it's still the default or empty
+      if (!companyFormEmailSubject || companyFormEmailSubject === "Form Submission Confirmation" || companyFormEmailSubject.trim() === "") {
+        setCompanyFormEmailSubject(`${capitalizedName} Submission Confirmation`);
+      }
+      
+      // Update content if it's still the default or empty
+      const currentContent = companyFormEmailContent || '';
+      if (!currentContent || currentContent === "Thank you for your submission!" || currentContent.trim() === "") {
+        const defaultContent = `<p>Dear,</p>
+<p>Thank you for submitting the ${capitalizedName} form!</p>
+<p>If you have any questions, please don't hesitate to contact us.</p>
+<p>Best regards,</p>
+<p>The VTK Career Team</p>`;
+        setCompanyFormEmailContent(defaultContent);
+        // Also update editor if it exists
+        if (companyFormEmailEditor && isClient) {
+          companyFormEmailEditor.commands.setContent(defaultContent);
+        }
+      }
+    }
+  }, [name, isCompanyForm, open, companyFormEmailEditor, isClient, companyFormEmailContent, companyFormEmailSubject]);
+
   useEffect(() => {
     if (open) {
       setName(form.name);
@@ -768,7 +1137,13 @@ function EditFormDialog({
       setDeadline(form.metadata?.deadline ? utcToLocalDateTimeLocal(form.metadata.deadline as string) : '');
       setMaxEntries(form.metadata?.max_entries ? String(form.metadata.max_entries) : '');
       setIsEventRegistration(form.metadata?.is_event_registration === true);
+      setIsCompanyForm(form.metadata?.is_company_form === true);
       setSelectedEventId((form.metadata?.event_id as string) || '');
+      setSelectedCompanyFormEventId((form.metadata?.event_id as string) || '');
+      setSelectedOptionIds((form.metadata?.option_ids as string[]) || []);
+      setSendCompanyFormEmail(form.metadata?.send_company_form_email === true);
+      setCompanyFormEmailSubject((form.metadata?.company_form_email_subject as string) || 'Form Submission Confirmation');
+      setCompanyFormEmailContent((form.metadata?.company_form_email_content as string) || 'Thank you for your submission!');
       setEventEmailSubject((form.metadata?.event_email_subject as string) || '');
       setEventEmailContent((form.metadata?.event_email_content as string) || '');
       setEventDate(form.metadata?.event_date ? utcToLocalDateTimeLocal(form.metadata.event_date as string) : '');
@@ -828,10 +1203,57 @@ function EditFormDialog({
           if ((!selectedEventId || selectedEventId === "none") && metadata.event_id) {
             delete metadata.event_id;
           }
+          // Remove company form fields if switching to event registration
+          if (metadata.is_company_form) delete metadata.is_company_form;
+          if (metadata.option_ids) delete metadata.option_ids;
+          if (metadata.send_company_form_email) delete metadata.send_company_form_email;
+          if (metadata.company_form_email_subject) delete metadata.company_form_email_subject;
+          if (metadata.company_form_email_content) delete metadata.company_form_email_content;
         } else {
           // If unchecked, remove event registration flag but keep other metadata
           if (metadata) {
-            const { is_event_registration, ...restMetadata } = metadata;
+            const { is_event_registration, event_email_subject, event_email_content, event_date, event_end_date, event_location, ...restMetadata } = metadata;
+            metadata = Object.keys(restMetadata).length > 0 ? restMetadata : undefined;
+          }
+        }
+
+        // Update company form fields if this is a company form
+        if (isCompanyForm) {
+          metadata = {
+            ...metadata,
+            is_company_form: true,
+            ...(selectedCompanyFormEventId && selectedCompanyFormEventId !== "none" ? { event_id: selectedCompanyFormEventId } : {}),
+            ...(selectedOptionIds.length > 0 ? { option_ids: selectedOptionIds } : {}),
+            send_company_form_email: sendCompanyFormEmail,
+            ...(sendCompanyFormEmail ? {
+              company_form_email_subject: companyFormEmailSubject || 'Form Submission Confirmation',
+              company_form_email_content: companyFormEmailContent || 'Thank you for your submission!',
+            } : {}),
+          };
+          // Remove event_id if it was cleared
+          if ((!selectedCompanyFormEventId || selectedCompanyFormEventId === "none") && metadata.event_id) {
+            delete metadata.event_id;
+          }
+          // Remove option_ids if empty
+          if (selectedOptionIds.length === 0 && metadata.option_ids) {
+            delete metadata.option_ids;
+          }
+          // Remove email fields if email is disabled
+          if (!sendCompanyFormEmail) {
+            if (metadata.company_form_email_subject) delete metadata.company_form_email_subject;
+            if (metadata.company_form_email_content) delete metadata.company_form_email_content;
+          }
+          // Remove event registration fields if switching to company form
+          if (metadata.is_event_registration) delete metadata.is_event_registration;
+          if (metadata.event_email_subject) delete metadata.event_email_subject;
+          if (metadata.event_email_content) delete metadata.event_email_content;
+          if (metadata.event_date) delete metadata.event_date;
+          if (metadata.event_end_date) delete metadata.event_end_date;
+          if (metadata.event_location) delete metadata.event_location;
+        } else {
+          // If unchecked, remove company form flag but keep other metadata
+          if (metadata) {
+            const { is_company_form, option_ids, send_company_form_email, company_form_email_subject, company_form_email_content, ...restMetadata } = metadata;
             metadata = Object.keys(restMetadata).length > 0 ? restMetadata : undefined;
           }
         }
@@ -856,7 +1278,13 @@ function EditFormDialog({
   };
 
   const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
-  const formUrl = `${formDomain}/forms/${slug || "your-slug"}`;
+  const getFormUrl = () => {
+    if (form.metadata?.is_company_form && form.metadata?.event_id) {
+      return `${formDomain}/forms/company/${form.metadata.event_id}/${slug || "your-slug"}`;
+    }
+    return `${formDomain}/forms/${slug || "your-slug"}`;
+  };
+  const formUrl = getFormUrl();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -930,10 +1358,27 @@ function EditFormDialog({
               <Checkbox
                 id="edit-event-registration"
                 checked={isEventRegistration}
-                onCheckedChange={(checked: boolean) => setIsEventRegistration(checked)}
+                onCheckedChange={(checked: boolean) => {
+                  setIsEventRegistration(checked);
+                  if (checked) setIsCompanyForm(false); // Mutually exclusive
+                }}
               />
               <Label htmlFor="edit-event-registration" className="font-normal cursor-pointer">
                 Use as event registration (sends confirmation emails)
+              </Label>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="edit-company-form"
+                checked={isCompanyForm}
+                onCheckedChange={(checked: boolean) => {
+                  setIsCompanyForm(checked);
+                  if (checked) setIsEventRegistration(false); // Mutually exclusive
+                }}
+              />
+              <Label htmlFor="edit-company-form" className="font-normal cursor-pointer">
+                Use as company form (for events)
               </Label>
             </div>
 
@@ -1030,6 +1475,120 @@ function EditFormDialog({
                     placeholder="e.g., Main Conference Hall, Brussels"
                   />
                 </div>
+              </div>
+            )}
+
+            {isCompanyForm && (
+              <div className="space-y-4 p-4 bg-muted rounded-md border-t">
+                <h3 className="font-semibold text-sm">Company Form Settings</h3>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-company-form-event-select">Event *</Label>
+                  <Select
+                    value={selectedCompanyFormEventId || "none"}
+                    onValueChange={(value) => setSelectedCompanyFormEventId(value === "none" ? "" : value)}
+                    disabled={eventsLoading}
+                  >
+                    <SelectTrigger id="edit-company-form-event-select" className="w-full">
+                      <SelectValue placeholder={eventsLoading ? "Loading events..." : "Select an event"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Select an event</SelectItem>
+                      {events.map((event) => (
+                        <SelectItem key={event.id} value={event.id}>
+                          {event.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Select the event this form is for. Companies registered for this event will see this form.
+                  </p>
+                </div>
+
+                {selectedCompanyFormEventId && selectedCompanyFormEventId !== "none" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-company-form-options">Career Event Options *</Label>
+                    {optionsLoading ? (
+                      <div className="text-sm text-muted-foreground">Loading options...</div>
+                    ) : options.length === 0 ? (
+                      <div className="text-sm text-muted-foreground">No options found for this event.</div>
+                    ) : (
+                      <div className="space-y-2 max-h-48 overflow-y-auto border rounded-md p-3">
+                        {options.map((option) => (
+                          <div key={option.id} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`edit-option-${option.id}`}
+                              checked={selectedOptionIds.includes(option.id)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedOptionIds([...selectedOptionIds, option.id]);
+                                } else {
+                                  setSelectedOptionIds(selectedOptionIds.filter((id) => id !== option.id));
+                                }
+                              }}
+                            />
+                            <Label htmlFor={`edit-option-${option.id}`} className="text-sm font-normal cursor-pointer flex-1">
+                              {option.name}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Select which career event options this form applies to. Companies with these options will be assigned to this form.
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="edit-send-company-form-email"
+                    checked={sendCompanyFormEmail}
+                    onCheckedChange={(checked: boolean) => setSendCompanyFormEmail(checked)}
+                  />
+                  <Label htmlFor="edit-send-company-form-email" className="font-normal cursor-pointer">
+                    Send confirmation email
+                  </Label>
+                </div>
+
+                {sendCompanyFormEmail && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-company-form-email-subject">Email Subject</Label>
+                      <Input
+                        id="edit-company-form-email-subject"
+                        value={companyFormEmailSubject}
+                        onChange={(e) => setCompanyFormEmailSubject(e.target.value)}
+                        placeholder="[Form Name] Submission Confirmation"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-company-form-email-content">Email Content</Label>
+                      {open && isClient && companyFormEmailEditor && isCompanyForm ? (
+                        <div className="[&_.ProseMirror]:mb-0 [&_.ProseMirror]:pb-0">
+                          <EditorContent editor={companyFormEmailEditor} />
+                        </div>
+                      ) : (
+                        <Textarea
+                          id="edit-company-form-email-content"
+                          value={companyFormEmailContent}
+                          onChange={(e) => {
+                            setCompanyFormEmailContent(e.target.value);
+                            // Also update editor if it exists
+                            if (companyFormEmailEditor && isClient) {
+                              companyFormEmailEditor.commands.setContent(e.target.value);
+                            }
+                          }}
+                          placeholder="Dear,&#10;&#10;Thank you for submitting the [form name] form!&#10;&#10;If you have any questions, please don't hesitate to contact us.&#10;&#10;Best regards,&#10;The VTK Career Team"
+                          rows={6}
+                        />
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        This content will be sent in the confirmation email. Use {`{submitter_name}`} and {`{form_name}`} to personalize. You can format text with bold, italic, lists, etc.
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -1129,10 +1688,16 @@ function ToggleFormStatusMenuItem({ form, onUpdate }: { form: FormRow; onUpdate:
   );
 }
 
-function SlugCell({ slug }: { slug: string }) {
+function SlugCell({ slug, metadata }: { slug: string; metadata?: { is_company_form?: boolean; event_id?: string; [key: string]: unknown } }) {
   const [copied, setCopied] = useState(false);
   const domain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
-  const formUrl = `${domain}/forms/${slug}`;
+  const getFormUrl = () => {
+    if (metadata?.is_company_form && metadata?.event_id) {
+      return `${domain}/forms/company/${metadata.event_id}/${slug}`;
+    }
+    return `${domain}/forms/${slug}`;
+  };
+  const formUrl = getFormUrl();
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.preventDefault();

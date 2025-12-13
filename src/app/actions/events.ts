@@ -6,6 +6,7 @@ import { listEvents } from "@/lib/repos/event";
 import { listEventPages, getEventPageBySlug } from "@/lib/repos/event";
 import DOMPurify from 'isomorphic-dompurify';
 import type { Company, CareerEvent, CareerEventOption } from "@/lib/schema";
+import { listCareerEventOptions } from "@/lib/repos/option";
 import { listCompanies } from "@/lib/repos/company";
 import { getOrCreateEventPage } from "@/lib/repos/floorplan";
 import { getDirectusWithToken } from "@/lib/directus";
@@ -26,6 +27,91 @@ export async function fetchEventsAction() {
         })
     })
     return events
+}
+
+export async function fetchOptionsForEventAction(eventId: string) {
+  try {
+    const client = await getDirectusWithToken();
+    if (!client) {
+      return [];
+    }
+
+    // Fetch all options with their events relationship loaded
+    // This is more reliable than querying the junction table directly
+    const allOptions = await client.request(
+      readItems("career_event_option", {
+        fields: ["id", "name", "description", "events.*", "events.career_event_id", "events.career_event.*", "event.*", "event.id"],
+        limit: 1000,
+      })
+    ) as unknown as CareerEventOption[];
+
+    if (!allOptions || allOptions.length === 0) {
+      return [];
+    }
+
+    // Filter options that are linked to this event
+    const eventOptions = allOptions.filter((option) => {
+      // Check events array (many-to-many relationship)
+      if (option.events && Array.isArray(option.events)) {
+        return option.events.some((eventOrJunction: unknown) => {
+          if (!eventOrJunction || typeof eventOrJunction !== 'object') return false;
+          
+          // Check if it's a junction table entry with career_event_id field
+          if ('career_event_id' in eventOrJunction) {
+            const junction = eventOrJunction as { career_event_id: CareerEvent | string | null };
+            const eventRef = junction.career_event_id;
+            if (eventRef && typeof eventRef === 'object' && 'id' in eventRef) {
+              return (eventRef as CareerEvent).id === eventId;
+            }
+            if (typeof eventRef === 'string') {
+              return eventRef === eventId;
+            }
+          }
+          
+          // Check if it's a junction table entry with career_event field
+          if ('career_event' in eventOrJunction) {
+            const junction = eventOrJunction as { career_event: CareerEvent | string | null };
+            const eventRef = junction.career_event;
+            if (eventRef && typeof eventRef === 'object' && 'id' in eventRef) {
+              return (eventRef as CareerEvent).id === eventId;
+            }
+            if (typeof eventRef === 'string') {
+              return eventRef === eventId;
+            }
+          }
+          
+          // Check if it's a direct event object
+          if ('id' in eventOrJunction) {
+            return (eventOrJunction as CareerEvent).id === eventId;
+          }
+          
+          return false;
+        });
+      }
+      
+      // Check single event (backward compatibility)
+      if (option.event) {
+        const eventRef = option.event;
+        if (typeof eventRef === 'object' && eventRef !== null && 'id' in eventRef) {
+          return (eventRef as CareerEvent).id === eventId;
+        }
+        if (typeof eventRef === 'string') {
+          return eventRef === eventId;
+        }
+      }
+      
+      return false;
+    });
+
+    return eventOptions.map((opt) => ({
+      id: opt.id,
+      name: opt.name || '',
+      description: opt.description || '',
+    }));
+  } catch (error) {
+    console.error("[fetchOptionsForEventAction] Error:", error);
+    return [];
+  }
 }
 
 export async function fetchEventPagesAction(lim = 50) {
