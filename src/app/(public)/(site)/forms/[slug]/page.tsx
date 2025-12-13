@@ -22,6 +22,8 @@ import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import type { FormField, FormSchema } from "@/lib/schema";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
+import { getDirectusImageUrl } from "@/components/Images";
+import NextImage from "next/image";
 
 type PublicForm = {
   id: string;
@@ -75,6 +77,11 @@ export default function PublicFormPage() {
     loadForm();
   }, [loadForm]);
 
+  // Helper function to count words
+  const countWords = (text: string): number => {
+    return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+  };
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     
@@ -85,6 +92,17 @@ export default function PublicFormPage() {
         const value = formData[field.name];
         if (!value || (Array.isArray(value) && value.length === 0)) {
           newErrors[field.name] = `${field.label} is required`;
+        }
+      }
+      
+      // Validate word limit for textarea fields
+      if (field.type === "textarea" && field.validation?.wordLimit) {
+        const value = formData[field.name] as string;
+        if (value) {
+          const wordCount = countWords(value);
+          if (wordCount > field.validation.wordLimit) {
+            newErrors[field.name] = `${field.label} exceeds the word limit of ${field.validation.wordLimit} words (${wordCount} words entered)`;
+          }
         }
       }
     });
@@ -316,6 +334,7 @@ export default function PublicFormPage() {
                 <div key={`row-${rowIndex}`} className="grid grid-cols-1 md:grid-cols-12 gap-4">
                   {row.map((field) => {
                     const layout = field.layout || 'full';
+                    const imageUrl = field.image ? getDirectusImageUrl(field.image) : null;
                     
                     return (
                       <div key={field.id} className={`space-y-2 ${getColSpanClass(layout)}`}>
@@ -323,6 +342,19 @@ export default function PublicFormPage() {
                           {field.label}
                           {field.required && <span className="text-destructive ml-1">*</span>}
                         </Label>
+                        {field.description && (
+                          <p className="text-sm text-muted-foreground">{field.description}</p>
+                        )}
+                        {imageUrl && (
+                          <div className="relative w-full h-48 bg-muted rounded-md overflow-hidden border">
+                            <NextImage
+                              src={imageUrl}
+                              alt={field.label || "Field image"}
+                              fill
+                              className="object-contain"
+                            />
+                          </div>
+                        )}
                         <FormFieldRenderer
                           field={field}
                           value={formData[field.name]}
@@ -362,6 +394,11 @@ export default function PublicFormPage() {
   );
 }
 
+// Helper function to count words
+function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+}
+
 function FormFieldRenderer({
   field,
   value,
@@ -379,18 +416,40 @@ function FormFieldRenderer({
 
   switch (field.type) {
     case "textarea":
+      const textareaValue = (value as string) || "";
+      const wordLimit = field.validation?.wordLimit;
+      const wordCount = countWords(textareaValue);
+      const isOverLimit = wordLimit && wordCount > wordLimit;
+      
       return (
-        <Textarea
-          id={field.id}
-          name={field.name}
-          value={(value as string) || ""}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={field.placeholder}
-          required={field.required}
-          className={inputClassName}
-          rows={4}
-          disabled={disabled}
-        />
+        <div className="space-y-2">
+          <Textarea
+            id={field.id}
+            name={field.name}
+            value={textareaValue}
+            onChange={(e) => {
+              // Allow typing freely - validation happens on submit
+              onChange(e.target.value);
+            }}
+            placeholder={field.placeholder}
+            required={field.required}
+            className={isOverLimit ? "border-destructive" : inputClassName}
+            rows={4}
+            disabled={disabled}
+          />
+          {wordLimit && (
+            <div className="flex items-center justify-between text-xs">
+              <span className={isOverLimit ? "text-destructive" : "text-muted-foreground"}>
+                {wordCount} / {wordLimit} words
+              </span>
+              {isOverLimit && (
+                <span className="text-destructive font-medium">
+                  Word limit exceeded
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       );
 
     case "email":
