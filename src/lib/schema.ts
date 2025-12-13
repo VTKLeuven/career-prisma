@@ -144,13 +144,18 @@ export type Form = {
 export type FormMetadata = {
   deadline?: string; // ISO date string
   max_entries?: number; // Maximum number of submissions allowed
-  is_event_registration?: boolean; // If true, this form is for event registration
-  event_id?: string; // ID of the linked career event (for event registration forms)
+  is_event_registration?: boolean; // If true, this form is for event registration (student forms)
+  is_company_form?: boolean; // If true, this form is for companies
+  event_id?: string; // ID of the linked career event (for event registration forms and company forms)
+  option_ids?: string[]; // IDs of career event options - companies with these options are assigned to this form
   event_email_subject?: string; // Email subject for event confirmation
   event_email_content?: string; // Email content for event confirmation
   event_date?: string; // Event start date/time (ISO string)
   event_end_date?: string; // Event end date/time (ISO string)
   event_location?: string; // Event location
+  company_form_email_subject?: string; // Email subject for company form confirmation
+  company_form_email_content?: string; // Email content for company form confirmation
+  send_company_form_email?: boolean; // Whether to send confirmation email for company forms
   [key: string]: unknown; // Allow other metadata fields
 };
 
@@ -198,6 +203,10 @@ export type FormResponse = {
   submitted_at: string;
   attachments?: string[]; // Directus file IDs
   attendant_uuid?: string; // Unique UUID for event registration attendants
+  company_id?: string | Company; // Company that submitted the form (for company forms)
+  submitter_first_name?: string; // First name of person who submitted (for company forms, especially non-logged-in)
+  submitter_last_name?: string; // Last name of person who submitted (for company forms, especially non-logged-in)
+  submitter_email?: string; // Email of person who submitted (for company forms, especially non-logged-in)
 }
 
 // Optional: Full Directus Schema map (only collections you use)

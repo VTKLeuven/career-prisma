@@ -1,6 +1,6 @@
 // app/actions/companies.ts
 "use server";
-import { listCompanies, getCompanyById, createCompany, updateCompany } from "@/lib/repos/company";
+import { listCompanies, getCompanyById, createCompany, updateCompany, getCompaniesForEvent } from "@/lib/repos/company";
 import { createRep, updateRep, waitForApproval, deleteUser, fetchPendingApprovalRequests, type PendingApprovalRequest } from "@/lib/repos/users";
 import { Company, CompanyRep, CareerEventOption } from "@/lib/schema";
 import { uploadDirectusFile, sendEmail } from "@/lib/repos/directus";
@@ -118,6 +118,15 @@ import { slugifyCompanyName } from "@/lib/utils/slugify";
 
 function slugifyName(name?: string | null): string {
   return slugifyCompanyName(name);
+}
+
+export async function fetchCompaniesForEventAction(eventId: string, usePublic = false) {
+  try {
+    return await getCompaniesForEvent(eventId, usePublic);
+  } catch (error) {
+    console.error("[fetchCompaniesForEventAction] Error fetching companies for event:", error);
+    return [];
+  }
 }
 
 export async function fetchCompanyBySlugAction(slug: string): Promise<Company | null> {
@@ -852,15 +861,41 @@ export async function fetchPendingApprovalRequestsAction(): Promise<PendingAppro
       return [];
     }
 
+    // Check if user is admin or salesperson before calling
+    // This prevents permission errors for company reps
+    if (!user.admin) {
+      // Check if user is a salesperson by checking their role
+      const { getDirectusWithToken } = await import("@/lib/directus");
+      const userDirectus = await getDirectusWithToken();
+      if (userDirectus) {
+        try {
+          const { readMe } = await import("@directus/sdk");
+          const me = await userDirectus.request(readMe({ fields: ["role.id"] }));
+          const salespersonRoleId = "7b128ef4-f530-47d2-8f4c-ef82518eb313";
+          const isSalesperson = me.role?.id === salespersonRoleId;
+          
+          if (!isSalesperson) {
+            // User is neither admin nor salesperson - return empty array silently
+            return [];
+          }
+        } catch (error) {
+          // If we can't check role, assume not authorized
+          return [];
+        }
+      } else {
+        // Can't check role - return empty array silently
+        return [];
+      }
+    }
+
     // fetchPendingApprovalRequests will validate authorization server-side
     // and ensure the user can only see their own requests (unless they're an admin)
     return await fetchPendingApprovalRequests(user.id);
   } catch (error) {
-    // Log full error details for debugging
-    if (error instanceof Error) {
+    // Silently return empty array for unauthorized users (company reps)
+    // Only log actual errors, not permission denials
+    if (error instanceof Error && !error.message.includes("Unauthorized") && !error.message.includes("not a salesperson")) {
       console.error("Failed to fetch pending approval requests (action):", error.message, error.stack);
-    } else {
-      console.error("Failed to fetch pending approval requests (action) - non-Error object:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
     }
     return [];
   }

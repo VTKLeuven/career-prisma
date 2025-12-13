@@ -13,6 +13,9 @@ import type { CareerEvent, Company } from "@/lib/schema";
 import { useUser } from "@/providers/UserProvider";
 import Link from "next/link";
 import { getUpcomingEventsWithFallback, type EventWithStatus } from '@/lib/utils/events';
+import { fetchCompanyFormsForEventAction, checkCompanyFormCompletionAction } from '@/app/actions/forms';
+import { FileText, CheckCircle2 } from 'lucide-react';
+import { formatDateTimeBE } from '@/lib/date-utils';
 
 function MyEventsSection() {
   const { user } = useUser();
@@ -212,7 +215,7 @@ function MyEventsSection() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {companyEvents.map((event) => (
-            <ManageEventCard key={event.id ?? event.name} event={event} />
+            <ManageEventCard key={event.id ?? event.name} event={event} company={company} />
           ))}
         </div>
       )}
@@ -246,30 +249,145 @@ function MyEventsSection() {
   );
 }
 
-function ManageEventCard({ event }: { event: CareerEvent }) {
+function ManageEventCard({ event, company }: { event: CareerEvent; company: Company | null }) {
   const hours = [event.start_hour, event.end_hour].filter(Boolean).join(" – ");
   const scansUrl = `/dashboard/scans/event/${encodeURIComponent(event.name)}`;
+  const [forms, setForms] = React.useState<Array<{
+    id: string;
+    name: string;
+    slug: string;
+    description?: string;
+    activeVersion: { id: string; version_number: number; schema: any };
+  }>>([]);
+  const [loadingForms, setLoadingForms] = React.useState(true);
+  const [completedFormIds, setCompletedFormIds] = React.useState<Set<string>>(new Set());
+
+  // Get company option IDs
+  const companyOptionIds = React.useMemo(() => {
+    if (!company?.options) return [];
+    return company.options
+      .map((opt) => {
+        if (typeof opt === 'string') return opt;
+        if (opt && typeof opt === 'object') {
+          // Check for junction table format: { career_event_option_id: { id: "..." } }
+          if ('career_event_option_id' in opt) {
+            const optionRef = (opt as any).career_event_option_id;
+            if (typeof optionRef === 'string') return optionRef;
+            if (optionRef && typeof optionRef === 'object' && 'id' in optionRef) {
+              return optionRef.id;
+            }
+          }
+          // Check for direct id
+          if ('id' in opt) return opt.id;
+        }
+        return null;
+      })
+      .filter((id): id is string => id !== null);
+  }, [company]);
+
+  // Fetch company forms for this event
+  React.useEffect(() => {
+    if (!company?.id) {
+      setLoadingForms(false);
+      setForms([]);
+      return;
+    }
+
+    // Debug logging
+    console.log('[ManageEventCard] Fetching forms for event:', event.id, 'company:', company.id, 'optionIds:', companyOptionIds);
+
+    fetchCompanyFormsForEventAction(event.id, companyOptionIds)
+      .then(async (fetchedForms) => {
+        console.log('[ManageEventCard] Fetched forms:', fetchedForms.length, fetchedForms);
+        setForms(fetchedForms);
+        
+        // Check which forms are completed
+        if (company?.id && fetchedForms.length > 0) {
+          const formVersionIds = fetchedForms.map((f) => f.activeVersion.id);
+          const completed = await checkCompanyFormCompletionAction(company.id, formVersionIds);
+          
+          // Map form version IDs to form IDs
+          const completedFormIds = new Set<string>();
+          fetchedForms.forEach((form) => {
+            if (completed.has(form.activeVersion.id)) {
+              completedFormIds.add(form.id);
+            }
+          });
+          setCompletedFormIds(completedFormIds);
+        } else {
+          setCompletedFormIds(new Set());
+        }
+      })
+      .catch((err) => {
+        console.error('[ManageEventCard] Error fetching company forms:', err);
+        setForms([]);
+      })
+      .finally(() => setLoadingForms(false));
+  }, [event.id, company?.id, companyOptionIds]);
 
   return (
     <Card className="border rounded-lg shadow-sm">
       <CardHeader>
         <CardTitle>{event.name}</CardTitle>
       </CardHeader>
-      <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="grid grid-cols-2 gap-1 text-sm text-muted-foreground">
-          <span>Date</span>
-          <span className="font-medium text-foreground">{String(event.date ?? "TBA")}</span>
-          <span>Hours</span>
-          <span className="font-medium text-foreground">{hours || "TBA"}</span>
-          <span>Location</span>
-          <span className="font-medium text-foreground">{String(event.location ?? "TBA")}</span>
-          <span># Students</span>
-          <span className="font-medium text-foreground">{String(event.num_of_students ?? "–")}</span>
-        </div>
-        <div className="flex items-end">
-          <Button asChild variant="outline" className="w-full">
-            <Link href={scansUrl}>Scans</Link>
-          </Button>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-1 text-sm text-muted-foreground">
+            <span>Date</span>
+            <span className="font-medium text-foreground">{String(event.date ?? "TBA")}</span>
+            <span>Hours</span>
+            <span className="font-medium text-foreground">{hours || "TBA"}</span>
+            <span>Location</span>
+            <span className="font-medium text-foreground">{String(event.location ?? "TBA")}</span>
+            <span># Students</span>
+            <span className="font-medium text-foreground">{String(event.num_of_students ?? "–")}</span>
+          </div>
+          
+          <div className="space-y-2">
+            {/* Company Forms */}
+            {loadingForms ? (
+              <div className="text-xs text-muted-foreground">Loading forms...</div>
+            ) : forms.length > 0 ? (
+              <div className="space-y-2">
+                {forms.map((form) => {
+                  const isCompleted = completedFormIds.has(form.id);
+                  const formUrl = `/forms/company/${event.id}/${form.slug}`;
+                  const metadata = (form.activeVersion as any)?.metadata;
+                  const hasDeadline = !!metadata?.deadline;
+                  const deadline = metadata?.deadline ? new Date(metadata.deadline) : null;
+                  const isDeadlinePassed = deadline ? deadline < new Date() : false;
+                  
+                  return (
+                    <div key={form.id} className="space-y-1">
+                      <Button
+                        asChild
+                        variant={isCompleted ? "outline" : "default"}
+                        className={hasDeadline ? "w-full justify-start" : "w-full justify-center"}
+                        size="sm"
+                      >
+                        <Link href={formUrl}>
+                          {hasDeadline && <FileText className="h-4 w-4 mr-2" />}
+                          {form.name}
+                          {isCompleted && hasDeadline && <CheckCircle2 className="h-4 w-4 ml-auto text-green-600" />}
+                          {isCompleted && !hasDeadline && <CheckCircle2 className="h-4 w-4 ml-2 text-green-600" />}
+                        </Link>
+                      </Button>
+                      {hasDeadline && (
+                        <p className={`text-xs ${isDeadlinePassed ? 'text-red-600' : 'text-red-500'} font-medium`}>
+                          Deadline: {formatDateTimeBE(metadata.deadline as string)}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {/* Scans Button */}
+            <Button asChild variant="outline" className="w-full">
+              <Link href={scansUrl}>Scans</Link>
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

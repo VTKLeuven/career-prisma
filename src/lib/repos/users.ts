@@ -815,7 +815,8 @@ export async function fetchPendingApprovalRequests(salespersonId: string): Promi
     const isAdmin = user.admin || false;
     
     if (!isSalesperson && !isAdmin) {
-      console.error("Unauthorized: User is not a salesperson or admin");
+      // Don't log error for company reps - this is expected behavior
+      // The action should have already filtered these out, but if it didn't, silently return
       return [];
     }
 

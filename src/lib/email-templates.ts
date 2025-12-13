@@ -419,6 +419,68 @@ export function generateCompanyPageRequestEmailHtml({
 }
 
 /**
+ * Generate company form confirmation email HTML
+ */
+export function generateCompanyFormConfirmationEmailHtml({
+  subject,
+  submitterName,
+  personalizedContent,
+  formName,
+  companyName,
+}: {
+  subject: string;
+  submitterName: string;
+  personalizedContent: string;
+  formName: string;
+  companyName: string;
+}) {
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+            line-height: 1.6; 
+            color: #333; 
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+          }
+          .container { 
+            max-width: 600px; 
+            margin: 0 auto; 
+            padding: 40px 20px;
+            background-color: #ffffff;
+          }
+          h2 {
+            color: #111827;
+            margin-top: 0;
+          }
+          .signature {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            color: #6b7280;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h2>${formName}</h2>
+          <div>${personalizedContent}</div>
+          <div class="signature">
+            <p>Best regards,<br>The VTK Career Team</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
+/**
  * Generate password reset email HTML
  */
 export function generatePasswordResetEmailHtml({
