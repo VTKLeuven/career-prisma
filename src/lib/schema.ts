@@ -45,6 +45,7 @@ export type Company = {
   address_city?: string | null;
   address_country?: string | null;
   address: string;
+  status?: string;
   representatives?: CompanyRep[]
   category?: Master[] | { master_id: string; }[]
   options?: CareerEventOption[]
@@ -71,7 +72,8 @@ export type CareerEventOption = {
   name: string;
   description: string;
   price: string;
-  event: CareerEvent;
+  events?: CareerEvent[];
+  event?: CareerEvent; // Deprecated: use events instead (kept for backward compatibility)
 }
 
 export type CareerEventPage = {
@@ -90,6 +92,7 @@ export type CareerEventPage = {
   };
   companies?: Company[];
   floorplan?: Floorplan;
+  company_guide?: string; // Directus file ID for PDF
 };
 
 export type TimeSlot = {
@@ -107,11 +110,12 @@ export type Floorplan = {
   name: string;
   svg_file: string;
   year: string;
+  background_image?: string;
 }
 
 export type Booth = {
   id: string;
-  booth_number: string;
+  booth_number: number;
   coords: { x_pct: number; y_pct: number; width_pct: number; height_pct: number };
   Floorplan: Floorplan;
   company?: Company;
@@ -121,7 +125,9 @@ export type Master = {
   id: string;
   name: string;
   short_name: string;
-  logo: string
+  logo: string;
+  students?: number;
+  modules?: string; // HTML content
 }
 
 export type Form = {
@@ -137,11 +143,19 @@ export type Form = {
 
 export type FormMetadata = {
   deadline?: string; // ISO date string
-  is_event_registration?: boolean; // If true, this form is for event registration
+  max_entries?: number; // Maximum number of submissions allowed
+  is_event_registration?: boolean; // If true, this form is for event registration (student forms)
+  is_company_form?: boolean; // If true, this form is for companies
+  event_id?: string; // ID of the linked career event (for event registration forms and company forms)
+  option_ids?: string[]; // IDs of career event options - companies with these options are assigned to this form
   event_email_subject?: string; // Email subject for event confirmation
   event_email_content?: string; // Email content for event confirmation
-  event_date?: string; // Event date/time (ISO string)
+  event_date?: string; // Event start date/time (ISO string)
+  event_end_date?: string; // Event end date/time (ISO string)
   event_location?: string; // Event location
+  company_form_email_subject?: string; // Email subject for company form confirmation
+  company_form_email_content?: string; // Email content for company form confirmation
+  send_company_form_email?: boolean; // Whether to send confirmation email for company forms
   [key: string]: unknown; // Allow other metadata fields
 };
 
@@ -173,9 +187,12 @@ export type FormField = {
     pattern?: string;
     maxFileSize?: number; // Max file size in bytes (for file fields)
     allowedFileTypes?: string[]; // Allowed MIME types (for file fields)
+    wordLimit?: number; // Maximum number of words (for textarea fields)
   };
   layout?: 'full' | 'half' | 'third' | 'two-thirds'; // Field width layout
   multiple?: boolean; // For file fields - allow multiple file uploads
+  image?: string; // Directus file ID for field image (useful for material-related forms)
+  description?: string; // Description text to show with the field
 }
 
 export type FormResponse = {
@@ -185,6 +202,11 @@ export type FormResponse = {
   data: Record<string, unknown>;
   submitted_at: string;
   attachments?: string[]; // Directus file IDs
+  attendant_uuid?: string; // Unique UUID for event registration attendants
+  company_id?: string | Company; // Company that submitted the form (for company forms)
+  submitter_first_name?: string; // First name of person who submitted (for company forms, especially non-logged-in)
+  submitter_last_name?: string; // Last name of person who submitted (for company forms, especially non-logged-in)
+  submitter_email?: string; // Email of person who submitted (for company forms, especially non-logged-in)
 }
 
 // Optional: Full Directus Schema map (only collections you use)

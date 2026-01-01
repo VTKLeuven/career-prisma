@@ -17,10 +17,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import type { FormField, FormSchema } from "@/lib/schema";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
+import { getDirectusImageUrl } from "@/components/Images";
+import NextImage from "next/image";
 
 type PublicForm = {
   id: string;
@@ -29,6 +32,7 @@ type PublicForm = {
   description?: string;
   metadata?: {
     deadline?: string;
+    max_entries?: number;
     [key: string]: unknown;
   };
   activeVersion: {
@@ -36,6 +40,7 @@ type PublicForm = {
     version_number: number;
     schema: FormSchema;
   };
+  isFull?: boolean; // Indicates if form has reached max capacity
 };
 
 export default function PublicFormPage() {
@@ -72,6 +77,11 @@ export default function PublicFormPage() {
     loadForm();
   }, [loadForm]);
 
+  // Helper function to count words
+  const countWords = (text: string): number => {
+    return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+  };
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     
@@ -82,6 +92,17 @@ export default function PublicFormPage() {
         const value = formData[field.name];
         if (!value || (Array.isArray(value) && value.length === 0)) {
           newErrors[field.name] = `${field.label} is required`;
+        }
+      }
+      
+      // Validate word limit for textarea fields
+      if (field.type === "textarea" && field.validation?.wordLimit) {
+        const value = formData[field.name] as string;
+        if (value) {
+          const wordCount = countWords(value);
+          if (wordCount > field.validation.wordLimit) {
+            newErrors[field.name] = `${field.label} exceeds the word limit of ${field.validation.wordLimit} words (${wordCount} words entered)`;
+          }
         }
       }
     });
@@ -107,6 +128,9 @@ export default function PublicFormPage() {
       }
     }
 
+    // Note: Max entries check is handled server-side in submitFormResponseAction
+    // Client-side check removed since we can't count responses with public permissions
+
     setSubmitting(true);
     try {
       await submitFormResponseAction({
@@ -117,7 +141,8 @@ export default function PublicFormPage() {
       setSubmitted(true);
     } catch (error) {
       console.error("Error submitting form:", error);
-      alert("Failed to submit form. Please try again.");
+      const errorMessage = error instanceof Error ? error.message : "Failed to submit form. Please try again.";
+      alert(errorMessage);
     } finally {
       setSubmitting(false);
     }
@@ -143,6 +168,10 @@ export default function PublicFormPage() {
       return false;
     }
   }, [form?.metadata?.deadline]);
+
+  const isFormFull = React.useMemo(() => {
+    return form?.isFull === true;
+  }, [form?.isFull]);
 
   const handleFieldChange = (fieldName: string, value: unknown) => {
     setFormData((prev) => ({ ...prev, [fieldName]: value }));
@@ -176,6 +205,24 @@ export default function PublicFormPage() {
               <h2 className="text-2xl font-bold mb-2">Form Not Found</h2>
               <p className="text-muted-foreground mb-4">
                 The form you&apos;re looking for doesn&apos;t exist or is not currently available.
+              </p>
+              <Button onClick={() => router.push("/")}>Go Home</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isFormFull && form.metadata?.max_entries) {
+    return (
+      <div className="container mx-auto p-8">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center py-12">
+              <h2 className="text-2xl font-bold mb-2">Form Full</h2>
+              <p className="text-muted-foreground mb-4">
+                This form has reached its maximum capacity and is no longer accepting new entries.
               </p>
               <Button onClick={() => router.push("/")}>Go Home</Button>
             </div>
@@ -233,6 +280,13 @@ export default function PublicFormPage() {
               </p>
             </div>
           )}
+          {isFormFull && form.metadata?.max_entries && (
+            <div className="mb-4 p-4 bg-muted border border-border rounded-md">
+              <p className="text-muted-foreground">
+                This form has reached its maximum capacity and is no longer accepting new entries.
+              </p>
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-6">
             {(() => {
               // Group fields by layout rows
@@ -280,6 +334,7 @@ export default function PublicFormPage() {
                 <div key={`row-${rowIndex}`} className="grid grid-cols-1 md:grid-cols-12 gap-4">
                   {row.map((field) => {
                     const layout = field.layout || 'full';
+                    const imageUrl = field.image ? getDirectusImageUrl(field.image) : null;
                     
                     return (
                       <div key={field.id} className={`space-y-2 ${getColSpanClass(layout)}`}>
@@ -287,12 +342,25 @@ export default function PublicFormPage() {
                           {field.label}
                           {field.required && <span className="text-destructive ml-1">*</span>}
                         </Label>
+                        {field.description && (
+                          <p className="text-sm text-muted-foreground">{field.description}</p>
+                        )}
+                        {imageUrl && (
+                          <div className="relative w-full h-48 bg-muted rounded-md overflow-hidden border">
+                            <NextImage
+                              src={imageUrl}
+                              alt={field.label || "Field image"}
+                              fill
+                              className="object-contain"
+                            />
+                          </div>
+                        )}
                         <FormFieldRenderer
                           field={field}
                           value={formData[field.name]}
                           onChange={(value) => handleFieldChange(field.name, value)}
                           error={errors[field.name]}
-                          disabled={isDeadlinePassed}
+                          disabled={isDeadlinePassed || isFormFull}
                         />
                         {errors[field.name] && (
                           <p className="text-sm text-destructive">{errors[field.name]}</p>
@@ -305,10 +373,10 @@ export default function PublicFormPage() {
             })()}
 
             <div className="flex justify-end gap-4 pt-4">
-              <Button type="button" variant="outline" onClick={() => router.back()}>
+              <Button type="button" variant="outline" onClick={() => router.push("/")}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting || isDeadlinePassed}>
+              <Button type="submit" disabled={submitting || isDeadlinePassed || isFormFull}>
                 {submitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -324,6 +392,11 @@ export default function PublicFormPage() {
       </Card>
     </div>
   );
+}
+
+// Helper function to count words
+function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(word => word.length > 0).length;
 }
 
 function FormFieldRenderer({
@@ -343,18 +416,40 @@ function FormFieldRenderer({
 
   switch (field.type) {
     case "textarea":
+      const textareaValue = (value as string) || "";
+      const wordLimit = field.validation?.wordLimit;
+      const wordCount = countWords(textareaValue);
+      const isOverLimit = wordLimit && wordCount > wordLimit;
+      
       return (
-        <Textarea
-          id={field.id}
-          name={field.name}
-          value={(value as string) || ""}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={field.placeholder}
-          required={field.required}
-          className={inputClassName}
-          rows={4}
-          disabled={disabled}
-        />
+        <div className="space-y-2">
+          <Textarea
+            id={field.id}
+            name={field.name}
+            value={textareaValue}
+            onChange={(e) => {
+              // Allow typing freely - validation happens on submit
+              onChange(e.target.value);
+            }}
+            placeholder={field.placeholder}
+            required={field.required}
+            className={isOverLimit ? "border-destructive" : inputClassName}
+            rows={4}
+            disabled={disabled}
+          />
+          {wordLimit && (
+            <div className="flex items-center justify-between text-xs">
+              <span className={isOverLimit ? "text-destructive" : "text-muted-foreground"}>
+                {wordCount} / {wordLimit} words
+              </span>
+              {isOverLimit && (
+                <span className="text-destructive font-medium">
+                  Word limit exceeded
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       );
 
     case "email":
@@ -509,29 +604,28 @@ function FormFieldRenderer({
 
     case "radio":
       return (
-        <div className="space-y-2">
+        <RadioGroup
+          value={(value as string) || ""}
+          onValueChange={onChange}
+          required={field.required}
+          disabled={disabled}
+        >
           {(field.options || []).map((option, index) => (
             <div key={index} className="flex items-center space-x-2">
-              <input
-                type="radio"
+              <RadioGroupItem
                 id={`${field.id}-${index}`}
-                name={field.name}
                 value={option}
-                checked={value === option}
-                onChange={(e) => onChange(e.target.value)}
-                required={field.required}
-                className="cursor-pointer"
                 disabled={disabled}
               />
               <Label
                 htmlFor={`${field.id}-${index}`}
-                className="text-sm font-normal cursor-pointer"
+                className="text-sm font-normal cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-50"
               >
                 {option}
               </Label>
             </div>
           ))}
-        </div>
+        </RadioGroup>
       );
 
     case "file":

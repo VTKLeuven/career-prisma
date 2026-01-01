@@ -6,10 +6,16 @@ import { getDirectusImageUrl } from "@/components/Images";
 import { fetchCompanyByIdAction } from "@/app/actions/companies";
 import { fetchEventsAction } from "@/app/actions/events";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { motion } from 'framer-motion'
 import { Calendar } from "lucide-react";
 import type { CareerEvent, Company } from "@/lib/schema";
 import { useUser } from "@/providers/UserProvider";
+import Link from "next/link";
+import { getUpcomingEventsWithFallback, type EventWithStatus } from '@/lib/utils/events';
+import { fetchCompanyFormsForEventAction, checkCompanyFormCompletionAction } from '@/app/actions/forms';
+import { FileText, CheckCircle2 } from 'lucide-react';
+import { formatDateTimeBE } from '@/lib/date-utils';
 
 function MyEventsSection() {
   const { user } = useUser();
@@ -20,7 +26,22 @@ function MyEventsSection() {
   React.useEffect(() => {
     if (!user?.company?.id) return;
 
-    fetchCompanyByIdAction(user.company.id).then((c) => setCompany(c as Company ?? null));
+    fetchCompanyByIdAction(user.company.id).then((c) => {
+      if (c) {
+        setCompany(c as Company);
+        // Debug: log company options structure
+        console.log("Company options structure:", {
+          optionsCount: c.options?.length || 0,
+          firstOption: c.options?.[0] ? {
+            hasCareerEventOptionId: 'career_event_option_id' in (c.options[0] as any),
+            hasEvents: 'events' in ((c.options[0] as any)?.career_event_option_id || c.options[0] as any),
+            structure: Object.keys(c.options[0] as any),
+          } : null,
+        });
+      } else {
+        setCompany(null);
+      }
+    });
   }, [user?.company?.id]);
 
 
@@ -42,51 +63,138 @@ function MyEventsSection() {
 
   // Company's own events
   const companyEvents = React.useMemo(() => {
-  const companyOptions = company?.options ?? [];
+    const companyOptions = company?.options ?? [];
 
-  // Type guards to avoid any
-  const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
-  const hasEvent = (v: unknown): v is { event: unknown } => isRecord(v) && 'event' in v;
-  const getStringIdFromEventRef = (ref: unknown): string | null => {
-    if (typeof ref === 'string') return ref;
-    if (isRecord(ref)) {
-      const id = ref.id;
-      return typeof id === 'string' ? id : null;
-    }
-    return null;
-  };
+    // Type guards
+    const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+    const hasEvents = (v: unknown): v is { events: unknown } => isRecord(v) && 'events' in v;
+    const hasEvent = (v: unknown): v is { event: unknown } => isRecord(v) && 'event' in v;
+    
+    const getStringIdFromEventRef = (ref: unknown): string | null => {
+      if (typeof ref === 'string') return ref;
+      if (isRecord(ref)) {
+        const id = ref.id;
+        return typeof id === 'string' ? id : null;
+      }
+      return null;
+    };
 
-  // Extract event IDs from the career_event_option objects (handle multiple shapes)
-  const companyEventIds = (companyOptions as unknown[])
-      .map((opt) => {
-        if (!opt) return null;
-        if (isRecord(opt)) {
-          // Shape A: option has event directly
-          if (hasEvent(opt) && opt.event) {
-            return getStringIdFromEventRef(opt.event);
-          }
-          // Shape B: option nested under career_event_option_id
-          if ('career_event_option_id' in opt && opt.career_event_option_id) {
-            const ceo = (opt as Record<string, unknown>).career_event_option_id;
-            if (hasEvent(ceo) && ceo.event) {
-              return getStringIdFromEventRef(ceo.event);
-            }
+    // Extract event from junction table entry or direct event object
+    const extractEventFromRef = (eventOrJunction: unknown): CareerEvent | null => {
+      if (!eventOrJunction || !isRecord(eventOrJunction)) return null;
+      
+      // Check if it's a junction table entry - try multiple possible field names
+      // Directus junction tables can have different field names
+      const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
+      for (const fieldName of possibleJunctionFields) {
+        if (fieldName in eventOrJunction) {
+          const junction = eventOrJunction as Record<string, CareerEvent | string | null>;
+          const eventRef = junction[fieldName];
+          if (eventRef && typeof eventRef === 'object') {
+            return eventRef as CareerEvent;
           }
         }
-        return null;
-      })
-      .filter((v): v is string => typeof v === 'string');             // remove null/undefined
+      }
+      
+      // Check if it's a direct event object
+      if ('id' in eventOrJunction && 'name' in eventOrJunction) {
+        return eventOrJunction as CareerEvent;
+      }
+      
+      return null;
+    };
 
-    return allEvents.filter((e) => companyEventIds.includes(e.id));
+    // Extract event IDs from the career_event_option objects (handle multiple events per option)
+    const companyEventIds = new Set<string>();
+    
+    (companyOptions as unknown[]).forEach((opt, index) => {
+      if (!opt || !isRecord(opt)) return;
+      
+      let optionWithEvents: Record<string, unknown> | null = null;
+      
+      // Shape B: option nested under career_event_option_id (junction table format from company)
+      if ('career_event_option_id' in opt && opt.career_event_option_id) {
+        const ceo = opt.career_event_option_id;
+        if (isRecord(ceo)) {
+          optionWithEvents = ceo;
+        }
+      }
+      // Shape A: option has events array directly (already normalized)
+      else if (hasEvents(opt)) {
+        optionWithEvents = opt;
+      }
+      // Shape C: option has event directly (backward compatibility)
+      else if (hasEvent(opt)) {
+        const event = extractEventFromRef(opt.event);
+        if (event?.id) {
+          companyEventIds.add(event.id);
+        }
+        return;
+      }
+      
+      if (!optionWithEvents) {
+        // Debug: log option structure that we couldn't parse
+        if (index === 0) {
+          console.log("Option structure that couldn't be parsed:", Object.keys(opt));
+        }
+        return;
+      }
+      
+      // Extract events from the option
+      if (hasEvents(optionWithEvents) && Array.isArray(optionWithEvents.events)) {
+        optionWithEvents.events.forEach((eventOrJunction: unknown) => {
+          // Handle junction table format: events might be [{ career_event_id: EventObject }]
+          const event = extractEventFromRef(eventOrJunction);
+          if (event?.id) {
+            companyEventIds.add(event.id);
+          } else {
+            // Fallback: try to get ID directly
+            const eventId = getStringIdFromEventRef(eventOrJunction);
+            if (eventId) {
+              companyEventIds.add(eventId);
+            } else if (index === 0) {
+              // Debug: log first event structure that couldn't be parsed
+              console.log("Event structure that couldn't be parsed:", eventOrJunction);
+            }
+          }
+        });
+      }
+      // Fallback: handle single event (backward compatibility)
+      else if (hasEvent(optionWithEvents)) {
+        const event = extractEventFromRef(optionWithEvents.event);
+        if (event?.id) {
+          companyEventIds.add(event.id);
+        } else {
+          const eventId = getStringIdFromEventRef(optionWithEvents.event);
+          if (eventId) {
+            companyEventIds.add(eventId);
+          }
+        }
+      } else if (index === 0) {
+        // Debug: log option that has no events
+        console.log("Option with no events field:", {
+          keys: Object.keys(optionWithEvents),
+          option: optionWithEvents,
+        });
+      }
+    });
+
+    // Debug: log extracted event IDs
+    if (companyEventIds.size > 0) {
+      console.log(`Extracted ${companyEventIds.size} event IDs:`, Array.from(companyEventIds));
+    } else if (companyOptions.length > 0) {
+      console.warn("No event IDs extracted from company options", {
+        optionsCount: companyOptions.length,
+        firstOption: companyOptions[0],
+      });
+    }
+
+    return allEvents.filter((e) => companyEventIds.has(e.id));
   }, [allEvents, company]);
 
-  // Upcoming events (future events sorted by date, showing first 4)
+  // Upcoming events (future events and today's events sorted by date, showing first 4, with past events fallback)
   const upcomingEvents = React.useMemo(() => {
-    const now = new Date();
-    return allEvents
-      .filter((e) => new Date(e.date) > now) // assumes `startDate` field exists
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .slice(0, 4);
+    return getUpcomingEventsWithFallback(allEvents, 4);
   }, [allEvents]);
 
   return (
@@ -107,13 +215,13 @@ function MyEventsSection() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {companyEvents.map((event) => (
-            <ManageEventCard key={event.id ?? event.name} event={event} />
+            <ManageEventCard key={event.id ?? event.name} event={event} company={company} />
           ))}
         </div>
       )}
 
       {/* --- Discover upcoming events --- */}
-      <h2 className="text-2xl font-semibold tracking-tight md:text-3xl mt-8">
+      <h2 className="text-2xl font-semibold tracking-tight md:text-3xl mt-8 mb-10">
         Discover our upcoming events
       </h2>
 
@@ -127,33 +235,159 @@ function MyEventsSection() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {upcomingEvents.map((event, i) => (
-            <EventCard key={event.id ?? event.name} event={event} i={i} />
-          ))}
+          {upcomingEvents.map((event, i) => {
+            const isPast = event.isPast ?? false
+            return (
+              <div key={event.id ?? event.name} className={isPast ? 'opacity-60 grayscale' : ''}>
+                <EventCard event={event} i={i} />
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
   );
 }
 
-function ManageEventCard({ event }: { event: CareerEvent }) {
+function ManageEventCard({ event, company }: { event: CareerEvent; company: Company | null }) {
   const hours = [event.start_hour, event.end_hour].filter(Boolean).join(" – ");
+  const scansUrl = `/dashboard/scans/event/${encodeURIComponent(event.name)}`;
+  const [forms, setForms] = React.useState<Array<{
+    id: string;
+    name: string;
+    slug: string;
+    description?: string;
+    activeVersion: { id: string; version_number: number; schema: any };
+  }>>([]);
+  const [loadingForms, setLoadingForms] = React.useState(true);
+  const [completedFormIds, setCompletedFormIds] = React.useState<Set<string>>(new Set());
+
+  // Get company option IDs
+  const companyOptionIds = React.useMemo(() => {
+    if (!company?.options) return [];
+    return company.options
+      .map((opt) => {
+        if (typeof opt === 'string') return opt;
+        if (opt && typeof opt === 'object') {
+          // Check for junction table format: { career_event_option_id: { id: "..." } }
+          if ('career_event_option_id' in opt) {
+            const optionRef = (opt as any).career_event_option_id;
+            if (typeof optionRef === 'string') return optionRef;
+            if (optionRef && typeof optionRef === 'object' && 'id' in optionRef) {
+              return optionRef.id;
+            }
+          }
+          // Check for direct id
+          if ('id' in opt) return opt.id;
+        }
+        return null;
+      })
+      .filter((id): id is string => id !== null);
+  }, [company]);
+
+  // Fetch company forms for this event
+  React.useEffect(() => {
+    if (!company?.id) {
+      setLoadingForms(false);
+      setForms([]);
+      return;
+    }
+
+    // Debug logging
+    console.log('[ManageEventCard] Fetching forms for event:', event.id, 'company:', company.id, 'optionIds:', companyOptionIds);
+
+    fetchCompanyFormsForEventAction(event.id, companyOptionIds)
+      .then(async (fetchedForms) => {
+        console.log('[ManageEventCard] Fetched forms:', fetchedForms.length, fetchedForms);
+        setForms(fetchedForms);
+        
+        // Check which forms are completed
+        if (company?.id && fetchedForms.length > 0) {
+          const formVersionIds = fetchedForms.map((f) => f.activeVersion.id);
+          const completed = await checkCompanyFormCompletionAction(company.id, formVersionIds);
+          
+          // Map form version IDs to form IDs
+          const completedFormIds = new Set<string>();
+          fetchedForms.forEach((form) => {
+            if (completed.has(form.activeVersion.id)) {
+              completedFormIds.add(form.id);
+            }
+          });
+          setCompletedFormIds(completedFormIds);
+        } else {
+          setCompletedFormIds(new Set());
+        }
+      })
+      .catch((err) => {
+        console.error('[ManageEventCard] Error fetching company forms:', err);
+        setForms([]);
+      })
+      .finally(() => setLoadingForms(false));
+  }, [event.id, company?.id, companyOptionIds]);
 
   return (
     <Card className="border rounded-lg shadow-sm">
       <CardHeader>
         <CardTitle>{event.name}</CardTitle>
       </CardHeader>
-      <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="grid grid-cols-2 gap-1 text-sm text-muted-foreground">
-          <span>Date</span>
-          <span className="font-medium text-foreground">{String(event.date ?? "TBA")}</span>
-          <span>Hours</span>
-          <span className="font-medium text-foreground">{hours || "TBA"}</span>
-          <span>Location</span>
-          <span className="font-medium text-foreground">{String(event.location ?? "TBA")}</span>
-          <span># Students</span>
-          <span className="font-medium text-foreground">{String(event.num_of_students ?? "–")}</span>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-1 text-sm text-muted-foreground">
+            <span>Date</span>
+            <span className="font-medium text-foreground">{String(event.date ?? "TBA")}</span>
+            <span>Hours</span>
+            <span className="font-medium text-foreground">{hours || "TBA"}</span>
+            <span>Location</span>
+            <span className="font-medium text-foreground">{String(event.location ?? "TBA")}</span>
+            <span># Students</span>
+            <span className="font-medium text-foreground">{String(event.num_of_students ?? "–")}</span>
+          </div>
+          
+          <div className="space-y-2">
+            {/* Company Forms */}
+            {loadingForms ? (
+              <div className="text-xs text-muted-foreground">Loading forms...</div>
+            ) : forms.length > 0 ? (
+              <div className="space-y-2">
+                {forms.map((form) => {
+                  const isCompleted = completedFormIds.has(form.id);
+                  const formUrl = `/forms/company/${event.id}/${form.slug}`;
+                  const metadata = (form.activeVersion as any)?.metadata;
+                  const hasDeadline = !!metadata?.deadline;
+                  const deadline = metadata?.deadline ? new Date(metadata.deadline) : null;
+                  const isDeadlinePassed = deadline ? deadline < new Date() : false;
+                  
+                  return (
+                    <div key={form.id} className="space-y-1">
+                      <Button
+                        asChild
+                        variant={isCompleted ? "outline" : "default"}
+                        className={hasDeadline ? "w-full justify-start" : "w-full justify-center"}
+                        size="sm"
+                      >
+                        <Link href={formUrl}>
+                          {hasDeadline && <FileText className="h-4 w-4 mr-2" />}
+                          {form.name}
+                          {isCompleted && hasDeadline && <CheckCircle2 className="h-4 w-4 ml-auto text-green-600" />}
+                          {isCompleted && !hasDeadline && <CheckCircle2 className="h-4 w-4 ml-2 text-green-600" />}
+                        </Link>
+                      </Button>
+                      {hasDeadline && (
+                        <p className={`text-xs ${isDeadlinePassed ? 'text-red-600' : 'text-red-500'} font-medium`}>
+                          Deadline: {formatDateTimeBE(metadata.deadline as string)}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {/* Scans Button */}
+            <Button asChild variant="outline" className="w-full">
+              <Link href={scansUrl}>Scans</Link>
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -164,11 +398,13 @@ function EventCard({ event, i }: { event: CareerEvent; i: number }) {
 
   if (!event.href) return null; // skip if no href
 
+  const isPast = (event as EventWithStatus).isPast ?? false
+
   return (
     <motion.a
       key={event.name}
       href={event.href}
-      whileHover={{ y: -8, rotate: i % 2 ? -1 : 1 }}
+      whileHover={isPast ? {} : { y: -8, rotate: i % 2 ? -1 : 1 }}
       transition={{ type: "spring", stiffness: 260, damping: 18 }}
       className="group relative block"
     >

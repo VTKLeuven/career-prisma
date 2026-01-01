@@ -1,14 +1,17 @@
 'use client'
 
 import { useEffect, useState, useRef } from "react"
-import { useParams, usePathname } from "next/navigation"
+import { useParams, usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import NextImage from "next/image"
 import { fetchEventPagesAction } from "@/app/actions/events"
 import { fetchFloorplanAction, fetchMastersAction } from "@/app/actions/features"
 import type { CareerEventPage, Booth, Master, Company } from '@/lib/schema'
 import { getDirectusImageUrl } from "@/components/Images"
+import { slugifyCompanyName } from "@/lib/utils/slugify"
 import { usePageLayout } from '../../../layout'
+import { Button } from "@/components/ui/button"
+import { Clock, ArrowLeft, Users } from "lucide-react"
 
 export default function SubPage() {
   const { setHideLayoutHeader } = usePageLayout()
@@ -23,13 +26,16 @@ export default function SubPage() {
   const params = useParams()
   const pathname = usePathname()
   const eventName = Array.isArray(params.eventName) ? params.eventName[0] : params.eventName
+  const subPage = Array.isArray(params.subPage) ? params.subPage[0] : params.subPage
   const isFloorplanPage = pathname.endsWith("/floorplan")
+  const isCompanyGuidePage = pathname.endsWith("/company-guide")
+  const isMatchingSoftwarePage = subPage === "matching-software"
 
-  // Hide layout header when rendering floorplan header
+  // Hide layout header when rendering floorplan or company guide header
   useEffect(() => {
-    setHideLayoutHeader(isFloorplanPage)
+    setHideLayoutHeader(isFloorplanPage || isCompanyGuidePage)
     return () => setHideLayoutHeader(false)
-  }, [isFloorplanPage, setHideLayoutHeader])
+  }, [isFloorplanPage, isCompanyGuidePage, setHideLayoutHeader])
 
   useEffect(() => {
     async function load() {
@@ -96,7 +102,19 @@ export default function SubPage() {
         </>
       )}
 
-      {!isFloorplanPage && (
+      {!isFloorplanPage && isMatchingSoftwarePage && (
+        <ComingSoonPage 
+          title="Matching Software" 
+          description="Our matching software is currently under development. Soon you'll be able to connect with companies and find the perfect match for your career."
+          eventName={page?.event?.name || eventName || 'Event'}
+        />
+      )}
+
+      {isCompanyGuidePage && page && (
+        <CompanyGuidePage page={page} />
+      )}
+
+      {!isFloorplanPage && !isCompanyGuidePage && !isMatchingSoftwarePage && (
         <div className="p-10 text-center text-neutral-700">
           <h1 className="text-2xl font-semibold">Subpage</h1>
           <p className="mt-2 text-sm text-neutral-500">
@@ -120,6 +138,7 @@ function Header({
   booths,
   triggerFlicker,
   eventName,
+  isCompanyGuide = false,
 }: {
   categories: Master[]
   selectedCategories: string[]
@@ -127,6 +146,7 @@ function Header({
   booths: Booth[]
   triggerFlicker: (companyId: string) => void
   eventName: string
+  isCompanyGuide?: boolean
 }) {
   const toggleCategory = (short_name: string) => {
     if (selectedCategories.includes(short_name)) {
@@ -136,34 +156,81 @@ function Header({
     }
   }
 
+  const router = useRouter()
   const [searchTerm, setSearchTerm] = useState("")
   const [isFocused, setIsFocused] = useState(false)
 
-  const matchingCompanies = isFocused
+  const matchingCompanies = isFocused && !isCompanyGuide
     ? booths.filter(b => b.company)
       .filter(b =>
         searchTerm
           ? b.company!.name.toLowerCase().includes(searchTerm.toLowerCase())
           : true
       )
-      .sort((a, b) => (a.booth_number || "").localeCompare(b.booth_number || ""))
+      .sort((a, b) => (a.booth_number || 0) - (b.booth_number || 0))
     : []
 
   return (
     <>
-      <header className="fixed top-2 sm:top-4 inset-x-0 z-50 w-full px-2 sm:px-0">
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          /* Isolate header, categories, and popups from browser zoom */
+          .floorplan-header-isolated,
+          .floorplan-categories-isolated,
+          .floorplan-popup-isolated {
+            position: fixed !important;
+            z-index: 50 !important;
+            /* Use viewport units for positioning */
+            /* These should remain constant regardless of zoom */
+          }
+          
+          .floorplan-header-isolated {
+            top: 0.5rem !important;
+            left: 0 !important;
+            right: 0 !important;
+            width: 100vw !important;
+          }
+          
+          .floorplan-categories-isolated {
+            bottom: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            width: 100vw !important;
+          }
+          
+          .floorplan-popup-isolated {
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 100 !important;
+          }
+          
+          /* Prevent these elements from being affected by parent transforms */
+          .floorplan-header-isolated *,
+          .floorplan-categories-isolated *,
+          .floorplan-popup-isolated * {
+            transform: none !important;
+          }
+        `
+      }} />
+      <header 
+        className="floorplan-header-isolated fixed top-2 sm:top-4 inset-x-0 z-50 w-full px-2 sm:px-0"
+      >
         <div className="mx-auto max-w-7xl px-2 sm:px-4">
           {/* Mobile: Stack layout */}
           <div className="md:hidden flex flex-col gap-2">
-            {/* Top row: Floorplan label + VTK Jobfair + Home */}
+            {/* Top row: Page label + VTK Jobfair + Home */}
             <div className="flex items-center justify-between gap-2 rounded-xl border bg-white/85 px-2 sm:px-3 py-1.5 sm:py-2 shadow-md ring-1 ring-black/5 backdrop-blur-md">
-              <span className="text-xs font-semibold text-neutral-800">Floorplan</span>
+              <span className="text-xs font-semibold text-neutral-800">{isCompanyGuide ? 'Company page' : 'Floorplan'}</span>
               <div className="flex items-center gap-2">
                 <Link
                   href={`/event/${eventName.toLowerCase().replace(/\s+/g, "-")}`}
                   className="rounded-full bg-vtk-blue px-2.5 py-1 text-xs font-medium text-white cursor-pointer whitespace-nowrap"
                 >
-                  VTK Jobfair
+                  {eventName}
                 </Link>
                 <Link
                   href="/"
@@ -174,45 +241,47 @@ function Header({
               </div>
             </div>
             
-            {/* Bottom row: Search only (categories moved to bottom of page on mobile) */}
-            <div className="flex flex-col gap-2 rounded-xl border bg-white/85 px-2 sm:px-3 py-1.5 sm:py-2 shadow-md ring-1 ring-black/5 backdrop-blur-md">
-              <div className="relative w-full">
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  onFocus={() => setIsFocused(true)}
-                  onBlur={() => setTimeout(() => setIsFocused(false), 200)}
-                  placeholder="Search company..."
-                  className="w-full rounded-full border border-gray-300 px-3 py-1.5 text-xs"
-                />
-                {matchingCompanies.length > 0 && (
-                  <ul className="absolute top-full left-0 w-full mt-1 max-h-60 overflow-auto rounded-lg border bg-white shadow-lg z-50">
-                    {matchingCompanies.map(b => (
-                      <li
-                        key={b.company!.id}
-                        className="px-4 py-2 hover:bg-vtk-blue/10 cursor-pointer flex justify-between"
-                        onClick={() => {
-                          triggerFlicker(b.company!.id)
-                          setSearchTerm("")
-                          setIsFocused(false)
-                        }}
-                      >
-                        <span>{b.company!.name}</span>
-                        <span className="text-gray-500">{b.booth_number}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+            {/* Bottom row: Search (only for floorplan) - removed for company guide on mobile */}
+            {!isCompanyGuide && (
+              <div className="flex flex-col gap-2 rounded-xl border bg-white/85 px-2 sm:px-3 py-1.5 sm:py-2 shadow-md ring-1 ring-black/5 backdrop-blur-md">
+                <div className="relative w-full">
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => setTimeout(() => setIsFocused(false), 200)}
+                    placeholder="Search company..."
+                    className="w-full rounded-full border border-gray-300 px-3 py-1.5 text-xs"
+                  />
+                  {matchingCompanies.length > 0 && (
+                    <ul className="absolute top-full left-0 w-full mt-1 max-h-60 overflow-auto rounded-lg border bg-white shadow-lg z-50">
+                      {matchingCompanies.map(b => (
+                        <li
+                          key={b.company!.id}
+                          className="px-4 py-2 hover:bg-vtk-blue/10 cursor-pointer flex justify-between"
+                          onClick={() => {
+                            triggerFlicker(b.company!.id)
+                            setSearchTerm("")
+                            setIsFocused(false)
+                          }}
+                        >
+                          <span>{b.company!.name}</span>
+                          <span className="text-gray-500">{String(b.booth_number)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
-          {/* Desktop: Horizontal layout - original */}
+          {/* Desktop: Horizontal layout */}
           <div className="hidden md:flex items-center justify-between gap-3 rounded-2xl border bg-white/85 px-5 py-3 shadow-md ring-1 ring-black/5 backdrop-blur-md">
-            {/* Left: Floorplan + Home + Event */}
+            {/* Left: Page label + Home + Event */}
             <div className="flex items-center gap-4">
-              <span className="text-sm font-semibold text-neutral-800">Floorplan</span>
+              <span className="text-sm font-semibold text-neutral-800">{isCompanyGuide ? 'Company page' : 'Floorplan'}</span>
               <Link
                 href="/"
                 className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white cursor-pointer"
@@ -227,63 +296,81 @@ function Header({
               </Link>
             </div>
 
-            {/* Middle: Search bar */}
-            <div className="relative flex-1 max-w-xs">
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                onFocus={() => setIsFocused(true)}
-                onBlur={() => setTimeout(() => setIsFocused(false), 200)}
-                placeholder="Search company..."
-                className="w-full rounded-full border border-gray-300 px-4 py-2 text-sm"
-              />
-              {matchingCompanies.length > 0 && (
-                <ul className="absolute top-full left-0 w-full mt-1 max-h-60 overflow-auto rounded-lg border bg-white shadow-lg z-50">
-                  {matchingCompanies.map(b => (
-                    <li
-                      key={b.company!.id}
-                      className="px-4 py-2 hover:bg-vtk-blue/10 cursor-pointer flex justify-between"
-                      onClick={() => {
-                        triggerFlicker(b.company!.id)
-                        setSearchTerm("")
-                        setIsFocused(false)
-                      }}
-                    >
-                      <span>{b.company!.name}</span>
-                      <span className="text-gray-500">{b.booth_number}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            {/* Middle: Search bar (only for floorplan) or empty space (for company guide) */}
+            {!isCompanyGuide && (
+              <div className="relative flex-1 max-w-xs">
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  onFocus={() => setIsFocused(true)}
+                  onBlur={() => setTimeout(() => setIsFocused(false), 200)}
+                  placeholder="Search company..."
+                  className="w-full rounded-full border border-gray-300 px-4 py-2 text-sm"
+                />
+                {matchingCompanies.length > 0 && (
+                  <ul className="absolute top-full left-0 w-full mt-1 max-h-60 overflow-auto rounded-lg border bg-white shadow-lg z-50">
+                    {matchingCompanies.map(b => (
+                      <li
+                        key={b.company!.id}
+                        className="px-4 py-2 hover:bg-vtk-blue/10 cursor-pointer flex justify-between"
+                        onClick={() => {
+                          triggerFlicker(b.company!.id)
+                          setSearchTerm("")
+                          setIsFocused(false)
+                        }}
+                      >
+                        <span>{b.company!.name}</span>
+                        <span className="text-gray-500">{String(b.booth_number)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
 
-            {/* Right: Category logos */}
-            <div className="flex flex-wrap items-center gap-2">
-              {categories.map(cat => {
-                const isSelected = selectedCategories.includes(cat.short_name)
-                return (
-                  <button
-                    key={cat.short_name}
-                    onClick={() => toggleCategory(cat.short_name)}
-                    className="relative w-10 h-10 rounded-full overflow-hidden border transition-all duration-200 cursor-pointer flex items-center justify-center"
-                    style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
-                  >
-                    <NextImage
-                      src={getDirectusImageUrl(cat.logo) ?? ''}
-                      alt={cat.short_name}
-                      width={32}
-                      height={32}
-                      className={`object-contain transition-all duration-200 transform ${
-                        isSelected
-                          ? 'scale-110 grayscale-0 opacity-100'
-                          : 'scale-90 grayscale-[50%] opacity-70'
-                      }`}
-                    />
-                  </button>
-                )
-              })}
-            </div>
+            {/* Right: Category logos (only for floorplan) or buttons (for company guide) */}
+            {!isCompanyGuide && (
+              <div className="flex flex-wrap items-center gap-2">
+                {categories.map(cat => {
+                  const isSelected = selectedCategories.includes(cat.short_name)
+                  return (
+                    <button
+                      key={cat.short_name}
+                      onClick={() => toggleCategory(cat.short_name)}
+                      className="relative w-10 h-10 rounded-full overflow-hidden border transition-all duration-200 cursor-pointer flex items-center justify-center"
+                      style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
+                    >
+                      <NextImage
+                        src={getDirectusImageUrl(cat.logo) ?? ''}
+                        alt={cat.short_name}
+                        width={32}
+                        height={32}
+                        className={`object-contain transition-all duration-200 transform ${
+                          isSelected
+                            ? 'scale-110 grayscale-0 opacity-100'
+                            : 'scale-90 grayscale-[50%] opacity-70'
+                        }`}
+                      />
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            {isCompanyGuide && (
+              <div className="ml-auto flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10" 
+                  onClick={() => router.push("/dashboard")}
+                >
+                  Company Dashboard
+                </Button>
+                <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">
+                  <Link href="/contact">Contact Us</Link>
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -321,6 +408,24 @@ function Floorplan({
   const [boothsLocal, setBoothsLocal] = useState<Booth[]>([])
   const [svgContent, setSvgContent] = useState<string>("")
   const [viewBox, setViewBox] = useState<string>("0 0 1000 600")
+  const [originalViewBox, setOriginalViewBox] = useState<string>("0 0 1000 600")
+  const [backgroundImage, setBackgroundImage] = useState<string | null>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
+  const [hoveredBoothId, setHoveredBoothId] = useState<string | null>(null)
+  const [tooltip, setTooltip] = useState<{ companyName: string; x: number; y: number } | null>(null)
+  const [zoomLevel, setZoomLevel] = useState(1)
+  
+  // Mobile zoom state - use refs for values that don't need re-renders
+  const [mobileZoom, setMobileZoom] = useState(1)
+  const [mobilePan, setMobilePan] = useState({ x: 0, y: 0 })
+  const floorplanContainerRef = useRef<HTMLDivElement>(null)
+  const lastTapTime = useRef<number>(0)
+  const zoomStateRef = useRef({ zoom: 1, panX: 0, panY: 0 })
+  const lastTouchDistanceRef = useRef<number | null>(null)
+  const lastTouchCenterRef = useRef<{ x: number; y: number } | null>(null)
+  const isPanningRef = useRef(false)
+  const lastPanPointRef = useRef<{ x: number; y: number } | null>(null)
+  const rafIdRef = useRef<number | null>(null)
 
   useEffect(() => {
     const loadData = async () => {
@@ -332,15 +437,368 @@ function Floorplan({
       setBoothsLocal(boothsData)
       setBooths(boothsData)
       setSvgContent(data.svg || "")
+      setBackgroundImage((data as any).backgroundImage || null)
 
       const parser = new DOMParser()
       const svgDoc = parser.parseFromString(data.svg || "", "image/svg+xml")
-      const vb = svgDoc.documentElement.getAttribute("viewBox")
-      if (vb) setViewBox(vb)
+      const originalVb = svgDoc.documentElement.getAttribute("viewBox") || "0 0 1000 600"
+      
+      setOriginalViewBox(originalVb)
+      
+      // Parse original viewBox
+      const origVbParts = originalVb.split(/\s+/).map(Number)
+      if (origVbParts.length !== 4) {
+        setViewBox(originalVb)
+        return
+      }
+      
+      const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
+      
+      // Calculate bounds from all SVG elements
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      let hasBounds = false
+      
+      const extractBounds = (element: Element) => {
+        const tagName = element.tagName.toLowerCase()
+        if (['script', 'style', 'defs', 'metadata', 'title', 'desc'].includes(tagName)) return
+        
+        let x = 0, y = 0, width = 0, height = 0, valid = false
+        
+        if (tagName === 'rect') {
+          x = parseFloat(element.getAttribute('x') || '0')
+          y = parseFloat(element.getAttribute('y') || '0')
+          width = parseFloat(element.getAttribute('width') || '0')
+          height = parseFloat(element.getAttribute('height') || '0')
+          valid = width > 0 && height > 0
+        } else if (tagName === 'circle') {
+          const cx = parseFloat(element.getAttribute('cx') || '0')
+          const cy = parseFloat(element.getAttribute('cy') || '0')
+          const r = parseFloat(element.getAttribute('r') || '0')
+          x = cx - r
+          y = cy - r
+          width = r * 2
+          height = r * 2
+          valid = r > 0
+        } else if (tagName === 'ellipse') {
+          const cx = parseFloat(element.getAttribute('cx') || '0')
+          const cy = parseFloat(element.getAttribute('cy') || '0')
+          const rx = parseFloat(element.getAttribute('rx') || '0')
+          const ry = parseFloat(element.getAttribute('ry') || '0')
+          x = cx - rx
+          y = cy - ry
+          width = rx * 2
+          height = ry * 2
+          valid = rx > 0 && ry > 0
+        } else if (tagName === 'line') {
+          const x1 = parseFloat(element.getAttribute('x1') || '0')
+          const y1 = parseFloat(element.getAttribute('y1') || '0')
+          const x2 = parseFloat(element.getAttribute('x2') || '0')
+          const y2 = parseFloat(element.getAttribute('y2') || '0')
+          x = Math.min(x1, x2)
+          y = Math.min(y1, y2)
+          width = Math.abs(x2 - x1)
+          height = Math.abs(y2 - y1)
+          valid = width > 0 || height > 0
+        } else if (tagName === 'polyline' || tagName === 'polygon') {
+          const points = element.getAttribute('points') || ''
+          const coords = points.trim().split(/[\s,]+/).map(Number).filter(n => !isNaN(n))
+          if (coords.length >= 4) {
+            const xs = coords.filter((_, i) => i % 2 === 0)
+            const ys = coords.filter((_, i) => i % 2 === 1)
+            if (xs.length > 0 && ys.length > 0) {
+              x = Math.min(...xs)
+              y = Math.min(...ys)
+              width = Math.max(...xs) - x
+              height = Math.max(...ys) - y
+              valid = width > 0 && height > 0
+            }
+          }
+        } else if (tagName === 'path') {
+          const d = element.getAttribute('d') || ''
+          const numbers = d.match(/[-+]?(?:\d*\.?\d+|\d+\.?\d*)/g)?.map(Number) || []
+          if (numbers.length >= 2) {
+            const xs: number[] = []
+            const ys: number[] = []
+            for (let i = 0; i < numbers.length; i += 2) {
+              if (i + 1 < numbers.length) {
+                xs.push(numbers[i])
+                ys.push(numbers[i + 1])
+              }
+            }
+            if (xs.length > 0 && ys.length > 0) {
+              x = Math.min(...xs)
+              y = Math.min(...ys)
+              width = Math.max(...xs) - x
+              height = Math.max(...ys) - y
+              valid = width > 0 && height > 0
+            }
+          }
+        } else if (tagName === 'image') {
+          x = parseFloat(element.getAttribute('x') || '0')
+          y = parseFloat(element.getAttribute('y') || '0')
+          width = parseFloat(element.getAttribute('width') || '0')
+          height = parseFloat(element.getAttribute('height') || '0')
+          valid = width > 0 && height > 0
+        }
+        
+        if (valid && width > 0 && height > 0) {
+          minX = Math.min(minX, x)
+          minY = Math.min(minY, y)
+          maxX = Math.max(maxX, x + width)
+          maxY = Math.max(maxY, y + height)
+          hasBounds = true
+        }
+      }
+      
+      const walkElements = (element: Element) => {
+        extractBounds(element)
+        Array.from(element.children).forEach(walkElements)
+      }
+      
+      walkElements(svgDoc.documentElement)
+      
+      // Include booth bounds
+      boothsData.forEach(booth => {
+        if (booth.coords) {
+          const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
+          const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
+          const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
+          const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
+          
+          minX = Math.min(minX, boothX)
+          minY = Math.min(minY, boothY)
+          maxX = Math.max(maxX, boothX + boothWidth)
+          maxY = Math.max(maxY, boothY + boothHeight)
+          hasBounds = true
+        }
+      })
+      
+      // Adjust viewBox if we found valid bounds
+      if (hasBounds && minX < Infinity && minY < Infinity && maxX > -Infinity && maxY > -Infinity && minX < maxX && minY < maxY) {
+        const contentWidth = maxX - minX
+        const contentHeight = maxY - minY
+        
+        // Calculate whitespace
+        const horizontalWS = ((origVbWidth - contentWidth) / origVbWidth) * 100
+        const verticalWS = ((origVbHeight - contentHeight) / origVbHeight) * 100
+        
+        console.log('SVG Bounds Calculation:', {
+          originalViewBox: originalVb,
+          calculatedBounds: { minX, minY, maxX, maxY },
+          contentSize: { width: contentWidth, height: contentHeight },
+          whitespace: { horizontal: horizontalWS.toFixed(1) + '%', vertical: verticalWS.toFixed(1) + '%' }
+        })
+        
+        // Always adjust if we found bounds and there's any whitespace
+        if (contentWidth > 0 && contentHeight > 0 && (horizontalWS > 0 || verticalWS > 0)) {
+          // Very minimal padding - just enough to avoid edge clipping
+          const padding = Math.min(
+            Math.min(contentWidth, contentHeight) * 0.005, // 0.5% padding
+            3 // or 3px, whichever is smaller
+          )
+          const newX = Math.max(origVbX, minX - padding)
+          const newY = Math.max(origVbY, minY - padding)
+          const newWidth = contentWidth + padding * 2
+          const newHeight = contentHeight + padding * 2
+          
+          const newViewBox = `${newX} ${newY} ${newWidth} ${newHeight}`
+          console.log('Adjusted viewBox:', newViewBox)
+          setViewBox(newViewBox)
+        } else {
+          console.log('Using original viewBox - no significant whitespace detected')
+          setViewBox(originalVb)
+        }
+      } else {
+        console.log('No valid bounds found, using original viewBox')
+        setViewBox(originalVb)
+      }
     }
 
     loadData()
   }, [page, setBooths])
+
+  // Initialize refs with current state
+  useEffect(() => {
+    zoomStateRef.current = { zoom: mobileZoom, panX: mobilePan.x, panY: mobilePan.y }
+  }, []) // Only on mount
+
+  // Calculate distance between two touch points
+  const getTouchDistance = (touch1: React.Touch, touch2: React.Touch) => {
+    const dx = touch2.clientX - touch1.clientX
+    const dy = touch2.clientY - touch1.clientY
+    return Math.sqrt(dx * dx + dy * dy)
+  }
+
+  // Calculate center point between two touches
+  const getTouchCenter = (touch1: React.Touch, touch2: React.Touch) => {
+    return {
+      x: (touch1.clientX + touch2.clientX) / 2,
+      y: (touch1.clientY + touch2.clientY) / 2
+    }
+  }
+
+  // Update transform directly on DOM for performance (only during touch)
+  const updateTransform = useRef(() => {
+    if (floorplanContainerRef.current) {
+      const { zoom, panX, panY } = zoomStateRef.current
+      // Use translate3d for GPU acceleration
+      floorplanContainerRef.current.style.transform = `translate3d(${panX / zoom}px, ${panY / zoom}px, 0) scale(${zoom})`
+    }
+  }).current
+
+  // Sync ref state to React state (called at end of gesture)
+  const syncState = useRef(() => {
+    const { zoom, panX, panY } = zoomStateRef.current
+    setMobileZoom(zoom)
+    setMobilePan({ x: panX, y: panY })
+  }).current
+
+  // Handle touch start
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current)
+      rafIdRef.current = null
+    }
+
+    if (e.touches.length === 1) {
+      // Single touch - prepare for panning
+      const touch = e.touches[0]
+      if (floorplanContainerRef.current) {
+        const rect = floorplanContainerRef.current.getBoundingClientRect()
+        lastPanPointRef.current = {
+          x: touch.clientX - rect.left,
+          y: touch.clientY - rect.top
+        }
+        isPanningRef.current = zoomStateRef.current.zoom > 1
+      }
+      
+      // Double tap to zoom
+      const now = Date.now()
+      const timeSinceLastTap = now - lastTapTime.current
+      if (timeSinceLastTap < 300 && timeSinceLastTap > 0) {
+        // Double tap detected
+        if (zoomStateRef.current.zoom === 1) {
+          zoomStateRef.current.zoom = 2
+          zoomStateRef.current.panX = 0
+          zoomStateRef.current.panY = 0
+        } else {
+          zoomStateRef.current.zoom = 1
+          zoomStateRef.current.panX = 0
+          zoomStateRef.current.panY = 0
+        }
+        updateTransform()
+        syncState()
+        lastTapTime.current = 0
+      } else {
+        lastTapTime.current = now
+      }
+    } else if (e.touches.length === 2) {
+      // Two touches - prepare for pinch zoom
+      isPanningRef.current = false
+      const distance = getTouchDistance(e.touches[0], e.touches[1])
+      lastTouchDistanceRef.current = distance
+      const center = getTouchCenter(e.touches[0], e.touches[1])
+      if (floorplanContainerRef.current) {
+        const rect = floorplanContainerRef.current.getBoundingClientRect()
+        lastTouchCenterRef.current = {
+          x: center.x - rect.left,
+          y: center.y - rect.top
+        }
+      }
+    }
+  }
+
+  // Handle touch move - use requestAnimationFrame for smooth updates
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault() // Prevent scrolling while zooming/panning
+    
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current)
+    }
+
+    rafIdRef.current = requestAnimationFrame(() => {
+      if (e.touches.length === 1 && isPanningRef.current && zoomStateRef.current.zoom > 1) {
+        // Single touch panning (only when zoomed)
+        const touch = e.touches[0]
+        if (floorplanContainerRef.current && lastPanPointRef.current) {
+          const rect = floorplanContainerRef.current.getBoundingClientRect()
+          const currentX = touch.clientX - rect.left
+          const currentY = touch.clientY - rect.top
+          
+          const deltaX = currentX - lastPanPointRef.current.x
+          const deltaY = currentY - lastPanPointRef.current.y
+          
+          // Constrain pan to prevent going too far off screen
+          const maxPan = 200 * zoomStateRef.current.zoom
+          zoomStateRef.current.panX = Math.max(-maxPan, Math.min(maxPan, zoomStateRef.current.panX + deltaX))
+          zoomStateRef.current.panY = Math.max(-maxPan, Math.min(maxPan, zoomStateRef.current.panY + deltaY))
+          
+          updateTransform()
+          lastPanPointRef.current = { x: currentX, y: currentY }
+        }
+      } else if (e.touches.length === 2) {
+        // Pinch zoom
+        isPanningRef.current = false
+        const distance = getTouchDistance(e.touches[0], e.touches[1])
+        
+        if (lastTouchDistanceRef.current !== null && lastTouchDistanceRef.current > 0 && lastTouchCenterRef.current) {
+          const scaleChange = distance / lastTouchDistanceRef.current
+          const newZoom = Math.max(1, Math.min(4, zoomStateRef.current.zoom * scaleChange))
+          
+          if (floorplanContainerRef.current) {
+            const rect = floorplanContainerRef.current.getBoundingClientRect()
+            const currentCenter = getTouchCenter(e.touches[0], e.touches[1])
+            const centerX = currentCenter.x - rect.left
+            const centerY = currentCenter.y - rect.top
+            
+            // Calculate pan adjustment to zoom towards touch center
+            const zoomDelta = newZoom - zoomStateRef.current.zoom
+            const panX = lastTouchCenterRef.current.x - centerX
+            const panY = lastTouchCenterRef.current.y - centerY
+            
+            zoomStateRef.current.panX = zoomStateRef.current.panX - panX * (zoomDelta / zoomStateRef.current.zoom)
+            zoomStateRef.current.panY = zoomStateRef.current.panY - panY * (zoomDelta / zoomStateRef.current.zoom)
+            
+            // Constrain pan
+            const maxPan = 200 * newZoom
+            zoomStateRef.current.panX = Math.max(-maxPan, Math.min(maxPan, zoomStateRef.current.panX))
+            zoomStateRef.current.panY = Math.max(-maxPan, Math.min(maxPan, zoomStateRef.current.panY))
+          }
+          
+          zoomStateRef.current.zoom = newZoom
+          updateTransform()
+        }
+        
+        lastTouchDistanceRef.current = distance
+        const center = getTouchCenter(e.touches[0], e.touches[1])
+        if (floorplanContainerRef.current) {
+          const rect = floorplanContainerRef.current.getBoundingClientRect()
+          lastTouchCenterRef.current = {
+            x: center.x - rect.left,
+            y: center.y - rect.top
+          }
+        }
+      }
+      
+      rafIdRef.current = null
+    })
+  }
+
+  // Handle touch end - sync state
+  const handleTouchEnd = () => {
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current)
+      rafIdRef.current = null
+    }
+    
+    isPanningRef.current = false
+    lastTouchDistanceRef.current = null
+    lastTouchCenterRef.current = null
+    lastPanPointRef.current = null
+    
+    // Sync ref state to React state
+    syncState()
+  }
 
   if (!svgContent) {
     return (
@@ -349,7 +807,7 @@ function Floorplan({
           <p className="text-neutral-600">Loading floorplan...</p>
         </div>
         {/* Mobile: Categories at bottom while loading */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t px-4 py-3 shadow-lg">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t px-4 py-3 shadow-lg">
           <div className="flex flex-wrap items-center justify-center gap-2">
             {categories.map(cat => {
               const isSelected = selectedCategories.includes(cat.short_name)
@@ -382,14 +840,40 @@ function Floorplan({
 
   return (
     <>
-      <div className="pt-32 md:pt-[90px] flex justify-center w-full max-w-7xl px-2 sm:px-4 pb-20 md:pb-4">
-        <svg
-          viewBox={viewBox}
-          className="w-full h-auto"
-          xmlns="http://www.w3.org/2000/svg"
+      {backgroundImage && (
+        <div
+          className="fixed inset-0 z-0"
+          style={{
+            backgroundImage: `url(${getDirectusImageUrl(backgroundImage) || ""})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+          }}
+        />
+      )}
+      <div className={`pt-32 md:pt-[90px] flex justify-center w-full px-2 sm:px-4 pb-4 ${backgroundImage ? "relative z-10" : ""}`}>
+        <div 
+          ref={floorplanContainerRef}
+          className="relative w-full max-w-full md:hidden"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          style={{
+            touchAction: 'none',
+            transform: `translate3d(${mobilePan.x / mobileZoom}px, ${mobilePan.y / mobileZoom}px, 0) scale(${mobileZoom})`,
+            transformOrigin: 'center center',
+            overflow: 'hidden',
+            willChange: 'transform',
+          }}
         >
-          <g dangerouslySetInnerHTML={{ __html: svgContent }} />
-
+          <svg
+            ref={svgRef}
+            viewBox={viewBox}
+            className="w-full h-auto min-w-0 max-h-[calc(100vh-200px)]"
+            xmlns="http://www.w3.org/2000/svg"
+            preserveAspectRatio="xMidYMid meet"
+          >
+          {/* First: Render unselected white booths behind SVG */}
           {boothsLocal.map((booth, i) => {
             if (!booth.coords || !booth.company) return null
 
@@ -404,29 +888,269 @@ function Floorplan({
               )
 
             const isFlicker = flickerCompanyId === booth.company.id && flickerState
-
             const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
+
+            // Only render unselected booths here (white background)
+            if (isSelected) return null
+
+            const origVbParts = originalViewBox.split(/\s+/).map(Number)
+            if (origVbParts.length !== 4) return null
+            const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
+
+            const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
+            const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
+            const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
+            const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
 
             return (
               <rect
-                key={i}
-                x={booth.coords.x_pct + "%"}
-                y={booth.coords.y_pct + "%"}
-                width={booth.coords.width_pct + "%"}
-                height={booth.coords.height_pct + "%"}
-                fill={isSelected ? "rgba(0,51,102,0.35)" : "transparent"}
-                stroke={isSelected ? "#003366" : "transparent"}
-                strokeWidth={isSelected ? 1 : 0}
+                key={`unselected-${i}`}
+                x={boothX}
+                y={boothY}
+                width={boothWidth}
+                height={boothHeight}
+                fill="white"
+                stroke="#e5e7eb"
+                strokeWidth={1}
                 style={{ cursor: "pointer" }}
                 onClick={() => onBoothClick(booth.company!)}
+                onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
+                onMouseLeave={() => {
+                  setHoveredBoothId(null)
+                  setTooltip(null)
+                }}
+                onMouseMove={(e) => {
+                  if (hoveredBoothId === booth.company?.id && booth.company) {
+                    setTooltip({
+                      companyName: booth.company.name,
+                      x: e.clientX,
+                      y: e.clientY
+                    })
+                  }
+                }}
               />
             )
           })}
-        </svg>
+
+          {/* Second: SVG content (with pointer-events: none so it doesn't block clicks) */}
+          <g dangerouslySetInnerHTML={{ __html: svgContent }} style={{ pointerEvents: 'none' }} />
+
+          {/* Third: Render selected booths on top */}
+          {boothsLocal.map((booth, i) => {
+            if (!booth.coords || !booth.company) return null
+
+            const boothCats: Master[] = Array.isArray(booth.company.category)
+              ? booth.company.category.filter((c): c is Master => c !== null)
+              : []
+
+            const isCategorySelected =
+              selectedCategories.length > 0 &&
+              selectedCategories.every(cat =>
+                boothCats.map(c => c.short_name).includes(cat)
+              )
+
+            const isFlicker = flickerCompanyId === booth.company.id && flickerState
+            const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
+
+            // Only render selected booths here
+            if (!isSelected) return null
+
+            const origVbParts = originalViewBox.split(/\s+/).map(Number)
+            if (origVbParts.length !== 4) return null
+            const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
+
+            const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
+            const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
+            const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
+            const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
+            const isHovered = hoveredBoothId === booth.company?.id
+
+            return (
+              <rect
+                key={`selected-${i}`}
+                x={boothX}
+                y={boothY}
+                width={boothWidth}
+                height={boothHeight}
+                fill="rgba(0,51,102,0.35)"
+                stroke="#003366"
+                strokeWidth={1}
+                style={{ cursor: "pointer" }}
+                onClick={() => onBoothClick(booth.company!)}
+                onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
+                onMouseLeave={() => {
+                  setHoveredBoothId(null)
+                  setTooltip(null)
+                }}
+                onMouseMove={(e) => {
+                  if (isHovered && booth.company) {
+                    setTooltip({
+                      companyName: booth.company.name,
+                      x: e.clientX,
+                      y: e.clientY
+                    })
+                  }
+                }}
+              />
+            )
+          })}
+          </svg>
+          {/* Tooltip that follows mouse */}
+          {tooltip && (
+            <div
+              className="fixed pointer-events-none z-50 bg-neutral-900/80 text-white text-[10px] px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap"
+              style={{
+                left: `${tooltip.x + 8}px`,
+                top: `${tooltip.y + 8}px`,
+              }}
+            >
+              {tooltip.companyName}
+            </div>
+          )}
+        </div>
+        
+        {/* Desktop version without zoom */}
+        <div className="hidden md:block relative w-full max-w-full">
+          <svg
+            viewBox={viewBox}
+            className="w-full h-auto min-w-0 max-h-[calc(100vh-200px)]"
+            xmlns="http://www.w3.org/2000/svg"
+            preserveAspectRatio="xMidYMid meet"
+          >
+          {/* First: Render unselected white booths behind SVG */}
+          {boothsLocal.map((booth, i) => {
+            if (!booth.coords || !booth.company) return null
+
+            const boothCats: Master[] = Array.isArray(booth.company.category)
+              ? booth.company.category.filter((c): c is Master => c !== null)
+              : []
+
+            const isCategorySelected =
+              selectedCategories.length > 0 &&
+              selectedCategories.every(cat =>
+                boothCats.map(c => c.short_name).includes(cat)
+              )
+
+            const isFlicker = flickerCompanyId === booth.company.id && flickerState
+            const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
+
+            // Only render unselected booths here (white background)
+            if (isSelected) return null
+
+            const origVbParts = originalViewBox.split(/\s+/).map(Number)
+            if (origVbParts.length !== 4) return null
+            const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
+
+            const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
+            const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
+            const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
+            const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
+
+            return (
+              <rect
+                key={`unselected-desktop-${i}`}
+                x={boothX}
+                y={boothY}
+                width={boothWidth}
+                height={boothHeight}
+                fill="white"
+                stroke="#e5e7eb"
+                strokeWidth={1}
+                style={{ cursor: "pointer" }}
+                onClick={() => onBoothClick(booth.company!)}
+                onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
+                onMouseLeave={() => {
+                  setHoveredBoothId(null)
+                  setTooltip(null)
+                }}
+                onMouseMove={(e) => {
+                  if (hoveredBoothId === booth.company?.id && booth.company) {
+                    setTooltip({
+                      companyName: booth.company.name,
+                      x: e.clientX,
+                      y: e.clientY
+                    })
+                  }
+                }}
+              />
+            )
+          })}
+
+          {/* Second: SVG content (with pointer-events: none so it doesn't block clicks) */}
+          <g dangerouslySetInnerHTML={{ __html: svgContent }} style={{ pointerEvents: 'none' }} />
+
+          {/* Third: Render selected booths on top */}
+          {boothsLocal.map((booth, i) => {
+            if (!booth.coords || !booth.company) return null
+
+            const boothCats: Master[] = Array.isArray(booth.company.category)
+              ? booth.company.category.filter((c): c is Master => c !== null)
+              : []
+
+            const isCategorySelected =
+              selectedCategories.length > 0 &&
+              selectedCategories.every(cat =>
+                boothCats.map(c => c.short_name).includes(cat)
+              )
+
+            const isFlicker = flickerCompanyId === booth.company.id && flickerState
+            const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
+
+            // Only render selected booths here
+            if (!isSelected) return null
+
+            const origVbParts = originalViewBox.split(/\s+/).map(Number)
+            if (origVbParts.length !== 4) return null
+            const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
+
+            const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
+            const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
+            const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
+            const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
+            const isHovered = hoveredBoothId === booth.company?.id
+
+            return (
+              <rect
+                key={`selected-desktop-${i}`}
+                x={boothX}
+                y={boothY}
+                width={boothWidth}
+                height={boothHeight}
+                fill="rgba(0,51,102,0.35)"
+                stroke="#003366"
+                strokeWidth={1}
+                style={{ cursor: "pointer" }}
+                onClick={() => onBoothClick(booth.company!)}
+                onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
+                onMouseLeave={() => {
+                  setHoveredBoothId(null)
+                  setTooltip(null)
+                }}
+                onMouseMove={(e) => {
+                  if (isHovered && booth.company) {
+                    setTooltip({
+                      companyName: booth.company.name,
+                      x: e.clientX,
+                      y: e.clientY
+                    })
+                  }
+                }}
+              />
+            )
+          })}
+          </svg>
+        </div>
       </div>
 
+      {/* Company List */}
+      <CompanyList 
+        booths={boothsLocal}
+        selectedCategories={selectedCategories}
+        onCompanyClick={onBoothClick}
+      />
+
       {/* Mobile: Categories at bottom */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t px-4 py-3 shadow-lg">
+      <div className="floorplan-categories-isolated md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t px-4 py-3 shadow-lg">
         <div className="flex flex-wrap items-center justify-center gap-2">
           {categories.map(cat => {
             const isSelected = selectedCategories.includes(cat.short_name)
@@ -457,11 +1181,316 @@ function Floorplan({
   )
 }
 
+// ---------------- Company List ----------------
+function CompanyList({
+  booths,
+  selectedCategories,
+  onCompanyClick,
+}: {
+  booths: Booth[]
+  selectedCategories: string[]
+  onCompanyClick: (company: Company) => void
+}) {
+  // Filter booths that have companies and sort by booth number
+  const companiesWithBooths = booths
+    .filter(b => b.company && b.booth_number)
+    .map(b => ({
+      company: b.company!,
+      boothNumber: b.booth_number!,
+    }))
+    .sort((a, b) => a.boothNumber - b.boothNumber)
+
+  if (companiesWithBooths.length === 0) {
+    return null
+  }
+
+  // Check if a company has ALL selected categories (same logic as floorplan)
+  const hasSelectedCategory = (company: Company) => {
+    if (selectedCategories.length === 0) return false
+    
+    const companyCats: Master[] = Array.isArray(company.category)
+      ? company.category.filter((c): c is Master => c !== null)
+      : []
+    
+    // Company must have ALL selected categories (exact same logic as floorplan)
+    return selectedCategories.every(cat =>
+      companyCats.map(c => c.short_name).includes(cat)
+    )
+  }
+
+  return (
+    <div className="w-full px-2 sm:px-4 pb-4 relative z-10">
+      <div className="max-w-7xl mx-auto">
+        <h2 className="text-xl font-semibold text-neutral-900 mb-4 mt-6">
+          Companies ({companiesWithBooths.length})
+        </h2>
+        <div 
+          className="gap-3"
+          style={{
+            columnCount: 1,
+            columnGap: '0.75rem',
+          }}
+        >
+          <style dangerouslySetInnerHTML={{
+            __html: `
+              @media (min-width: 640px) {
+                .company-list-columns {
+                  column-count: 2 !important;
+                }
+              }
+              @media (min-width: 768px) {
+                .company-list-columns {
+                  column-count: 3 !important;
+                }
+              }
+              @media (min-width: 1024px) {
+                .company-list-columns {
+                  column-count: 4 !important;
+                }
+              }
+              .company-list-columns > * {
+                break-inside: avoid;
+                margin-bottom: 0.75rem;
+              }
+            `
+          }} />
+          <div className="company-list-columns">
+          {companiesWithBooths.map(({ company, boothNumber }) => {
+            const isHighlighted = hasSelectedCategory(company)
+            
+            return (
+              <CompanyListItem
+                key={company.id}
+                company={company}
+                boothNumber={boothNumber}
+                isHighlighted={isHighlighted}
+                onCompanyClick={onCompanyClick}
+              />
+            )
+          })}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CompanyListItem({
+  company,
+  boothNumber,
+  isHighlighted,
+  onCompanyClick,
+}: {
+  company: Company
+  boothNumber: number
+  isHighlighted: boolean
+  onCompanyClick: (company: Company) => void
+}) {
+  return (
+    <button
+      onClick={() => onCompanyClick(company)}
+      className={`w-full text-left p-3 rounded-lg border transition-all cursor-pointer ${
+        isHighlighted
+          ? 'border-vtk-blue font-bold'
+          : 'bg-white border-neutral-200 hover:border-vtk-blue/50 hover:bg-neutral-50'
+      }`}
+      style={{
+        backgroundColor: isHighlighted ? 'rgba(147, 166, 193, 1)' : 'white',
+      }}
+    >
+      <div className="flex-1 min-w-0">
+        <div className={`text-sm ${isHighlighted ? 'font-bold text-black' : 'font-medium text-neutral-900'}`}>
+          {company.name}
+        </div>
+        <div className="text-xs text-neutral-500 mt-1">
+          Booth {boothNumber}
+        </div>
+      </div>
+    </button>
+  )
+}
+
 // ---------------- Popup ----------------
+function CompanyGuidePage({ page }: { page: CareerEventPage }) {
+  // Get company guide file ID
+  const companyGuide = page.company_guide
+  const fileId = !companyGuide 
+    ? null 
+    : typeof companyGuide === 'string' 
+      ? companyGuide 
+      : (companyGuide as { id?: string })?.id || null
+  
+  // Use API route to proxy PDF to avoid CORS issues
+  const pdfUrl = fileId 
+    ? `/api/pdf-proxy?fileId=${fileId}`
+    : null
+
+  if (!pdfUrl) {
+    return (
+      <div className="p-10 text-center text-neutral-700">
+        <h1 className="text-2xl font-semibold">Company Guide</h1>
+        <p className="mt-2 text-sm text-neutral-500">
+          Company guide not available.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-vtk-bg">
+      <Header
+        categories={[]}
+        selectedCategories={[]}
+        setSelectedCategories={() => {}}
+        booths={[]}
+        triggerFlicker={() => {}}
+        eventName={page.event.name}
+        isCompanyGuide={true}
+      />
+      <PDFViewer pdfUrl={pdfUrl} />
+    </div>
+  )
+}
+
+// ---------------- PDF Viewer Component ----------------
+// Use iframe for perfect PDF rendering with CSS to hide internal scrollbar
+function PDFViewer({ pdfUrl }: { pdfUrl: string }) {
+  return (
+    <>
+      {/* CSS to completely hide PDF viewer scrollbars */}
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          /* Hide all scrollbars in PDF iframe */
+          .pdf-iframe-container iframe {
+            overflow: hidden !important;
+            scrollbar-width: none !important; /* Firefox */
+            -ms-overflow-style: none !important; /* IE/Edge */
+          }
+          
+          /* Hide scrollbars in WebKit browsers */
+          .pdf-iframe-container iframe::-webkit-scrollbar {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+            background: transparent !important;
+          }
+          
+          /* Hide scrollbar track and thumb */
+          .pdf-iframe-container iframe::-webkit-scrollbar-track,
+          .pdf-iframe-container iframe::-webkit-scrollbar-thumb {
+            display: none !important;
+          }
+          
+          /* Additional CSS to hide PDF.js scrollbars if present */
+          .pdf-iframe-container iframe body,
+          .pdf-iframe-container iframe body * {
+            scrollbar-width: none !important;
+            -ms-overflow-style: none !important;
+          }
+          
+          .pdf-iframe-container iframe body::-webkit-scrollbar,
+          .pdf-iframe-container iframe body *::-webkit-scrollbar {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+          }
+          
+          /* Make iframe content scrollable but hide scrollbar */
+          .pdf-iframe-container iframe {
+            pointer-events: auto !important;
+          }
+        `
+      }} />
+      <div className="pt-24 pb-10">
+        <div className="max-w-4xl mx-auto px-4">
+          <div className="bg-white rounded-lg shadow-sm border overflow-hidden pdf-iframe-container">
+            {/* Use iframe with very large height to make it part of page flow */}
+            <iframe
+              src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+              className="w-full border-0"
+              style={{ 
+                minHeight: '800px',
+                height: '20000px', // Very large height to avoid internal scrollbar
+                display: 'block',
+                overflow: 'hidden',
+                border: 'none',
+                pointerEvents: 'auto',
+              }}
+              title="Company Guide PDF"
+              scrolling="no"
+            />
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function ComingSoonPage({ title, description, eventName }: { title: string; description: string; eventName: string }) {
+  const eventSlug = eventName.toLowerCase().replace(/\s+/g, "-")
+  
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-vtk-blue/5 via-white to-vtk-yellow/5 flex items-center justify-center px-4 py-16">
+      <div className="max-w-2xl mx-auto text-center">
+        {/* Icon */}
+        <div className="flex justify-center mb-8">
+          <div className="rounded-full bg-vtk-blue/10 p-6">
+            <Users className="h-16 w-16 text-vtk-blue" />
+          </div>
+        </div>
+
+        {/* Heading */}
+        <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-neutral-900 mb-4">
+          {title}
+        </h1>
+        <p className="text-xl sm:text-2xl text-neutral-600 mb-2">
+          Coming Soon
+        </p>
+        <div className="flex items-center justify-center gap-2 text-neutral-500 mb-12">
+          <Clock className="h-5 w-5" />
+          <span>We're working on something amazing</span>
+        </div>
+
+        {/* Description */}
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-neutral-200 p-8 mb-8">
+          <p className="text-lg text-neutral-700 leading-relaxed">
+            {description}
+          </p>
+        </div>
+
+        {/* CTA Buttons */}
+        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+          <Button
+            asChild
+            className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark text-white px-6 py-3"
+          >
+            <Link href={`/event/${eventSlug}`}>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Event
+            </Link>
+          </Button>
+          <Button
+            asChild
+            variant="outline"
+            className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/10 px-6 py-3"
+          >
+            <Link href="/">Back to Home</Link>
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Popup({ company, onClose }: { company: Company; onClose: () => void }) {
+  // Get company categories/masters
+  const companyCategories: Master[] = Array.isArray(company.category)
+    ? company.category.filter((c): c is Master => c !== null)
+    : []
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      className="floorplan-popup-isolated fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div
@@ -469,12 +1498,11 @@ function Popup({ company, onClose }: { company: Company; onClose: () => void }) 
         onClick={(e) => e.stopPropagation()}
       >
         <button
-          className="absolute top-3 right-3 text-neutral-500 hover:text-neutral-800"
+          className="absolute top-3 right-3 text-neutral-500 hover:text-neutral-800 text-2xl leading-none"
           onClick={onClose}
         >
           ✕
         </button>
-
         {company.logo && (
           <div className="flex justify-center mb-4">
             <NextImage
@@ -491,6 +1519,27 @@ function Popup({ company, onClose }: { company: Company; onClose: () => void }) 
           {company.name}
         </h2>
 
+        {companyCategories.length > 0 && (
+          <div className="flex flex-wrap items-center justify-center gap-2 mb-4">
+            {companyCategories.map(cat => (
+              <div
+                key={cat.id}
+                className="relative w-10 h-10 rounded-full overflow-hidden border border-neutral-300 flex items-center justify-center bg-white"
+              >
+                {cat.logo && (
+                  <NextImage
+                    src={getDirectusImageUrl(cat.logo) ?? ''}
+                    alt={cat.short_name}
+                    width={32}
+                    height={32}
+                    className="object-contain"
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
         {company.short_description && (
           <div className="text-center">
             <div
@@ -501,10 +1550,10 @@ function Popup({ company, onClose }: { company: Company; onClose: () => void }) 
           </div>
         )}
 
-        {company.page_on_platform && (
+        {company?.page_on_platform === true && company?.status === "published" && (
           <div className="mt-5 flex items-center justify-center gap-3">
             <Link
-              href={`/company/${(company.name || "").toLowerCase().replace(/\s+/g, "-")}`}
+              href={`/company/${slugifyCompanyName(company.name)}`}
               className="rounded-full bg-vtk-blue text-white px-4 py-2 text-sm font-medium hover:bg-vtk-blueDark"
             >
               View company page

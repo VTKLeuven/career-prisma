@@ -29,6 +29,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { 
   Plus, 
@@ -46,10 +47,14 @@ import {
   Calendar,
   ChevronUp,
   ChevronDown,
-  GripVertical
+  GripVertical,
+  X,
+  Image as ImageIcon
 } from "lucide-react";
 import type { Form, FormVersion, FormField, FormSchema } from "@/lib/schema";
 import Link from "next/link";
+import { getDirectusImageUrl } from "@/components/Images";
+import NextImage from "next/image";
 
 type FieldType = "text" | "textarea" | "email" | "number" | "select" | "checkbox" | "radio" | "file" | "date" | "date-range" | "time";
 
@@ -349,12 +354,26 @@ export default function FormBuilderPage() {
                         <div key={`row-${rowIndex}`} className="grid grid-cols-1 md:grid-cols-12 gap-4">
                           {row.map((field) => {
                             const layout = field.layout || 'full';
+                            const imageUrl = field.image ? getDirectusImageUrl(field.image) : null;
                             return (
                               <div key={field.id} className={`space-y-2 ${getColSpanClass(layout)}`}>
                                 <Label>
                                   {field.label || "Untitled Field"}
                                   {field.required && <span className="text-destructive ml-1">*</span>}
                                 </Label>
+                                {field.description && (
+                                  <p className="text-sm text-muted-foreground">{field.description}</p>
+                                )}
+                                {imageUrl && (
+                                  <div className="relative w-full h-32 bg-muted rounded-md overflow-hidden border">
+                                    <NextImage
+                                      src={imageUrl}
+                                      alt={field.label || "Field image"}
+                                      fill
+                                      className="object-contain"
+                                    />
+                                  </div>
+                                )}
                                 <FormFieldPreview field={field} />
                               </div>
                             );
@@ -401,6 +420,66 @@ function FieldEditor({
   isLast: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [optionsText, setOptionsText] = useState((field.options ?? []).join("\n"));
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  
+  // Sync optionsText when field.options changes externally
+  useEffect(() => {
+    setOptionsText((field.options ?? []).join("\n"));
+  }, [field.options]);
+
+  // Load image preview when field.image changes
+  useEffect(() => {
+    if (field.image) {
+      const imageUrl = getDirectusImageUrl(field.image);
+      setImagePreview(imageUrl || null);
+    } else {
+      setImagePreview(null);
+    }
+  }, [field.image]);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      alert("Please select an image file.");
+      e.target.value = "";
+      return;
+    }
+
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Upload failed' }));
+        throw new Error(errorData.error || 'Upload failed');
+      }
+
+      const result = await response.json();
+      onUpdate({ image: result.id });
+    } catch (error) {
+      console.error('Image upload error:', error);
+      alert(`Failed to upload image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      e.target.value = "";
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    onUpdate({ image: undefined });
+    setImagePreview(null);
+  };
 
   return (
     <Card className={expanded ? "border-primary" : ""}>
@@ -527,11 +606,50 @@ function FieldEditor({
                 <Label htmlFor={`field-${index}-options`}>Options (one per line)</Label>
                 <Textarea
                   id={`field-${index}-options`}
-                  value={(field.options ?? []).join("\n")}
-                  onChange={(e) => onUpdate({ options: e.target.value.split("\n").filter(Boolean) })}
-                  placeholder="Option 1&#10;Option 2&#10;Option 3"
+                  value={optionsText}
+                  onChange={(e) => {
+                    // Update local state immediately so Enter works
+                    setOptionsText(e.target.value);
+                  }}
+                  onBlur={() => {
+                    // Process options when user leaves the field
+                    const options = optionsText
+                      .split("\n")
+                      .map(opt => opt.trim())
+                      .filter(Boolean);
+                    onUpdate({ options });
+                  }}
+                  placeholder="Enter each option on a new line"
                   rows={4}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Press Enter after each option to add it on a new line
+                </p>
+              </div>
+            )}
+
+            {field.type === "textarea" && (
+              <div className="space-y-1">
+                <Label htmlFor={`field-${index}-wordLimit`}>Word Limit</Label>
+                <Input
+                  id={`field-${index}-wordLimit`}
+                  type="number"
+                  value={field.validation?.wordLimit ?? ""}
+                  onChange={(e) => {
+                    const wordLimit = e.target.value ? parseInt(e.target.value, 10) : undefined;
+                    onUpdate({
+                      validation: {
+                        ...field.validation,
+                        wordLimit: wordLimit && wordLimit > 0 ? wordLimit : undefined,
+                      },
+                    });
+                  }}
+                  placeholder="No limit"
+                  min={1}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Set a maximum number of words allowed in this textarea field. Leave empty for no limit.
+                </p>
               </div>
             )}
 
@@ -573,6 +691,63 @@ function FieldEditor({
               </>
             )}
 
+            <div className="space-y-1">
+              <Label htmlFor={`field-${index}-description`}>Description</Label>
+              <Textarea
+                id={`field-${index}-description`}
+                value={field.description ?? ""}
+                onChange={(e) => onUpdate({ description: e.target.value })}
+                placeholder="Optional description to show with this field (useful for material-related forms)"
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">
+                Add a description to help users understand what this field is for
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor={`field-${index}-image`}>Field Image</Label>
+              {imagePreview ? (
+                <div className="relative border rounded-md p-2">
+                  <div className="relative w-full h-48 bg-muted rounded-md overflow-hidden">
+                    <NextImage
+                      src={imagePreview}
+                      alt="Field preview"
+                      fill
+                      className="object-contain"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleRemoveImage}
+                    className="mt-2 w-full"
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Remove Image
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Input
+                    id={`field-${index}-image`}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    disabled={uploadingImage}
+                    className="cursor-pointer"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Upload an image to show what this field represents (especially useful for material-related forms)
+                  </p>
+                  {uploadingImage && (
+                    <p className="text-xs text-muted-foreground">Uploading...</p>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="flex items-center space-x-2">
               <Checkbox
                 id={`field-${index}-required`}
@@ -595,13 +770,22 @@ function FormFieldPreview({ field }: { field: FormField }) {
   
   switch (field.type) {
     case "textarea":
+      const wordLimit = field.validation?.wordLimit;
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <FieldIcon className="h-4 w-4" />
             <span>Text Area</span>
+            {wordLimit && (
+              <span className="text-xs">(Max {wordLimit} words)</span>
+            )}
           </div>
           <Textarea placeholder={field.placeholder} disabled />
+          {wordLimit && (
+            <p className="text-xs text-muted-foreground">
+              Word limit: {wordLimit} words
+            </p>
+          )}
         </div>
       );
     case "select":
@@ -642,14 +826,14 @@ function FormFieldPreview({ field }: { field: FormField }) {
             <FieldIcon className="h-4 w-4" />
             <span>Radio Buttons</span>
           </div>
-          <div className="space-y-2">
+          <RadioGroup value="" disabled>
             {(field.options ?? ["Option 1"]).map((opt, i) => (
               <div key={i} className="flex items-center space-x-2">
-                <input type="radio" disabled />
-                <Label>{opt}</Label>
+                <RadioGroupItem value={opt} id={`preview-${i}`} />
+                <Label htmlFor={`preview-${i}`}>{opt}</Label>
               </div>
             ))}
-          </div>
+          </RadioGroup>
         </div>
       );
     case "file":

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { ServiceWorkerRegistration } from "@/components/ServiceWorker";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -13,10 +14,11 @@ export const metadata: Metadata = {
   description: "Welcome to the new VTK career platform",
 };
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <ServiceWorkerRegistration />
         {children}
       </body>
     </html>

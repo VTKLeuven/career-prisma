@@ -15,10 +15,56 @@ import { CareerEvent } from '@/lib/schema'
 import { DirectusUser } from "@directus/sdk";
 import { ScrollCue } from '@/components/ScrollCue';
 import { useBannerPage } from '@/hooks/use-banner-page';
+import { getUpcomingEventsWithFallback, type EventWithStatus } from '@/lib/utils/events';
 
 export default function HomePage() {
     const [viewAllEvents, setViewAllEvents] = useState(false);
     useBannerPage();
+
+    // Check for hash on mount and listen for view all events event
+    useEffect(() => {
+        const checkHash = () => {
+            if (window.location.hash === '#all-events') {
+                setViewAllEvents(true);
+                // Scroll to events section after a short delay to ensure DOM is ready
+                setTimeout(() => {
+                    const eventsSection = document.getElementById('events');
+                    if (eventsSection) {
+                        eventsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }, 100);
+            }
+        };
+        
+        // Handler for custom event from header
+        const handleViewAllEvents = () => {
+            setViewAllEvents(true);
+            setTimeout(() => {
+                const eventsSection = document.getElementById('events');
+                if (eventsSection) {
+                    eventsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }, 100);
+        };
+        
+        // Check immediately
+        checkHash();
+        
+        // Also check after a short delay (in case page just loaded)
+        const timeoutId = setTimeout(checkHash, 300);
+        
+        // Listen for hash changes
+        window.addEventListener('hashchange', checkHash);
+        
+        // Listen for custom event from header (when on same page)
+        window.addEventListener('viewAllEvents', handleViewAllEvents);
+        
+        return () => {
+            clearTimeout(timeoutId);
+            window.removeEventListener('hashchange', checkHash);
+            window.removeEventListener('viewAllEvents', handleViewAllEvents);
+        };
+    }, []);
 
     return (
         <>
@@ -29,13 +75,13 @@ export default function HomePage() {
                 <UpcomingEvents onViewAll={() => setViewAllEvents(true)} />
             )}
             <TeamOverview />
-            <Footer />
         </>
     )
 }
 
 function Header({ onViewAll }: { onViewAll?: () => void }) {
   const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
+  const [menuOpenedViaClick, setMenuOpenedViaClick] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const router = useRouter()
   const [EVENTS, setEvents] = useState<CareerEvent[]>([]);
@@ -44,7 +90,14 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
   const eventsMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-      fetchEventsAction().then(setEvents);
+      // Use API route for better caching
+      fetch('/api/homepage')
+        .then(res => res.json())
+        .then((data) => setEvents(data.events ?? []))
+        .catch(() => {
+          // Fallback to direct action
+          fetchEventsAction().then(setEvents);
+        });
   }, []);
 
   // Close menus when clicking outside
@@ -57,6 +110,7 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
       if (eventsMenuRef.current && !eventsMenuRef.current.contains(event.target as Node) &&
           !(event.target as HTMLElement).closest('button[aria-controls="mega-events"]')) {
         setOpenMenu(null)
+        setMenuOpenedViaClick(false)
       }
     }
 
@@ -72,6 +126,7 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           setOpenMenu(null);
+          setMenuOpenedViaClick(false);
           setMobileMenuOpen(false);
         }
       }}
@@ -81,18 +136,32 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
       <div className="mx-auto max-w-7xl px-2 sm:px-4">
         <div className="flex items-center justify-between gap-2 sm:gap-3 rounded-xl sm:rounded-2xl border bg-white/85 px-2 sm:px-3 md:px-5 py-1.5 sm:py-2 md:py-3 shadow-[0_12px_40px_rgba(0,0,0,0.10)] ring-1 ring-black/5 backdrop-blur-md">
           <Link href="/" className="flex shrink-0 items-center gap-1 sm:gap-2 rounded-full px-1 sm:px-2">
-            <span className="text-xs sm:text-sm font-semibold tracking-tight text-vtk-blue">VTK Career</span>
+            <Image 
+              src="/career_blue.png" 
+              alt="VTK Career" 
+              width={120} 
+              height={40} 
+              className="h-6 sm:h-8 w-auto self-center"
+              priority
+            />
           </Link>
 
           <nav className="hidden items-center gap-2 md:flex">
-            <Link href="#" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">Home</Link>
+            <Link href="/" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">Home</Link>
 
             <div className="relative">
               <button
                 type="button"
-                onMouseEnter={() => setOpenMenu('events')}
+                onMouseEnter={() => {
+                  if (!menuOpenedViaClick) {
+                    setOpenMenu('events')
+                  }
+                }}
                 onFocus={() => setOpenMenu('events')}
-                onClick={() => setOpenMenu((s) => (s === 'events' ? null : 'events'))}
+                onClick={() => {
+                  setOpenMenu('events')
+                  setMenuOpenedViaClick(true)
+                }}
                 className="inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
                 aria-expanded={openMenu === 'events'}
                 aria-controls="mega-events"
@@ -101,12 +170,13 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
               </button>
             </div>
 
-            <Link href="#students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Services</Link>
+            <Link href="/our-students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
+            <Link href="/vacancies" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
 
           {/* Mobile nav - Events as simple button */}
           <nav className="md:hidden flex items-center gap-2">
-            <Link href="#" className="rounded-full bg-vtk-blue px-3 py-1.5 text-xs font-medium text-white">Home</Link>
+            <Link href="/" className="rounded-full bg-vtk-blue px-3 py-1.5 text-xs font-medium text-white">Home</Link>
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -114,12 +184,12 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
             >
               Events
             </button>
-            <Link href="#students" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Services</Link>
+            <Link href="/vacancies" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
             <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => router.push("/dashboard")}>Company Dashboard</Button>
-            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="#contact">Contact Us</Link></Button>
+            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="/contact">Contact Us</Link></Button>
             
             {/* Mobile menu button - only show if menu is closed (Events button handles opening) */}
             {!mobileMenuOpen && (
@@ -175,7 +245,20 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
                       className="h-7 rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5 text-xs px-3"
                       onClick={() => {
                         setMobileMenuOpen(false);
-                        onViewAll?.();
+                        if (onViewAll) {
+                          // On homepage, use callback directly
+                          onViewAll();
+                          // Scroll to events section
+                          setTimeout(() => {
+                            const eventsSection = document.getElementById('events');
+                            if (eventsSection) {
+                              eventsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                          }, 100);
+                        } else {
+                          // On other pages, navigate to homepage with hash
+                          router.push('/#all-events');
+                        }
                       }}
                     >
                       View all
@@ -186,8 +269,10 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
                       .filter((e) => {
                         try {
                           const eventDate = new Date(e.date);
+                          const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
                           const now = new Date();
-                          return eventDate > now;
+                          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                          return eventDay >= today; // Include today and future events
                         } catch {
                           return false;
                         }
@@ -218,6 +303,14 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
                 {/* Other Links */}
                 <div className="border-t pt-4 space-y-2">
                   <Button 
+                    asChild 
+                    variant="outline"
+                    className="rounded-full border-neutral-300 text-neutral-800 hover:bg-neutral-100 w-full"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <Link href="/our-students">Our students</Link>
+                  </Button>
+                  <Button 
                     variant="outline" 
                     className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full" 
                     onClick={() => {
@@ -232,7 +325,7 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
                     className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full"
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    <Link href="#contact">Contact Us</Link>
+                    <Link href="/contact">Contact Us</Link>
                   </Button>
                 </div>
               </div>
@@ -254,7 +347,11 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
             transition={{ duration: 0.18 }}
             className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 hidden md:block"
             onMouseEnter={() => setOpenMenu('events')}
-            onMouseLeave={() => setOpenMenu(null)}
+            onMouseLeave={() => {
+              if (!menuOpenedViaClick) {
+                setOpenMenu(null)
+              }
+            }}
           >
             <div className="mx-auto max-w-7xl px-4">
               <div className="rounded-2xl border bg-white/85 backdrop-blur-md shadow-xl -mx-8">
@@ -266,10 +363,23 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
                         size="sm"
                         variant="outline"
                         className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5"
-                        onClick={() => {
-                          setOpenMenu(null);
-                          onViewAll?.();
-                        }}
+                      onClick={() => {
+                        setOpenMenu(null);
+                        if (onViewAll) {
+                          // On homepage, use callback directly
+                          onViewAll();
+                          // Scroll to events section
+                          setTimeout(() => {
+                            const eventsSection = document.getElementById('events');
+                            if (eventsSection) {
+                              eventsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                          }, 100);
+                        } else {
+                          // On other pages, navigate to homepage with hash
+                          router.push('/#all-events');
+                        }
+                      }}
                       >
                         View all
                       </Button>
@@ -279,8 +389,10 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
                         .filter((e) => {
                           try {
                             const eventDate = new Date(e.date);
+                            const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
                             const now = new Date();
-                            return eventDate > now;
+                            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                            return eventDay >= today; // Include today and future events
                           } catch {
                             return false;
                           }
@@ -309,7 +421,9 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
                       <div className="text-sm font-medium text-neutral-900">Featured</div>
                       <p className="mt-1 text-sm text-neutral-700">Meet 200+ companies at our flagship jobfair in Leuven.</p>
                       <div className="mt-4">
-                        <Button className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">Explore jobfair</Button>
+                        <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">
+                          <Link href="/event/vtk-jobfair">Explore jobfair</Link>
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -340,6 +454,9 @@ function Hero() {
                     alt="VTK Career events crowd"
                     fill
                     priority
+                    fetchPriority="high"
+                    loading="eager"
+                    sizes="100vw"
                     className="object-cover"
                 />
             </motion.div>
@@ -380,32 +497,25 @@ function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
 
     useEffect(() => {
         let alive = true;
-        fetchEventsAction()
-          .then((rows) => { if (!alive) return; setEvents(rows ?? []); })
-          .catch((err) => console.error("Error fetching events:", err))
+        // Use API route for better caching
+        fetch('/api/homepage')
+          .then(res => res.json())
+          .then((data) => { 
+            if (!alive) return; 
+            setEvents(data.events ?? []); 
+          })
+          .catch(() => {
+            // Fallback to direct action
+            return fetchEventsAction()
+              .then((rows) => { if (!alive) return; setEvents(rows ?? []); })
+              .catch((err) => console.error("Error fetching events:", err));
+          })
           .finally(() => setLoading(false));
         return () => { alive = false; };
     }, []);
 
-    // Filter and sort upcoming events
-    const upcomingEvents = EVENTS
-      .filter((e) => {
-        try {
-          const eventDate = new Date(e.date);
-          const now = new Date();
-          return eventDate > now;
-        } catch {
-          return false;
-        }
-      })
-      .sort((a, b) => {
-        try {
-          return new Date(a.date).getTime() - new Date(b.date).getTime();
-        } catch {
-          return 0;
-        }
-      })
-      .slice(0, 3);
+    // Filter and sort upcoming events, with past events fallback
+    const upcomingEvents = getUpcomingEventsWithFallback(EVENTS, 3);
 
     if (loading) return <section id="events" className="py-16 text-center"><p className="text-sm text-muted-foreground">Loading events…</p></section>;
 
@@ -423,22 +533,51 @@ function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-                    {upcomingEvents.map((event, i) => (
-                        <motion.a
+                    {upcomingEvents.map((event, i) => {
+                      const imageUrl = event.image ? getDirectusImageUrl(event.image) : null
+                      const isPast = event.isPast ?? false
+                      return (
+                        <motion.div
                             key={event.name}
-                            href={event.href ?? '#'}
-                            whileHover={{ y: -8, rotate: i % 2 ? -1 : 1 }}
+                            whileHover={isPast ? {} : { y: -8, rotate: i % 2 ? -1 : 1 }}
                             transition={{ type: 'spring', stiffness: 260, damping: 18 }}
-                            className="group relative block"
+                            className={`group relative block ${isPast ? 'opacity-60 grayscale' : ''}`}
+                            onMouseEnter={() => {
+                              // Prefetch image on hover for faster navigation
+                              // Using prefetch (not preload) to avoid console warnings
+                              if (imageUrl && typeof window !== 'undefined') {
+                                // Debounce to avoid too many requests
+                                setTimeout(() => {
+                                  // Check if link already exists
+                                  const existing = document.querySelector(`link[href="${imageUrl}"]`)
+                                  if (!existing) {
+                                    const link = document.createElement('link')
+                                    link.rel = 'prefetch'
+                                    link.as = 'image'
+                                    link.href = imageUrl
+                                    document.head.appendChild(link)
+                                  }
+                                }, 300) // Slightly longer delay to reduce warnings
+                              }
+                            }}
                         >
+                            <Link
+                                href={event.href ?? '#'}
+                                prefetch={true}
+                                className="block"
+                            >
                             <div className="rounded-[28px] bg-white/90 p-3 shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md">
                                 <div className="relative overflow-hidden rounded-[20px]">
-                                    <div className="aspect-[4/3]">
+                                    <div className="relative aspect-[4/3]">
                                       {event.image && (
                                       <Image
                                         src={getDirectusImageUrl(event.image)!}
                                         alt={event.name}
-                                        fill className="object-cover transition-transform duration-300 group-hover:scale-105"
+                                        fill 
+                                        priority={i < 3} // Priority for first 3 images
+                                        fetchPriority={i < 3 ? "high" : "auto"}
+                                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                                        className="object-cover transition-transform duration-300 group-hover:scale-105"
                                       />
                                       )}
                                     </div>
@@ -454,8 +593,10 @@ function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
                                 </div>
                             </div>
                             <div aria-hidden className="absolute inset-x-6 -bottom-3 h-6 rounded-full bg-black/10 blur-md opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-                        </motion.a>
-                    ))}
+                            </Link>
+                        </motion.div>
+                      )
+                    })}
                 </div>
 
                 {/* All events button - below cards on mobile only */}
@@ -474,20 +615,31 @@ function AllEvents({ onBack }: { onBack?: () => void }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchEventsAction()
-      .then((rows) => setEvents(rows ?? []))
-      .catch((err) => console.error("Error fetching events:", err))
+    // Use API route for better caching
+    fetch('/api/homepage')
+      .then(res => res.json())
+      .then((data) => setEvents(data.events ?? []))
+      .catch(() => {
+        // Fallback to direct action
+        return fetchEventsAction()
+          .then((rows) => setEvents(rows ?? []))
+          .catch((err) => console.error("Error fetching events:", err));
+      })
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <section className="py-16 text-center"><p className="text-sm text-muted-foreground">Loading all events…</p></section>;
+  if (loading) return <section id="events" className="py-16 text-center"><p className="text-sm text-muted-foreground">Loading all events…</p></section>;
 
   return (
-    <section className="relative border-t bg-white">
+    <section id="events" className="relative border-t bg-white">
       <div className="relative mx-auto max-w-7xl px-4 py-16">
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">All Events</h2>
-          <Button variant="outline" className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5" onClick={onBack}>
+          <Button variant="outline" className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5" onClick={() => {
+            onBack?.();
+            // Remove hash from URL when going back
+            window.history.replaceState(null, '', window.location.pathname + window.location.search);
+          }}>
             Back
           </Button>
         </div>
@@ -513,9 +665,19 @@ function TeamOverview() {
 
     useEffect(() => {
       let alive = true;
-      fetchSalespersonsAction()
-        .then((rows) => { if (!alive) return; setTeam(rows ?? []); })
-        .catch((err) => console.error("Error fetching salespersons:", err))
+      // Use API route for better caching (shares cache with events)
+      fetch('/api/homepage')
+        .then(res => res.json())
+        .then((data) => { 
+          if (!alive) return; 
+          setTeam(data.salespersons ?? []); 
+        })
+        .catch(() => {
+          // Fallback to direct action
+          return fetchSalespersonsAction()
+            .then((rows) => { if (!alive) return; setTeam(rows ?? []); })
+            .catch((err) => console.error("Error fetching salespersons:", err));
+        })
         .finally(() => setLoading(false));
       return () => { alive = false; };
     }, []);
@@ -555,6 +717,7 @@ function TeamOverview() {
                     alt={`${m.first_name} ${m.last_name}`}
                     width={96}
                     height={96}
+                    loading="lazy"
                     className="h-full w-full object-cover"
                   />
                   )}
@@ -577,55 +740,4 @@ function TeamOverview() {
     )
 }
 
-function Footer() {
-    return (
-        <footer id="contact" className="bg-white">
-            <div className="mx-auto max-w-7xl px-4 py-12 sm:py-16">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-10">
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-3">
-                            <div className="relative h-8 w-8 overflow-hidden rounded-xl border bg-vtk-light" />
-                            <span className="font-semibold text-vtk-blue">VTK Career Hub</span>
-                        </div>
-                        <p className="max-w-xs text-sm text-neutral-700">The all-in-one platform for engineering students looking for a job.</p>
-                    </div>
-
-                    <div>
-                        <h4 className="mb-3 text-sm font-medium text-neutral-900">Explore</h4>
-                        <ul className="space-y-2 text-sm text-neutral-700">
-                            <li><Link href="#events" className="hover:text-vtk-blue hover:underline underline-offset-4">Events</Link></li>
-                            <li><Link href="#team" className="hover:text-vtk-blue hover:underline underline-offset-4">Team</Link></li>
-                        </ul>
-                    </div>
-
-                    <div>
-                        <h4 className="mb-3 text-sm font-medium text-neutral-900">For partners</h4>
-                        <ul className="space-y-2 text-sm text-neutral-700">
-                            <li><Link href="#" className="hover:text-vtk-blue hover:underline underline-offset-4">Sponsor</Link></li>
-                            <li><Link href="#" className="hover:text-vtk-blue hover:underline underline-offset-4">Job postings</Link></li>
-                        </ul>
-                    </div>
-
-                    <div>
-                        <h4 className="mb-3 text-sm font-medium text-neutral-900">Get in touch</h4>
-                        <ul className="space-y-2 text-sm text-neutral-700">
-                            <li><Link href="mailto:career@vtk.be" className="hover:text-vtk-blue hover:underline underline-offset-4">career@vtk.be</Link></li>
-                        </ul>
-                    </div>
-                </div>
-
-                <Separator className="my-10" />
-
-                <div className="flex flex-col items-start justify-between gap-4 text-xs text-neutral-600 sm:flex-row sm:items-center">
-                    <p>© {new Date().getFullYear()} Career Hub. All rights reserved.</p>
-                    <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-                        <Link href="#" className="hover:text-vtk-blue">Privacy</Link>
-                        <Link href="#" className="hover:text-vtk-blue">Terms</Link>
-                        <Link href="#" className="hover:text-vtk-blue">Cookies</Link>
-                    </div>
-                </div>
-            </div>
-        </footer>
-    )
-}
 

@@ -48,6 +48,7 @@ export async function fetchFloorplanAction(page: CareerEventPage) {
   return {
     svg: sanitizedSvg,
     booths,
+    backgroundImage: page.floorplan.background_image || null,
   };
 }
 

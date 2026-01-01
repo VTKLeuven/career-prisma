@@ -50,12 +50,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power, ChevronUp, ChevronDown } from "lucide-react";
+import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power, ChevronUp, ChevronDown, Building2 } from "lucide-react";
 import { useUser } from "@/providers/UserProvider";
-import type { FormSchema, FormField, Form } from "@/lib/schema";
+import type { FormSchema, FormField, Form, CareerEvent, CareerEventOption } from "@/lib/schema";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
-import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
+import { formatDateBE, formatDateTimeBE, utcToLocalDateTimeLocal, localDateTimeLocalToUtc } from "@/lib/date-utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { fetchEventsAction, fetchOptionsForEventAction } from "@/app/actions/events";
+import Link from "next/link";
 
 type FormRow = {
   id: string;
@@ -116,6 +119,12 @@ export default function AdminFormsPage() {
           <p className="text-muted-foreground">Create and manage forms for external users</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/admin/forms/company-completion">
+              <Building2 className="mr-2 h-4 w-4" />
+              Company Completion
+            </Link>
+          </Button>
           <Button variant="outline" onClick={loadForms} disabled={loading} size="default">
             {loading ? "Refreshing..." : "Refresh"}
           </Button>
@@ -143,7 +152,6 @@ export default function AdminFormsPage() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Slug</TableHead>
-                  <TableHead>Description</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Deadline</TableHead>
                   <TableHead>Submissions</TableHead>
@@ -156,9 +164,8 @@ export default function AdminFormsPage() {
                   <TableRow key={form.id}>
                     <TableCell className="font-medium">{form.name}</TableCell>
                     <TableCell>
-                      <SlugCell slug={form.slug} />
+                      <SlugCell slug={form.slug} metadata={form.metadata} />
                     </TableCell>
-                    <TableCell className="max-w-xs truncate">{form.description}</TableCell>
                     <TableCell>
                       {form.is_active === false ? (
                         <Badge variant="destructive">Disabled</Badge>
@@ -177,7 +184,11 @@ export default function AdminFormsPage() {
                         <span className="text-muted-foreground">No deadline</span>
                       )}
                     </TableCell>
-                    <TableCell>{form.submissionCount}</TableCell>
+                    <TableCell>
+                      {form.metadata?.max_entries
+                        ? `${form.submissionCount}/${form.metadata.max_entries}`
+                        : form.submissionCount}
+                    </TableCell>
                     <TableCell>{formatDateBE(form.updated_at)}</TableCell>
                     <TableCell className="text-right">
                       <FormActionsMenu form={form} onUpdate={loadForms} />
@@ -199,28 +210,196 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
   const [deadline, setDeadline] = useState("");
-  const [deadlineDateDisplay, setDeadlineDateDisplay] = useState("");
-  const [deadlineTimeDisplay, setDeadlineTimeDisplay] = useState("");
+  const [maxEntries, setMaxEntries] = useState<string>("");
   const [isEventRegistration, setIsEventRegistration] = useState(false);
+  const [selectedEventId, setSelectedEventId] = useState<string>("");
+  const [events, setEvents] = useState<CareerEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventEmailSubject, setEventEmailSubject] = useState("Event Registration Confirmation");
+  const [eventEmailContent, setEventEmailContent] = useState("Thank you for registering! We look forward to seeing you at the event.");
+  const [eventDate, setEventDate] = useState("");
+  const [eventEndDate, setEventEndDate] = useState("");
+  const [eventLocation, setEventLocation] = useState("");
+  const [isCompanyForm, setIsCompanyForm] = useState(false);
+  const [selectedCompanyFormEventId, setSelectedCompanyFormEventId] = useState<string>("");
+  const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([]);
+  const [sendCompanyFormEmail, setSendCompanyFormEmail] = useState(false);
+  const [companyFormEmailSubject, setCompanyFormEmailSubject] = useState("");
+  const [companyFormEmailContent, setCompanyFormEmailContent] = useState("");
+  const [options, setOptions] = useState<Array<{ id: string; name: string; description?: string }>>([]);
+  const [optionsLoading, setOptionsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
-  const formUrl = `${formDomain}/forms/${slug || "your-slug"}`;
+  // TipTap editor for email content - only create when dialog is open and on client
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  const emailEditor = useEditor({
+    extensions: [StarterKit],
+    content: eventEmailContent,
+    onUpdate({ editor }) {
+      setEventEmailContent(editor.getHTML());
+    },
+    editorProps: {
+      attributes: {
+        class: "border rounded-md p-3 bg-background text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-ring [&>p:last-child]:mb-0 [&>ul:last-child]:mb-0 [&>ol:last-child]:mb-0",
+      },
+    },
+    immediatelyRender: false,
+    editable: open && isClient && isEventRegistration, // Only editable when dialog is open and on client
+  });
+
+  const companyFormEmailEditor = useEditor({
+    extensions: [StarterKit],
+    content: companyFormEmailContent,
+    onUpdate({ editor }) {
+      setCompanyFormEmailContent(editor.getHTML());
+    },
+    editorProps: {
+      attributes: {
+        class: "border rounded-md p-3 bg-background text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-ring [&>p:last-child]:mb-0 [&>ul:last-child]:mb-0 [&>ol:last-child]:mb-0",
+      },
+    },
+    immediatelyRender: false,
+    editable: open && isClient && isCompanyForm, // Only editable when dialog is open and on client
+  });
+
+  // Update editor content when dialog opens
+  useEffect(() => {
+    if (open && isClient && emailEditor && isEventRegistration) {
+      emailEditor.commands.setContent(eventEmailContent);
+      emailEditor.setEditable(true);
+    } else if (!open && emailEditor) {
+      emailEditor.setEditable(false);
+    }
+  }, [open, isClient, emailEditor, isEventRegistration, eventEmailContent]);
+
+  // Update company form email editor content when dialog opens
+  useEffect(() => {
+    if (open && isClient && companyFormEmailEditor && isCompanyForm) {
+      companyFormEmailEditor.commands.setContent(companyFormEmailContent);
+      companyFormEmailEditor.setEditable(true);
+    } else if (!open && companyFormEmailEditor) {
+      companyFormEmailEditor.setEditable(false);
+    }
+  }, [open, isClient, companyFormEmailEditor, isCompanyForm, companyFormEmailContent]);
+
+  // Update email subject when form name changes and event registration is enabled
+  useEffect(() => {
+    if (isEventRegistration && name.trim()) {
+      // Capitalize first letter of form name
+      const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
+      // Only update if subject is still the default or empty
+      if (!eventEmailSubject || eventEmailSubject === "Event Registration Confirmation") {
+        setEventEmailSubject(`${capitalizedName} - Registration Confirmation`);
+      }
+    }
+  }, [name, isEventRegistration]);
+
+  // Update company form email content and subject when form name changes and company form is enabled
+  useEffect(() => {
+    if (isCompanyForm && name.trim()) {
+      const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
+      
+      // Update subject if it's still the default or empty
+      if (!companyFormEmailSubject || companyFormEmailSubject === "Form Submission Confirmation" || companyFormEmailSubject.trim() === "") {
+        setCompanyFormEmailSubject(`${capitalizedName} Submission Confirmation`);
+      }
+      
+      // Update content if it's still the default or empty
+      const currentContent = companyFormEmailContent || '';
+      if (!currentContent || currentContent === "Thank you for your submission!" || currentContent.trim() === "") {
+        const defaultContent = `<p>Dear,</p>
+<p>Thank you for submitting the ${capitalizedName} form!</p>
+<p>If you have any questions, please don't hesitate to contact us.</p>
+<p>Best regards,</p>
+<p>The VTK Career Team</p>`;
+        setCompanyFormEmailContent(defaultContent);
+        // Also update editor if it exists
+        if (companyFormEmailEditor && isClient) {
+          companyFormEmailEditor.commands.setContent(defaultContent);
+        }
+      }
+    }
+  }, [name, isCompanyForm, companyFormEmailEditor, isClient, companyFormEmailContent, companyFormEmailSubject]);
+
+  // Load events when dialog opens and event registration or company form is enabled
+  useEffect(() => {
+    if (open && (isEventRegistration || isCompanyForm) && events.length === 0 && !eventsLoading) {
+      setEventsLoading(true);
+      fetchEventsAction()
+        .then((loadedEvents) => {
+          setEvents(loadedEvents || []);
+        })
+        .catch((err) => {
+          console.error("Error loading events:", err);
+        })
+        .finally(() => {
+          setEventsLoading(false);
+        });
+    }
+  }, [open, isEventRegistration, isCompanyForm, events.length, eventsLoading]);
+
+  // Load options when company form event is selected
+  useEffect(() => {
+    if (!open || !isCompanyForm) {
+      setOptions([]);
+      setSelectedOptionIds([]);
+      return;
+    }
+
+    if (!selectedCompanyFormEventId || selectedCompanyFormEventId === "none") {
+      setOptions([]);
+      setSelectedOptionIds([]);
+      return;
+    }
+
+    // Only fetch if we don't already have options for this event
+    if (optionsLoading) return;
+
+    setOptionsLoading(true);
+    fetchOptionsForEventAction(selectedCompanyFormEventId)
+      .then((loadedOptions) => {
+        setOptions(loadedOptions);
+      })
+      .catch((err) => {
+        console.error("Error loading options:", err);
+        setOptions([]);
+      })
+      .finally(() => {
+        setOptionsLoading(false);
+      });
+  }, [open, isCompanyForm, selectedCompanyFormEventId]);
+
+  // Use window.location.origin for client-side, or fallback to env var or localhost
+  const formDomain = typeof window !== 'undefined' 
+    ? window.location.origin 
+    : (process.env.NEXT_PUBLIC_FORM_DOMAIN || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000");
+  const getFormUrl = () => {
+    if (isCompanyForm && selectedCompanyFormEventId && selectedCompanyFormEventId !== "none") {
+      return `${formDomain}/forms/company/${selectedCompanyFormEventId}/${slug || "your-slug"}`;
+    }
+    return `${formDomain}/forms/${slug || "your-slug"}`;
+  };
+  const formUrl = getFormUrl();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      // Create initial schema - if event registration, add name, surname, email fields
+      // Create initial schema - if event registration, add firstname, lastname, email fields
       let initialFields: FormField[] = [];
       
       if (isEventRegistration) {
         initialFields = [
           {
             id: `field_${Date.now()}_1`,
-            name: "name",
-            label: "Name",
+            name: "firstname",
+            label: "First Name",
             type: "text",
             required: true,
             placeholder: "Enter your first name",
@@ -228,8 +407,8 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
           },
           {
             id: `field_${Date.now()}_2`,
-            name: "surname",
-            label: "Surname",
+            name: "lastname",
+            label: "Last Name",
             type: "text",
             required: true,
             placeholder: "Enter your last name",
@@ -255,60 +434,48 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
       
       if (isEventRegistration) {
         metadata.is_event_registration = true;
-        metadata.event_email_subject = "Event Registration Confirmation";
-        metadata.event_email_content = "Thank you for registering! We look forward to seeing you at the event.";
-      }
-      
-      // Construct deadline from state or display values
-      let deadlineToUse = deadline;
-      if (!deadlineToUse && deadlineDateDisplay && deadlineTimeDisplay) {
-        // If deadline state is empty but we have display values, construct it
-        const dateMatch = deadlineDateDisplay.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-        const timeMatch = deadlineTimeDisplay.match(/^(\d{2}):(\d{2})$/);
-        if (dateMatch && timeMatch) {
-          const day = dateMatch[1];
-          const month = dateMatch[2];
-          const year = dateMatch[3];
-          const hours = timeMatch[1];
-          const minutes = timeMatch[2];
-          deadlineToUse = `${year}-${month}-${day}T${hours}:${minutes}`;
+        if (selectedEventId && selectedEventId !== "none") {
+          metadata.event_id = selectedEventId;
         }
-      }
-      
-      if (deadlineToUse) {
-        // Convert to ISO string format for storage
-        // Ensure deadline is in proper format (YYYY-MM-DDTHH:mm or YYYY-MM-DDTHH:mm:ss)
-        let deadlineStr = deadlineToUse.trim();
-        
-        if (deadlineStr.includes('T')) {
-          // Has date and time
-          const [datePart, timePart] = deadlineStr.split('T');
-          // Check if time has seconds (HH:mm:ss has 2 colons, HH:mm has 1 colon)
-          const colonCount = (timePart.match(/:/g) || []).length;
-          if (colonCount === 1) {
-            // Only HH:mm, add :00 for seconds
-            deadlineStr = `${datePart}T${timePart}:00`;
-          }
-        } else {
-          // Only date, add time 23:59:59 as default
-          deadlineStr = deadlineStr + 'T23:59:59';
+        metadata.event_email_subject = eventEmailSubject || 'Event Registration Confirmation';
+        metadata.event_email_content = eventEmailContent || 'Thank you for registering!';
+        if (eventDate) {
+          metadata.event_date = localDateTimeLocalToUtc(eventDate);
         }
-        
-        const deadlineDate = new Date(deadlineStr);
-        // Validate the date is valid
-        if (isNaN(deadlineDate.getTime())) {
-          console.error('Invalid deadline format:', deadlineToUse);
-          throw new Error('Invalid deadline format. Please use format: dd/mm/yyyy HH:mm');
+        if (eventEndDate) {
+          metadata.event_end_date = localDateTimeLocalToUtc(eventEndDate);
         }
-        metadata.deadline = deadlineDate.toISOString();
+        if (eventLocation) {
+          metadata.event_location = eventLocation;
+        }
       }
 
-      console.log('[CreateFormDialog] Submitting form with metadata:', metadata);
-      console.log('[CreateFormDialog] Deadline state:', deadline);
-      console.log('[CreateFormDialog] Deadline date display:', deadlineDateDisplay);
-      console.log('[CreateFormDialog] Deadline time display:', deadlineTimeDisplay);
-      console.log('[CreateFormDialog] Deadline to use:', deadlineToUse);
-      console.log('[CreateFormDialog] Deadline ISO:', metadata.deadline);
+      if (isCompanyForm) {
+        metadata.is_company_form = true;
+        if (selectedCompanyFormEventId && selectedCompanyFormEventId !== "none") {
+          metadata.event_id = selectedCompanyFormEventId;
+        }
+        if (selectedOptionIds.length > 0) {
+          metadata.option_ids = selectedOptionIds;
+        }
+        metadata.send_company_form_email = sendCompanyFormEmail;
+        if (sendCompanyFormEmail) {
+          metadata.company_form_email_subject = companyFormEmailSubject || 'Form Submission Confirmation';
+          metadata.company_form_email_content = companyFormEmailContent || 'Thank you for your submission!';
+        }
+      }
+      
+      if (maxEntries && maxEntries.trim() !== "") {
+        const maxEntriesNum = parseInt(maxEntries, 10);
+        if (!isNaN(maxEntriesNum) && maxEntriesNum > 0) {
+          metadata.max_entries = maxEntriesNum;
+        }
+      }
+
+      if (deadline) {
+        // Convert datetime-local value to UTC ISO string
+        metadata.deadline = localDateTimeLocalToUtc(deadline);
+      }
 
       await createFormAction({
         name,
@@ -323,9 +490,21 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
       setSlug("");
       setDescription("");
       setDeadline("");
-      setDeadlineDateDisplay("");
-      setDeadlineTimeDisplay("");
+      setMaxEntries("");
       setIsEventRegistration(false);
+      setSelectedEventId("");
+      setEventEmailSubject("Event Registration Confirmation");
+      setEventEmailContent("Thank you for registering! We look forward to seeing you at the event.");
+      setEventDate("");
+      setEventEndDate("");
+      setEventLocation("");
+      setIsCompanyForm(false);
+      setSelectedCompanyFormEventId("");
+      setSelectedOptionIds([]);
+      setSendCompanyFormEmail(false);
+      setCompanyFormEmailSubject("Form Submission Confirmation");
+      setCompanyFormEmailContent("Thank you for your submission!");
+      setOptions([]);
       onFormCreated();
     } catch (error) {
       console.error("Error creating form:", error);
@@ -351,365 +530,313 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
           Create Form
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] flex flex-col overflow-y-auto scrollbar-thin">
         <DialogHeader>
           <DialogTitle>Create New Form</DialogTitle>
           <DialogDescription>
             Create a new form that external users can fill out.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Form Name</Label>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => handleNameChange(e.target.value)}
-              placeholder="e.g., Company Registration"
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="slug">Slug (URL)</Label>
-            <Input
-              id="slug"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              placeholder="e.g., company-registration"
-              required
-            />
-            <p className="text-xs text-muted-foreground">
-              Will be accessible at: <code className="bg-muted px-1 py-0.5 rounded">{formUrl}</code>
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Brief description of this form..."
-              rows={3}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="deadline">Deadline (Optional)</Label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-2">
+            <div className="space-y-2">
+              <Label htmlFor="name">Form Name</Label>
               <Input
-                id="deadline-date"
-                type="text"
-                value={deadlineDateDisplay}
-                placeholder="dd/mm/yyyy"
-                onChange={(e) => {
-                  const input = e.target.value;
-                  // Remove all non-digit and non-slash characters
-                  let cleaned = input.replace(/[^\d/]/g, '');
-                  
-                  // Limit format to dd/mm/yyyy (max 10 chars: dd/mm/yyyy)
-                  if (cleaned.length > 10) {
-                    cleaned = cleaned.slice(0, 10);
-                  }
-                  
-                  // Auto-format as user types: dd/mm/yyyy
-                  let formatted = '';
-                  const digits = cleaned.replace(/\//g, '');
-                  
-                  for (let i = 0; i < digits.length && i < 8; i++) {
-                    if (i === 2 || i === 4) {
-                      formatted += '/';
-                    }
-                    formatted += digits[i];
-                  }
-                  
-                  setDeadlineDateDisplay(formatted);
-                  
-                  // Parse dd/mm/yyyy and convert to ISO format
-                  if (formatted.length === 10) {
-                    const match = formatted.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-                    if (match) {
-                      const day = parseInt(match[1]);
-                      const month = parseInt(match[2]);
-                      const year = parseInt(match[3]);
-                      
-                      // Validate date
-                      if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000) {
-                        const date = new Date(year, month - 1, day);
-                        // Verify the date is valid (handles invalid dates like 31/02/2024)
-                        if (date.getFullYear() === year && 
-                            date.getMonth() === month - 1 && 
-                            date.getDate() === day) {
-                          const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                          
-                          // If we have a time display, use it; otherwise just set the date
-                          if (deadlineTimeDisplay && deadlineTimeDisplay.length === 5) {
-                            const timeDigits = deadlineTimeDisplay.replace(/\D/g, '');
-                            if (timeDigits.length === 4) {
-                              const hours = timeDigits.slice(0, 2);
-                              const minutes = timeDigits.slice(2, 4);
-                              const hoursNum = parseInt(hours);
-                              const minutesNum = parseInt(minutes);
-                              if (hoursNum >= 0 && hoursNum <= 23 && minutesNum >= 0 && minutesNum <= 59) {
-                                setDeadline(`${isoDate}T${hours}:${minutes}`);
-                              } else {
-                                setDeadline(isoDate);
-                              }
-                            } else {
-                              setDeadline(isoDate);
-                            }
-                          } else {
-                            setDeadline(isoDate);
-                          }
-                        }
-                      }
-                    }
-                  } else if (formatted.length === 0) {
-                    // Clear deadline if input is empty
-                    setDeadline('');
-                  }
-                }}
-                onBlur={(e) => {
-                  // Validate and fix format on blur
-                  const value = e.target.value;
-                  if (value && value.length < 10) {
-                    // If incomplete, clear it
-                    setDeadlineDateDisplay('');
-                    const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
-                    if (dateValue) {
-                      setDeadline(dateValue);
-                    } else {
-                      setDeadline('');
-                    }
-                  }
-                }}
-              />
-              <Input
-                id="deadline-time"
-                type="text"
-                value={deadlineTimeDisplay}
-                placeholder="HH:MM (e.g., 18:30)"
-                onChange={(e) => {
-                  const input = e.target.value;
-                  // Remove all non-digit characters
-                  const digits = input.replace(/\D/g, '');
-                  
-                  // Validate and limit digits as user types
-                  let validatedDigits = '';
-                  
-                  for (let i = 0; i < digits.length && i < 4; i++) {
-                    const digit = parseInt(digits[i]);
-                    
-                    if (i === 0) {
-                      // First digit (hours tens): 0-2
-                      if (digit >= 0 && digit <= 2) {
-                        validatedDigits += digits[i];
-                      }
-                    } else if (i === 1) {
-                      // Second digit (hours ones)
-                      const firstDigit = parseInt(validatedDigits[0]);
-                      if (firstDigit === 0 || firstDigit === 1) {
-                        // If first digit is 0 or 1, second can be 0-9
-                        validatedDigits += digits[i];
-                      } else if (firstDigit === 2) {
-                        // If first digit is 2, second can only be 0-3
-                        if (digit >= 0 && digit <= 3) {
-                          validatedDigits += digits[i];
-                        }
-                      }
-                    } else if (i === 2) {
-                      // Third digit (minutes tens): 0-5
-                      if (digit >= 0 && digit <= 5) {
-                        validatedDigits += digits[i];
-                      }
-                    } else if (i === 3) {
-                      // Fourth digit (minutes ones): 0-9
-                      validatedDigits += digits[i];
-                    }
-                  }
-                  
-                  // Format as HH:MM
-                  let formatted = '';
-                  if (validatedDigits.length === 0) {
-                    formatted = '';
-                  } else if (validatedDigits.length === 1) {
-                    formatted = validatedDigits;
-                  } else if (validatedDigits.length === 2) {
-                    formatted = `${validatedDigits}:`;
-                  } else if (validatedDigits.length === 3) {
-                    formatted = `${validatedDigits.slice(0, 2)}:${validatedDigits.slice(2)}`;
-                  } else {
-                    formatted = `${validatedDigits.slice(0, 2)}:${validatedDigits.slice(2, 4)}`;
-                  }
-                  
-                  setDeadlineTimeDisplay(formatted);
-                  
-                  // Update deadline if we have a complete time
-                  if (validatedDigits.length === 4) {
-                    const hours = validatedDigits.slice(0, 2);
-                    const minutes = validatedDigits.slice(2, 4);
-                    const hoursNum = parseInt(hours);
-                    const minutesNum = parseInt(minutes);
-                    
-                    // Final validation (should always pass due to above checks, but double-check)
-                    if (hoursNum >= 0 && hoursNum <= 23 && minutesNum >= 0 && minutesNum <= 59) {
-                      // Get date from deadline if it exists, otherwise parse from deadlineDateDisplay
-                      let dateValue = '';
-                      if (deadline && deadline.includes('T')) {
-                        dateValue = deadline.split('T')[0];
-                      } else if (deadlineDateDisplay && deadlineDateDisplay.length === 10) {
-                        // Parse dd/mm/yyyy format
-                        const match = deadlineDateDisplay.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-                        if (match) {
-                          const day = parseInt(match[1]);
-                          const month = parseInt(match[2]);
-                          const year = parseInt(match[3]);
-                          if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000) {
-                            const date = new Date(year, month - 1, day);
-                            if (date.getFullYear() === year && 
-                                date.getMonth() === month - 1 && 
-                                date.getDate() === day) {
-                              dateValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                            }
-                          }
-                        }
-                      }
-                      if (dateValue) {
-                        setDeadline(`${dateValue}T${hours}:${minutes}`);
-                      }
-                    }
-                  } else if (validatedDigits.length === 0) {
-                    // Clear deadline time if input is empty
-                    const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
-                    if (dateValue) {
-                      setDeadline(dateValue);
-                    } else {
-                      setDeadline('');
-                    }
-                  }
-                }}
-                onKeyDown={(e) => {
-                  // Handle backspace to remove characters progressively
-                  if (e.key === 'Backspace' && deadlineTimeDisplay) {
-                    e.preventDefault();
-                    const digits = deadlineTimeDisplay.replace(/\D/g, '');
-                    
-                    if (digits.length === 0) {
-                      setDeadlineTimeDisplay('');
-                      const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
-                      if (dateValue) {
-                        setDeadline(dateValue);
-                      } else {
-                        setDeadline('');
-                      }
-                    } else {
-                      // Remove last digit
-                      const newDigits = digits.slice(0, -1);
-                      
-                      // Reformat
-                      let formatted = '';
-                      if (newDigits.length === 0) {
-                        formatted = '';
-                      } else if (newDigits.length === 1) {
-                        formatted = `${newDigits}:`;
-                      } else if (newDigits.length === 2) {
-                        formatted = `${newDigits}:`;
-                      } else if (newDigits.length === 3) {
-                        formatted = `${newDigits.slice(0, 2)}:${newDigits.slice(2)}`;
-                      } else {
-                        formatted = `${newDigits.slice(0, 2)}:${newDigits.slice(2, 4)}`;
-                      }
-                      
-                      setDeadlineTimeDisplay(formatted);
-                      
-                      // Update deadline
-                      if (newDigits.length === 4) {
-                        const hours = newDigits.slice(0, 2);
-                        const minutes = newDigits.slice(2, 4);
-                        const hoursNum = parseInt(hours);
-                        const minutesNum = parseInt(minutes);
-                        
-                        if (hoursNum >= 0 && hoursNum <= 23 && minutesNum >= 0 && minutesNum <= 59) {
-                          // Get date from deadline if it exists, otherwise parse from deadlineDateDisplay
-                          let dateValue = '';
-                          if (deadline && deadline.includes('T')) {
-                            dateValue = deadline.split('T')[0];
-                          } else if (deadlineDateDisplay && deadlineDateDisplay.length === 10) {
-                            // Parse dd/mm/yyyy format
-                            const match = deadlineDateDisplay.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-                            if (match) {
-                              const day = parseInt(match[1]);
-                              const month = parseInt(match[2]);
-                              const year = parseInt(match[3]);
-                              if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000) {
-                                const date = new Date(year, month - 1, day);
-                                if (date.getFullYear() === year && 
-                                    date.getMonth() === month - 1 && 
-                                    date.getDate() === day) {
-                                  dateValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                                }
-                              }
-                            }
-                          }
-                          if (dateValue) {
-                            setDeadline(`${dateValue}T${hours}:${minutes}`);
-                          }
-                        }
-                      } else {
-                        const dateValue = deadline && deadline.includes('T') ? deadline.split('T')[0] : '';
-                        if (dateValue) {
-                          setDeadline(dateValue);
-                        } else {
-                          setDeadline('');
-                        }
-                      }
-                    }
-                  }
-                }}
+                id="name"
+                value={name}
+                onChange={(e) => handleNameChange(e.target.value)}
+                placeholder="e.g., Company Registration"
+                required
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="slug">Slug (URL)</Label>
+              <Input
+                id="slug"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                placeholder="e.g., company-registration"
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Will be accessible at: <code className="bg-muted px-1 py-0.5 rounded">{formUrl}</code>
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Brief description of this form..."
+                rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="deadline">Deadline (Optional)</Label>
+              <Input
+              id="deadline"
+              type="datetime-local"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+            />
             <p className="text-xs text-muted-foreground">
               Set a deadline (date and time) for form submissions. After this time, users cannot submit the form. Date format: dd/mm/yyyy. Time format: 24-hour (e.g., 23:59).
             </p>
           </div>
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="event-registration"
-              checked={isEventRegistration}
-              onCheckedChange={(checked: boolean) => setIsEventRegistration(checked)}
+          <div className="space-y-2">
+            <Label htmlFor="max-entries">Maximum Number of Entries (Optional)</Label>
+            <Input
+              id="max-entries"
+              type="number"
+              value={maxEntries}
+              onChange={(e) => setMaxEntries(e.target.value)}
+              placeholder="e.g., 100"
+              min="1"
             />
-            <Label htmlFor="event-registration" className="font-normal cursor-pointer">
-              Use as event registration (adds name, surname, email fields automatically)
+              <p className="text-xs text-muted-foreground">
+                Set a maximum number of submissions allowed. Once this limit is reached, the form will be closed to new submissions.
+              </p>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="event-registration"
+                checked={isEventRegistration}
+                onCheckedChange={(checked: boolean) => {
+                  setIsEventRegistration(checked);
+                  if (checked) setIsCompanyForm(false); // Mutually exclusive
+                }}
+              />
+              <Label htmlFor="event-registration" className="font-normal cursor-pointer">
+                Use as event registration (sends confirmation emails)
             </Label>
           </div>
+
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="company-form"
+              checked={isCompanyForm}
+              onCheckedChange={(checked: boolean) => {
+                setIsCompanyForm(checked);
+                if (checked) setIsEventRegistration(false); // Mutually exclusive
+              }}
+            />
+            <Label htmlFor="company-form" className="font-normal cursor-pointer">
+              Use as company form (for events)
+            </Label>
+          </div>
+
           {isEventRegistration && (
-            <div className="space-y-3 p-4 bg-muted rounded-md">
+            <div className="space-y-4 p-4 bg-muted rounded-md border-t">
+              <h3 className="font-semibold text-sm">Event Registration Settings</h3>
+                <div className="space-y-2">
+                  <Label htmlFor="event-select">Link to Event (Optional)</Label>
+                  <Select
+                    value={selectedEventId || "none"}
+                    onValueChange={(value) => setSelectedEventId(value === "none" ? "" : value)}
+                    disabled={eventsLoading}
+                  >
+                    <SelectTrigger id="event-select" className="w-full">
+                      <SelectValue placeholder={eventsLoading ? "Loading events..." : "Select an event (optional)"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None (no event linked)</SelectItem>
+                      {events.map((event) => (
+                        <SelectItem key={event.id} value={event.id}>
+                          {event.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Link this registration form to an event so attending companies can see scans for this specific event.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="event-email-subject">Email Subject</Label>
+                  <Input
+                    id="event-email-subject"
+                    value={eventEmailSubject}
+                  onChange={(e) => setEventEmailSubject(e.target.value)}
+                  placeholder="Event Registration Confirmation"
+                />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="event-email-content">Email Content</Label>
+                  {open && isClient && emailEditor && isEventRegistration ? (
+                  <div className="[&_.ProseMirror]:mb-0 [&_.ProseMirror]:pb-0">
+                    <EditorContent editor={emailEditor} />
+                  </div>
+                ) : (
+                  <Textarea
+                    id="event-email-content"
+                    value={eventEmailContent}
+                    onChange={(e) => {
+                      setEventEmailContent(e.target.value);
+                      // Also update editor if it exists
+                      if (emailEditor && isClient) {
+                        emailEditor.commands.setContent(e.target.value);
+                      }
+                    }}
+                    placeholder="Thank you for registering! We look forward to seeing you at the event."
+                    rows={6}
+                    />
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    This content will be sent in the confirmation email. Use {`{firstname}`} and {`{lastname}`} to personalize. You can format text with bold, italic, lists, etc.
+                </p>
+              </div>
               <div className="space-y-2">
-                <Label htmlFor="event-email-subject">Email Subject</Label>
+                <Label htmlFor="event-date">Event Start Date & Time</Label>
                 <Input
-                  id="event-email-subject"
-                  value="Event Registration Confirmation"
-                  readOnly
-                  className="bg-background"
+                  id="event-date"
+                  type="datetime-local"
+                  value={eventDate}
+                  onChange={(e) => setEventDate(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  You can customize this in the form settings after creation.
+                  Used for the calendar button in confirmation emails.
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="event-email-content">Email Content</Label>
-                <Textarea
-                  id="event-email-content"
-                  value="Thank you for registering! We look forward to seeing you at the event."
-                  readOnly
-                  className="bg-background"
-                  rows={3}
+                <Label htmlFor="event-end-date">Event End Date & Time</Label>
+                <Input
+                  id="event-end-date"
+                  type="datetime-local"
+                  value={eventEndDate}
+                  onChange={(e) => setEventEndDate(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  You can customize this in the form settings after creation.
+                  Used for the calendar button in confirmation emails. If not set, defaults to 1 hour after start time.
                 </p>
               </div>
-            </div>
-          )}
-          <DialogFooter>
+              <div className="space-y-2">
+                <Label htmlFor="event-location">Event Location (Optional)</Label>
+                <Input
+                  id="event-location"
+                  value={eventLocation}
+                  onChange={(e) => setEventLocation(e.target.value)}
+                  placeholder="e.g., Main Conference Hall, Brussels"
+                />
+                </div>
+              </div>
+            )}
+
+            {isCompanyForm && (
+              <div className="space-y-4 p-4 bg-muted rounded-md border-t">
+                <h3 className="font-semibold text-sm">Company Form Settings</h3>
+                <div className="space-y-2">
+                  <Label htmlFor="company-form-event-select">Event *</Label>
+                  <Select
+                    value={selectedCompanyFormEventId || "none"}
+                    onValueChange={(value) => setSelectedCompanyFormEventId(value === "none" ? "" : value)}
+                    disabled={eventsLoading}
+                  >
+                    <SelectTrigger id="company-form-event-select" className="w-full">
+                      <SelectValue placeholder={eventsLoading ? "Loading events..." : "Select an event"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Select an event</SelectItem>
+                      {events.map((event) => (
+                        <SelectItem key={event.id} value={event.id}>
+                          {event.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Select the event this form is for. Companies registered for this event will see this form.
+                  </p>
+                </div>
+
+                {selectedCompanyFormEventId && selectedCompanyFormEventId !== "none" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="company-form-options">Career Event Options *</Label>
+                    {optionsLoading ? (
+                      <div className="text-sm text-muted-foreground">Loading options...</div>
+                    ) : options.length === 0 ? (
+                      <div className="text-sm text-muted-foreground">No options found for this event.</div>
+                    ) : (
+                      <div className="space-y-2 max-h-48 overflow-y-auto border rounded-md p-3">
+                        {options.map((option) => (
+                          <div key={option.id} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`option-${option.id}`}
+                              checked={selectedOptionIds.includes(option.id)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedOptionIds([...selectedOptionIds, option.id]);
+                                } else {
+                                  setSelectedOptionIds(selectedOptionIds.filter((id) => id !== option.id));
+                                }
+                              }}
+                            />
+                            <Label htmlFor={`option-${option.id}`} className="text-sm font-normal cursor-pointer flex-1">
+                              {option.name}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Select which career event options this form applies to. Companies with these options will be assigned to this form.
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="send-company-form-email"
+                    checked={sendCompanyFormEmail}
+                    onCheckedChange={(checked: boolean) => setSendCompanyFormEmail(checked)}
+                  />
+                  <Label htmlFor="send-company-form-email" className="font-normal cursor-pointer">
+                    Send confirmation email
+                  </Label>
+                </div>
+
+                {sendCompanyFormEmail && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="company-form-email-subject">Email Subject</Label>
+                      <Input
+                        id="company-form-email-subject"
+                        value={companyFormEmailSubject}
+                        onChange={(e) => setCompanyFormEmailSubject(e.target.value)}
+                        placeholder="[Form Name] Submission Confirmation"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="company-form-email-content">Email Content</Label>
+                      {open && isClient && companyFormEmailEditor && isCompanyForm ? (
+                        <div className="[&_.ProseMirror]:mb-0 [&_.ProseMirror]:pb-0">
+                          <EditorContent editor={companyFormEmailEditor} />
+                        </div>
+                      ) : (
+                        <Textarea
+                          id="company-form-email-content"
+                          value={companyFormEmailContent}
+                          onChange={(e) => {
+                            setCompanyFormEmailContent(e.target.value);
+                            // Also update editor if it exists
+                            if (companyFormEmailEditor && isClient) {
+                              companyFormEmailEditor.commands.setContent(e.target.value);
+                            }
+                          }}
+                          placeholder="Dear,&#10;&#10;Thank you for submitting the [form name] form!&#10;&#10;If you have any questions, please don't hesitate to contact us.&#10;&#10;Best regards,&#10;The VTK Career Team"
+                          rows={6}
+                        />
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        This content will be sent in the confirmation email. Use {`{submitter_name}`} and {`{form_name}`} to personalize. You can format text with bold, italic, lists, etc.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="mt-4">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
@@ -753,7 +880,15 @@ function FormActionsMenu({ form, onUpdate }: { form: FormRow; onUpdate: () => vo
             Manage Versions
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
-            <a href={`/forms/${form.slug}`} target="_blank" rel="noopener noreferrer">
+            <a 
+              href={
+                form.metadata?.is_company_form && form.metadata?.event_id
+                  ? `/forms/company/${form.metadata.event_id}/${form.slug}`
+                  : `/forms/${form.slug}`
+              } 
+              target="_blank" 
+              rel="noopener noreferrer"
+            >
               Test Form (Public View)
             </a>
           </DropdownMenuItem>
@@ -812,10 +947,13 @@ function EditFormDialog({
   const [slug, setSlug] = useState(form.slug);
   const [description, setDescription] = useState(form.description);
   const [deadline, setDeadline] = useState(
-    form.metadata?.deadline ? new Date(form.metadata.deadline).toISOString().slice(0, 16) : ''
+    form.metadata?.deadline ? utcToLocalDateTimeLocal(form.metadata.deadline as string) : ''
   );
   const [deadlineDateDisplay, setDeadlineDateDisplay] = useState("");
   const [deadlineTimeDisplay, setDeadlineTimeDisplay] = useState("");
+  const [maxEntries, setMaxEntries] = useState(
+    form.metadata?.max_entries ? String(form.metadata.max_entries) : ''
+  );
   const [eventEmailSubject, setEventEmailSubject] = useState(
     (form.metadata?.event_email_subject as string) || ''
   );
@@ -823,15 +961,41 @@ function EditFormDialog({
     (form.metadata?.event_email_content as string) || ''
   );
   const [eventDate, setEventDate] = useState(
-    form.metadata?.event_date ? new Date(form.metadata.event_date as string).toISOString().slice(0, 16) : ''
+    form.metadata?.event_date ? utcToLocalDateTimeLocal(form.metadata.event_date as string) : ''
+  );
+  const [eventEndDate, setEventEndDate] = useState(
+    form.metadata?.event_end_date ? utcToLocalDateTimeLocal(form.metadata.event_end_date as string) : ''
   );
   const [eventLocation, setEventLocation] = useState(
     (form.metadata?.event_location as string) || ''
   );
+  const [selectedEventId, setSelectedEventId] = useState<string>("");
+  const [events, setEvents] = useState<CareerEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isEventRegistration, setIsEventRegistration] = useState(
     form.metadata?.is_event_registration === true
   );
+  const [isCompanyForm, setIsCompanyForm] = useState(
+    form.metadata?.is_company_form === true
+  );
+  const [selectedCompanyFormEventId, setSelectedCompanyFormEventId] = useState<string>(
+    (form.metadata?.event_id as string) || ""
+  );
+  const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>(
+    (form.metadata?.option_ids as string[]) || []
+  );
+  const [sendCompanyFormEmail, setSendCompanyFormEmail] = useState(
+    form.metadata?.send_company_form_email === true
+  );
+  const [companyFormEmailSubject, setCompanyFormEmailSubject] = useState(
+    (form.metadata?.company_form_email_subject as string) || "Form Submission Confirmation"
+  );
+  const [companyFormEmailContent, setCompanyFormEmailContent] = useState(
+    (form.metadata?.company_form_email_content as string) || "Thank you for your submission!"
+  );
+  const [options, setOptions] = useState<Array<{ id: string; name: string; description?: string }>>([]);
+  const [optionsLoading, setOptionsLoading] = useState(false);
 
   // TipTap editor for email content - only create when dialog is open and on client
   const [isClient, setIsClient] = useState(false);
@@ -839,6 +1003,53 @@ function EditFormDialog({
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  // Load events when dialog opens and event registration or company form is enabled
+  useEffect(() => {
+    if (open && (isEventRegistration || isCompanyForm) && events.length === 0 && !eventsLoading) {
+      setEventsLoading(true);
+      fetchEventsAction()
+        .then((loadedEvents) => {
+          setEvents(loadedEvents || []);
+        })
+        .catch((err) => {
+          console.error("Error loading events:", err);
+        })
+        .finally(() => {
+          setEventsLoading(false);
+        });
+    }
+  }, [open, isEventRegistration, isCompanyForm, events.length, eventsLoading]);
+
+  // Load options when company form event is selected
+  useEffect(() => {
+    if (!open || !isCompanyForm) {
+      setOptions([]);
+      return;
+    }
+
+    if (!selectedCompanyFormEventId || selectedCompanyFormEventId === "none") {
+      setOptions([]);
+      return;
+    }
+
+    // Prevent multiple simultaneous fetches
+    if (optionsLoading) return;
+
+    setOptionsLoading(true);
+    fetchOptionsForEventAction(selectedCompanyFormEventId)
+      .then((loadedOptions) => {
+        setOptions(loadedOptions);
+      })
+      .catch((err) => {
+        console.error("Error loading options:", err);
+        setOptions([]);
+      })
+      .finally(() => {
+        setOptionsLoading(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isCompanyForm, selectedCompanyFormEventId]);
 
   const emailEditor = useEditor({
     extensions: [StarterKit],
@@ -848,11 +1059,26 @@ function EditFormDialog({
     },
     editorProps: {
       attributes: {
-        class: "border rounded-md p-3 bg-background text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-ring",
+        class: "border rounded-md p-3 bg-background text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-ring [&>p:last-child]:mb-0 [&>ul:last-child]:mb-0 [&>ol:last-child]:mb-0",
       },
     },
     immediatelyRender: false,
-    editable: open && isClient, // Only editable when dialog is open and on client
+    editable: open && isClient && isEventRegistration, // Only editable when dialog is open and on client
+  });
+
+  const companyFormEmailEditor = useEditor({
+    extensions: [StarterKit],
+    content: companyFormEmailContent,
+    onUpdate({ editor }) {
+      setCompanyFormEmailContent(editor.getHTML());
+    },
+    editorProps: {
+      attributes: {
+        class: "border rounded-md p-3 bg-background text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-ring [&>p:last-child]:mb-0 [&>ul:last-child]:mb-0 [&>ol:last-child]:mb-0",
+      },
+    },
+    immediatelyRender: false,
+    editable: open && isClient && isCompanyForm, // Only editable when dialog is open and on client
   });
 
   // Update editor content when form changes or dialog opens
@@ -867,16 +1093,64 @@ function EditFormDialog({
     }
   }, [open, isClient, form, emailEditor, isEventRegistration]);
 
+  // Update company form email editor content when form changes or dialog opens
+  useEffect(() => {
+    if (open && isClient && companyFormEmailEditor && isCompanyForm) {
+      const content = (form.metadata?.company_form_email_content as string) || '';
+      companyFormEmailEditor.commands.setContent(content);
+      setCompanyFormEmailContent(content);
+      companyFormEmailEditor.setEditable(true);
+    } else if (!open && companyFormEmailEditor) {
+      companyFormEmailEditor.setEditable(false);
+    }
+  }, [open, isClient, form, companyFormEmailEditor, isCompanyForm]);
+
+  // Update company form email content and subject when form name changes and company form is enabled
+  useEffect(() => {
+    if (isCompanyForm && name.trim() && open) {
+      const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
+      
+      // Update subject if it's still the default or empty
+      if (!companyFormEmailSubject || companyFormEmailSubject === "Form Submission Confirmation" || companyFormEmailSubject.trim() === "") {
+        setCompanyFormEmailSubject(`${capitalizedName} Submission Confirmation`);
+      }
+      
+      // Update content if it's still the default or empty
+      const currentContent = companyFormEmailContent || '';
+      if (!currentContent || currentContent === "Thank you for your submission!" || currentContent.trim() === "") {
+        const defaultContent = `<p>Dear,</p>
+<p>Thank you for submitting the ${capitalizedName} form!</p>
+<p>If you have any questions, please don't hesitate to contact us.</p>
+<p>Best regards,</p>
+<p>The VTK Career Team</p>`;
+        setCompanyFormEmailContent(defaultContent);
+        // Also update editor if it exists
+        if (companyFormEmailEditor && isClient) {
+          companyFormEmailEditor.commands.setContent(defaultContent);
+        }
+      }
+    }
+  }, [name, isCompanyForm, open, companyFormEmailEditor, isClient, companyFormEmailContent, companyFormEmailSubject]);
+
   useEffect(() => {
     if (open) {
       setName(form.name);
       setSlug(form.slug);
       setDescription(form.description);
-      setDeadline(form.metadata?.deadline ? new Date(form.metadata.deadline).toISOString().slice(0, 16) : '');
+      setDeadline(form.metadata?.deadline ? utcToLocalDateTimeLocal(form.metadata.deadline as string) : '');
+      setMaxEntries(form.metadata?.max_entries ? String(form.metadata.max_entries) : '');
       setIsEventRegistration(form.metadata?.is_event_registration === true);
+      setIsCompanyForm(form.metadata?.is_company_form === true);
+      setSelectedEventId((form.metadata?.event_id as string) || '');
+      setSelectedCompanyFormEventId((form.metadata?.event_id as string) || '');
+      setSelectedOptionIds((form.metadata?.option_ids as string[]) || []);
+      setSendCompanyFormEmail(form.metadata?.send_company_form_email === true);
+      setCompanyFormEmailSubject((form.metadata?.company_form_email_subject as string) || 'Form Submission Confirmation');
+      setCompanyFormEmailContent((form.metadata?.company_form_email_content as string) || 'Thank you for your submission!');
       setEventEmailSubject((form.metadata?.event_email_subject as string) || '');
       setEventEmailContent((form.metadata?.event_email_content as string) || '');
-      setEventDate(form.metadata?.event_date ? new Date(form.metadata.event_date as string).toISOString().slice(0, 16) : '');
+      setEventDate(form.metadata?.event_date ? utcToLocalDateTimeLocal(form.metadata.event_date as string) : '');
+      setEventEndDate(form.metadata?.event_end_date ? utcToLocalDateTimeLocal(form.metadata.event_end_date as string) : '');
       setEventLocation((form.metadata?.event_location as string) || '');
     }
   }, [open, form]);
@@ -899,26 +1173,90 @@ function EditFormDialog({
         let metadata: { [key: string]: unknown } | undefined = form.metadata ? { ...form.metadata } : undefined;
         
         if (deadline) {
-          // Convert datetime-local value to ISO string
-          metadata = { ...metadata, deadline: new Date(deadline).toISOString() };
+          // Convert datetime-local value to UTC ISO string
+          metadata = { ...metadata, deadline: localDateTimeLocalToUtc(deadline) };
         } else if (metadata?.deadline) {
           delete metadata.deadline;
         }
         
+        if (maxEntries && maxEntries.trim() !== "") {
+          const maxEntriesNum = parseInt(maxEntries, 10);
+          if (!isNaN(maxEntriesNum) && maxEntriesNum > 0) {
+            metadata = { ...metadata, max_entries: maxEntriesNum };
+          } else if (metadata?.max_entries) {
+            delete metadata.max_entries;
+          }
+        } else if (metadata?.max_entries) {
+          delete metadata.max_entries;
+        }
+
         // Update event registration fields if this is an event registration form
         if (isEventRegistration) {
           metadata = {
             ...metadata,
             is_event_registration: true,
+            ...(selectedEventId && selectedEventId !== "none" ? { event_id: selectedEventId } : {}),
             event_email_subject: eventEmailSubject || 'Event Registration Confirmation',
             event_email_content: eventEmailContent || 'Thank you for registering!',
-            ...(eventDate ? { event_date: new Date(eventDate).toISOString() } : {}),
+            ...(eventDate ? { event_date: localDateTimeLocalToUtc(eventDate) } : {}),
+            ...(eventEndDate ? { event_end_date: localDateTimeLocalToUtc(eventEndDate) } : {}),
             ...(eventLocation ? { event_location: eventLocation } : {}),
           };
+          // Remove event_id if it was cleared
+          if ((!selectedEventId || selectedEventId === "none") && metadata.event_id) {
+            delete metadata.event_id;
+          }
+          // Remove company form fields if switching to event registration
+          if (metadata.is_company_form) delete metadata.is_company_form;
+          if (metadata.option_ids) delete metadata.option_ids;
+          if (metadata.send_company_form_email) delete metadata.send_company_form_email;
+          if (metadata.company_form_email_subject) delete metadata.company_form_email_subject;
+          if (metadata.company_form_email_content) delete metadata.company_form_email_content;
         } else {
           // If unchecked, remove event registration flag but keep other metadata
           if (metadata) {
-            const { is_event_registration, ...restMetadata } = metadata;
+            const { is_event_registration, event_email_subject, event_email_content, event_date, event_end_date, event_location, ...restMetadata } = metadata;
+            metadata = Object.keys(restMetadata).length > 0 ? restMetadata : undefined;
+          }
+        }
+
+        // Update company form fields if this is a company form
+        if (isCompanyForm) {
+          metadata = {
+            ...metadata,
+            is_company_form: true,
+            ...(selectedCompanyFormEventId && selectedCompanyFormEventId !== "none" ? { event_id: selectedCompanyFormEventId } : {}),
+            ...(selectedOptionIds.length > 0 ? { option_ids: selectedOptionIds } : {}),
+            send_company_form_email: sendCompanyFormEmail,
+            ...(sendCompanyFormEmail ? {
+              company_form_email_subject: companyFormEmailSubject || 'Form Submission Confirmation',
+              company_form_email_content: companyFormEmailContent || 'Thank you for your submission!',
+            } : {}),
+          };
+          // Remove event_id if it was cleared
+          if ((!selectedCompanyFormEventId || selectedCompanyFormEventId === "none") && metadata.event_id) {
+            delete metadata.event_id;
+          }
+          // Remove option_ids if empty
+          if (selectedOptionIds.length === 0 && metadata.option_ids) {
+            delete metadata.option_ids;
+          }
+          // Remove email fields if email is disabled
+          if (!sendCompanyFormEmail) {
+            if (metadata.company_form_email_subject) delete metadata.company_form_email_subject;
+            if (metadata.company_form_email_content) delete metadata.company_form_email_content;
+          }
+          // Remove event registration fields if switching to company form
+          if (metadata.is_event_registration) delete metadata.is_event_registration;
+          if (metadata.event_email_subject) delete metadata.event_email_subject;
+          if (metadata.event_email_content) delete metadata.event_email_content;
+          if (metadata.event_date) delete metadata.event_date;
+          if (metadata.event_end_date) delete metadata.event_end_date;
+          if (metadata.event_location) delete metadata.event_location;
+        } else {
+          // If unchecked, remove company form flag but keep other metadata
+          if (metadata) {
+            const { is_company_form, option_ids, send_company_form_email, company_form_email_subject, company_form_email_content, ...restMetadata } = metadata;
             metadata = Object.keys(restMetadata).length > 0 ? restMetadata : undefined;
           }
         }
@@ -942,126 +1280,326 @@ function EditFormDialog({
     }
   };
 
+  // Use window.location.origin for client-side, or fallback to env var or localhost
+  const formDomain = typeof window !== 'undefined' 
+    ? window.location.origin 
+    : (process.env.NEXT_PUBLIC_FORM_DOMAIN || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000");
+  const getFormUrl = () => {
+    if (form.metadata?.is_company_form && form.metadata?.event_id) {
+      return `${formDomain}/forms/company/${form.metadata.event_id}/${slug || "your-slug"}`;
+    }
+    return `${formDomain}/forms/${slug || "your-slug"}`;
+  };
+  const formUrl = getFormUrl();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] flex flex-col overflow-y-auto scrollbar-thin">
         <DialogHeader>
           <DialogTitle>Edit Form</DialogTitle>
+          <DialogDescription>
+            Update form details and settings.
+          </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="edit-name">Form Name</Label>
-            <Input
-              id="edit-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-slug">Slug</Label>
-            <Input
-              id="edit-slug"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-description">Description</Label>
-            <Textarea
-              id="edit-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-deadline">Deadline (Optional)</Label>
-            <Input
-              id="edit-deadline"
-              type="datetime-local"
-              value={deadline}
-              onChange={(e) => setDeadline(e.target.value)}
-            />
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Form Name</Label>
+              <Input
+                id="edit-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-slug">Slug (URL)</Label>
+              <Input
+                id="edit-slug"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                required
+              />
             <p className="text-xs text-muted-foreground">
-              Set a deadline (date and time) for form submissions. After this time, users cannot submit the form. Date format: dd/mm/yyyy. Time format: 24-hour (e.g., 23:59).
+              Will be accessible at: <code className="bg-muted px-1 py-0.5 rounded">{formUrl}</code>
+            </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Description</Label>
+              <Textarea
+                id="edit-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-deadline">Deadline (Optional)</Label>
+              <Input
+                id="edit-deadline"
+                type="datetime-local"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Set a deadline (date and time) for form submissions. After this time, users cannot submit the form. Date format: dd/mm/yyyy. Time format: 24-hour (e.g., 23:59).
             </p>
           </div>
-          
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="edit-event-registration"
-              checked={isEventRegistration}
-              onCheckedChange={(checked: boolean) => setIsEventRegistration(checked)}
+          <div className="space-y-2">
+            <Label htmlFor="edit-max-entries">Maximum Number of Entries (Optional)</Label>
+            <Input
+              id="edit-max-entries"
+              type="number"
+              value={maxEntries}
+              onChange={(e) => setMaxEntries(e.target.value)}
+              placeholder="e.g., 100"
+              min="1"
             />
-            <Label htmlFor="edit-event-registration" className="font-normal cursor-pointer">
-              Use as event registration (sends confirmation emails)
-            </Label>
+            <p className="text-xs text-muted-foreground">
+              Set a maximum number of submissions allowed. Once this limit is reached, the form will be closed to new submissions.
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="edit-event-registration"
+                checked={isEventRegistration}
+                onCheckedChange={(checked: boolean) => {
+                  setIsEventRegistration(checked);
+                  if (checked) setIsCompanyForm(false); // Mutually exclusive
+                }}
+              />
+              <Label htmlFor="edit-event-registration" className="font-normal cursor-pointer">
+                Use as event registration (sends confirmation emails)
+              </Label>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="edit-company-form"
+                checked={isCompanyForm}
+                onCheckedChange={(checked: boolean) => {
+                  setIsCompanyForm(checked);
+                  if (checked) setIsEventRegistration(false); // Mutually exclusive
+                }}
+              />
+              <Label htmlFor="edit-company-form" className="font-normal cursor-pointer">
+                Use as company form (for events)
+              </Label>
+            </div>
+
+            {isEventRegistration && (
+              <div className="space-y-4 p-4 bg-muted rounded-md border-t">
+                <h3 className="font-semibold text-sm">Event Registration Settings</h3>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-event-select">Link to Event (Optional)</Label>
+                  <Select
+                    value={selectedEventId || "none"}
+                    onValueChange={(value) => setSelectedEventId(value === "none" ? "" : value)}
+                    disabled={eventsLoading}
+                  >
+                    <SelectTrigger id="edit-event-select" className="w-full">
+                      <SelectValue placeholder={eventsLoading ? "Loading events..." : "Select an event (optional)"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None (no event linked)</SelectItem>
+                      {events.map((event) => (
+                        <SelectItem key={event.id} value={event.id}>
+                          {event.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Link this registration form to an event so attending companies can see scans for this specific event.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-event-email-subject">Email Subject</Label>
+                  <Input
+                    id="edit-event-email-subject"
+                    value={eventEmailSubject}
+                    onChange={(e) => setEventEmailSubject(e.target.value)}
+                    placeholder="Event Registration Confirmation"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-event-email-content">Email Content</Label>
+                  {open && isClient && emailEditor && isEventRegistration ? (
+                    <div className="[&_.ProseMirror]:mb-0 [&_.ProseMirror]:pb-0">
+                      <EditorContent editor={emailEditor} />
+                    </div>
+                  ) : (
+                    <Textarea
+                      id="edit-event-email-content"
+                      value={eventEmailContent}
+                      onChange={(e) => {
+                        setEventEmailContent(e.target.value);
+                        // Also update editor if it exists
+                        if (emailEditor && isClient) {
+                          emailEditor.commands.setContent(e.target.value);
+                        }
+                      }}
+                      placeholder="Thank you for registering! We look forward to seeing you at the event."
+                      rows={6}
+                    />
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    This content will be sent in the confirmation email. Use {`{firstname}`} and {`{lastname}`} to personalize. You can format text with bold, italic, lists, etc.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-event-date">Event Start Date & Time</Label>
+                  <Input
+                    id="edit-event-date"
+                    type="datetime-local"
+                    value={eventDate}
+                    onChange={(e) => setEventDate(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Used for the calendar button in confirmation emails.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-event-end-date">Event End Date & Time</Label>
+                <Input
+                  id="edit-event-end-date"
+                  type="datetime-local"
+                  value={eventEndDate}
+                  onChange={(e) => setEventEndDate(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used for the calendar button in confirmation emails. If not set, defaults to 1 hour after start time.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-event-location">Event Location (Optional)</Label>
+                  <Input
+                    id="edit-event-location"
+                    value={eventLocation}
+                    onChange={(e) => setEventLocation(e.target.value)}
+                    placeholder="e.g., Main Conference Hall, Brussels"
+                  />
+                </div>
+              </div>
+            )}
+
+            {isCompanyForm && (
+              <div className="space-y-4 p-4 bg-muted rounded-md border-t">
+                <h3 className="font-semibold text-sm">Company Form Settings</h3>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-company-form-event-select">Event *</Label>
+                  <Select
+                    value={selectedCompanyFormEventId || "none"}
+                    onValueChange={(value) => setSelectedCompanyFormEventId(value === "none" ? "" : value)}
+                    disabled={eventsLoading}
+                  >
+                    <SelectTrigger id="edit-company-form-event-select" className="w-full">
+                      <SelectValue placeholder={eventsLoading ? "Loading events..." : "Select an event"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Select an event</SelectItem>
+                      {events.map((event) => (
+                        <SelectItem key={event.id} value={event.id}>
+                          {event.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Select the event this form is for. Companies registered for this event will see this form.
+                  </p>
+                </div>
+
+                {selectedCompanyFormEventId && selectedCompanyFormEventId !== "none" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-company-form-options">Career Event Options *</Label>
+                    {optionsLoading ? (
+                      <div className="text-sm text-muted-foreground">Loading options...</div>
+                    ) : options.length === 0 ? (
+                      <div className="text-sm text-muted-foreground">No options found for this event.</div>
+                    ) : (
+                      <div className="space-y-2 max-h-48 overflow-y-auto border rounded-md p-3">
+                        {options.map((option) => (
+                          <div key={option.id} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`edit-option-${option.id}`}
+                              checked={selectedOptionIds.includes(option.id)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedOptionIds([...selectedOptionIds, option.id]);
+                                } else {
+                                  setSelectedOptionIds(selectedOptionIds.filter((id) => id !== option.id));
+                                }
+                              }}
+                            />
+                            <Label htmlFor={`edit-option-${option.id}`} className="text-sm font-normal cursor-pointer flex-1">
+                              {option.name}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Select which career event options this form applies to. Companies with these options will be assigned to this form.
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="edit-send-company-form-email"
+                    checked={sendCompanyFormEmail}
+                    onCheckedChange={(checked: boolean) => setSendCompanyFormEmail(checked)}
+                  />
+                  <Label htmlFor="edit-send-company-form-email" className="font-normal cursor-pointer">
+                    Send confirmation email
+                  </Label>
+                </div>
+
+                {sendCompanyFormEmail && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-company-form-email-subject">Email Subject</Label>
+                      <Input
+                        id="edit-company-form-email-subject"
+                        value={companyFormEmailSubject}
+                        onChange={(e) => setCompanyFormEmailSubject(e.target.value)}
+                        placeholder="[Form Name] Submission Confirmation"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-company-form-email-content">Email Content</Label>
+                      {open && isClient && companyFormEmailEditor && isCompanyForm ? (
+                        <div className="[&_.ProseMirror]:mb-0 [&_.ProseMirror]:pb-0">
+                          <EditorContent editor={companyFormEmailEditor} />
+                        </div>
+                      ) : (
+                        <Textarea
+                          id="edit-company-form-email-content"
+                          value={companyFormEmailContent}
+                          onChange={(e) => {
+                            setCompanyFormEmailContent(e.target.value);
+                            // Also update editor if it exists
+                            if (companyFormEmailEditor && isClient) {
+                              companyFormEmailEditor.commands.setContent(e.target.value);
+                            }
+                          }}
+                          placeholder="Dear,&#10;&#10;Thank you for submitting the [form name] form!&#10;&#10;If you have any questions, please don't hesitate to contact us.&#10;&#10;Best regards,&#10;The VTK Career Team"
+                          rows={6}
+                        />
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        This content will be sent in the confirmation email. Use {`{submitter_name}`} and {`{form_name}`} to personalize. You can format text with bold, italic, lists, etc.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
           
-          {isEventRegistration && (
-            <div className="space-y-4 p-4 bg-muted rounded-md border-t">
-              <h3 className="font-semibold text-sm">Event Registration Settings</h3>
-              <div className="space-y-2">
-                <Label htmlFor="edit-event-email-subject">Email Subject</Label>
-                <Input
-                  id="edit-event-email-subject"
-                  value={eventEmailSubject}
-                  onChange={(e) => setEventEmailSubject(e.target.value)}
-                  placeholder="Event Registration Confirmation"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-event-email-content">Email Content</Label>
-                {open && isClient && emailEditor && isEventRegistration ? (
-                  <div className="border rounded-md min-h-[150px]">
-                    <EditorContent editor={emailEditor} />
-                  </div>
-                ) : (
-                  <Textarea
-                    id="edit-event-email-content"
-                    value={eventEmailContent}
-                    onChange={(e) => {
-                      setEventEmailContent(e.target.value);
-                      // Also update editor if it exists
-                      if (emailEditor && isClient) {
-                        emailEditor.commands.setContent(e.target.value);
-                      }
-                    }}
-                    placeholder="Thank you for registering! We look forward to seeing you at the event."
-                    rows={6}
-                  />
-                )}
-                <p className="text-xs text-muted-foreground">
-                  This content will be sent in the confirmation email. Use {`{name}`} and {`{surname}`} to personalize. You can format text with bold, italic, lists, etc.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-event-date">Event Date & Time</Label>
-                <Input
-                  id="edit-event-date"
-                  type="datetime-local"
-                  value={eventDate}
-                  onChange={(e) => setEventDate(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Used for the calendar button in confirmation emails.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-event-location">Event Location (Optional)</Label>
-                <Input
-                  id="edit-event-location"
-                  value={eventLocation}
-                  onChange={(e) => setEventLocation(e.target.value)}
-                  placeholder="e.g., Main Conference Hall, Brussels"
-                />
-              </div>
-            </div>
-          )}
-          
-          <DialogFooter>
+          <DialogFooter className="mt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
@@ -1156,10 +1694,19 @@ function ToggleFormStatusMenuItem({ form, onUpdate }: { form: FormRow; onUpdate:
   );
 }
 
-function SlugCell({ slug }: { slug: string }) {
+function SlugCell({ slug, metadata }: { slug: string; metadata?: { is_company_form?: boolean; event_id?: string; [key: string]: unknown } }) {
   const [copied, setCopied] = useState(false);
-  const domain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
-  const formUrl = `${domain}/forms/${slug}`;
+  // Use window.location.origin for client-side, or fallback to env var or localhost
+  const domain = typeof window !== 'undefined' 
+    ? window.location.origin 
+    : (process.env.NEXT_PUBLIC_FORM_DOMAIN || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000");
+  const getFormUrl = () => {
+    if (metadata?.is_company_form && metadata?.event_id) {
+      return `${domain}/forms/company/${metadata.event_id}/${slug}`;
+    }
+    return `${domain}/forms/${slug}`;
+  };
+  const formUrl = getFormUrl();
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -1278,14 +1825,14 @@ function VersionsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Manage Versions - {form.name}</DialogTitle>
           <DialogDescription>
             View and activate different versions of your form
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 max-h-96 overflow-y-auto">
+        <div className="space-y-4 overflow-y-auto flex-1 min-h-0">
           {loading ? (
             <div className="text-center py-8">Loading versions...</div>
           ) : versions.length === 0 ? (

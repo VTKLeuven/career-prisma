@@ -6,6 +6,7 @@ import { Company, Master, CareerEventOption, CareerEvent } from "@/lib/schema";
 import { getDirectusImageUrl } from "@/components/Images";
 import Image from "next/image";
 import Link from "next/link";
+import { validateExistingPageImage } from "@/lib/utils/image-validation";
 import { Calendar } from "lucide-react";
 import { fetchCompanyBySlugAction } from "@/app/actions/companies";
 import { fetchEventsAction } from "@/app/actions/events";
@@ -13,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { usePageLayout } from '../../layout';
+import { getUpcomingEventsWithFallback } from '@/lib/utils/events';
 
 type CategoryJunction = { master_id: Master | null };
 type OptionJunction = { career_event_option_id: CareerEventOption | null };
@@ -40,12 +42,21 @@ export default function CompanyPage() {
   const companyName = Array.isArray(params.companyName) ? params.companyName[0] : params.companyName;
   const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pageImageValid, setPageImageValid] = useState<boolean | null>(null);
+  const [allEvents, setAllEvents] = useState<CareerEvent[]>([]);
 
   // Hide layout header since this page renders its own
   useEffect(() => {
     setHideLayoutHeader(true)
     return () => setHideLayoutHeader(false)
   }, [setHideLayoutHeader])
+
+  // Fetch all events for matching
+  useEffect(() => {
+    fetchEventsAction()
+      .then((events) => setAllEvents(events ?? []))
+      .catch((err) => console.error("Error fetching events:", err));
+  }, []);
 
   useEffect(() => {
     if (!companyName || typeof companyName !== "string") {
@@ -63,8 +74,8 @@ export default function CompanyPage() {
       try {
         const fetched = await fetchCompanyBySlugAction(companyName ?? "");
         if (fetched) {
-          // Check if company has page_on_platform enabled
-          if (!fetched.page_on_platform) {
+          // Check if company has page_on_platform enabled and is published
+          if (!fetched?.page_on_platform || fetched?.status !== "published") {
             setCompany(null);
             setLoading(false);
             return;
@@ -106,6 +117,22 @@ export default function CompanyPage() {
     loadCompany();
   }, [companyName, router]);
 
+  // Validate page image when company or page_image changes
+  const bgUrl = company ? getDirectusImageUrl(company.page_image) : null;
+  useEffect(() => {
+    if (bgUrl) {
+      validateExistingPageImage(bgUrl)
+        .then((result) => {
+          setPageImageValid(result.valid);
+        })
+        .catch(() => {
+          setPageImageValid(false);
+        });
+    } else {
+      setPageImageValid(null);
+    }
+  }, [bgUrl]);
+
   if (loading) {
     return (
       <main className="min-h-svh bg-vtk-bg text-neutral-900 pt-24 md:pt-28">
@@ -134,25 +161,126 @@ export default function CompanyPage() {
     );
   }
 
-  const logoUrl = getDirectusImageUrl(company.logo);
-  const categories = (company.category as Master[] | undefined) ?? [];
-  const bgUrl = getDirectusImageUrl(company.page_image);
-  const events: CareerEvent[] = Array.from(
-    new Map(
-      ((company.options as CareerEventOption[] | undefined) ?? [])
-        .map((opt) => opt?.event)
-        .filter((e): e is CareerEvent => !!e)
-        .map((e) => [e.id, e])
-    ).values()
-  );
+  const logoUrl = company ? getDirectusImageUrl(company.logo) : null;
+  const categories = company ? ((company.category as Master[] | undefined) ?? []) : [];
+  
+  // Extract event IDs from company options using the same logic as dashboard
+  const events: CareerEvent[] = (() => {
+    if (!company || allEvents.length === 0) return [];
+    
+    const companyOptions = company.options ?? [];
+    const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+    const hasEvents = (v: unknown): v is { events: unknown } => isRecord(v) && 'events' in v;
+    const hasEvent = (v: unknown): v is { event: unknown } => isRecord(v) && 'event' in v;
+    
+    const getStringIdFromEventRef = (ref: unknown): string | null => {
+      if (typeof ref === 'string') return ref;
+      if (isRecord(ref)) {
+        const id = ref.id;
+        return typeof id === 'string' ? id : null;
+      }
+      return null;
+    };
+    
+    const extractEventFromRef = (eventOrJunction: unknown): CareerEvent | null => {
+      if (!eventOrJunction || !isRecord(eventOrJunction)) return null;
+      
+      // Check if it's a junction table entry - try multiple possible field names
+      const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
+      for (const fieldName of possibleJunctionFields) {
+        if (fieldName in eventOrJunction) {
+          const junction = eventOrJunction as Record<string, CareerEvent | string | null>;
+          const eventRef = junction[fieldName];
+          if (eventRef && typeof eventRef === 'object') {
+            return eventRef as CareerEvent;
+          }
+        }
+      }
+      
+      // Check if it's a direct event object
+      if ('id' in eventOrJunction && 'name' in eventOrJunction) {
+        return eventOrJunction as CareerEvent;
+      }
+      
+      return null;
+    };
+    
+    const companyEventIds = new Set<string>();
+    
+    (companyOptions as unknown[]).forEach((opt) => {
+      if (!opt || !isRecord(opt)) return;
+      
+      let optionWithEvents: Record<string, unknown> | null = null;
+      
+      // Shape B: option nested under career_event_option_id (junction table format from company)
+      if ('career_event_option_id' in opt && opt.career_event_option_id) {
+        const ceo = opt.career_event_option_id;
+        if (isRecord(ceo)) {
+          optionWithEvents = ceo;
+        }
+      }
+      // Shape A: option has events array directly (already normalized)
+      else if (hasEvents(opt)) {
+        optionWithEvents = opt;
+      }
+      // Shape C: option has event directly (backward compatibility)
+      else if (hasEvent(opt)) {
+        const event = extractEventFromRef(opt.event);
+        if (event?.id) {
+          companyEventIds.add(event.id);
+        } else {
+          const eventId = getStringIdFromEventRef(opt.event);
+          if (eventId) {
+            companyEventIds.add(eventId);
+          }
+        }
+        return;
+      }
+      
+      if (!optionWithEvents) return;
+      
+      // Extract events from the option
+      if (hasEvents(optionWithEvents) && Array.isArray(optionWithEvents.events)) {
+        optionWithEvents.events.forEach((eventOrJunction: unknown) => {
+          const event = extractEventFromRef(eventOrJunction);
+          if (event?.id) {
+            companyEventIds.add(event.id);
+          } else {
+            const eventId = getStringIdFromEventRef(eventOrJunction);
+            if (eventId) {
+              companyEventIds.add(eventId);
+            }
+          }
+        });
+      }
+      // Fallback: handle single event (backward compatibility)
+      else if (hasEvent(optionWithEvents)) {
+        const event = extractEventFromRef(optionWithEvents.event);
+        if (event?.id) {
+          companyEventIds.add(event.id);
+        } else {
+          const eventId = getStringIdFromEventRef(optionWithEvents.event);
+          if (eventId) {
+            companyEventIds.add(eventId);
+          }
+        }
+      }
+    });
+    
+    // Match event IDs with full event objects from allEvents
+    return allEvents.filter((e) => companyEventIds.has(e.id));
+  })();
+
+  // Only use bgUrl if it's valid
+  const validBgUrl = pageImageValid === true ? bgUrl : null;
 
   return (
     <main className="relative min-h-svh bg-vtk-bg text-neutral-900">
       <Header />
       <div className="pt-24 md:pt-28">
-        {bgUrl && (
+        {validBgUrl && (
           <div className="absolute inset-0 z-0">
-            <Image src={bgUrl} alt={company.name} fill className="object-cover" />
+            <Image src={validBgUrl} alt={company.name} fill className="object-cover" />
           </div>
         )}
         <div className="relative z-10">
@@ -219,10 +347,10 @@ export default function CompanyPage() {
                         <Link
                           key={event.id}
                           href={href}
-                          className="group relative block"
+                          className="group relative block h-full"
                         >
-                          <div className="rounded-[28px] bg-white/90 p-3 shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md transition-transform duration-300 hover:-translate-y-2 hover:rotate-1">
-                            <div className="relative overflow-hidden rounded-[20px]">
+                          <div className="h-full flex flex-col rounded-[28px] bg-white/90 p-3 shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md transition-transform duration-300 hover:-translate-y-2 hover:rotate-1">
+                            <div className="relative overflow-hidden rounded-[20px] flex-shrink-0">
                               <div className="aspect-[4/3]">
                                 {event.image && (
                                   <Image
@@ -240,11 +368,11 @@ export default function CompanyPage() {
                                 </span>
                               ) : null}
                             </div>
-                            <div className="px-2 pb-2 pt-3">
-                              <div className="text-base font-semibold tracking-tight text-neutral-900">{event.name}</div>
+                            <div className="px-2 pb-2 pt-3 flex-1 flex flex-col">
+                              <div className="text-base font-semibold tracking-tight text-neutral-900 line-clamp-2">{event.name}</div>
                               <div className="mt-1 flex items-center gap-2 text-sm text-neutral-700">
-                                <Calendar className="h-4 w-4 text-vtk-blue" />
-                                <span>{event.date} · {event.location}</span>
+                                <Calendar className="h-4 w-4 text-vtk-blue flex-shrink-0" />
+                                <span className="line-clamp-1">{event.date} · {event.location}</span>
                               </div>
                             </div>
                           </div>
@@ -341,7 +469,14 @@ function Header() {
       <div className="mx-auto max-w-7xl px-2 sm:px-4">
         <div className="flex items-center justify-between gap-2 sm:gap-3 rounded-xl sm:rounded-2xl border bg-white/85 px-2 sm:px-3 md:px-5 py-1.5 sm:py-2 md:py-3 shadow-[0_12px_40px_rgba(0,0,0,0.10)] ring-1 ring-black/5 backdrop-blur-md">
           <Link href="/" className="flex shrink-0 items-center gap-1 sm:gap-2 rounded-full px-1 sm:px-2">
-            <span className="text-xs sm:text-sm font-semibold tracking-tight text-vtk-blue">VTK Career</span>
+            <Image 
+              src="/career_blue.png" 
+              alt="VTK Career" 
+              width={120} 
+              height={40} 
+              className="h-6 sm:h-8 w-auto self-center"
+              priority
+            />
           </Link>
 
           <nav className="hidden items-center gap-2 md:flex">
@@ -361,7 +496,8 @@ function Header() {
               </button>
             </div>
 
-            <Link href="#students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Services</Link>
+            <Link href="/our-students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
+            <Link href="/vacancies" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
 
           {/* Mobile nav - Events as simple button */}
@@ -374,12 +510,13 @@ function Header() {
             >
               Events
             </button>
-            <Link href="#students" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Services</Link>
+            <Link href="/our-students" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
+            <Link href="/vacancies" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
             <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => router.push("/dashboard")}>Company Dashboard</Button>
-            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="#contact">Contact Us</Link></Button>
+            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="/contact">Contact Us</Link></Button>
             
             {/* Mobile menu button - only show if menu is closed (Events button handles opening) */}
             {!mobileMenuOpen && (
@@ -429,14 +566,36 @@ function Header() {
                 <div className="mb-4">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-neutral-900">Upcoming events</h3>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5 text-xs px-3"
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        // Check if we're on the homepage
+                        if (window.location.pathname === '/') {
+                          // Dispatch custom event that homepage can listen to
+                          window.dispatchEvent(new CustomEvent('viewAllEvents'));
+                          // Also set hash for URL consistency
+                          window.location.hash = '#all-events';
+                        } else {
+                          // Navigate to homepage with hash
+                          window.location.href = '/#all-events';
+                        }
+                      }}
+                    >
+                      View all
+                    </Button>
                   </div>
                   <ul className="space-y-2 max-h-[50vh] overflow-y-auto">
                     {EVENTS
                       .filter((e) => {
                         try {
                           const eventDate = new Date(e.date);
+                          const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
                           const now = new Date();
-                          return eventDate > now;
+                          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                          return eventDay >= today; // Include today and future events
                         } catch {
                           return false;
                         }
@@ -481,7 +640,7 @@ function Header() {
                     className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full"
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    <Link href="#contact">Contact Us</Link>
+                    <Link href="/contact">Contact Us</Link>
                   </Button>
                 </div>
               </div>
@@ -511,14 +670,36 @@ function Header() {
                   <div className="md:col-span-2">
                     <div className="mb-4 flex items-center justify-between">
                       <h3 className="text-sm font-medium text-neutral-900">Upcoming events</h3>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5"
+                        onClick={() => {
+                          setOpenMenu(null);
+                          // Check if we're on the homepage
+                          if (window.location.pathname === '/') {
+                            // Dispatch custom event that homepage can listen to
+                            window.dispatchEvent(new CustomEvent('viewAllEvents'));
+                            // Also set hash for URL consistency
+                            window.location.hash = '#all-events';
+                          } else {
+                            // Navigate to homepage with hash
+                            window.location.href = '/#all-events';
+                          }
+                        }}
+                      >
+                        View all
+                      </Button>
                     </div>
                     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       {EVENTS
                         .filter((e) => {
                           try {
                             const eventDate = new Date(e.date);
+                            const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
                             const now = new Date();
-                            return eventDate > now;
+                            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                            return eventDay >= today; // Include today and future events
                           } catch {
                             return false;
                           }
@@ -547,7 +728,9 @@ function Header() {
                       <div className="text-sm font-medium text-neutral-900">Featured</div>
                       <p className="mt-1 text-sm text-neutral-700">Meet 200+ companies at our flagship jobfair in Leuven.</p>
                       <div className="mt-4">
-                        <Button className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">Explore jobfair</Button>
+                        <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">
+                          <Link href="/event/vtk-jobfair">Explore jobfair</Link>
+                        </Button>
                       </div>
                     </div>
                   </div>

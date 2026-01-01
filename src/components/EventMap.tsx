@@ -4,8 +4,21 @@
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { useEffect, useState } from 'react';
 
 export function EventMap({ lat, lng }: { lat: number; lng: number }) {
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  if (!isMounted) {
+    return (
+      <div style={{ width: '100%', height: '300px', position: 'relative', zIndex: 0 }} className="bg-neutral-100 animate-pulse rounded" />
+    );
+  }
+
   return (
     <MapContainer
       center={{ lat, lng }}
