@@ -2,12 +2,8 @@
 
 import Link from 'next/link'
 import { Separator } from '@/components/ui/separator'
-import { useState } from 'react'
-import { LoginSelectionDialog } from '@/components/LoginSelectionDialog'
 
 export function Footer() {
-    const [loginDialogOpen, setLoginDialogOpen] = useState(false)
-
     return (
         <footer className="bg-white border-t relative z-20">
             <div className="mx-auto max-w-7xl px-4 py-12 sm:py-16">
@@ -53,16 +49,23 @@ export function Footer() {
 
                     {/* For Companies */}
                     <div>
-                        <h4 className="mb-3 text-sm font-medium text-neutral-900">For Companies</h4>
+                        <h4 className="mb-3 text-sm font-medium text-neutral-900">Login</h4>
                         <ul className="space-y-2 text-sm text-neutral-700">
                             <li>
-                                <button 
-                                    onClick={() => setLoginDialogOpen(true)}
-                                    className="hover:text-vtk-blue hover:underline underline-offset-4 text-left"
-                                >
-                                    Login
-                                </button>
+                                <Link href="/student-login" className="hover:text-vtk-blue hover:underline underline-offset-4">
+                                    Student Login
+                                </Link>
                             </li>
+                            <li>
+                                <Link href="/login" className="hover:text-vtk-blue hover:underline underline-offset-4">
+                                    Company Login
+                                </Link>
+                            </li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 className="mb-3 text-sm font-medium text-neutral-900">For Companies</h4>
+                        <ul className="space-y-2 text-sm text-neutral-700">
                             <li>
                                 <Link href="/contact" className="hover:text-vtk-blue hover:underline underline-offset-4">
                                     Contact Us
@@ -101,7 +104,6 @@ export function Footer() {
                     <p>© {new Date().getFullYear()} VTK Career Hub. All rights reserved.</p>
                 </div>
             </div>
-            <LoginSelectionDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
         </footer>
     )
 }

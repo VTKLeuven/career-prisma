@@ -12,7 +12,6 @@ import { slugifyCompanyName } from "@/lib/utils/slugify"
 import { usePageLayout } from '../../../layout'
 import { Button } from "@/components/ui/button"
 import { Clock, ArrowLeft, Users } from "lucide-react"
-import { LoginSelectionDialog } from '@/components/LoginSelectionDialog'
 
 export default function SubPage() {
   const { setHideLayoutHeader } = usePageLayout()
@@ -160,7 +159,6 @@ function Header({
   const router = useRouter()
   const [searchTerm, setSearchTerm] = useState("")
   const [isFocused, setIsFocused] = useState(false)
-  const [loginDialogOpen, setLoginDialogOpen] = useState(false)
 
   const matchingCompanies = isFocused && !isCompanyGuide
     ? booths.filter(b => b.company)
@@ -363,10 +361,17 @@ function Header({
               <div className="ml-auto flex items-center gap-2">
                 <Button 
                   variant="outline" 
-                  className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10" 
-                  onClick={() => setLoginDialogOpen(true)}
+                  className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/10" 
+                  asChild
                 >
-                  Login
+                  <Link href="/student-login">Student Login</Link>
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10" 
+                  asChild
+                >
+                  <Link href="/login">Company Login</Link>
                 </Button>
                 <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">
                   <Link href="/contact">Contact Us</Link>
@@ -376,7 +381,6 @@ function Header({
           </div>
         </div>
       </header>
-      <LoginSelectionDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
     </>
   )
 }
