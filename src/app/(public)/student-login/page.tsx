@@ -50,8 +50,10 @@ export default function StudentLoginPage() {
       if (!res.ok) {
         setError(data?.error ?? "Login failed.");
       } else {
-        router.refresh()
-        router.replace("/")
+        // Redirect to the original page or home
+        const redirectTo = searchParams.get("redirectTo") || "/";
+        router.refresh();
+        router.replace(redirectTo);
       }
     } catch {
       setError("Network error.");

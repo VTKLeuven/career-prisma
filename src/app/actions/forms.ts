@@ -336,6 +336,36 @@ export async function submitFormResponseAction(data: {
     
     const versionMetadata = (formVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata;
 
+    // Check if form requires login (event registration forms always require login) and verify student is authenticated
+    const requiresLogin = versionMetadata?.requires_login || versionMetadata?.is_event_registration;
+    if (requiresLogin) {
+      try {
+        const { getStudentFromCookies } = await import("@/lib/auth-student");
+        const student = await getStudentFromCookies();
+        if (!student) {
+          throw new Error("This form requires you to be logged in. Please log in and try again.");
+        }
+        // Student is authenticated, we'll link them to the response below
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (errorMessage.includes("requires you to be logged in")) {
+          throw error;
+        }
+        console.error('[submitFormResponseAction] Error checking student authentication:', error);
+        throw new Error("This form requires you to be logged in. Please log in and try again.");
+      }
+    }
+
+    // Get student info if logged in (for linking to response and adding user info)
+    let student = null;
+    try {
+      const { getStudentFromCookies } = await import("@/lib/auth-student");
+      student = await getStudentFromCookies();
+    } catch (error) {
+      // Student not logged in - that's fine for forms that don't require login
+      console.log('[submitFormResponseAction] Student not logged in (this is fine for non-exclusive forms)');
+    }
+
     // Check max_entries limit before creating the response
     // Always check server-side using server client (works for both authenticated and public submissions)
     if (versionMetadata?.max_entries) {
@@ -405,10 +435,56 @@ export async function submitFormResponseAction(data: {
     const { createItem } = await import("@directus/sdk");
     let response: FormResponse | null = null;
     try {
+      // Include student info in the form data if student is logged in
+      const enhancedFormData = { ...formData };
+      if (student) {
+        // For event registration forms, don't add name/surname/email/r-number to metadata
+        // They will fill these in the form itself (except university which is a form field)
+        if (versionMetadata?.is_event_registration) {
+          // Only add minimal student metadata for event registration forms
+          // University and full_name come from account data for reference
+          enhancedFormData._student_id = student.id;
+          enhancedFormData._student_username = student.username;
+          // Store full_name in metadata for display purposes (even though it's not a form field)
+          enhancedFormData._student_full_name = student.full_name || `${student.first_name || ''} ${student.last_name || ''}`.trim() || student.username;
+          if (student.university) {
+            enhancedFormData._student_university = student.university;
+          }
+          if (student.university_status) {
+            enhancedFormData._student_university_status = student.university_status;
+          }
+          if (student.organization_status) {
+            enhancedFormData._student_organization_status = student.organization_status;
+          }
+          if (student.in_workinggroup !== undefined) {
+            enhancedFormData._student_in_workinggroup = student.in_workinggroup;
+          }
+        } else {
+          // For non-event registration forms, add all student info as before
+          enhancedFormData._student_id = student.id;
+          enhancedFormData._student_username = student.username;
+          enhancedFormData._student_email = student.email;
+          enhancedFormData._student_full_name = student.full_name || `${student.first_name || ''} ${student.last_name || ''}`.trim() || student.username;
+          if (student.university) {
+            enhancedFormData._student_university = student.university;
+          }
+          if (student.university_status) {
+            enhancedFormData._student_university_status = student.university_status;
+          }
+          if (student.organization_status) {
+            enhancedFormData._student_organization_status = student.organization_status;
+          }
+          if (student.in_workinggroup !== undefined) {
+            enhancedFormData._student_in_workinggroup = student.in_workinggroup;
+          }
+        }
+      }
+
       const responseData = {
         form_version_id: data.form_version_id,
         user_id: data.user_id,
-        data: formData, // Remove internal tracking fields from form data
+        ...(student ? { student_id: student.id } : {}), // Link student to response
+        data: enhancedFormData, // Include student info in form data
         attachments: data.attachments,
         ...(attendantUuid ? { attendant_uuid: attendantUuid } : {}),
         ...(data.company_id || _company_id ? { company_id: data.company_id || _company_id } : {}),
@@ -827,6 +903,25 @@ export async function fetchPublicFormBySlugAction(slug: string) {
 
     const versionMetadata = (activeVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata;
     
+    // Check if form requires login (event registration forms always require login) and if student is authenticated
+    let requiresLogin = false;
+    let isAuthenticated = false;
+    let studentEmail: string | undefined = undefined;
+    if (versionMetadata?.requires_login || versionMetadata?.is_event_registration) {
+      requiresLogin = true;
+      try {
+        const { getStudentFromCookies } = await import("@/lib/auth-student");
+        const student = await getStudentFromCookies();
+        isAuthenticated = !!student;
+        if (student?.email) {
+          studentEmail = student.email;
+        }
+      } catch (error) {
+        console.error('[fetchPublicFormBySlugAction] Error checking student authentication:', error);
+        isAuthenticated = false;
+      }
+    }
+    
     // Check if form is full using server client (works for both authenticated and public access)
     let isFull = false;
     if (versionMetadata?.max_entries) {
@@ -884,6 +979,9 @@ export async function fetchPublicFormBySlugAction(slug: string) {
         schema: activeVersion.schema,
       },
       isFull, // Indicates if form has reached max capacity
+      requiresLogin, // Indicates if form requires login
+      isAuthenticated, // Indicates if user is authenticated (only relevant if requiresLogin is true)
+      studentEmail, // Student email if authenticated (for pre-filling form fields)
     };
   } catch (error) {
     // Log detailed error for debugging

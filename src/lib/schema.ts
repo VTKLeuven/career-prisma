@@ -177,6 +177,7 @@ export type FormMetadata = {
   company_form_email_subject?: string; // Email subject for company form confirmation
   company_form_email_content?: string; // Email content for company form confirmation
   send_company_form_email?: boolean; // Whether to send confirmation email for company forms
+  requires_login?: boolean; // If true, only logged-in students can submit this form
   [key: string]: unknown; // Allow other metadata fields
 };
 
@@ -220,6 +221,7 @@ export type FormResponse = {
   id: string;
   form_version_id: string | FormVersion;
   user_id?: string | DirectusUser;
+  student_id?: string | Student; // Student who submitted the form (for student forms)
   data: Record<string, unknown>;
   submitted_at: string;
   attachments?: string[]; // Directus file IDs

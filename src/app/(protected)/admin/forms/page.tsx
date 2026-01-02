@@ -19,6 +19,7 @@ import {
   fetchFormVersionsAction,
   updateFormVersionAction,
 } from "@/app/actions/forms";
+import { UNIVERSITIES } from "@/lib/universities";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -391,31 +392,13 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
     setLoading(true);
 
     try {
-      // Create initial schema - if event registration, add firstname, lastname, email fields
+      // Create initial schema - if event registration, add email field
       let initialFields: FormField[] = [];
       
       if (isEventRegistration) {
         initialFields = [
           {
             id: `field_${Date.now()}_1`,
-            name: "firstname",
-            label: "First Name",
-            type: "text",
-            required: true,
-            placeholder: "Enter your first name",
-            layout: "half",
-          },
-          {
-            id: `field_${Date.now()}_2`,
-            name: "lastname",
-            label: "Last Name",
-            type: "text",
-            required: true,
-            placeholder: "Enter your last name",
-            layout: "half",
-          },
-          {
-            id: `field_${Date.now()}_3`,
             name: "email",
             label: "Email",
             type: "email",
@@ -475,6 +458,11 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
       if (deadline) {
         // Convert datetime-local value to UTC ISO string
         metadata.deadline = localDateTimeLocalToUtc(deadline);
+      }
+
+      // Event registration forms automatically require student login
+      if (isEventRegistration) {
+        metadata.requires_login = true;
       }
 
       await createFormAction({
@@ -1195,6 +1183,7 @@ function EditFormDialog({
           metadata = {
             ...metadata,
             is_event_registration: true,
+            requires_login: true, // Event registration forms automatically require student login
             ...(selectedEventId && selectedEventId !== "none" ? { event_id: selectedEventId } : {}),
             event_email_subject: eventEmailSubject || 'Event Registration Confirmation',
             event_email_content: eventEmailContent || 'Thank you for registering!',
@@ -1213,9 +1202,9 @@ function EditFormDialog({
           if (metadata.company_form_email_subject) delete metadata.company_form_email_subject;
           if (metadata.company_form_email_content) delete metadata.company_form_email_content;
         } else {
-          // If unchecked, remove event registration flag but keep other metadata
+          // If unchecked, remove event registration flag and requires_login (since login is only for event registration) but keep other metadata
           if (metadata) {
-            const { is_event_registration, event_email_subject, event_email_content, event_date, event_end_date, event_location, ...restMetadata } = metadata;
+            const { is_event_registration, requires_login, event_email_subject, event_email_content, event_date, event_end_date, event_location, ...restMetadata } = metadata;
             metadata = Object.keys(restMetadata).length > 0 ? restMetadata : undefined;
           }
         }
