@@ -61,15 +61,72 @@ export async function POST(req: Request) {
       }, { status: 401 });
     }
 
-    // Hash the provided password and compare
-    const crypto = await import("crypto");
-    const passwordHash = crypto
-      .createHash("sha256")
-      .update(password)
-      .digest("hex");
+    // Debug: Log password field info (without exposing the full hash)
+    console.log("[students/login] Password field exists:", !!student.password);
+    console.log("[students/login] Password field length:", student.password?.length);
+    console.log("[students/login] Password field prefix:", student.password?.substring(0, 20));
 
-    if (passwordHash !== student.password) {
+    // Check if password is SHA256 (64 hex chars) or Directus hash (Argon2id, bcrypt, etc.)
+    const isArgon2Hash = student.password.startsWith('$argon2');
+    const isBcryptHash = student.password.startsWith('$2a$') || student.password.startsWith('$2b$');
+    const isDirectusHash = isArgon2Hash || isBcryptHash || 
+                           (student.password.length > 64 && !/^[a-f0-9]{64}$/i.test(student.password));
+
+    let passwordMatches = false;
+
+    if (isDirectusHash) {
+      if (isArgon2Hash) {
+        // Directus uses Argon2id when password is set via UI
+        try {
+          // @ts-ignore - argon2 may not be installed
+          const argon2 = await import("argon2").catch(() => null);
+          if (argon2 && typeof argon2.verify === 'function') {
+            passwordMatches = await argon2.verify(student.password, password);
+            console.log("[students/login] Using Argon2id verification");
+          } else {
+            throw new Error("argon2 not available");
+          }
+        } catch (argon2Error) {
+          console.error("[students/login] Argon2 verification failed:", argon2Error);
+          console.error("[students/login] Note: Password is Argon2id-hashed but argon2 package is not installed.");
+          console.error("[students/login] Install argon2: npm install argon2");
+          return NextResponse.json({ 
+            error: "Password verification failed. Please contact support or reset your password." 
+          }, { status: 401 });
+        }
+      } else if (isBcryptHash) {
+        // Directus might use bcrypt in some cases
+        try {
+          // @ts-ignore - bcryptjs may not be installed
+          const bcrypt = await import("bcryptjs").catch(() => null);
+          if (bcrypt && typeof bcrypt.compare === 'function') {
+            passwordMatches = await bcrypt.compare(password, student.password);
+            console.log("[students/login] Using bcrypt verification");
+          } else {
+            throw new Error("bcryptjs not available");
+          }
+        } catch (bcryptError) {
+          console.error("[students/login] Bcrypt verification failed:", bcryptError);
+          console.error("[students/login] Install bcryptjs: npm install bcryptjs @types/bcryptjs");
+          return NextResponse.json({ 
+            error: "Password verification failed. Please contact support or reset your password." 
+          }, { status: 401 });
+        }
+      }
+    } else {
+      // Assume SHA256 hash (64 hex characters) - used when password is set programmatically
+      const crypto = await import("crypto");
+      const passwordHash = crypto
+        .createHash("sha256")
+        .update(password)
+        .digest("hex");
+      passwordMatches = passwordHash === student.password;
+      console.log("[students/login] Using SHA256 verification");
+    }
+
+    if (!passwordMatches) {
       console.error("[students/login] Password mismatch for student:", student.email);
+      console.error("[students/login] Password hash type:", isDirectusHash ? "Directus (bcrypt/argon2)" : "SHA256");
       return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
     }
 
