@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   // Enable standalone output for Docker
   output: 'standalone',
   // Note: outputFileTracingRoot removed - Next.js handles this automatically in standalone mode
+  
   images: {
     remotePatterns: [
       {
@@ -22,6 +23,9 @@ const nextConfig: NextConfig = {
   // Enable experimental features for better caching
   experimental: {
     optimizePackageImports: ['framer-motion', 'lucide-react'],
+    // Configure maximum body size for API routes (default is 10MB)
+    // This allows file uploads up to 50MB
+    middlewareClientMaxBodySize: '50mb' as any, // Using 'as any' to bypass TypeScript if property not in types yet
     // Increase server action body size limit (default is 1 MB)
     // This is needed for company information updates that might include large HTML descriptions
     // Note: File uploads are handled separately via Directus API, not through server actions
@@ -29,8 +33,6 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: '10mb',
     },
-    // Note: proxyClientMaxBodySize is not yet available in Next.js 16.0.1 types
-    // The middleware body size limit is handled by the server configuration
   },
   webpack: (config, { isServer }) => {
     if (isServer) {

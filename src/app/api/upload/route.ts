@@ -2,9 +2,79 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getFormUploadsFolderId } from "@/lib/directus";
 
+// Configure route for large file uploads
+export const runtime = 'nodejs';
+export const maxDuration = 300; // 5 minutes for large file uploads
+
 export async function POST(request: NextRequest) {
+  // Wrap everything in a try-catch to ensure we always return JSON
   try {
-    const formData = await request.formData();
+    console.log('[upload API] Request received');
+    console.log('[upload API] Request URL:', request.url);
+    console.log('[upload API] Request method:', request.method);
+    
+    // Early return if request is null/undefined
+    if (!request) {
+      console.error('[upload API] Request is null or undefined');
+      return NextResponse.json(
+        { error: 'Invalid request' },
+        { status: 400 }
+      );
+    }
+    // Log request details for debugging
+    const contentType = request.headers.get('content-type') || '';
+    const contentLength = request.headers.get('content-length');
+    console.log('[upload API] Content-Type:', contentType);
+    console.log('[upload API] Content-Length:', contentLength);
+    
+    // Check content type to ensure it's multipart/form-data
+    if (!contentType.includes('multipart/form-data')) {
+      console.warn('[upload API] Invalid Content-Type:', contentType);
+      return NextResponse.json(
+        { error: 'Content-Type must be multipart/form-data' },
+        { status: 400 }
+      );
+    }
+
+    let formData: FormData;
+    try {
+      console.log('[upload API] Attempting to parse FormData...');
+      formData = await request.formData();
+      console.log('[upload API] FormData parsed successfully');
+    } catch (error) {
+      console.error('[upload API] Error parsing FormData:', error);
+      console.error('[upload API] Error type:', error?.constructor?.name);
+      console.error('[upload API] Error message:', error instanceof Error ? error.message : String(error));
+      console.error('[upload API] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+      
+      // Check if it's a body size limit error
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (
+        errorMessage.includes('body') || 
+        errorMessage.includes('size') ||
+        errorMessage.includes('limit') ||
+        errorMessage.includes('too large') ||
+        errorMessage.includes('FormData') ||
+        errorMessage.includes('parse')
+      ) {
+        return NextResponse.json(
+          { 
+            error: 'File too large. The server has a body size limit. Please try a smaller file or contact support to increase the limit.',
+            details: `Failed to parse body as FormData - file size may exceed server limits. Error: ${errorMessage}`
+          },
+          { status: 413 } // 413 Payload Too Large
+        );
+      }
+      // Return error as JSON instead of re-throwing
+      return NextResponse.json(
+        { 
+          error: 'Failed to parse request body as FormData',
+          details: errorMessage
+        },
+        { status: 400 }
+      );
+    }
+
     const file = formData.get('file') as File | null;
 
     if (!file) {
@@ -23,14 +93,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Try to get auth token
-    const cookieStore = await cookies();
-    const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
-    const token = cookieStore.get(ACCESS_COOKIE)?.value;
+    // Try to get auth token (wrap in try-catch in case cookies() fails)
+    let token: string | undefined;
+    try {
+      const cookieStore = await cookies();
+      const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
+      token = cookieStore.get(ACCESS_COOKIE)?.value;
+      console.log('[upload API] Auth token found:', token ? 'Yes' : 'No');
+    } catch (cookieError) {
+      console.error('[upload API] Error reading cookies (continuing without auth):', cookieError);
+      // Continue without token - Directus might allow public uploads
+    }
 
-    // Get Form_uploads folder ID
-    const folderId = await getFormUploadsFolderId();
-    console.log('[upload API] Form_uploads folder ID:', folderId);
+    // Get Form_uploads folder ID (don't fail if this errors)
+    let folderId: string | null = null;
+    try {
+      folderId = await getFormUploadsFolderId();
+      console.log('[upload API] Form_uploads folder ID:', folderId);
+    } catch (folderError) {
+      console.error('[upload API] Error getting folder ID (continuing without folder):', folderError);
+      // Continue without folder ID - file will be uploaded to root
+    }
 
     // Recreate FormData for upload
     const uploadFormData = new FormData();
@@ -51,21 +134,60 @@ export async function POST(request: NextRequest) {
 
     // Upload directly to Directus using fetch
     const uploadUrl = `${directusUrl.replace(/\/$/, '')}/files`;
-    const response = await fetch(uploadUrl, {
-      method: 'POST',
-      headers,
-      body: uploadFormData,
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ message: 'Upload failed' }));
+    console.log('[upload API] Uploading to Directus:', uploadUrl);
+    console.log('[upload API] File size:', file.size, 'bytes');
+    console.log('[upload API] File name:', file.name);
+    console.log('[upload API] File type:', file.type);
+    
+    let response: Response;
+    try {
+      response = await fetch(uploadUrl, {
+        method: 'POST',
+        headers,
+        body: uploadFormData,
+      });
+    } catch (fetchError) {
+      console.error('[upload API] Fetch error (network issue):', fetchError);
+      const fetchErrorMessage = fetchError instanceof Error ? fetchError.message : String(fetchError);
       return NextResponse.json(
-        { error: `Directus upload failed: ${errorData.message || response.statusText}` },
-        { status: response.status }
+        { 
+          error: 'Failed to connect to file storage service',
+          details: fetchErrorMessage
+        },
+        { status: 503 }
       );
     }
 
-    const result = await response.json();
+    if (!response.ok) {
+      let errorMessage = 'Upload failed';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorData.error || response.statusText;
+        console.error('[upload API] Directus upload error:', errorData);
+      } catch (jsonError) {
+        const errorText = await response.text().catch(() => response.statusText);
+        errorMessage = errorText || response.statusText;
+        console.error('[upload API] Directus upload error (non-JSON):', errorText);
+      }
+      return NextResponse.json(
+        { 
+          error: `Directus upload failed: ${errorMessage}`,
+          status: response.status
+        },
+        { status: response.status >= 400 && response.status < 500 ? response.status : 502 }
+      );
+    }
+
+    let result: any;
+    try {
+      result = await response.json();
+    } catch (jsonError) {
+      console.error('[upload API] Failed to parse Directus response as JSON:', jsonError);
+      return NextResponse.json(
+        { error: 'Upload succeeded but received invalid response from file storage service' },
+        { status: 502 }
+      );
+    }
     console.log('[upload API] Directus upload response:', JSON.stringify(result, null, 2));
     
     // Extract file ID and check if folder was set
@@ -122,10 +244,39 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ id: fileId });
   } catch (error) {
-    console.error('[upload API] Error uploading file:', error);
+    console.error('[upload API] Unexpected error uploading file:', error);
+    console.error('[upload API] Error type:', error?.constructor?.name);
+    console.error('[upload API] Error message:', error instanceof Error ? error.message : String(error));
+    console.error('[upload API] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    
+    // Provide more specific error messages
+    let errorMessage = 'Upload failed';
+    let statusCode = 500;
+    let errorDetails: string | undefined;
+    
+    if (error instanceof Error) {
+      errorMessage = error.message || 'Upload failed';
+      errorDetails = error.stack;
+      
+      // Check for common error patterns
+      if (error.message.includes('body') || error.message.includes('FormData') || error.message.includes('parse')) {
+        errorMessage = 'Failed to parse body as FormData. This usually means the file is too large for the server configuration. Please try a smaller file or contact support.';
+        statusCode = 413; // Payload Too Large
+      } else if (error.message.includes('timeout') || error.message.includes('ETIMEDOUT')) {
+        errorMessage = 'Upload timeout. The file may be too large or the connection is too slow. Please try again.';
+        statusCode = 504; // Gateway Timeout
+      } else if (error.message.includes('ENOTFOUND') || error.message.includes('ECONNREFUSED')) {
+        errorMessage = 'Cannot connect to file storage service. Please try again later.';
+        statusCode = 503; // Service Unavailable
+      }
+    }
+    
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Upload failed' },
-      { status: 500 }
+      { 
+        error: errorMessage,
+        ...(process.env.NODE_ENV === 'development' && errorDetails ? { details: errorDetails } : {})
+      },
+      { status: statusCode }
     );
   }
 }
