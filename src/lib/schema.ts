@@ -27,6 +27,27 @@ export type CompanyRep = {
   avatar?: string;
 } | null;
 
+export type Student = {
+  id: string;
+  username: string; // LITUS username (unique identifier)
+  first_name: string | null;
+  last_name: string | null;
+  full_name?: string; // Full name from LITUS
+  email: string;
+  university_status?: string; // "student"
+  university?: string; // University name (e.g., "KU Leuven", "Universiteit Gent")
+  organization_status?: string; // e.g., "praesidium" (kept for backward compatibility)
+  in_workinggroup?: boolean;
+  litus_access_token?: string; // Encrypted/stored access token for API calls
+  litus_token_expires_at?: string; // ISO date when token expires
+  password?: string; // Hashed password for non-OAuth students
+  verified?: boolean; // Whether email has been verified
+  verification_token_hash?: string; // Hash of verification token
+  verification_token_created?: string; // When verification token was created
+  date_created?: string;
+  date_updated?: string;
+};
+
 export type Company = {
   id: string;
   name: string;
@@ -217,4 +238,5 @@ export type Schema = {
   forms: Form;
   form_versions: FormVersion;
   form_responses: FormResponse;
+  students: Student;
 };

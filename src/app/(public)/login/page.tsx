@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useState } from "react";
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import NextImage from "next/image";
 import Link from "next/link";
 import { getDirectusImageUrl } from "@/components/Images";
@@ -29,6 +29,12 @@ export default function LoginPage() {
   const [forgotPasswordError, setForgotPasswordError] = useState<string | null>(null);
   const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState(false);
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  const handleOAuthLogin = () => {
+    const redirectTo = searchParams.get("redirectTo") || "/dashboard";
+    window.location.href = `/api/auth/oauth/initiate?redirect_to=${encodeURIComponent(redirectTo)}`;
+  };
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -121,6 +127,33 @@ export default function LoginPage() {
                 )}
               </div>
             </form>
+
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">
+                  Or continue with
+                </span>
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={handleOAuthLogin}
+            >
+              Login with OAuth (KU Leuven Student)
+            </Button>
+
+            <p className="text-center text-sm text-muted-foreground mt-4">
+              Not a KU Leuven student?{" "}
+              <Link href="/register" className="text-primary hover:underline">
+                Register here
+              </Link>
+            </p>
           </div>
         </div>
       </div>

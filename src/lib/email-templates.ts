@@ -481,6 +481,99 @@ export function generateCompanyFormConfirmationEmailHtml({
 }
 
 /**
+ * Generate student verification email HTML
+ */
+export function generateStudentVerificationEmailHtml({
+  firstName,
+  lastName,
+  verificationUrl,
+}: {
+  firstName?: string;
+  lastName?: string;
+  verificationUrl: string;
+}) {
+  const fullName = [firstName, lastName].filter(Boolean).join(" ") || "there";
+  const displayName = fullName !== "there" ? fullName : "there";
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+            line-height: 1.6; 
+            color: #333; 
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+          }
+          .container { 
+            max-width: 600px; 
+            margin: 0 auto; 
+            padding: 40px 20px;
+            background-color: #ffffff;
+          }
+          .button {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #2563eb;
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-weight: 500;
+          }
+          .button:hover {
+            background-color: #1d4ed8;
+          }
+          h2 {
+            color: #111827;
+            margin-top: 0;
+          }
+          .info-box {
+            background-color: #f9fafb;
+            border-left: 4px solid #2563eb;
+            padding: 16px;
+            margin: 20px 0;
+            border-radius: 4px;
+          }
+          .signature {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            color: #6b7280;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h2>Verify Your Email Address</h2>
+          <p>Dear ${displayName},</p>
+          <p>Thank you for registering as a student on the VTK Career Platform!</p>
+          <p>To complete your registration and set up your password, please click the button below to verify your email address:</p>
+          <div style="text-align: center;">
+            <a href="${verificationUrl}" class="button" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff !important; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: 500;">Verify Email & Set Password</a>
+          </div>
+          <div class="info-box">
+            <p><strong>What's next?</strong></p>
+            <p>After verifying your email and setting up your password, you'll be able to access your student account and explore career opportunities.</p>
+          </div>
+          <p>If the button doesn't work, you can copy and paste this link into your browser:</p>
+          <p style="word-break: break-all; color: #2563eb;">${verificationUrl}</p>
+          <p style="font-size: 12px; color: #6b7280; margin-top: 20px;">This verification link will expire in 7 days for security reasons.</p>
+          <div class="signature">
+            <p>Best regards,<br>The VTK Career Team</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
+/**
  * Generate password reset email HTML
  */
 export function generatePasswordResetEmailHtml({
