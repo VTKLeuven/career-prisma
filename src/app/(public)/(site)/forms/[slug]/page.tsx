@@ -672,20 +672,51 @@ function FormFieldRenderer({
                 
                 // Upload files sequentially
                 for (const file of files) {
+                  console.log('[Form] Starting upload for file:', file.name, 'Size:', file.size, 'bytes');
                   const formData = new FormData();
                   formData.append('file', file);
 
-                  const response = await fetch('/api/upload', {
-                    method: 'POST',
-                    body: formData,
-                  });
+                  let response: Response;
+                  try {
+                    response = await fetch('/api/upload', {
+                      method: 'POST',
+                      body: formData,
+                    });
+                  } catch (fetchError) {
+                    console.error('[Form] Fetch error (network/connection issue):', fetchError);
+                    const fetchErrorMessage = fetchError instanceof Error ? fetchError.message : String(fetchError);
+                    if (fetchErrorMessage.includes('Failed to fetch') || fetchErrorMessage.includes('NetworkError')) {
+                      throw new Error('Network error: Unable to connect to the server. This may indicate the file is too large for the server configuration or there is a network issue.');
+                    }
+                    throw new Error(`Upload failed: ${fetchErrorMessage}`);
+                  }
 
                   if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({ error: 'Upload failed' }));
-                    throw new Error(errorData.error || 'Upload failed');
+                    // Try to get error message from response
+                    let errorMessage = 'Upload failed';
+                    try {
+                      const errorData = await response.json();
+                      errorMessage = errorData.error || errorData.message || errorData.details || `Upload failed with status ${response.status}`;
+                      console.error('[Form] Upload error response:', errorData);
+                    } catch (jsonError) {
+                      // If JSON parsing fails, try to get text
+                      try {
+                        const errorText = await response.text();
+                        errorMessage = errorText || `Upload failed with status ${response.status}`;
+                        console.error('[Form] Upload error text:', errorText);
+                      } catch (textError) {
+                        errorMessage = `Upload failed with status ${response.status}: ${response.statusText}`;
+                        console.error('[Form] Could not parse error response');
+                      }
+                    }
+                    throw new Error(errorMessage);
                   }
 
                   const result = await response.json();
+                  if (!result.id) {
+                    throw new Error('Upload succeeded but no file ID was returned');
+                  }
+                  console.log('[Form] Upload successful, file ID:', result.id);
                   uploadedIds.push(result.id);
                 }
 
