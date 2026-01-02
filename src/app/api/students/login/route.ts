@@ -1,7 +1,6 @@
 // app/api/students/login/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { findStudentByEmail } from "@/lib/repos/students";
 
 const STUDENT_SESSION_COOKIE = "student_session";
 
@@ -12,12 +11,41 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Email and password are required." }, { status: 400 });
     }
 
-    // Find student by email
-    const student = await findStudentByEmail(email);
+    // Find student by email - we need to fetch with password field explicitly
+    const baseUrl = process.env.DIRECTUS_URL;
+    if (!baseUrl) {
+      return NextResponse.json({ error: "DIRECTUS_URL is not configured." }, { status: 500 });
+    }
+
+    const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
+    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
     
-    if (!student) {
+    if (!serverToken) {
+      return NextResponse.json({ error: "Server configuration error." }, { status: 500 });
+    }
+
+    // Fetch student with password field explicitly
+    const studentRes = await fetch(
+      `${normalizedBase}items/students?filter[email][_eq]=${encodeURIComponent(email)}&fields=id,email,password,verified,username,first_name,last_name&limit=1`,
+      {
+        headers: {
+          "Authorization": `Bearer ${serverToken}`,
+        },
+      }
+    );
+
+    if (!studentRes.ok) {
       return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
     }
+
+    const studentData = await studentRes.json();
+    const students = studentData.data || [];
+    
+    if (students.length === 0) {
+      return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
+    }
+
+    const student = students[0];
 
     // Check if student has a password set
     if (!student.password) {
@@ -41,6 +69,7 @@ export async function POST(req: Request) {
       .digest("hex");
 
     if (passwordHash !== student.password) {
+      console.error("[students/login] Password mismatch for student:", student.email);
       return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
     }
 

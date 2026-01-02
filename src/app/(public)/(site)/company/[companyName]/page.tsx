@@ -15,7 +15,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { usePageLayout } from '../../layout';
 import { getUpcomingEventsWithFallback } from '@/lib/utils/events';
-import { LoginSelectionDialog } from '@/components/LoginSelectionDialog';
 
 type CategoryJunction = { master_id: Master | null };
 type OptionJunction = { career_event_option_id: CareerEventOption | null };
@@ -426,7 +425,6 @@ export default function CompanyPage() {
 function Header() {
   const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [loginDialogOpen, setLoginDialogOpen] = useState(false)
   const router = useRouter()
   const [EVENTS, setEvents] = useState<CareerEvent[]>([]);
   const menuRef = useRef<HTMLDivElement>(null)
@@ -517,7 +515,12 @@ function Header() {
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => setLoginDialogOpen(true)}>General login</Button>
+            <Button variant="outline" className="hidden rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/10 md:inline-flex cursor-pointer" asChild>
+              <Link href="/student-login">Student Login</Link>
+            </Button>
+            <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" asChild>
+              <Link href="/login">Company Login</Link>
+            </Button>
             <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="/contact">Contact Us</Link></Button>
             
             {/* Mobile menu button - only show if menu is closed (Events button handles opening) */}
@@ -629,13 +632,19 @@ function Header() {
                 <div className="border-t pt-4 space-y-2">
                   <Button 
                     variant="outline" 
-                    className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full" 
-                    onClick={() => {
-                      setLoginDialogOpen(true);
-                      setMobileMenuOpen(false);
-                    }}
+                    className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/10 w-full" 
+                    asChild
+                    onClick={() => setMobileMenuOpen(false)}
                   >
-                    General login
+                    <Link href="/student-login">Student Login</Link>
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full" 
+                    asChild
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <Link href="/login">Company Login</Link>
                   </Button>
                   <Button 
                     asChild 
@@ -743,7 +752,6 @@ function Header() {
         )}
       </AnimatePresence>
 
-      <LoginSelectionDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
     </header>
   )
 }
