@@ -80,9 +80,10 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Generate secure random token using crypto (similar to invite token generation)
+      // Generate secure random token using crypto
+      // Using hex encoding which is simpler and more compatible
       const crypto = await import("crypto");
-      const randomToken = crypto.randomBytes(32).toString("base64url");
+      const randomToken = crypto.randomBytes(32).toString("hex");
       
       // Store the token in the user's password_reset_token field
       // Directus expects this field to contain the reset token
