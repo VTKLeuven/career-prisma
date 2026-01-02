@@ -377,26 +377,29 @@ function HomepageHeader() {
               <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>
             )}
             {student && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button className="hidden md:inline-flex items-center gap-2 text-sm font-medium text-neutral-800 px-3 py-2 hover:bg-neutral-100 rounded-full transition-colors cursor-pointer">
-                    <User className="h-4 w-4" />
-                    {student.firstName} {student.lastName}
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    onClick={async () => {
-                      await fetch("/api/students/logout", { method: "POST" });
-                      router.refresh();
-                      window.location.href = "/";
-                    }}
-                  >
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Log out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex">
+                      <User className="h-4 w-4 mr-2" />
+                      {student.firstName} {student.lastName}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={async () => {
+                        await fetch("/api/students/logout", { method: "POST" });
+                        router.refresh();
+                        window.location.href = "/";
+                      }}
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Log out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>
+              </>
             )}
 
             {/* Mobile menu button */}
@@ -532,26 +535,35 @@ function HomepageHeader() {
                     </Button>
                   )}
                   {student && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button className="flex items-center justify-center gap-2 text-sm font-medium text-neutral-800 px-3 py-2 w-full hover:bg-neutral-100 rounded-full transition-colors cursor-pointer">
-                          <User className="h-4 w-4" />
-                          {student.firstName} {student.lastName}
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-56">
-                        <DropdownMenuItem
-                          onClick={async () => {
-                            await fetch("/api/students/logout", { method: "POST" });
-                            router.refresh();
-                            window.location.href = "/";
-                          }}
-                        >
-                          <LogOut className="mr-2 h-4 w-4" />
-                          Log out
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full">
+                            <User className="h-4 w-4 mr-2" />
+                            {student.firstName} {student.lastName}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuItem
+                            onClick={async () => {
+                              await fetch("/api/students/logout", { method: "POST" });
+                              router.refresh();
+                              window.location.href = "/";
+                            }}
+                          >
+                            <LogOut className="mr-2 h-4 w-4" />
+                            Log out
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <Button 
+                        asChild
+                        className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <Link href="/contact">Contact Us</Link>
+                      </Button>
+                    </>
                   )}
                 </div>
               </div>
@@ -817,26 +829,29 @@ function Header({ page }: { page?: CareerEventPage }) {
               <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>
             )}
             {student && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button className="hidden md:inline-flex items-center gap-2 text-sm font-medium text-neutral-800 px-3 py-2 hover:bg-neutral-100 rounded-full transition-colors cursor-pointer">
-                    <User className="h-4 w-4" />
-                    {student.firstName} {student.lastName}
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    onClick={async () => {
-                      await fetch("/api/students/logout", { method: "POST" });
-                      router.refresh();
-                      window.location.href = "/";
-                    }}
-                  >
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Log out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex">
+                      <User className="h-4 w-4 mr-2" />
+                      {student.firstName} {student.lastName}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={async () => {
+                        await fetch("/api/students/logout", { method: "POST" });
+                        router.refresh();
+                        window.location.href = "/";
+                      }}
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Log out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>
+              </>
             )}
 
             {/* Mobile menu button */}
@@ -913,26 +928,35 @@ function Header({ page }: { page?: CareerEventPage }) {
                     </Button>
                   )}
                   {student && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button className="flex items-center justify-center gap-2 text-sm font-medium text-neutral-800 px-3 py-2 w-full hover:bg-neutral-100 rounded-full transition-colors cursor-pointer">
-                          <User className="h-4 w-4" />
-                          {student.firstName} {student.lastName}
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-56">
-                        <DropdownMenuItem
-                          onClick={async () => {
-                            await fetch("/api/students/logout", { method: "POST" });
-                            router.refresh();
-                            window.location.href = "/";
-                          }}
-                        >
-                          <LogOut className="mr-2 h-4 w-4" />
-                          Log out
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full">
+                            <User className="h-4 w-4 mr-2" />
+                            {student.firstName} {student.lastName}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuItem
+                            onClick={async () => {
+                              await fetch("/api/students/logout", { method: "POST" });
+                              router.refresh();
+                              window.location.href = "/";
+                            }}
+                          >
+                            <LogOut className="mr-2 h-4 w-4" />
+                            Log out
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <Button 
+                        asChild
+                        className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <Link href="/contact">Contact Us</Link>
+                      </Button>
+                    </>
                   )}
                 </div>
               </div>
