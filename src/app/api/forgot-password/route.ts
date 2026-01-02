@@ -78,9 +78,12 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Generate secure random token using crypto (similar to invite token generation)
+      // Generate secure random token using crypto
+      // Using hex encoding which is simpler and more compatible
       const crypto = await import("crypto");
-      const randomToken = crypto.randomBytes(32).toString("base64url");
+      const randomToken = crypto.randomBytes(32).toString("hex");
+      
+      console.log(`[forgot-password] Generated reset token for user ${user.id}, length: ${randomToken.length}`);
       
       // Store the token in the user's password_reset_token field
       // Directus expects this field to contain the reset token
@@ -108,12 +111,38 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      // Verify the token was stored correctly by fetching it back
+      const verifyRes = await fetch(
+        `${normalizedBase}users/${user.id}?fields=password_reset_token`,
+        {
+          headers: {
+            "Authorization": `Bearer ${serverToken}`,
+          },
+        }
+      );
+
+      if (verifyRes.ok) {
+        const verifyData = await verifyRes.json();
+        const storedToken = verifyData.data?.password_reset_token;
+        if (storedToken === randomToken) {
+          console.log(`[forgot-password] Token verified - stored correctly for user ${user.id}`);
+        } else {
+          console.warn(`[forgot-password] Token mismatch! Generated: ${randomToken.substring(0, 20)}..., Stored: ${storedToken?.substring(0, 20)}...`);
+        }
+      }
+
       // Generate the reset URL
+      // base64url encoding is already URL-safe, so we can use it directly
+      // However, we'll still encode it to be safe with any edge cases
       const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
         || process.env.NEXT_PUBLIC_FORM_DOMAIN 
         || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
       
+      // Use the token directly since base64url is URL-safe, but encodeURIComponent is also safe
       const resetUrl = `${frontendBaseUrl}/reset-password?token=${encodeURIComponent(randomToken)}`;
+      
+      console.log(`[forgot-password] Reset URL generated for user ${user.id}`);
+      console.log(`[forgot-password] Token in URL (first 30 chars): ${randomToken.substring(0, 30)}...`);
       
       // Send email using our own service
       try {

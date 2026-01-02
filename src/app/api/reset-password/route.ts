@@ -46,10 +46,16 @@ export async function POST(request: NextRequest) {
     // Normalize URL: remove trailing slashes and ensure single trailing slash
     const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
 
-    // First, try to find the user with this reset token
-    // This validates the token and gets the user ID
+    // The token comes from URL query params which are automatically decoded by Next.js
+    // Since we use base64url encoding (which is URL-safe), we should use it as-is
+    // Directus filter API should handle the encoding internally
+    console.log(`[reset-password] Looking up user with token (length: ${token.length})`);
+
+    // Use Directus filter with proper encoding - Directus handles URL encoding internally
+    // We need to encode the filter value for the URL, but Directus will decode it
+    const filterValue = encodeURIComponent(token);
     const userRes = await fetch(
-      `${normalizedBase}users?filter[password_reset_token][_eq]=${encodeURIComponent(token)}&fields=id,email,status,password_reset_token`,
+      `${normalizedBase}users?filter[password_reset_token][_eq]=${filterValue}&fields=id,email,status,password_reset_token`,
       {
         headers: {
           "Authorization": `Bearer ${serverToken}`,
@@ -59,6 +65,8 @@ export async function POST(request: NextRequest) {
 
     if (!userRes.ok) {
       console.error(`[reset-password] Failed to find user with reset token:`, userRes.status);
+      const errorText = await userRes.text().catch(() => "Unknown error");
+      console.error(`[reset-password] Error response:`, errorText);
       return NextResponse.json(
         { error: "Invalid or expired reset token. Please request a new password reset link." },
         { status: 400 }
@@ -69,6 +77,7 @@ export async function POST(request: NextRequest) {
     const users = userData.data || [];
 
     if (users.length === 0) {
+      console.log(`[reset-password] No user found with token. Token received: ${token.substring(0, 20)}...`);
       return NextResponse.json(
         { error: "Invalid or expired reset token. Please request a new password reset link." },
         { status: 400 }
@@ -86,12 +95,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify the token matches exactly
-    if (user.password_reset_token !== token) {
+    const storedToken = user.password_reset_token;
+    
+    if (storedToken !== token) {
+      console.error(`[reset-password] Token mismatch!`);
+      console.error(`[reset-password] Stored token length: ${storedToken?.length}, Received token length: ${token.length}`);
+      console.error(`[reset-password] Stored token (first 30): ${storedToken?.substring(0, 30)}...`);
+      console.error(`[reset-password] Received token (first 30): ${token.substring(0, 30)}...`);
       return NextResponse.json(
         { error: "Invalid or expired reset token. Please request a new password reset link." },
         { status: 400 }
       );
     }
+    
+    console.log(`[reset-password] Token verified successfully for user ${user.id}`);
 
     // Update user: set password and clear reset token
     const updateRes = await fetch(
