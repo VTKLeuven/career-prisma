@@ -6,12 +6,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 
+interface TokenInfo {
+  access_token?: string;
+  token_type?: string;
+  expires_in?: number;
+  scope?: string;
+}
+
 export default function AuthCallbackPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [decodedData, setDecodedData] = useState<{
     userInfo?: unknown;
-    tokenInfo?: unknown;
+    tokenInfo?: TokenInfo;
   } | null>(null);
 
   useEffect(() => {
@@ -126,8 +133,8 @@ export default function AuthCallbackPage() {
                         {
                           ...decodedData.tokenInfo,
                           // Mask the actual token for security
-                          access_token: decodedData.tokenInfo.access_token
-                            ? `${String(decodedData.tokenInfo.access_token).substring(0, 20)}...`
+                          access_token: decodedData.tokenInfo?.access_token
+                            ? `${decodedData.tokenInfo.access_token.substring(0, 20)}...`
                             : undefined,
                         },
                         null,

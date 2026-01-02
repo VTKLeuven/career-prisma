@@ -301,8 +301,10 @@ export async function generateStudentVerificationToken(
     const verificationToken = Buffer.from(`${student.id}:${randomToken}`).toString("base64url");
 
     // Store token hash and creation time
+    // Try direct fields first (preferred), then fallback to metadata if that fails
     try {
-      const updateRes = await fetch(
+      // First attempt: store as direct fields
+      const directFieldsRes = await fetch(
         `${normalizedBase}items/${STUDENT_COLLECTION}/${student.id}`,
         {
           method: "PATCH",
@@ -318,11 +320,81 @@ export async function generateStudentVerificationToken(
         }
       );
 
-      if (!updateRes.ok) {
-        console.warn(`[generateStudentVerificationToken] Failed to store token hash`);
+      if (directFieldsRes.ok) {
+        // Verify the fields were actually stored
+        const verifyRes = await fetch(
+          `${normalizedBase}items/${STUDENT_COLLECTION}/${student.id}?fields=verification_token_hash,verification_token_created`,
+          {
+            headers: {
+              "Authorization": `Bearer ${serverToken}`,
+            },
+          }
+        );
+        if (verifyRes.ok) {
+          const verifyData = await verifyRes.json();
+          const hasHash = !!verifyData.data?.verification_token_hash;
+          console.log(`[generateStudentVerificationToken] Successfully stored token hash as direct fields for student ${student.id}`);
+          console.log(`[generateStudentVerificationToken] Verification: hash present = ${hasHash}`);
+        } else {
+          console.warn(`[generateStudentVerificationToken] Update succeeded but could not verify - fields may not exist in schema`);
+        }
+      } else {
+        const errorData = await directFieldsRes.json().catch(() => null);
+        const errorMessage = errorData?.errors?.[0]?.message || await directFieldsRes.text().catch(() => "Unknown error");
+        console.warn(`[generateStudentVerificationToken] Failed to store as direct fields (${directFieldsRes.status}):`, errorMessage);
+        console.log(`[generateStudentVerificationToken] Attempting to store in metadata (fallback)`);
+        
+        // Fallback: try metadata
+        try {
+          // Get current metadata to merge with new values
+          const currentStudentRes = await fetch(
+            `${normalizedBase}items/${STUDENT_COLLECTION}/${student.id}?fields=metadata`,
+            {
+              headers: {
+                "Authorization": `Bearer ${serverToken}`,
+              },
+            }
+          );
+          
+          let currentMetadata = {};
+          if (currentStudentRes.ok) {
+            const currentData = await currentStudentRes.json();
+            currentMetadata = currentData.data?.metadata || {};
+          }
+          
+          // Merge with new token data
+          const updatedMetadata = {
+            ...currentMetadata,
+            verification_token_hash: tokenHash,
+            verification_token_created: new Date().toISOString(),
+          };
+          
+          const metadataRes = await fetch(
+            `${normalizedBase}items/${STUDENT_COLLECTION}/${student.id}`,
+            {
+              method: "PATCH",
+              headers: {
+                "Authorization": `Bearer ${serverToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                metadata: updatedMetadata,
+              }),
+            }
+          );
+          
+          if (metadataRes.ok) {
+            console.log(`[generateStudentVerificationToken] Successfully stored token hash in metadata for student ${student.id}`);
+          } else {
+            const metadataError = await metadataRes.json().catch(() => null);
+            console.error(`[generateStudentVerificationToken] Metadata storage also failed:`, metadataError);
+          }
+        } catch (metadataErr) {
+          console.error(`[generateStudentVerificationToken] Metadata storage exception:`, metadataErr);
+        }
       }
     } catch (err) {
-      console.warn(`[generateStudentVerificationToken] Exception storing token:`, err);
+      console.error(`[generateStudentVerificationToken] Exception storing token:`, err);
     }
 
     console.log(`[generateStudentVerificationToken] Successfully generated verification token for student ${studentId}`);
