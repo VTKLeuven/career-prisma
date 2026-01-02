@@ -344,7 +344,7 @@ export async function listFormResponses(formVersionId: string, opts?: {
 
     const result = await client.request(
       readItems("form_responses", {
-        fields: ["*", "user_id.name", "user_id.email", "form_version_id.form_id.name", "company_id.name", "company_id.id"],
+        fields: ["*", "user_id.name", "user_id.email", "form_version_id.form_id.name", "company_id.name", "company_id.id", "student_id.full_name", "student_id.first_name", "student_id.last_name", "student_id.email"],
         filter: { form_version_id: { _eq: formVersionId } },
         limit,
         page,

@@ -171,8 +171,18 @@ export default function AllScansPage() {
         .trim();
     });
 
+    // Check if any scan has student data
+    const hasStudentData = scans.some(scan => scan.form_response_id.data?._student_username || scan.form_response_id.data?._student_email);
+
     // Prepare data for XLSX
-    const headerRow = ['Event', 'Scanned At', 'Scanned By', 'Registration Date', ...fieldNames];
+    const headerRow = [
+      'Event', 
+      'Scanned At', 
+      'Scanned By', 
+      'Registration Date',
+      ...(hasStudentData ? ['Student Username', 'Student Email', 'Student Full Name', 'Student University', 'Student University Status'] : []),
+      ...fieldNames
+    ];
     
     const dataRows = scans.map(scan => {
       const response = scan.form_response_id;
@@ -195,6 +205,15 @@ export default function AllScansPage() {
         ? scan.scanned_by.name || scan.scanned_by.email 
         : 'Unknown';
 
+      // Add student fields if applicable
+      const studentFields = hasStudentData ? [
+        (typeof response.data._student_username === 'string' ? response.data._student_username : '') || '',
+        (typeof response.data._student_email === 'string' ? response.data._student_email : '') || '',
+        (typeof response.data._student_full_name === 'string' ? response.data._student_full_name : '') || '',
+        (typeof response.data._student_university === 'string' ? response.data._student_university : '') || '',
+        (typeof response.data._student_university_status === 'string' ? response.data._student_university_status : '') || '',
+      ] : [];
+
       const values = fieldKeys.map(key => {
         const value = response.data[key];
         if (value === null || value === undefined) return '';
@@ -207,6 +226,7 @@ export default function AllScansPage() {
         formatDateTimeBE(scan.scanned_at),
         scannedBy,
         formatDateTimeBE(response.submitted_at),
+        ...studentFields,
         ...values
       ];
     });
@@ -356,6 +376,15 @@ export default function AllScansPage() {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
+                    {scans.some(scan => scan.form_response_id.data?._student_username || scan.form_response_id.data?._student_email) && (
+                      <>
+                        <TableHead>Student Username</TableHead>
+                        <TableHead>Student Email</TableHead>
+                        <TableHead>Student Full Name</TableHead>
+                        <TableHead>Student University</TableHead>
+                        <TableHead>Student University Status</TableHead>
+                      </>
+                    )}
                     <TableHead>Event</TableHead>
                     <TableHead>Scanned At</TableHead>
                     <TableHead>Scanned By</TableHead>
@@ -388,6 +417,15 @@ export default function AllScansPage() {
                       <TableRow key={scan.id}>
                         <TableCell className="font-medium">{name}</TableCell>
                         <TableCell>{email}</TableCell>
+                        {scans.some(s => s.form_response_id.data?._student_username || s.form_response_id.data?._student_email) && (
+                          <>
+                            <TableCell>{(typeof response.data._student_username === 'string' ? response.data._student_username : '') || 'N/A'}</TableCell>
+                            <TableCell>{(typeof response.data._student_email === 'string' ? response.data._student_email : '') || 'N/A'}</TableCell>
+                            <TableCell>{(typeof response.data._student_full_name === 'string' ? response.data._student_full_name : '') || 'N/A'}</TableCell>
+                            <TableCell>{(typeof response.data._student_university === 'string' ? response.data._student_university : '') || 'N/A'}</TableCell>
+                            <TableCell>{(typeof response.data._student_university_status === 'string' ? response.data._student_university_status : '') || 'N/A'}</TableCell>
+                          </>
+                        )}
                         <TableCell>{eventName}</TableCell>
                         <TableCell>{formatDateTimeBE(scan.scanned_at)}</TableCell>
                         <TableCell>

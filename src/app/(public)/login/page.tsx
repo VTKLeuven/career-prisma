@@ -50,8 +50,9 @@ export default function LoginPage() {
       if (!res.ok) {
         setError(data?.error ?? "Login failed.");
       } else {
-        router.refresh()
-        router.replace("/dashboard")
+        // Force a hard navigation to ensure cookies are properly set
+        // and client-side state is refreshed
+        window.location.href = "/dashboard";
       }
     } catch {
       setError("Network error.");
@@ -72,9 +73,9 @@ export default function LoginPage() {
           <div className="w-full max-w-xs">
             <form className={"flex flex-col gap-6"} onSubmit={onSubmit}>
               <div className="flex flex-col items-center gap-2 text-center">
-                <h1 className="text-2xl font-bold">Login to your company</h1>
+                <h1 className="text-2xl font-bold">Company Login</h1>
                 <p className="text-muted-foreground text-sm text-balance">
-                  Enter your email below to login to your account
+                  Enter your email below to login to your company account
                 </p>
               </div>
               <div className="grid gap-6">

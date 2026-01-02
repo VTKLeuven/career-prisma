@@ -179,14 +179,32 @@ export default function EventScansPage() {
       }
     });
 
+    // Check if any scan has student data
+    const hasStudentData = scans.some(scan => scan.form_response_id.data?._student_username || scan.form_response_id.data?._student_email);
+
     // Prepare data for XLSX
-    const headerRow = ['Scanned At', 'Scanned By', 'Registration Date', ...finalFieldNames];
+    const headerRow = [
+      'Scanned At', 
+      'Scanned By', 
+      'Registration Date',
+      ...(hasStudentData ? ['Student Username', 'Student Email', 'Student Full Name', 'Student University', 'Student University Status'] : []),
+      ...finalFieldNames
+    ];
     
     const dataRows = scans.map(scan => {
       const response = scan.form_response_id;
       const scannedBy = typeof scan.scanned_by === 'object' 
         ? scan.scanned_by.name || scan.scanned_by.email 
         : 'Unknown';
+
+      // Add student fields if applicable
+      const studentFields = hasStudentData ? [
+        (typeof response.data._student_username === 'string' ? response.data._student_username : '') || '',
+        (typeof response.data._student_email === 'string' ? response.data._student_email : '') || '',
+        (typeof response.data._student_full_name === 'string' ? response.data._student_full_name : '') || '',
+        (typeof response.data._student_university === 'string' ? response.data._student_university : '') || '',
+        (typeof response.data._student_university_status === 'string' ? response.data._student_university_status : '') || '',
+      ] : [];
 
       const values = finalFieldKeys.map(key => {
         if (shouldCombineName && key === 'firstname') {
@@ -206,6 +224,7 @@ export default function EventScansPage() {
         formatDateTimeBE(scan.scanned_at),
         scannedBy,
         formatDateTimeBE(response.submitted_at),
+        ...studentFields,
         ...values
       ];
     });
@@ -275,6 +294,15 @@ export default function EventScansPage() {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
+                    {scans.some(scan => scan.form_response_id.data?._student_username || scan.form_response_id.data?._student_email) && (
+                      <>
+                        <TableHead>Student Username</TableHead>
+                        <TableHead>Student Email</TableHead>
+                        <TableHead>Student Full Name</TableHead>
+                        <TableHead>Student University</TableHead>
+                        <TableHead>Student University Status</TableHead>
+                      </>
+                    )}
                     <TableHead>Scanned At</TableHead>
                     <TableHead>Scanned By</TableHead>
                   </TableRow>
@@ -287,11 +315,21 @@ export default function EventScansPage() {
                     const lastName = (response.data.lastname as string) || (response.data.surname as string) || "";
                     const name = `${firstName} ${lastName}`.trim() || "Unknown";
                     const email = response.data.email as string || "N/A";
+                    const hasStudentData = response.data?._student_username || response.data?._student_email;
 
                     return (
                       <TableRow key={scan.id}>
                         <TableCell className="font-medium">{name}</TableCell>
                         <TableCell>{email}</TableCell>
+                        {scans.some(s => s.form_response_id.data?._student_username || s.form_response_id.data?._student_email) && (
+                          <>
+                            <TableCell>{(typeof response.data._student_username === 'string' ? response.data._student_username : '') || 'N/A'}</TableCell>
+                            <TableCell>{(typeof response.data._student_email === 'string' ? response.data._student_email : '') || 'N/A'}</TableCell>
+                            <TableCell>{(typeof response.data._student_full_name === 'string' ? response.data._student_full_name : '') || 'N/A'}</TableCell>
+                            <TableCell>{(typeof response.data._student_university === 'string' ? response.data._student_university : '') || 'N/A'}</TableCell>
+                            <TableCell>{(typeof response.data._student_university_status === 'string' ? response.data._student_university_status : '') || 'N/A'}</TableCell>
+                          </>
+                        )}
                         <TableCell>{formatDateTimeBE(scan.scanned_at)}</TableCell>
                         <TableCell>
                           {typeof scan.scanned_by === 'object' 

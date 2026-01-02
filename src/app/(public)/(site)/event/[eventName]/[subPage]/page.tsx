@@ -361,10 +361,17 @@ function Header({
               <div className="ml-auto flex items-center gap-2">
                 <Button 
                   variant="outline" 
-                  className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10" 
-                  onClick={() => router.push("/dashboard")}
+                  className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/10" 
+                  asChild
                 >
-                  Company Dashboard
+                  <Link href="/student-login">Student Login</Link>
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10" 
+                  asChild
+                >
+                  <Link href="/login">Company Login</Link>
                 </Button>
                 <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">
                   <Link href="/contact">Contact Us</Link>

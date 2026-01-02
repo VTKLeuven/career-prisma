@@ -27,6 +27,27 @@ export type CompanyRep = {
   avatar?: string;
 } | null;
 
+export type Student = {
+  id: string;
+  username: string; // LITUS username (unique identifier)
+  first_name: string | null;
+  last_name: string | null;
+  full_name?: string; // Full name from LITUS
+  email: string;
+  university_status?: string; // "student"
+  university?: string; // University name (e.g., "KU Leuven", "Universiteit Gent")
+  organization_status?: string; // e.g., "praesidium" (kept for backward compatibility)
+  in_workinggroup?: boolean;
+  litus_access_token?: string; // Encrypted/stored access token for API calls
+  litus_token_expires_at?: string; // ISO date when token expires
+  password?: string; // Hashed password for non-OAuth students
+  verified?: boolean; // Whether email has been verified
+  verification_token_hash?: string; // Hash of verification token
+  verification_token_created?: string; // When verification token was created
+  date_created?: string;
+  date_updated?: string;
+};
+
 export type Company = {
   id: string;
   name: string;
@@ -156,6 +177,7 @@ export type FormMetadata = {
   company_form_email_subject?: string; // Email subject for company form confirmation
   company_form_email_content?: string; // Email content for company form confirmation
   send_company_form_email?: boolean; // Whether to send confirmation email for company forms
+  requires_login?: boolean; // If true, only logged-in students can submit this form
   [key: string]: unknown; // Allow other metadata fields
 };
 
@@ -199,6 +221,7 @@ export type FormResponse = {
   id: string;
   form_version_id: string | FormVersion;
   user_id?: string | DirectusUser;
+  student_id?: string | Student; // Student who submitted the form (for student forms)
   data: Record<string, unknown>;
   submitted_at: string;
   attachments?: string[]; // Directus file IDs
@@ -217,4 +240,5 @@ export type Schema = {
   forms: Form;
   form_versions: FormVersion;
   form_responses: FormResponse;
+  students: Student;
 };

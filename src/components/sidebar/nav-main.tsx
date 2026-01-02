@@ -63,8 +63,8 @@ export function NavMain({
                 {item.items !== undefined ? (
                   <>
                     <div className="flex items-center gap-1">
-                      <SidebarMenuButton tooltip={item.title} asChild className="flex-1">
-                        <Link href={item.url}>
+                      <CollapsibleTrigger asChild>
+                        <SidebarMenuButton tooltip={item.title} className="flex-1">
                           {item.icon && <item.icon />}
                           <span>{item.title}</span>
                           {hasWarningInSubItems && !isOpen && (
@@ -73,16 +73,8 @@ export function NavMain({
                           {item.badge !== undefined && item.badge > 0 && (
                             <SidebarMenuBadge>{item.badge}</SidebarMenuBadge>
                           )}
-                        </Link>
-                      </SidebarMenuButton>
-                      <CollapsibleTrigger asChild>
-                        <button
-                          type="button"
-                          className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-sidebar-accent transition-colors"
-                          aria-label={isOpen ? "Collapse" : "Expand"}
-                        >
-                          <ChevronRight className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                        </button>
+                          <ChevronRight className="h-4 w-4 ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                        </SidebarMenuButton>
                       </CollapsibleTrigger>
                     </div>
                     <CollapsibleContent>

@@ -34,115 +34,58 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get admin token for user management
-    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-    if (!serverToken) {
-      return NextResponse.json(
-        { error: "Server configuration error" },
-        { status: 500 }
-      );
-    }
-
     // Normalize URL: remove trailing slashes and ensure single trailing slash
     const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
 
-    // The token comes from URL query params which are automatically decoded by Next.js
-    // Since we use base64url encoding (which is URL-safe), we should use it as-is
-    // Directus filter API should handle the encoding internally
-    console.log(`[reset-password] Looking up user with token (length: ${token.length})`);
+    // Use Directus's native password reset endpoint
+    // This is the proper way to reset passwords when using Directus's auth/password/request
+    const resetRes = await fetch(`${normalizedBase}auth/password/reset`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        token,
+        password,
+      }),
+    });
 
-    // Use Directus filter with proper encoding - Directus handles URL encoding internally
-    // We need to encode the filter value for the URL, but Directus will decode it
-    const filterValue = encodeURIComponent(token);
-    const userRes = await fetch(
-      `${normalizedBase}users?filter[password_reset_token][_eq]=${filterValue}&fields=id,email,status,password_reset_token`,
-      {
-        headers: {
-          "Authorization": `Bearer ${serverToken}`,
-        },
-      }
-    );
+    if (!resetRes.ok) {
+      const errorData = await resetRes.json().catch(() => null);
+      const errorMessage = errorData?.errors?.[0]?.message || "Invalid or expired reset token. Please request a new password reset link.";
 
-    if (!userRes.ok) {
-      console.error(`[reset-password] Failed to find user with reset token:`, userRes.status);
-      const errorText = await userRes.text().catch(() => "Unknown error");
-      console.error(`[reset-password] Error response:`, errorText);
+      console.error(`[reset-password] Failed to reset password:`, {
+        status: resetRes.status,
+        errorMessage,
+      });
+
       return NextResponse.json(
-        { error: "Invalid or expired reset token. Please request a new password reset link." },
-        { status: 400 }
+        { error: errorMessage },
+        { status: resetRes.status }
       );
     }
 
-    const userData = await userRes.json();
-    const users = userData.data || [];
+    // Success - password has been reset
+    console.log(`[reset-password] Password successfully reset via Directus`);
+    return NextResponse.json({ success: true });
 
-    if (users.length === 0) {
-      console.log(`[reset-password] No user found with token. Token received: ${token.substring(0, 20)}...`);
-      return NextResponse.json(
-        { error: "Invalid or expired reset token. Please request a new password reset link." },
-        { status: 400 }
-      );
-    }
-
-    const user = users[0];
-
-    // Verify user is active (not suspended, etc.)
-    if (user.status !== "active" && user.status !== "invited") {
-      return NextResponse.json(
-        { error: "Your account is not active. Please contact support." },
-        { status: 400 }
-      );
-    }
-
-    // Verify the token matches exactly
-    const storedToken = user.password_reset_token;
-    
-    if (storedToken !== token) {
-      console.error(`[reset-password] Token mismatch!`);
-      console.error(`[reset-password] Stored token length: ${storedToken?.length}, Received token length: ${token.length}`);
-      console.error(`[reset-password] Stored token (first 30): ${storedToken?.substring(0, 30)}...`);
-      console.error(`[reset-password] Received token (first 30): ${token.substring(0, 30)}...`);
-      return NextResponse.json(
-        { error: "Invalid or expired reset token. Please request a new password reset link." },
-        { status: 400 }
-      );
-    }
-    
-    console.log(`[reset-password] Token verified successfully for user ${user.id}`);
-
-    // Update user: set password and clear reset token
-    const updateRes = await fetch(
-      `${normalizedBase}users/${user.id}`,
-      {
-        method: "PATCH",
-        headers: {
-          "Authorization": `Bearer ${serverToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          password,
-          password_reset_token: null, // Clear the reset token after use
-        }),
-      }
-    );
-
-    if (!updateRes.ok) {
-      const errorData = await updateRes.json().catch(() => null);
-      const errorMessage = errorData?.errors?.[0]?.message || "Failed to reset password";
+    if (!resetRes.ok) {
+      const errorData = await resetRes.json().catch(() => null);
+      const errorMessage = errorData?.errors?.[0]?.message || "Invalid or expired reset token. Please request a new password reset link.";
       
-      console.error(`[reset-password] Failed to update password for user ${user.id}:`, {
-        status: updateRes.status,
+      console.error(`[reset-password] Failed to reset password:`, {
+        status: resetRes.status,
         errorMessage,
       });
       
       return NextResponse.json(
         { error: errorMessage },
-        { status: updateRes.status }
+        { status: resetRes.status }
       );
     }
 
     // Success - password has been reset
-    console.log(`[reset-password] Password successfully reset for user ${user.id}`);
+    console.log(`[reset-password] Password successfully reset via Directus`);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error resetting password:", error);
