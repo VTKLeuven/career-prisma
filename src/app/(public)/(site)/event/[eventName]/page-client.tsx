@@ -875,7 +875,7 @@ function Hero({
                     className="rounded-full bg-vtk-yellow text-black hover:brightness-95 cursor-pointer text-sm sm:text-base"
                     onClick={handleRegisterClick}
                   >
-                    Register
+                    Student registration
                   </Button>
 
                   {/* Floorplan button if floorplan exists, otherwise Explore companies */}
