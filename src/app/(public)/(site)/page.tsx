@@ -6,8 +6,14 @@ import { useEffect, useRef, useState } from 'react'
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { Calendar, ChevronDown, Sparkles } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Calendar, ChevronDown, Sparkles, LogOut, User } from 'lucide-react'
+import { useRouter, usePathname } from 'next/navigation'
 import { fetchEventsAction } from "@/app/actions/events";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { getDirectusImageUrl } from "@/components/Images";
@@ -16,7 +22,6 @@ import { DirectusUser } from "@directus/sdk";
 import { ScrollCue } from '@/components/ScrollCue';
 import { useBannerPage } from '@/hooks/use-banner-page';
 import { getUpcomingEventsWithFallback, type EventWithStatus } from '@/lib/utils/events';
-import { LoginSelectionDialog } from '@/components/LoginSelectionDialog';
 
 export default function HomePage() {
     const [viewAllEvents, setViewAllEvents] = useState(false);
@@ -84,8 +89,10 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
   const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
   const [menuOpenedViaClick, setMenuOpenedViaClick] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [loginDialogOpen, setLoginDialogOpen] = useState(false)
+  const [companyRep, setCompanyRep] = useState<{ authenticated: boolean; name: string } | null>(null)
+  const [student, setStudent] = useState<{ authenticated: boolean; firstName: string | null; lastName: string | null } | null>(null)
   const router = useRouter()
+  const pathname = usePathname()
   const [EVENTS, setEvents] = useState<CareerEvent[]>([]);
   const menuRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
@@ -100,6 +107,70 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
           // Fallback to direct action
           fetchEventsAction().then(setEvents);
         });
+  }, []);
+
+  const checkAuthStatus = () => {
+    fetch('/api/user/check?' + Date.now(), { 
+      cache: 'no-store',
+      credentials: 'include',
+    })
+      .then(res => {
+        if (!res.ok) {
+          throw new Error('Failed to check auth status');
+        }
+        return res.json();
+      })
+      .then((data) => {
+        // Debug logging (remove in production)
+        console.log('[Auth Check] API Response:', data);
+        
+        // Explicitly handle null/undefined - ensure we set null if API returns null or undefined
+        // Only set companyRep if authenticated is explicitly true
+        if (data?.companyRep?.authenticated === true) {
+          console.log('[Auth Check] Setting companyRep:', data.companyRep);
+          setCompanyRep(data.companyRep);
+        } else {
+          console.log('[Auth Check] No valid companyRep, setting to null');
+          setCompanyRep(null);
+        }
+        
+        // Only set student if authenticated is explicitly true
+        if (data?.student?.authenticated === true) {
+          console.log('[Auth Check] Setting student:', data.student);
+          setStudent(data.student);
+        } else {
+          console.log('[Auth Check] No valid student, setting to null');
+          setStudent(null);
+        }
+      })
+      .catch(() => {
+        // User not authenticated - clear state
+        setCompanyRep(null);
+        setStudent(null);
+      });
+  };
+
+  useEffect(() => {
+    // Check user authentication status on mount and when pathname changes
+    // Add a small delay on mount to ensure cookies are read correctly
+    const timer = setTimeout(() => {
+      checkAuthStatus();
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [pathname]);
+
+  useEffect(() => {
+    // Listen for focus event (user might have logged in in another tab)
+    window.addEventListener('focus', checkAuthStatus);
+
+    // Check periodically (every 10 seconds) to catch login state changes
+    const interval = setInterval(checkAuthStatus, 10000);
+
+    return () => {
+      window.removeEventListener('focus', checkAuthStatus);
+      clearInterval(interval);
+    };
   }, []);
 
   // Close menus when clicking outside
@@ -190,8 +261,39 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => setLoginDialogOpen(true)}>General login</Button>
-            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="/contact">Contact Us</Link></Button>
+            {!student && (
+              <Button asChild variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex">
+                <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>
+              </Button>
+            )}
+            {!student && !companyRep && (
+              <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/student-login">Student login</Link></Button>
+            )}
+            {companyRep && (
+              <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>
+            )}
+            {student && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="hidden md:inline-flex items-center gap-2 text-sm font-medium text-neutral-800 px-3 py-2 hover:bg-neutral-100 rounded-full transition-colors cursor-pointer">
+                    <User className="h-4 w-4" />
+                    {student.firstName} {student.lastName}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={async () => {
+                      await fetch("/api/students/logout", { method: "POST" });
+                      router.refresh();
+                      window.location.href = "/";
+                    }}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Log out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             
             {/* Mobile menu button - only show if menu is closed (Events button handles opening) */}
             {!mobileMenuOpen && (
@@ -312,23 +414,56 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
                   >
                     <Link href="/our-students">Our students</Link>
                   </Button>
-                  <Button 
-                    variant="outline" 
-                    className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full" 
-                    onClick={() => {
-                      setLoginDialogOpen(true);
-                      setMobileMenuOpen(false);
-                    }}
-                  >
-                    General login
-                  </Button>
-                  <Button 
-                    asChild 
-                    className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    <Link href="/contact">Contact Us</Link>
-                  </Button>
+                  {!student && (
+                    <Button 
+                      asChild
+                      variant="outline" 
+                      className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>
+                    </Button>
+                  )}
+                  {!student && !companyRep && (
+                    <Button 
+                      asChild
+                      className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Link href="/student-login">Student login</Link>
+                    </Button>
+                  )}
+                  {companyRep && (
+                    <Button 
+                      asChild
+                      className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Link href="/contact">Contact Us</Link>
+                    </Button>
+                  )}
+                  {student && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="flex items-center justify-center gap-2 text-sm font-medium text-neutral-800 px-3 py-2 w-full hover:bg-neutral-100 rounded-full transition-colors cursor-pointer">
+                          <User className="h-4 w-4" />
+                          {student.firstName} {student.lastName}
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-56">
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            await fetch("/api/students/logout", { method: "POST" });
+                            router.refresh();
+                            window.location.href = "/";
+                          }}
+                        >
+                          <LogOut className="mr-2 h-4 w-4" />
+                          Log out
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
               </div>
             </div>
@@ -436,7 +571,6 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
         )}
       </AnimatePresence>
 
-      <LoginSelectionDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
     </header>
   )
 }

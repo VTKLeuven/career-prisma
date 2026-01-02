@@ -4,9 +4,15 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ScrollCue } from '@/components/ScrollCue'
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { useParams } from "next/navigation"
 import { fetchEventPageBySlugAction, fetchEventsAction } from "@/app/actions/events"
 import { getDirectusImageUrl } from "@/components/Images";
@@ -14,11 +20,10 @@ import { slugifyCompanyName } from "@/lib/utils/slugify";
 import { CareerEventPage, Company, CareerEvent } from '@/lib/schema'
 import dynamic from "next/dynamic"
 import HeroiconDynamic from "@/components/HeroiconDynamic"
-import { ChevronDown, MapPin, Car, ExternalLink } from 'lucide-react'
+import { ChevronDown, MapPin, Car, ExternalLink, LogOut, User } from 'lucide-react'
 import { useBannerPage } from '@/hooks/use-banner-page'
 import { usePageLayout } from '../../layout'
 import { getUpcomingEventsWithFallback } from '@/lib/utils/events';
-import { LoginSelectionDialog } from '@/components/LoginSelectionDialog';
 
 const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.EventMap), {
   ssr: false,
@@ -206,7 +211,8 @@ function HomepageHeader() {
   const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
   const [menuOpenedViaClick, setMenuOpenedViaClick] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [loginDialogOpen, setLoginDialogOpen] = useState(false)
+  const [companyRep, setCompanyRep] = useState<{ authenticated: boolean; name: string } | null>(null)
+  const [student, setStudent] = useState<{ authenticated: boolean; firstName: string | null; lastName: string | null } | null>(null)
   const router = useRouter()
   const [EVENTS, setEvents] = useState<CareerEvent[]>([]);
   const menuRef = useRef<HTMLDivElement>(null)
@@ -222,6 +228,53 @@ function HomepageHeader() {
         // Fallback to direct action
         fetchEventsAction().then(setEvents);
       });
+  }, []);
+
+  const checkAuthStatus = () => {
+    fetch('/api/user/check?' + Date.now(), { 
+      cache: 'no-store',
+      credentials: 'include',
+    })
+      .then(res => {
+        if (!res.ok) {
+          throw new Error('Failed to check auth status');
+        }
+        return res.json();
+      })
+      .then((data) => {
+        // Explicitly handle null/undefined - ensure we set null if API returns null or undefined
+        if (data.companyRep && data.companyRep.authenticated === true) {
+          setCompanyRep(data.companyRep);
+        } else {
+          setCompanyRep(null);
+        }
+        if (data.student && data.student.authenticated === true) {
+          setStudent(data.student);
+        } else {
+          setStudent(null);
+        }
+      })
+      .catch(() => {
+        // User not authenticated - clear state
+        setCompanyRep(null);
+        setStudent(null);
+      });
+  };
+
+  useEffect(() => {
+    // Check user authentication status on mount
+    checkAuthStatus();
+
+    // Listen for focus event (user might have logged in in another tab)
+    window.addEventListener('focus', checkAuthStatus);
+
+    // Check periodically (every 30 seconds) to catch login state changes
+    const interval = setInterval(checkAuthStatus, 30000);
+
+    return () => {
+      window.removeEventListener('focus', checkAuthStatus);
+      clearInterval(interval);
+    };
   }, []);
 
   // Close menus when clicking outside
@@ -312,8 +365,39 @@ function HomepageHeader() {
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => setLoginDialogOpen(true)}>General login</Button>
-            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="/contact">Contact Us</Link></Button>
+            {!student && (
+              <Button asChild variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex">
+                <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>
+              </Button>
+            )}
+            {!student && !companyRep && (
+              <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/student-login">Student login</Link></Button>
+            )}
+            {companyRep && (
+              <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>
+            )}
+            {student && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="hidden md:inline-flex items-center gap-2 text-sm font-medium text-neutral-800 px-3 py-2 hover:bg-neutral-100 rounded-full transition-colors cursor-pointer">
+                    <User className="h-4 w-4" />
+                    {student.firstName} {student.lastName}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={async () => {
+                      await fetch("/api/students/logout", { method: "POST" });
+                      router.refresh();
+                      window.location.href = "/";
+                    }}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Log out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
 
             {/* Mobile menu button */}
             <button
@@ -419,23 +503,56 @@ function HomepageHeader() {
                   >
                     <Link href="/our-students">Our students</Link>
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
-                    onClick={() => {
-                      setLoginDialogOpen(true);
-                      setMobileMenuOpen(false);
-                    }}
-                  >
-                    General login
-                  </Button>
-                  <Button
-                    asChild
-                    className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    <Link href="/contact">Contact Us</Link>
-                  </Button>
+                  {!student && (
+                    <Button
+                      asChild
+                      variant="outline"
+                      className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>
+                    </Button>
+                  )}
+                  {!student && !companyRep && (
+                    <Button
+                      asChild
+                      className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Link href="/student-login">Student login</Link>
+                    </Button>
+                  )}
+                  {companyRep && (
+                    <Button
+                      asChild
+                      className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Link href="/contact">Contact Us</Link>
+                    </Button>
+                  )}
+                  {student && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="flex items-center justify-center gap-2 text-sm font-medium text-neutral-800 px-3 py-2 w-full hover:bg-neutral-100 rounded-full transition-colors cursor-pointer">
+                          <User className="h-4 w-4" />
+                          {student.firstName} {student.lastName}
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-56">
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            await fetch("/api/students/logout", { method: "POST" });
+                            router.refresh();
+                            window.location.href = "/";
+                          }}
+                        >
+                          <LogOut className="mr-2 h-4 w-4" />
+                          Log out
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
               </div>
             </div>
@@ -539,13 +656,13 @@ function HomepageHeader() {
         )}
       </AnimatePresence>
 
-      <LoginSelectionDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
     </header>
   )
 }
 
 function Header({ page }: { page?: CareerEventPage }) {
-  const [loginDialogOpen, setLoginDialogOpen] = useState(false)
+  const [companyRep, setCompanyRep] = useState<{ authenticated: boolean; name: string } | null>(null)
+  const [student, setStudent] = useState<{ authenticated: boolean; firstName: string | null; lastName: string | null } | null>(null)
   const router = useRouter()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -565,6 +682,53 @@ function Header({ page }: { page?: CareerEventPage }) {
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [mobileMenuOpen])
+
+  const checkAuthStatus = () => {
+    fetch('/api/user/check?' + Date.now(), { 
+      cache: 'no-store',
+      credentials: 'include',
+    })
+      .then(res => {
+        if (!res.ok) {
+          throw new Error('Failed to check auth status');
+        }
+        return res.json();
+      })
+      .then((data) => {
+        // Explicitly handle null/undefined - ensure we set null if API returns null or undefined
+        if (data.companyRep && data.companyRep.authenticated === true) {
+          setCompanyRep(data.companyRep);
+        } else {
+          setCompanyRep(null);
+        }
+        if (data.student && data.student.authenticated === true) {
+          setStudent(data.student);
+        } else {
+          setStudent(null);
+        }
+      })
+      .catch(() => {
+        // User not authenticated - clear state
+        setCompanyRep(null);
+        setStudent(null);
+      });
+  };
+
+  useEffect(() => {
+    // Check user authentication status on mount
+    checkAuthStatus();
+
+    // Listen for focus event (user might have logged in in another tab)
+    window.addEventListener('focus', checkAuthStatus);
+
+    // Check periodically (every 30 seconds) to catch login state changes
+    const interval = setInterval(checkAuthStatus, 30000);
+
+    return () => {
+      window.removeEventListener('focus', checkAuthStatus);
+      clearInterval(interval);
+    };
+  }, [])
 
   return (
     <header
@@ -641,8 +805,39 @@ function Header({ page }: { page?: CareerEventPage }) {
 
           {/* Right cluster */}
           <div className="ml-auto flex items-center gap-2 shrink-0">
-            <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => setLoginDialogOpen(true)}>General login</Button>
-            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="/contact">Contact Us</Link></Button>
+            {!student && (
+              <Button asChild variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex">
+                <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>
+              </Button>
+            )}
+            {!student && !companyRep && (
+              <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/student-login">Student login</Link></Button>
+            )}
+            {companyRep && (
+              <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>
+            )}
+            {student && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="hidden md:inline-flex items-center gap-2 text-sm font-medium text-neutral-800 px-3 py-2 hover:bg-neutral-100 rounded-full transition-colors cursor-pointer">
+                    <User className="h-4 w-4" />
+                    {student.firstName} {student.lastName}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={async () => {
+                      await fetch("/api/students/logout", { method: "POST" });
+                      router.refresh();
+                      window.location.href = "/";
+                    }}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Log out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
 
             {/* Mobile menu button */}
             {!mobileMenuOpen && (
@@ -675,7 +870,7 @@ function Header({ page }: { page?: CareerEventPage }) {
         </div>
       </div>
 
-      {/* Mobile Menu - Only General login and Contact Us */}
+      {/* Mobile Menu - Only Company Dashboard and Student login */}
       <AnimatePresence>
         {mobileMenuOpen && (
           <motion.div
@@ -689,30 +884,62 @@ function Header({ page }: { page?: CareerEventPage }) {
             <div className="mx-auto max-w-7xl px-2 sm:px-4">
               <div className="rounded-xl sm:rounded-2xl border bg-white/95 backdrop-blur-md shadow-xl p-4">
                 <div className="space-y-2">
-                  <Button
-                    variant="outline"
-                    className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
-                    onClick={() => {
-                      setLoginDialogOpen(true);
-                      setMobileMenuOpen(false);
-                    }}
-                  >
-                    General login
-                  </Button>
-                  <Button
-                    asChild
-                    className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    <Link href="/contact">Contact Us</Link>
-                  </Button>
+                  {!student && (
+                    <Button
+                      asChild
+                      variant="outline"
+                      className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>
+                    </Button>
+                  )}
+                  {!student && !companyRep && (
+                    <Button
+                      asChild
+                      className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Link href="/student-login">Student login</Link>
+                    </Button>
+                  )}
+                  {companyRep && (
+                    <Button
+                      asChild
+                      className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Link href="/contact">Contact Us</Link>
+                    </Button>
+                  )}
+                  {student && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="flex items-center justify-center gap-2 text-sm font-medium text-neutral-800 px-3 py-2 w-full hover:bg-neutral-100 rounded-full transition-colors cursor-pointer">
+                          <User className="h-4 w-4" />
+                          {student.firstName} {student.lastName}
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-56">
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            await fetch("/api/students/logout", { method: "POST" });
+                            router.refresh();
+                            window.location.href = "/";
+                          }}
+                        >
+                          <LogOut className="mr-2 h-4 w-4" />
+                          Log out
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-      <LoginSelectionDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
     </header>
   )
 }

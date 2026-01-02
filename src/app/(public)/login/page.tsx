@@ -50,8 +50,9 @@ export default function LoginPage() {
       if (!res.ok) {
         setError(data?.error ?? "Login failed.");
       } else {
-        router.refresh()
-        router.replace("/dashboard")
+        // Force a hard navigation to ensure cookies are properly set
+        // and client-side state is refreshed
+        window.location.href = "/dashboard";
       }
     } catch {
       setError("Network error.");
