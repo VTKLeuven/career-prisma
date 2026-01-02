@@ -2,8 +2,12 @@
 
 import Link from 'next/link'
 import { Separator } from '@/components/ui/separator'
+import { useState } from 'react'
+import { LoginSelectionDialog } from '@/components/LoginSelectionDialog'
 
 export function Footer() {
+    const [loginDialogOpen, setLoginDialogOpen] = useState(false)
+
     return (
         <footer className="bg-white border-t relative z-20">
             <div className="mx-auto max-w-7xl px-4 py-12 sm:py-16">
@@ -52,9 +56,12 @@ export function Footer() {
                         <h4 className="mb-3 text-sm font-medium text-neutral-900">For Companies</h4>
                         <ul className="space-y-2 text-sm text-neutral-700">
                             <li>
-                                <Link href="/dashboard" className="hover:text-vtk-blue hover:underline underline-offset-4">
-                                    Company Dashboard
-                                </Link>
+                                <button 
+                                    onClick={() => setLoginDialogOpen(true)}
+                                    className="hover:text-vtk-blue hover:underline underline-offset-4 text-left"
+                                >
+                                    Login
+                                </button>
                             </li>
                             <li>
                                 <Link href="/contact" className="hover:text-vtk-blue hover:underline underline-offset-4">
@@ -94,6 +101,7 @@ export function Footer() {
                     <p>© {new Date().getFullYear()} VTK Career Hub. All rights reserved.</p>
                 </div>
             </div>
+            <LoginSelectionDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
         </footer>
     )
 }

@@ -18,6 +18,7 @@ import { ChevronDown, MapPin, Car, ExternalLink } from 'lucide-react'
 import { useBannerPage } from '@/hooks/use-banner-page'
 import { usePageLayout } from '../../layout'
 import { getUpcomingEventsWithFallback } from '@/lib/utils/events';
+import { LoginSelectionDialog } from '@/components/LoginSelectionDialog';
 
 const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.EventMap), {
   ssr: false,
@@ -205,6 +206,7 @@ function HomepageHeader() {
   const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
   const [menuOpenedViaClick, setMenuOpenedViaClick] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [loginDialogOpen, setLoginDialogOpen] = useState(false)
   const router = useRouter()
   const [EVENTS, setEvents] = useState<CareerEvent[]>([]);
   const menuRef = useRef<HTMLDivElement>(null)
@@ -310,7 +312,7 @@ function HomepageHeader() {
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => router.push("/dashboard")}>Company Dashboard</Button>
+            <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => setLoginDialogOpen(true)}>General login</Button>
             <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="/contact">Contact Us</Link></Button>
 
             {/* Mobile menu button */}
@@ -421,11 +423,11 @@ function HomepageHeader() {
                     variant="outline"
                     className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
                     onClick={() => {
-                      router.push("/dashboard");
+                      setLoginDialogOpen(true);
                       setMobileMenuOpen(false);
                     }}
                   >
-                    Company Dashboard
+                    General login
                   </Button>
                   <Button
                     asChild
@@ -537,11 +539,13 @@ function HomepageHeader() {
         )}
       </AnimatePresence>
 
+      <LoginSelectionDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
     </header>
   )
 }
 
 function Header({ page }: { page?: CareerEventPage }) {
+  const [loginDialogOpen, setLoginDialogOpen] = useState(false)
   const router = useRouter()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -637,7 +641,7 @@ function Header({ page }: { page?: CareerEventPage }) {
 
           {/* Right cluster */}
           <div className="ml-auto flex items-center gap-2 shrink-0">
-            <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => router.push("/dashboard")}>Company Dashboard</Button>
+            <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => setLoginDialogOpen(true)}>General login</Button>
             <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="/contact">Contact Us</Link></Button>
 
             {/* Mobile menu button */}
@@ -671,7 +675,7 @@ function Header({ page }: { page?: CareerEventPage }) {
         </div>
       </div>
 
-      {/* Mobile Menu - Only Company Dashboard and Contact Us */}
+      {/* Mobile Menu - Only General login and Contact Us */}
       <AnimatePresence>
         {mobileMenuOpen && (
           <motion.div
@@ -689,11 +693,11 @@ function Header({ page }: { page?: CareerEventPage }) {
                     variant="outline"
                     className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
                     onClick={() => {
-                      router.push("/dashboard");
+                      setLoginDialogOpen(true);
                       setMobileMenuOpen(false);
                     }}
                   >
-                    Company Dashboard
+                    General login
                   </Button>
                   <Button
                     asChild
@@ -708,6 +712,7 @@ function Header({ page }: { page?: CareerEventPage }) {
           </motion.div>
         )}
       </AnimatePresence>
+      <LoginSelectionDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
     </header>
   )
 }
