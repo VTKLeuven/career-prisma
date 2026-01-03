@@ -3,11 +3,14 @@
 
 export const UNIVERSITIES = [
   // Belgium
-  "Universiteit Gent",
-  "Vrije Universiteit Brussel",
-  "Universiteit Antwerpen",
-  "Universiteit Hasselt",
-  "Other"
+  "Universiteit Gent (UGent)",
+  "Universiteit Antwerpen (UAntwerpen)",
+  "Vrije Universiteit Brussel (VUB)",
+  "Université Libre de Bruxelles (ULB)",
+  "Universiteit Hasselt (UHasselt)",
+  "UCLouvain (Université catholique de Louvain)",
+  "Technische Universiteit Delft (TU Delft)",
+  "Other",
 ] as const;
 
 export type University = typeof UNIVERSITIES[number];
