@@ -219,8 +219,9 @@ function getTransporter(): nodemailer.Transporter {
     rateDelta: shouldPool ? (isGmailRelay ? 60000 : 60000) : 60000, // 1 minute window for all
     rateLimit: shouldPool ? (isGmailRelay ? 90 : 60) : 1, // 90/min for relay (1.5/sec), 60/min for others, 1/min for gmail
     // Optional: Enable connection logging for debugging
-    logger: process.env.NODE_ENV === "development",
-    debug: process.env.NODE_ENV === "development",
+    // Disabled by default to reduce log spam - set SMTP_DEBUG=true to enable
+    logger: process.env.SMTP_DEBUG === "true",
+    debug: process.env.SMTP_DEBUG === "true",
   };
 
   // Add authentication if credentials are provided

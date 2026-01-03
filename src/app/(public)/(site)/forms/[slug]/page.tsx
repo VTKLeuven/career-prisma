@@ -41,6 +41,9 @@ type PublicForm = {
     schema: FormSchema;
   };
   isFull?: boolean; // Indicates if form has reached max capacity
+  requiresLogin?: boolean; // Indicates if form requires login
+  isAuthenticated?: boolean; // Indicates if user is authenticated
+  studentEmail?: string; // Student email if authenticated (for pre-filling form fields)
 };
 
 export default function PublicFormPage() {
@@ -64,6 +67,20 @@ export default function PublicFormPage() {
         setForm(null);
       } else {
         setForm(formData);
+        
+        // Pre-fill email field from student account if available and form has an email field
+        if (formData.studentEmail && formData.activeVersion?.schema?.fields) {
+          const emailField = formData.activeVersion.schema.fields.find(f => f.name === 'email' && f.type === 'email');
+          if (emailField) {
+            setFormData((prev) => {
+              // Only set if not already filled (allows user to keep their existing input)
+              if (!prev[emailField.name]) {
+                return { ...prev, [emailField.name]: formData.studentEmail };
+              }
+              return prev;
+            });
+          }
+        }
       }
     } catch (error) {
       console.error("Error loading form:", error);
@@ -76,6 +93,15 @@ export default function PublicFormPage() {
   useEffect(() => {
     loadForm();
   }, [loadForm]);
+
+  // Check if login is required and redirect if needed
+  useEffect(() => {
+    if (form && form.requiresLogin && !form.isAuthenticated) {
+      // Redirect to login with return URL
+      const currentPath = `/forms/${slug}`;
+      router.push(`/student-login?redirectTo=${encodeURIComponent(currentPath)}`);
+    }
+  }, [form, slug, router]);
 
   // Helper function to count words
   const countWords = (text: string): number => {
@@ -191,6 +217,18 @@ export default function PublicFormPage() {
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
           <p className="text-muted-foreground">Loading form...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading state while redirecting to login
+  if (form && form.requiresLogin && !form.isAuthenticated) {
+    return (
+      <div className="container mx-auto p-8 flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Redirecting to login...</p>
         </div>
       </div>
     );

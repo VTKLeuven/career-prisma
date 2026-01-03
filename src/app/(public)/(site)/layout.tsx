@@ -5,8 +5,14 @@ import Image from 'next/image'
 import { useState, useEffect, createContext, useContext, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { ChevronDown } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown, LogOut, User } from 'lucide-react'
+import { useRouter, usePathname } from 'next/navigation'
 import { fetchEventsAction } from "@/app/actions/events";
 import { CareerEvent } from '@/lib/schema'
 import { Footer } from '@/components/Footer'
@@ -50,7 +56,10 @@ function Header() {
   const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
   const [menuOpenedViaClick, setMenuOpenedViaClick] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [companyRep, setCompanyRep] = useState<{ authenticated: boolean; name: string } | null>(null)
+  const [student, setStudent] = useState<{ authenticated: boolean; firstName: string | null; lastName: string | null } | null>(null)
   const router = useRouter()
+  const pathname = usePathname()
   const [EVENTS, setEvents] = useState<CareerEvent[]>([]);
   const menuRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
@@ -65,6 +74,74 @@ function Header() {
         // Fallback to direct action
         fetchEventsAction().then(setEvents);
       });
+  }, []);
+
+  const checkAuthStatus = () => {
+    // Use a unique timestamp to prevent any caching
+    const timestamp = Date.now();
+    fetch(`/api/user/check?t=${timestamp}`, { 
+      method: 'GET',
+      cache: 'no-store',
+      credentials: 'include',
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+      },
+    })
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`Failed to check auth status: ${res.status}`);
+        }
+        return res.json();
+      })
+      .then((data) => {
+        // Debug logging (remove in production)
+        console.log('[Auth Check] API Response:', data);
+        
+        // Explicitly handle null/undefined - ensure we set null if API returns null or undefined
+        // Only set companyRep if authenticated is explicitly true
+        if (data?.companyRep?.authenticated === true) {
+          console.log('[Auth Check] Setting companyRep:', data.companyRep);
+          setCompanyRep(data.companyRep);
+        } else {
+          console.log('[Auth Check] No valid companyRep, setting to null. Data:', data?.companyRep);
+          setCompanyRep(null);
+        }
+        
+        // Only set student if authenticated is explicitly true
+        if (data?.student?.authenticated === true) {
+          console.log('[Auth Check] Setting student:', data.student);
+          setStudent(data.student);
+        } else {
+          console.log('[Auth Check] No valid student, setting to null. Data:', data?.student);
+          setStudent(null);
+        }
+      })
+      .catch((error) => {
+        console.log('[Auth Check] Error:', error);
+        // User not authenticated - clear state
+        setCompanyRep(null);
+        setStudent(null);
+      });
+  };
+
+  useEffect(() => {
+    // Check user authentication status on mount and when pathname changes
+    // Add a small delay on mount to ensure cookies are read correctly
+    checkAuthStatus();
+  }, [pathname]);
+
+  useEffect(() => {
+    // Listen for focus event (user might have logged in in another tab)
+    window.addEventListener('focus', checkAuthStatus);
+
+    // Check periodically (every 10 seconds) to catch login state changes
+    const interval = setInterval(checkAuthStatus, 10000);
+
+    return () => {
+      window.removeEventListener('focus', checkAuthStatus);
+      clearInterval(interval);
+    };
   }, []);
 
   // Close menus when clicking outside
@@ -155,8 +232,42 @@ function Header() {
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => router.push("/dashboard")}>Company Dashboard</Button>
-            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="/contact">Contact Us</Link></Button>
+            {!student && (
+              <Button asChild variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex">
+                <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>
+              </Button>
+            )}
+            {!student && !companyRep && (
+              <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/student-login">Student login</Link></Button>
+            )}
+            {companyRep && (
+              <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>
+            )}
+            {student && (
+              <>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex">
+                      <User className="h-4 w-4 mr-2" />
+                      {student.firstName} {student.lastName}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={async () => {
+                        await fetch("/api/students/logout", { method: "POST" });
+                        router.refresh();
+                        window.location.href = "/";
+                      }}
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Log out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>
+              </>
+            )}
 
             {/* Mobile menu button */}
             <button
@@ -262,23 +373,65 @@ function Header() {
                   >
                     <Link href="/our-students">Our students</Link>
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
-                    onClick={() => {
-                      router.push("/dashboard");
-                      setMobileMenuOpen(false);
-                    }}
-                  >
-                    Company Dashboard
-                  </Button>
-                  <Button
-                    asChild
-                    className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    <Link href="/contact">Contact Us</Link>
-                  </Button>
+                  {!student && (
+                    <Button
+                      asChild
+                      variant="outline"
+                      className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>
+                    </Button>
+                  )}
+                  {!student && !companyRep && (
+                    <Button
+                      asChild
+                      className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Link href="/student-login">Student login</Link>
+                    </Button>
+                  )}
+                  {companyRep && (
+                    <Button
+                      asChild
+                      className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Link href="/contact">Contact Us</Link>
+                    </Button>
+                  )}
+                  {student && (
+                    <>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full">
+                            <User className="h-4 w-4 mr-2" />
+                            {student.firstName} {student.lastName}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuItem
+                            onClick={async () => {
+                              await fetch("/api/students/logout", { method: "POST" });
+                              router.refresh();
+                              window.location.href = "/";
+                            }}
+                          >
+                            <LogOut className="mr-2 h-4 w-4" />
+                            Log out
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <Button 
+                        asChild
+                        className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <Link href="/contact">Contact Us</Link>
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

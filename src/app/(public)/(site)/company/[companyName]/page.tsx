@@ -11,9 +11,16 @@ import { Calendar } from "lucide-react";
 import { fetchCompanyBySlugAction } from "@/app/actions/companies";
 import { fetchEventsAction } from "@/app/actions/events";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, LogOut, User } from "lucide-react";
 import { usePageLayout } from '../../layout';
+import { usePathname } from 'next/navigation';
 import { getUpcomingEventsWithFallback } from '@/lib/utils/events';
 
 type CategoryJunction = { master_id: Master | null };
@@ -425,6 +432,8 @@ export default function CompanyPage() {
 function Header() {
   const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [companyRep, setCompanyRep] = useState<{ authenticated: boolean; name: string } | null>(null)
+  const [student, setStudent] = useState<{ authenticated: boolean; firstName: string | null; lastName: string | null } | null>(null)
   const router = useRouter()
   const [EVENTS, setEvents] = useState<CareerEvent[]>([]);
   const menuRef = useRef<HTMLDivElement>(null)
@@ -433,6 +442,53 @@ function Header() {
 
   useEffect(() => {
       fetchEventsAction().then(setEvents);
+  }, []);
+
+  const checkAuthStatus = () => {
+    fetch('/api/user/check?' + Date.now(), { 
+      cache: 'no-store',
+      credentials: 'include',
+    })
+      .then(res => {
+        if (!res.ok) {
+          throw new Error('Failed to check auth status');
+        }
+        return res.json();
+      })
+      .then((data) => {
+        // Explicitly handle null/undefined - ensure we set null if API returns null or undefined
+        if (data.companyRep && data.companyRep.authenticated === true) {
+          setCompanyRep(data.companyRep);
+        } else {
+          setCompanyRep(null);
+        }
+        if (data.student && data.student.authenticated === true) {
+          setStudent(data.student);
+        } else {
+          setStudent(null);
+        }
+      })
+      .catch(() => {
+        // User not authenticated - clear state
+        setCompanyRep(null);
+        setStudent(null);
+      });
+  };
+
+  useEffect(() => {
+    // Check user authentication status on mount
+    checkAuthStatus();
+
+    // Listen for focus event (user might have logged in in another tab)
+    window.addEventListener('focus', checkAuthStatus);
+
+    // Check periodically (every 30 seconds) to catch login state changes
+    const interval = setInterval(checkAuthStatus, 30000);
+
+    return () => {
+      window.removeEventListener('focus', checkAuthStatus);
+      clearInterval(interval);
+    };
   }, []);
 
   // Close menus when clicking outside
@@ -515,8 +571,42 @@ function Header() {
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex cursor-pointer" onClick={() => router.push("/dashboard")}>Company Dashboard</Button>
-            <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex"><Link href="/contact">Contact Us</Link></Button>
+            {!student && (
+              <Button asChild variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex">
+                <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>
+              </Button>
+            )}
+            {!student && !companyRep && (
+              <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/student-login">Student login</Link></Button>
+            )}
+            {companyRep && (
+              <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>
+            )}
+            {student && (
+              <>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex">
+                      <User className="h-4 w-4 mr-2" />
+                      {student.firstName} {student.lastName}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={async () => {
+                        await fetch("/api/students/logout", { method: "POST" });
+                        router.refresh();
+                        window.location.href = "/";
+                      }}
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Log out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>
+              </>
+            )}
             
             {/* Mobile menu button - only show if menu is closed (Events button handles opening) */}
             {!mobileMenuOpen && (
@@ -625,23 +715,65 @@ function Header() {
 
                 {/* Other Links */}
                 <div className="border-t pt-4 space-y-2">
-                  <Button 
-                    variant="outline" 
-                    className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full" 
-                    onClick={() => {
-                      router.push("/dashboard");
-                      setMobileMenuOpen(false);
-                    }}
-                  >
-                    Company Dashboard
-                  </Button>
-                  <Button 
-                    asChild 
-                    className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    <Link href="/contact">Contact Us</Link>
-                  </Button>
+                  {!student && (
+                    <Button 
+                      asChild
+                      variant="outline" 
+                      className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>
+                    </Button>
+                  )}
+                  {!student && !companyRep && (
+                    <Button 
+                      asChild
+                      className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Link href="/student-login">Student login</Link>
+                    </Button>
+                  )}
+                  {companyRep && (
+                    <Button 
+                      asChild
+                      className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Link href="/contact">Contact Us</Link>
+                    </Button>
+                  )}
+                  {student && (
+                    <>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full">
+                            <User className="h-4 w-4 mr-2" />
+                            {student.firstName} {student.lastName}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuItem
+                            onClick={async () => {
+                              await fetch("/api/students/logout", { method: "POST" });
+                              router.refresh();
+                              window.location.href = "/";
+                            }}
+                          >
+                            <LogOut className="mr-2 h-4 w-4" />
+                            Log out
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <Button 
+                        asChild
+                        className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <Link href="/contact">Contact Us</Link>
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

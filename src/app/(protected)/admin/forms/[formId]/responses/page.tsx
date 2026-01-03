@@ -613,6 +613,11 @@ export default function FormResponsesPage() {
     const fieldKeys: string[] = [];
 
     selectedVersion.schema.fields.forEach(field => {
+      // For event registration forms, exclude email field from export since it's already in Student Email column
+      if (selectedVersion?.metadata?.is_event_registration && field.name === 'email' && field.type === 'email') {
+        return;
+      }
+      
       if (shouldCombineName && field.name === 'lastname') {
         // Skip lastname - it will be combined with firstname
         return;
@@ -631,6 +636,12 @@ export default function FormResponsesPage() {
     const isEventRegistration = allResponses.some(r => r.attendant_uuid);
     // Check if this is a company form
     const isCompanyForm = selectedVersion?.metadata?.is_company_form;
+    // Check if any response has student data (either in metadata or in form fields for event registration)
+    const hasStudentData = allResponses.some(r => 
+      r.data?._student_username || 
+      r.data?._student_email || 
+      (isEventRegistration && r.data?.email) // For event registration, email is in form data
+    );
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
     // Prepare data for XLSX
@@ -638,6 +649,7 @@ export default function FormResponsesPage() {
       'Submission Date', 
       'Response ID', 
       ...(isCompanyForm ? ['Company', 'Submitter First Name', 'Submitter Last Name', 'Submitter Email'] : []),
+      ...(hasStudentData ? ['Student Username', 'Student Email', 'Student Full Name', 'Student University', 'Student University Status'] : []),
       ...fieldNames, 
       ...(isEventRegistration ? ['Attendant Link'] : [])
     ];
@@ -655,6 +667,47 @@ export default function FormResponsesPage() {
         response.submitter_first_name || '',
         response.submitter_last_name || '',
         response.submitter_email || '',
+      ] : [];
+      
+      // Add student fields if applicable
+      // For event registration forms, email might be in form data instead of metadata
+      const studentEmail = isEventRegistration 
+        ? (response.data.email as string) || response.data._student_email || ''
+        : response.data._student_email || '';
+      // For event registration forms, check metadata first (since we store it there), then student relation
+      let studentFullName = '';
+      if (isEventRegistration) {
+        // First check metadata (this is what we store for event registration forms)
+        const metadataFullName = response.data._student_full_name;
+        if (metadataFullName && typeof metadataFullName === 'string') {
+          studentFullName = metadataFullName;
+        } else if (typeof response.student_id === 'object' && response.student_id) {
+          // Fallback to student_id relation if metadata not available
+          if (response.student_id.full_name) {
+            studentFullName = response.student_id.full_name;
+          } else {
+            // Fallback to first_name + last_name from relation
+            const firstName = response.student_id.first_name || '';
+            const lastName = response.student_id.last_name || '';
+            if (firstName || lastName) {
+              const combinedName = `${firstName} ${lastName}`.trim();
+              if (combinedName) {
+                studentFullName = combinedName;
+              }
+            }
+          }
+        }
+      } else {
+        // For non-event registration forms, use metadata
+        const metadataFullName = response.data._student_full_name;
+        studentFullName = (metadataFullName && typeof metadataFullName === 'string') ? metadataFullName : '';
+      }
+      const studentFields = hasStudentData ? [
+        response.data._student_username || '',
+        studentEmail,
+        studentFullName,
+        response.data._student_university || '',
+        response.data._student_university_status || '',
       ] : [];
       
       const values = fieldKeys.map(key => {
@@ -676,7 +729,7 @@ export default function FormResponsesPage() {
         ? `${baseUrl}/attendant/${response.attendant_uuid}`
         : '';
       
-      return [date, response.id, ...companyFields, ...values, ...(isEventRegistration ? [attendantLink] : [])];
+      return [date, response.id, ...companyFields, ...studentFields, ...values, ...(isEventRegistration ? [attendantLink] : [])];
     });
 
     // Create worksheet
@@ -973,9 +1026,30 @@ export default function FormResponsesPage() {
                             <TableHead>Submitter Email</TableHead>
                           </>
                         )}
-                        {selectedVersion?.schema.fields.map((field) => (
-                          <TableHead key={field.id}>{field.label || field.name}</TableHead>
-                        ))}
+                        {responses.some(r => 
+                          r.data?._student_username || 
+                          r.data?._student_email || 
+                          (selectedVersion?.metadata?.is_event_registration && r.data?.email)
+                        ) && (
+                          <>
+                            <TableHead>Student Username</TableHead>
+                            <TableHead>Student Email</TableHead>
+                            <TableHead>Student Full Name</TableHead>
+                            <TableHead>Student University</TableHead>
+                            <TableHead>Student University Status</TableHead>
+                          </>
+                        )}
+                        {selectedVersion?.schema.fields
+                          .filter(field => {
+                            // For event registration forms, exclude email field since it's already in Student Email column
+                            if (selectedVersion?.metadata?.is_event_registration && field.name === 'email' && field.type === 'email') {
+                              return false;
+                            }
+                            return true;
+                          })
+                          .map((field) => (
+                            <TableHead key={field.id}>{field.label || field.name}</TableHead>
+                          ))}
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1004,11 +1078,72 @@ export default function FormResponsesPage() {
                               </TableCell>
                             </>
                           )}
-                          {selectedVersion?.schema.fields.map((field) => (
-                            <TableCell key={field.id}>
-                              {formatFieldValue(response.data[field.name], field.type)}
-                            </TableCell>
-                          ))}
+                          {responses.some(r => 
+                            r.data?._student_username || 
+                            r.data?._student_email || 
+                            (selectedVersion?.metadata?.is_event_registration && r.data?.email)
+                          ) && (
+                            <>
+                              <TableCell>
+                                {(typeof response.data._student_username === 'string' ? response.data._student_username : '') || 'N/A'}
+                              </TableCell>
+                              <TableCell>
+                                {selectedVersion?.metadata?.is_event_registration
+                                  ? (typeof response.data.email === 'string' ? response.data.email : '') || (typeof response.data._student_email === 'string' ? response.data._student_email : '') || 'N/A'
+                                  : (typeof response.data._student_email === 'string' ? response.data._student_email : '') || 'N/A'}
+                              </TableCell>
+                              <TableCell>
+                                {(() => {
+                                  // For event registration forms, check metadata first (since we store it there), then student relation
+                                  if (selectedVersion?.metadata?.is_event_registration) {
+                                    // First check metadata (this is what we store for event registration forms)
+                                    const metadataFullName = response.data._student_full_name;
+                                    if (metadataFullName && typeof metadataFullName === 'string') {
+                                      return metadataFullName;
+                                    }
+                                    // Fallback to student_id relation if metadata not available
+                                    if (typeof response.student_id === 'object' && response.student_id) {
+                                      if (response.student_id.full_name) {
+                                        return response.student_id.full_name;
+                                      }
+                                      // Fallback to first_name + last_name from relation
+                                      const firstName = response.student_id.first_name || '';
+                                      const lastName = response.student_id.last_name || '';
+                                      if (firstName || lastName) {
+                                        const combinedName = `${firstName} ${lastName}`.trim();
+                                        if (combinedName) {
+                                          return combinedName;
+                                        }
+                                      }
+                                    }
+                                    return 'N/A';
+                                  }
+                                  // For non-event registration forms, use metadata
+                                  const metadataFullName = response.data._student_full_name;
+                                  return (metadataFullName && typeof metadataFullName === 'string') ? metadataFullName : 'N/A';
+                                })()}
+                              </TableCell>
+                              <TableCell>
+                                {(typeof response.data._student_university === 'string' ? response.data._student_university : '') || 'N/A'}
+                              </TableCell>
+                              <TableCell>
+                                {(typeof response.data._student_university_status === 'string' ? response.data._student_university_status : '') || 'N/A'}
+                              </TableCell>
+                            </>
+                          )}
+                          {selectedVersion?.schema.fields
+                            .filter(field => {
+                              // For event registration forms, exclude email field since it's already in Student Email column
+                              if (selectedVersion?.metadata?.is_event_registration && field.name === 'email' && field.type === 'email') {
+                                return false;
+                              }
+                              return true;
+                            })
+                            .map((field) => (
+                              <TableCell key={field.id}>
+                                {formatFieldValue(response.data[field.name], field.type)}
+                              </TableCell>
+                            ))}
                           <TableCell className="text-right">
                             <Button
                               variant="ghost"

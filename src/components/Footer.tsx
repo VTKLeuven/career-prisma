@@ -49,13 +49,23 @@ export function Footer() {
 
                     {/* For Companies */}
                     <div>
-                        <h4 className="mb-3 text-sm font-medium text-neutral-900">For Companies</h4>
+                        <h4 className="mb-3 text-sm font-medium text-neutral-900">Login</h4>
                         <ul className="space-y-2 text-sm text-neutral-700">
                             <li>
-                                <Link href="/dashboard" className="hover:text-vtk-blue hover:underline underline-offset-4">
-                                    Company Dashboard
+                                <Link href="/student-login" className="hover:text-vtk-blue hover:underline underline-offset-4">
+                                    Student Login
                                 </Link>
                             </li>
+                            <li>
+                                <Link href="/login" className="hover:text-vtk-blue hover:underline underline-offset-4">
+                                    Company Login
+                                </Link>
+                            </li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 className="mb-3 text-sm font-medium text-neutral-900">For Companies</h4>
+                        <ul className="space-y-2 text-sm text-neutral-700">
                             <li>
                                 <Link href="/contact" className="hover:text-vtk-blue hover:underline underline-offset-4">
                                     Contact Us
