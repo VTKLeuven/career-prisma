@@ -98,8 +98,107 @@ export async function POST(request: NextRequest) {
       }
     }
 
+<<<<<<< Updated upstream
     // If we have the token and user info, send our custom email
     if (resetToken && user) {
+=======
+    try {
+      // Find user by email
+      const userRes = await fetch(
+        `${normalizedBase}users?filter[email][_eq]=${encodeURIComponent(email)}&fields=id,email,first_name,last_name,status`,
+        {
+          headers: {
+            "Authorization": `Bearer ${serverToken}`,
+          },
+        }
+      );
+
+      if (!userRes.ok) {
+        // Don't reveal if user exists - always return success
+        return NextResponse.json({ 
+          success: true, 
+          message: "If an account with that email exists, a password reset link has been sent." 
+        });
+      }
+
+      const userData = await userRes.json();
+      const users = userData.data || [];
+      
+      if (users.length === 0) {
+        // User doesn't exist - return success anyway (security best practice)
+        return NextResponse.json({ 
+          success: true, 
+          message: "If an account with that email exists, a password reset link has been sent." 
+        });
+      }
+
+      const user = users[0];
+      
+      // Check if user is active (not suspended, etc.)
+      if (!user.status || (user.status !== "active" && user.status !== "invited")) {
+        // User exists but is not active - still return success
+        return NextResponse.json({ 
+          success: true, 
+          message: "If an account with that email exists, a password reset link has been sent." 
+        });
+      }
+
+      // Generate secure random token using crypto
+      // Using hex encoding which is simpler and more compatible
+      const crypto = await import("crypto");
+      const randomToken = crypto.randomBytes(32).toString("hex");
+      
+      console.log(`[forgot-password] Generated reset token for user ${user.id}, length: ${randomToken.length}`);
+      
+      // Store the token in the user's password_reset_token field
+      const updateRes = await fetch(
+        `${normalizedBase}users/${user.id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Authorization": `Bearer ${serverToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            password_reset_token: randomToken,
+          }),
+        }
+      );
+
+      if (!updateRes.ok) {
+        const errorData = await updateRes.json().catch(() => null);
+        console.error(`[forgot-password] Failed to set reset token for user ${user.id}:`, errorData);
+        // Still return success for security
+        return NextResponse.json({ 
+          success: true, 
+          message: "If an account with that email exists, a password reset link has been sent." 
+        });
+      }
+
+      // Verify the token was stored correctly by fetching it back
+      const verifyRes = await fetch(
+        `${normalizedBase}users/${user.id}?fields=password_reset_token`,
+        {
+          headers: {
+            "Authorization": `Bearer ${serverToken}`,
+          },
+        }
+      );
+
+      if (verifyRes.ok) {
+        const verifyData = await verifyRes.json();
+        const storedToken = verifyData.data?.password_reset_token;
+        if (storedToken === randomToken) {
+          console.log(`[forgot-password] Token verified - stored correctly for user ${user.id}`);
+        } else {
+          console.warn(`[forgot-password] Token mismatch! Generated: ${randomToken.substring(0, 20)}..., Stored: ${storedToken?.substring(0, 20)}...`);
+        }
+      }
+
+      // Generate the reset URL
+      // base64url encoding is already URL-safe, so we can use it directly
+      // However, we'll still encode it to be safe with any edge cases
+>>>>>>> Stashed changes
       const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
         || process.env.NEXT_PUBLIC_FORM_DOMAIN 
         || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");

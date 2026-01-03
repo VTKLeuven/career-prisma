@@ -77,7 +77,7 @@ export default function StudentLoginPage() {
     }
 
     try {
-      const res = await fetch("/api/forgot-password", {
+      const res = await fetch("/api/students/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: emailToUse }),

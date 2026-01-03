@@ -81,18 +81,18 @@ export async function POST(req: Request) {
           // @ts-ignore - argon2 may not be installed
           const argon2 = await import("argon2").catch(() => null);
           if (argon2 && typeof argon2.verify === 'function') {
+            console.log("[students/login] Attempting Argon2id verification");
+            console.log("[students/login] Stored hash prefix:", student.password.substring(0, 30));
             passwordMatches = await argon2.verify(student.password, password);
-            console.log("[students/login] Using Argon2id verification");
+            console.log("[students/login] Argon2id verification result:", passwordMatches);
           } else {
             throw new Error("argon2 not available");
           }
         } catch (argon2Error) {
-          console.error("[students/login] Argon2 verification failed:", argon2Error);
-          console.error("[students/login] Note: Password is Argon2id-hashed but argon2 package is not installed.");
-          console.error("[students/login] Install argon2: npm install argon2");
-          return NextResponse.json({ 
-            error: "Password verification failed. Please contact support or reset your password." 
-          }, { status: 401 });
+          console.error("[students/login] Argon2 verification error:", argon2Error);
+          console.error("[students/login] Error details:", argon2Error instanceof Error ? argon2Error.message : String(argon2Error));
+          // Don't return error here - let it fall through to show password mismatch
+          passwordMatches = false;
         }
       } else if (isBcryptHash) {
         // Directus might use bcrypt in some cases
