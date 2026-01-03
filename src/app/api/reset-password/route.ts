@@ -57,11 +57,6 @@ export async function POST(request: NextRequest) {
       }
     );
 
-<<<<<<< Updated upstream
-    if (!resetRes.ok) {
-      const errorData = await resetRes.json().catch(() => null);
-      const errorMessage = errorData?.errors?.[0]?.message || "Invalid or expired reset token. Please request a new password reset link.";
-=======
     // If filtering fails, try with wildcard fields
     if (!userRes.ok && userRes.status === 403) {
       console.log(`[reset-password] Cannot filter on password_reset_token (403), trying with wildcard fields`);
@@ -147,7 +142,6 @@ export async function POST(request: NextRequest) {
     if (!updateRes.ok) {
       const errorData = await updateRes.json().catch(() => null);
       const errorMessage = errorData?.errors?.[0]?.message || "Failed to reset password";
->>>>>>> Stashed changes
       
       console.error(`[reset-password] Failed to update password for user ${user.id}:`, {
         status: updateRes.status,
