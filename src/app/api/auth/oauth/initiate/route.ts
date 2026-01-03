@@ -1,6 +1,6 @@
 // app/api/auth/oauth/initiate/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { generateState, storeOAuthState, buildAuthorizationUrl } from "@/lib/oauth";
+import { generateState, storeOAuthState, buildAuthorizationUrl, getRequestOrigin } from "@/lib/oauth";
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +10,8 @@ export async function GET(request: NextRequest) {
     // Get OAuth configuration from environment variables
     const authorizeUrl = process.env.LITUS_OAUTH_AUTHORIZE || process.env.OAUTH_AUTHORIZE_URL;
     const clientId = process.env.LITUS_API_KEY || process.env.OAUTH_CLIENT_ID;
-    const callbackUrl = process.env.OAUTH_CALLBACK_URL || `${request.nextUrl.origin}/api/auth/oauth/callback`;
+    const origin = getRequestOrigin(request);
+    const callbackUrl = process.env.OAUTH_CALLBACK_URL || `${origin}/api/auth/oauth/callback`;
     const scopes = process.env.OAUTH_SCOPES?.split(",").map((s) => s.trim()) || [];
 
     if (!authorizeUrl || !clientId) {

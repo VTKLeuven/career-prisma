@@ -1,6 +1,6 @@
 // app/api/auth/oauth/callback/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { verifyOAuthState } from "@/lib/oauth";
+import { verifyOAuthState, getRequestOrigin } from "@/lib/oauth";
 import { findStudentByEmail, findStudentByUsername, createStudentFromOAuth, updateStudentOAuthToken, updateStudentOAuthData } from "@/lib/repos/students";
 
 interface OAuthTokenResponse {
@@ -36,8 +36,9 @@ export async function GET(request: NextRequest) {
     const userInfoUrl = process.env.LITUS_OAUTH_RESOURCE_OWNER_DETAILS || process.env.OAUTH_USER_INFO_URL;
     const clientId = process.env.LITUS_API_KEY || process.env.OAUTH_CLIENT_ID;
     const clientSecret = process.env.LITUS_SECRET || process.env.OAUTH_CLIENT_SECRET;
-    const callbackUrl = process.env.OAUTH_CALLBACK_URL || `${request.nextUrl.origin}/api/auth/oauth/callback`;
-    const frontendUrl = process.env.FRONTEND_URL || request.nextUrl.origin;
+    const origin = getRequestOrigin(request);
+    const callbackUrl = process.env.OAUTH_CALLBACK_URL || `${origin}/api/auth/oauth/callback`;
+    const frontendUrl = process.env.FRONTEND_URL || origin;
 
     // Handle OAuth errors
     if (error) {
@@ -249,7 +250,8 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (error) {
     console.error("OAuth callback error:", error);
-    const frontendUrl = process.env.FRONTEND_URL || request.nextUrl.origin;
+    const origin = getRequestOrigin(request);
+    const frontendUrl = process.env.FRONTEND_URL || origin;
     const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
     frontendCallbackUrl.searchParams.set("error", "callback_error");
     frontendCallbackUrl.searchParams.set(
