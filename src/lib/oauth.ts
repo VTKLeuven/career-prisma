@@ -14,23 +14,32 @@ export function generateState(): string {
 /**
  * Store OAuth state in cookie
  */
-export async function storeOAuthState(state: string, redirectTo: string = "/") {
+export async function storeOAuthState(
+  state: string,
+  redirectTo: string = "/",
+  opts?: { domain?: string; maxAge?: number }
+) {
   const cookieStore = await cookies();
-  
+  const secure = process.env.NODE_ENV === "production";
+  const maxAge = opts?.maxAge ?? 1800; // 30 minutes
+  const domainOpt = opts?.domain ? { domain: opts.domain } : {};
+
   cookieStore.set("oauth_state", state, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure,
     sameSite: "lax",
     path: "/",
-    maxAge: 600, // 10 minutes
+    maxAge,
+    ...domainOpt,
   });
 
   cookieStore.set("oauth_redirect_to", redirectTo, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure,
     sameSite: "lax",
     path: "/",
-    maxAge: 600, // 10 minutes
+    maxAge,
+    ...domainOpt,
   });
 }
 
