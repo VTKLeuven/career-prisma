@@ -87,8 +87,8 @@ function VerifyStudentContent() {
       if (!res.ok) {
         setError(data?.error ?? "Failed to set password.");
       } else {
-        // Redirect to login or dashboard
-        router.push("/login?verified=true");
+        // Redirect to home page - student is already logged in (session cookie is set)
+        window.location.href = "/";
       }
     } catch {
       setError("Network error.");

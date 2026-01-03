@@ -77,7 +77,7 @@ export default function StudentLoginPage() {
     }
 
     try {
-      const res = await fetch("/api/forgot-password", {
+      const res = await fetch("/api/students/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: emailToUse }),
@@ -120,87 +120,111 @@ export default function StudentLoginPage() {
           </Link>
         </div>
         <div className="flex flex-1 items-center justify-center">
-          <div className="w-full max-w-xs">
-            <div className="flex flex-col items-center gap-2 text-center mb-6">
+          <div className="w-full max-w-md">
+            <div className="flex flex-col items-center gap-2 text-center mb-8">
               <h1 className="text-2xl font-bold">Student Login</h1>
               <p className="text-muted-foreground text-sm text-balance">
-                Login with your KU Leuven account or use email
+                Choose your login method
               </p>
             </div>
 
-            {/* Primary: OAuth Login */}
-            <Button
-              type="button"
-              className="w-full bg-vtk-blue hover:bg-vtk-blueDark mb-6 cursor-pointer"
-              onClick={handleOAuthLogin}
-            >
-              Login with KU Leuven Authenticator
-            </Button>
-
-            <div className="relative my-6">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
+            <div className="space-y-6">
+              {/* KU Leuven Student Option */}
+              <div className="border-2 border-vtk-blue rounded-lg p-6 bg-vtk-light/30">
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground mb-1">
+                      KU Leuven Student
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      Login with your KU Leuven authenticator account
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    className="w-full bg-vtk-blue hover:bg-vtk-blueDark cursor-pointer"
+                    onClick={handleOAuthLogin}
+                  >
+                    Login with KU Leuven Authenticator
+                  </Button>
+                </div>
               </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-2 text-muted-foreground">
-                  Or login with email
-                </span>
+
+              {/* Divider */}
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">
+                    Or
+                  </span>
+                </div>
+              </div>
+
+              {/* External Student Option */}
+              <div className="border-2 border-neutral-200 rounded-lg p-6">
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground mb-1">
+                      External Student
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      Login with your email and password
+                    </p>
+                  </div>
+                  <form className={"flex flex-col gap-4"} onSubmit={onSubmit}>
+                    <div className="grid gap-3">
+                      <Label htmlFor="email">Email</Label>
+                      <Input id="email" type="email" placeholder="m@example.com" required onChange={(e) => setEmail(e.target.value)} />
+                    </div>
+                    <div className="grid gap-3">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="password">Password</Label>
+                        <button
+                          type="button"
+                          onClick={() => setForgotPasswordOpen(true)}
+                          className="text-sm text-primary hover:underline cursor-pointer"
+                        >
+                          Forgot password?
+                        </button>
+                      </div>
+                      <Input id="password" type="password" required onChange={(e) => setPassword(e.target.value)} />
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="rememberMe"
+                        checked={rememberMe}
+                        onCheckedChange={(checked) => {
+                          setRememberMe(checked === true);
+                        }}
+                      />
+                      <Label
+                        htmlFor="rememberMe"
+                        className="text-sm font-normal cursor-pointer"
+                        onClick={() => setRememberMe(!rememberMe)}
+                      >
+                        Remember me
+                      </Label>
+                    </div>
+                    <Button type="submit" variant="outline" className="w-full cursor-pointer" disabled={loading}>
+                      {loading ? "Signing in…" : "Sign in with email"}
+                    </Button>
+                    {error && (
+                      <p className="text-center text-sm text-red-600" role="alert">
+                        {error}
+                      </p>
+                    )}
+                  </form>
+                  <p className="text-center text-sm text-muted-foreground mt-2">
+                    Don't have an account?{" "}
+                    <Link href="/register" className="text-primary hover:underline">
+                      Register here
+                    </Link>
+                  </p>
+                </div>
               </div>
             </div>
-
-            {/* Secondary: Email/Password Login */}
-            <form className={"flex flex-col gap-6"} onSubmit={onSubmit}>
-              <div className="grid gap-6">
-                <div className="grid gap-3">
-                  <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" placeholder="m@example.com" required onChange={(e) => setEmail(e.target.value)} />
-                </div>
-                <div className="grid gap-3">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="password">Password</Label>
-                    <button
-                      type="button"
-                      onClick={() => setForgotPasswordOpen(true)}
-                      className="text-sm text-primary hover:underline cursor-pointer"
-                    >
-                      Forgot password?
-                    </button>
-                  </div>
-                  <Input id="password" type="password" required onChange={(e) => setPassword(e.target.value)} />
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="rememberMe"
-                    checked={rememberMe}
-                    onCheckedChange={(checked) => {
-                      setRememberMe(checked === true);
-                    }}
-                  />
-                  <Label
-                    htmlFor="rememberMe"
-                    className="text-sm font-normal cursor-pointer"
-                    onClick={() => setRememberMe(!rememberMe)}
-                  >
-                    Remember me
-                  </Label>
-                </div>
-                <Button type="submit" variant="outline" className="w-full cursor-pointer" disabled={loading}>
-                  {loading ? "Signing in…" : "Sign in with email"}
-                </Button>
-                {error && (
-                  <p className="text-center text-sm text-red-600" role="alert">
-                    {error}
-                  </p>
-                )}
-              </div>
-            </form>
-
-            <p className="text-center text-sm text-muted-foreground mt-4">
-              Don't have an account?{" "}
-              <Link href="/register" className="text-primary hover:underline">
-                Register here
-              </Link>
-            </p>
           </div>
         </div>
       </div>
