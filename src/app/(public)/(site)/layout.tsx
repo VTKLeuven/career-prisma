@@ -214,6 +214,7 @@ function Header() {
               </button>
             </div>
 
+            <Link href="https://career.vtk.be/forms/cv-book" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">CV Upload</Link>
             <Link href="/our-students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
             <Link href="/vacancies" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
@@ -365,6 +366,14 @@ function Header() {
 
                 {/* Other Links */}
                 <div className="border-t pt-4 space-y-2">
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="rounded-full border-neutral-300 text-neutral-800 hover:bg-neutral-100 w-full"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <Link href="https://career.vtk.be/forms/cv-book">CV Upload</Link>
+                  </Button>
                   <Button
                     asChild
                     variant="outline"
