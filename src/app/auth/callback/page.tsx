@@ -50,7 +50,9 @@ export default function AuthCallbackPage() {
             )}
             <div className="flex gap-2">
               <Button asChild variant="outline" className="flex-1">
-                <Link href="/login">Back to Login</Link>
+                <Link href={redirectTo.includes('/forms/') ? `/student-login?redirectTo=${encodeURIComponent(redirectTo)}` : "/login"}>
+                  Back to Login
+                </Link>
               </Button>
               <Button onClick={() => router.push(redirectTo)} className="flex-1">
                 Go to Home

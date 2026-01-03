@@ -46,7 +46,8 @@ export async function verifyOAuthState(state: string): Promise<{
   const redirectTo = cookieStore.get("oauth_redirect_to")?.value || "/";
 
   if (!storedState || storedState !== state) {
-    return { valid: false };
+    // Return redirectTo even when invalid so it can be preserved in error cases
+    return { valid: false, redirectTo };
   }
 
   // Clear the state cookie after verification
