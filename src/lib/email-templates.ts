@@ -18,24 +18,22 @@ export function generateCalendarUrls(
     return `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
   };
 
-  // Format date for Outlook (ISO 8601 format: YYYY-MM-DDTHH:mm:ss)
-  const formatOutlookDate = (date: Date): string => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const hours = String(date.getHours()).padStart(2, "0");
-    const minutes = String(date.getMinutes()).padStart(2, "0");
-    const seconds = String(date.getSeconds()).padStart(2, "0");
-    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
-  };
+  // Format date for Outlook
+  // Use UTC ISO strings (with "Z") so Outlook doesn't interpret the timestamp
+  // as "floating" local time in the server timezone (often UTC on Vercel).
+  const formatOutlookDate = (date: Date): string =>
+    date.toISOString().replace(/\.\d{3}Z$/, "Z");
 
   const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
+  const eventTimeZone = process.env.EVENT_TIMEZONE || "Europe/Brussels";
 
   // Google Calendar URL
   const googleParams = new URLSearchParams({
     action: "TEMPLATE",
     text: title,
     dates: `${formatGoogleDate(eventDate)}/${formatGoogleDate(endDate)}`,
+    // Explicitly set timezone for display; keeps the UI consistent for Belgian users.
+    ctz: eventTimeZone,
   });
   if (location) {
     googleParams.append("location", location);
@@ -91,6 +89,7 @@ export function generateEventConfirmationEmailHtml({
   eventLocation?: string;
   formName: string;
 }) {
+  const eventTimeZone = process.env.EVENT_TIMEZONE || "Europe/Brussels";
   let calendarLinksHtml = "";
   
   // Check if eventDate exists and is valid
@@ -219,7 +218,15 @@ export function generateEventConfirmationEmailHtml({
           <div>${personalizedContent}</div>
           ${eventDate || eventLocation ? `
             <div class="event-details">
-              ${eventDate ? `<p><strong>Event Date:</strong> ${new Date(eventDate).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' })}</p>` : ''}
+              ${
+                eventDate
+                  ? `<p><strong>Event Date:</strong> ${new Date(eventDate).toLocaleString("en-US", {
+                      dateStyle: "full",
+                      timeStyle: "short",
+                      timeZone: eventTimeZone,
+                    })}</p>`
+                  : ""
+              }
               ${eventLocation ? `<p><strong>Location:</strong> ${eventLocation}</p>` : ''}
             </div>
           ` : ''}

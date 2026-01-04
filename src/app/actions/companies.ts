@@ -1370,54 +1370,6 @@ function parseCSV(csvContent: string): Record<string, string>[] {
 }
 
 /**
- * Parse Excel file content into array of objects
- */
-async function parseExcel(fileBuffer: ArrayBuffer): Promise<Record<string, string>[]> {
-  try {
-    const XLSX = await import('xlsx');
-    const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
-    
-    // Get the first sheet
-    const firstSheetName = workbook.SheetNames[0];
-    if (!firstSheetName) return [];
-    
-    const worksheet = workbook.Sheets[firstSheetName];
-    
-    // Convert to JSON with header row
-    const rows = XLSX.utils.sheet_to_json(worksheet, { 
-      header: 1,
-      defval: '' // Default value for empty cells
-    }) as unknown[][];
-    
-    if (rows.length === 0) return [];
-    
-    // First row is headers
-    const headers = rows[0].map(h => String(h).trim());
-    
-    // Convert rows to objects, filtering out empty rows
-    const result: Record<string, string>[] = [];
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      // Skip if row is empty or all values are empty
-      if (!row || row.length === 0 || row.every(cell => !cell || String(cell).trim() === '')) {
-        continue;
-      }
-      
-      const rowObj: Record<string, string> = {};
-      headers.forEach((header, index) => {
-        rowObj[header] = row[index] ? String(row[index]).trim() : '';
-      });
-      result.push(rowObj);
-    }
-    
-    return result;
-  } catch (error) {
-    console.error('Error parsing Excel file:', error);
-    throw new Error('Failed to parse Excel file');
-  }
-}
-
-/**
  * Find salesperson by name (case-insensitive, supports "First Last" or "First Middle Last")
  */
 function findSalespersonByName(salespersons: DirectusUser[], name: string): string | null {
@@ -1464,7 +1416,7 @@ function findSalespersonByName(salespersons: DirectusUser[], name: string): stri
 
 /**
  * Map CSV/Excel row to company payload
- * Expected columns (CSV or Excel):
+ * Expected columns (CSV):
  * - companyName (required)
  * - salesperson (required) - should be salesperson name (e.g., "John Doe" or "John")
  * - vatNumber (optional)
@@ -1533,7 +1485,7 @@ function mapCSVRowToCompany(
 }
 
 /**
- * Process CSV or Excel file and create companies
+ * Process CSV file and create companies
  * Returns summary of created/skipped companies with detailed information
  */
 export async function processCompaniesCSVAction(formData: FormData): Promise<{
@@ -1561,10 +1513,9 @@ export async function processCompaniesCSVAction(formData: FormData): Promise<{
     }
 
     const fileName = file.name.toLowerCase();
-    const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
     const isCSV = fileName.endsWith('.csv');
 
-    if (!isExcel && !isCSV) {
+    if (!isCSV) {
       return {
         success: false,
         created: 0,
@@ -1572,22 +1523,16 @@ export async function processCompaniesCSVAction(formData: FormData): Promise<{
         errors: [],
         skippedCompanies: [],
         createdCompanies: [],
-        error: "Unsupported file format. Please upload a CSV or Excel file (.csv, .xlsx, .xls)",
+        error: "Unsupported file format. Please upload a CSV file (.csv)",
       };
     }
 
     let rows: Record<string, string>[] = [];
 
     try {
-      if (isExcel) {
-        // Parse Excel file
-        const arrayBuffer = await file.arrayBuffer();
-        rows = await parseExcel(arrayBuffer);
-      } else {
-        // Parse CSV file
-        const csvContent = await file.text();
-        rows = parseCSV(csvContent);
-      }
+      // Parse CSV file
+      const csvContent = await file.text();
+      rows = parseCSV(csvContent);
     } catch (parseError) {
       console.error("Error parsing file:", parseError);
       return {

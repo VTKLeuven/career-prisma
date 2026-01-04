@@ -25,7 +25,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import * as XLSX from "xlsx";
 import { fetchEventsAction } from "@/app/actions/events";
 import type { CareerEvent } from "@/lib/schema";
 
@@ -139,19 +138,11 @@ export default function AllScansPage() {
     }
   };
 
-  const exportToXLSX = () => {
+  const exportToCSV = () => {
     if (scans.length === 0) {
       alert("No scans to export.");
       return;
     }
-
-    // Get all unique form names to determine fields
-    const formNames = new Set(scans.map(s => {
-      const formName = typeof s.form_response_id.form_version_id === 'object' && s.form_response_id.form_version_id?.form_id
-        ? (typeof s.form_response_id.form_version_id.form_id === 'object' ? s.form_response_id.form_version_id.form_id.name : '')
-        : '';
-      return formName;
-    }));
 
     // Collect all unique field names from all responses
     const allFieldKeys = new Set<string>();
@@ -174,7 +165,7 @@ export default function AllScansPage() {
     // Check if any scan has student data
     const hasStudentData = scans.some(scan => scan.form_response_id.data?._student_username || scan.form_response_id.data?._student_email);
 
-    // Prepare data for XLSX
+    // Prepare data for CSV
     const headerRow = [
       'Event', 
       'Scanned At', 
@@ -231,21 +222,20 @@ export default function AllScansPage() {
       ];
     });
 
-    // Create worksheet
-    const worksheetData = [headerRow, ...dataRows];
-    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+    const escapeCsv = (value: unknown) => {
+      const s = value === null || value === undefined ? "" : String(value);
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
 
-    // Create workbook and add worksheet
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'All Scans');
+    const csv = [headerRow, ...dataRows]
+      .map(row => row.map(escapeCsv).join(","))
+      .join("\r\n");
 
-    // Generate XLSX file
-    const xlsxBuffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
-    const blob = new Blob([xlsxBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `all-scans-${new Date().toISOString().split('T')[0]}.xlsx`;
+    a.download = `all-scans-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
@@ -268,9 +258,9 @@ export default function AllScansPage() {
           <p className="text-muted-foreground">View and export all scanned attendants across all events</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={exportToXLSX} disabled={scans.length === 0}>
+          <Button variant="outline" onClick={exportToCSV} disabled={scans.length === 0}>
             <Download className="h-4 w-4 mr-2" />
-            Export XLSX
+            Export CSV
           </Button>
           <Dialog open={scanDialogOpen} onOpenChange={setScanDialogOpen}>
             <DialogTrigger asChild>

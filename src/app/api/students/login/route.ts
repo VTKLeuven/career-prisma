@@ -73,6 +73,7 @@ export async function POST(req: Request) {
                            (student.password.length > 64 && !/^[a-f0-9]{64}$/i.test(student.password));
 
     let passwordMatches = false;
+    let matchedViaDoubleHashFallback = false;
 
     if (isDirectusHash) {
       if (isArgon2Hash) {
@@ -85,6 +86,20 @@ export async function POST(req: Request) {
             console.log("[students/login] Stored hash prefix:", student.password.substring(0, 30));
             passwordMatches = await argon2.verify(student.password, password);
             console.log("[students/login] Argon2id verification result:", passwordMatches);
+
+            // Backwards-compatible fallback:
+            // A previous bug stored argon2(sha256(password)) instead of argon2(password).
+            // If the direct verification fails, try verifying sha256(password) against the stored hash.
+            if (!passwordMatches) {
+              const crypto = await import("crypto");
+              const sha = crypto.createHash("sha256").update(password).digest("hex");
+              const fallbackOk = await argon2.verify(student.password, sha);
+              console.log("[students/login] Argon2id fallback (sha256(password)) result:", fallbackOk);
+              if (fallbackOk) {
+                passwordMatches = true;
+                matchedViaDoubleHashFallback = true;
+              }
+            }
           } else {
             throw new Error("argon2 not available");
           }
@@ -102,6 +117,18 @@ export async function POST(req: Request) {
           if (bcrypt && typeof bcrypt.compare === 'function') {
             passwordMatches = await bcrypt.compare(password, student.password);
             console.log("[students/login] Using bcrypt verification");
+
+            // Backwards-compatible fallback for double-hashed passwords
+            if (!passwordMatches) {
+              const crypto = await import("crypto");
+              const sha = crypto.createHash("sha256").update(password).digest("hex");
+              const fallbackOk = await bcrypt.compare(sha, student.password);
+              console.log("[students/login] Bcrypt fallback (sha256(password)) result:", fallbackOk);
+              if (fallbackOk) {
+                passwordMatches = true;
+                matchedViaDoubleHashFallback = true;
+              }
+            }
           } else {
             throw new Error("bcryptjs not available");
           }
@@ -128,6 +155,23 @@ export async function POST(req: Request) {
       console.error("[students/login] Password mismatch for student:", student.email);
       console.error("[students/login] Password hash type:", isDirectusHash ? "Directus (bcrypt/argon2)" : "SHA256");
       return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
+    }
+
+    // If we matched using the fallback, repair the stored password so future logins work normally.
+    if (matchedViaDoubleHashFallback) {
+      try {
+        console.warn("[students/login] Detected legacy double-hashed password. Re-hashing password correctly via Directus.");
+        await fetch(`${normalizedBase}items/students/${student.id}`, {
+          method: "PATCH",
+          headers: {
+            "Authorization": `Bearer ${serverToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ password }),
+        });
+      } catch (e) {
+        console.warn("[students/login] Failed to repair legacy password hash:", e);
+      }
     }
 
     // Set student session cookie
