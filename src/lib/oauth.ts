@@ -14,23 +14,32 @@ export function generateState(): string {
 /**
  * Store OAuth state in cookie
  */
-export async function storeOAuthState(state: string, redirectTo: string = "/") {
+export async function storeOAuthState(
+  state: string,
+  redirectTo: string = "/",
+  opts?: { domain?: string; maxAge?: number }
+) {
   const cookieStore = await cookies();
-  
+  const secure = process.env.NODE_ENV === "production";
+  const maxAge = opts?.maxAge ?? 1800; // 30 minutes
+  const domainOpt = opts?.domain ? { domain: opts.domain } : {};
+
   cookieStore.set("oauth_state", state, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure,
     sameSite: "lax",
     path: "/",
-    maxAge: 600, // 10 minutes
+    maxAge,
+    ...domainOpt,
   });
 
   cookieStore.set("oauth_redirect_to", redirectTo, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure,
     sameSite: "lax",
     path: "/",
-    maxAge: 600, // 10 minutes
+    maxAge,
+    ...domainOpt,
   });
 }
 
@@ -46,7 +55,8 @@ export async function verifyOAuthState(state: string): Promise<{
   const redirectTo = cookieStore.get("oauth_redirect_to")?.value || "/";
 
   if (!storedState || storedState !== state) {
-    return { valid: false };
+    // Return redirectTo even when invalid so it can be preserved in error cases
+    return { valid: false, redirectTo };
   }
 
   // Clear the state cookie after verification

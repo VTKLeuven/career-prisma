@@ -415,7 +415,12 @@ export async function submitFormResponseAction(data: {
       const deadline = new Date(versionMetadata.deadline as string);
       const now = new Date();
       if (now > deadline) {
-        throw new Error(`This form's deadline has passed. The deadline was ${new Date(versionMetadata.deadline as string).toLocaleString()}.`);
+        const timeZone = process.env.EVENT_TIMEZONE || "Europe/Brussels";
+        throw new Error(
+          `This form's deadline has passed. The deadline was ${new Date(
+            versionMetadata.deadline as string
+          ).toLocaleString("en-US", { timeZone })}.`
+        );
       }
     }
 

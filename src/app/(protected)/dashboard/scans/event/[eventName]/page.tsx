@@ -16,7 +16,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import * as XLSX from "xlsx";
 import { fetchEventsAction } from "@/app/actions/events";
 import type { CareerEvent } from "@/lib/schema";
 
@@ -127,7 +126,7 @@ export default function EventScansPage() {
     };
   }, [eventName, user?.company?.id]);
 
-  const exportToXLSX = () => {
+  const exportToCSV = () => {
     if (scans.length === 0) {
       alert("No scans to export.");
       return;
@@ -182,7 +181,7 @@ export default function EventScansPage() {
     // Check if any scan has student data
     const hasStudentData = scans.some(scan => scan.form_response_id.data?._student_username || scan.form_response_id.data?._student_email);
 
-    // Prepare data for XLSX
+    // Prepare data for CSV
     const headerRow = [
       'Scanned At', 
       'Scanned By', 
@@ -229,21 +228,20 @@ export default function EventScansPage() {
       ];
     });
 
-    // Create worksheet
-    const worksheetData = [headerRow, ...dataRows];
-    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+    const escapeCsv = (value: unknown) => {
+      const s = value === null || value === undefined ? "" : String(value);
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
 
-    // Create workbook and add worksheet
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Scans');
+    const csv = [headerRow, ...dataRows]
+      .map(row => row.map(escapeCsv).join(","))
+      .join("\r\n");
 
-    // Generate XLSX file
-    const xlsxBuffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
-    const blob = new Blob([xlsxBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${eventName.replace(/[^a-z0-9]/gi, '-')}-scans-${new Date().toISOString().split('T')[0]}.xlsx`;
+    a.download = `${eventName.replace(/[^a-z0-9]/gi, '-')}-scans-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
@@ -265,9 +263,9 @@ export default function EventScansPage() {
           <h1 className="text-3xl font-bold">{eventName} - Scans</h1>
           <p className="text-muted-foreground">View scanned attendants for this event</p>
         </div>
-        <Button variant="outline" onClick={exportToXLSX} disabled={scans.length === 0}>
+        <Button variant="outline" onClick={exportToCSV} disabled={scans.length === 0}>
           <Download className="h-4 w-4 mr-2" />
-          Export XLSX
+          Export CSV
         </Button>
       </div>
 

@@ -24,6 +24,17 @@ interface OAuthUserInfo {
 }
 
 export async function GET(request: NextRequest) {
+  // Helper function to get redirectTo from cookie
+  const getRedirectToFromCookie = async (): Promise<string> => {
+    try {
+      const { cookies } = await import("next/headers");
+      const cookieStore = await cookies();
+      return cookieStore.get("oauth_redirect_to")?.value || "/";
+    } catch {
+      return "/";
+    }
+  };
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get("code");
@@ -48,6 +59,8 @@ export async function GET(request: NextRequest) {
       if (errorDescription) {
         frontendCallbackUrl.searchParams.set("error_description", errorDescription);
       }
+      const redirectTo = await getRedirectToFromCookie();
+      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
 
@@ -56,6 +69,8 @@ export async function GET(request: NextRequest) {
       const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
       frontendCallbackUrl.searchParams.set("error", "missing_parameters");
       frontendCallbackUrl.searchParams.set("error_description", "Missing code or state parameter");
+      const redirectTo = await getRedirectToFromCookie();
+      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
 
@@ -69,6 +84,8 @@ export async function GET(request: NextRequest) {
       });
       const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
       frontendCallbackUrl.searchParams.set("error", "configuration_error");
+      const redirectTo = await getRedirectToFromCookie();
+      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
     
@@ -81,6 +98,9 @@ export async function GET(request: NextRequest) {
       console.error("Invalid OAuth state");
       const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
       frontendCallbackUrl.searchParams.set("error", "invalid_state");
+      frontendCallbackUrl.searchParams.set("error_description", "The authentication session expired. Please try logging in again.");
+      // Preserve redirectTo from the state verification even when state is invalid
+      frontendCallbackUrl.searchParams.set("redirect_to", stateVerification.redirectTo || "/");
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
 
@@ -107,6 +127,7 @@ export async function GET(request: NextRequest) {
       console.error("Token request error:", fetchError);
       const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
       frontendCallbackUrl.searchParams.set("error", "token_request_failed");
+      frontendCallbackUrl.searchParams.set("redirect_to", stateVerification.redirectTo || "/");
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
 
@@ -116,6 +137,7 @@ export async function GET(request: NextRequest) {
       const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
       frontendCallbackUrl.searchParams.set("error", "token_exchange_failed");
       frontendCallbackUrl.searchParams.set("error_description", `Status: ${tokenResponse.status}`);
+      frontendCallbackUrl.searchParams.set("redirect_to", stateVerification.redirectTo || "/");
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
 
@@ -126,6 +148,7 @@ export async function GET(request: NextRequest) {
       console.error("No access token in response:", tokenData);
       const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
       frontendCallbackUrl.searchParams.set("error", "no_access_token");
+      frontendCallbackUrl.searchParams.set("redirect_to", stateVerification.redirectTo || "/");
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
 
@@ -145,12 +168,14 @@ export async function GET(request: NextRequest) {
         console.warn("Failed to fetch user info:", userInfoResponse.status);
         const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
         frontendCallbackUrl.searchParams.set("error", "user_info_failed");
+        frontendCallbackUrl.searchParams.set("redirect_to", stateVerification.redirectTo || "/");
         return NextResponse.redirect(frontendCallbackUrl.toString());
       }
     } catch (userInfoError) {
       console.warn("User info request error:", userInfoError);
       const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
       frontendCallbackUrl.searchParams.set("error", "user_info_error");
+      frontendCallbackUrl.searchParams.set("redirect_to", stateVerification.redirectTo || "/");
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
 
@@ -159,6 +184,7 @@ export async function GET(request: NextRequest) {
       console.error("Missing required OAuth fields:", userInfo);
       const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
       frontendCallbackUrl.searchParams.set("error", "missing_oauth_fields");
+      frontendCallbackUrl.searchParams.set("redirect_to", stateVerification.redirectTo || "/");
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
 
@@ -201,6 +227,7 @@ export async function GET(request: NextRequest) {
         console.error("Failed to create student");
         const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
         frontendCallbackUrl.searchParams.set("error", "student_creation_failed");
+        frontendCallbackUrl.searchParams.set("redirect_to", stateVerification.redirectTo || "/");
         return NextResponse.redirect(frontendCallbackUrl.toString());
       }
     }
@@ -258,6 +285,15 @@ export async function GET(request: NextRequest) {
       "error_description",
       error instanceof Error ? error.message : "Unknown error"
     );
+    // Try to get redirectTo from cookie in catch block
+    try {
+      const { cookies } = await import("next/headers");
+      const cookieStore = await cookies();
+      const redirectTo = cookieStore.get("oauth_redirect_to")?.value || "/";
+      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
+    } catch {
+      frontendCallbackUrl.searchParams.set("redirect_to", "/");
+    }
     return NextResponse.redirect(frontendCallbackUrl.toString());
   }
 }

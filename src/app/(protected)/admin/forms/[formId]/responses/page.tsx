@@ -39,7 +39,6 @@ import {
 import { ArrowLeft, Download, Eye, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2, Mail } from "lucide-react";
 import type { FormVersion, FormResponse } from "@/lib/schema";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
-import * as XLSX from "xlsx";
 
 export default function FormResponsesPage() {
   const params = useParams();
@@ -552,10 +551,10 @@ export default function FormResponsesPage() {
     }
   };
 
-  const exportIncompleteCompaniesToXLSX = async () => {
+  const exportIncompleteCompaniesToCSV = async () => {
     if (incompleteCompanies.length === 0) return;
 
-    // Prepare data for XLSX - same format as submissions export
+    // Prepare data for CSV - same format as submissions export
     const headerRow = ['Company Name', 'Salesperson', 'Option'];
     const dataRows = incompleteCompanies.map(company => [
       company.name,
@@ -563,26 +562,25 @@ export default function FormResponsesPage() {
       company.optionName,
     ]);
 
-    // Create worksheet
-    const worksheetData = [headerRow, ...dataRows];
-    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+    const escapeCsv = (value: unknown) => {
+      const s = value === null || value === undefined ? "" : String(value);
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
 
-    // Create workbook and add worksheet
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Incomplete Companies');
+    const csv = [headerRow, ...dataRows]
+      .map(row => row.map(escapeCsv).join(","))
+      .join("\r\n");
 
-    // Generate XLSX file
-    const xlsxBuffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
-    const blob = new Blob([xlsxBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${form?.slug}-incomplete-companies-${new Date().toISOString().split('T')[0]}.xlsx`;
+    a.download = `${form?.slug}-incomplete-companies-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
 
-  const exportToXLSX = async () => {
+  const exportToCSV = async () => {
     if (!selectedVersionId) return;
 
     const selectedVersion = versions.find(v => v.id === selectedVersionId);
@@ -644,7 +642,7 @@ export default function FormResponsesPage() {
     );
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
-    // Prepare data for XLSX
+    // Prepare data for CSV
     const headerRow = [
       'Submission Date', 
       'Response ID', 
@@ -732,21 +730,20 @@ export default function FormResponsesPage() {
       return [date, response.id, ...companyFields, ...studentFields, ...values, ...(isEventRegistration ? [attendantLink] : [])];
     });
 
-    // Create worksheet
-    const worksheetData = [headerRow, ...dataRows];
-    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+    const escapeCsv = (value: unknown) => {
+      const s = value === null || value === undefined ? "" : String(value);
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
 
-    // Create workbook and add worksheet
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Responses');
+    const csv = [headerRow, ...dataRows]
+      .map(row => row.map(escapeCsv).join(","))
+      .join("\r\n");
 
-    // Generate XLSX file
-    const xlsxBuffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
-    const blob = new Blob([xlsxBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${form?.slug}-responses-${new Date().toISOString().split('T')[0]}.xlsx`;
+    a.download = `${form?.slug}-responses-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
@@ -903,11 +900,11 @@ export default function FormResponsesPage() {
               )}
               <Button
                 variant="outline"
-                onClick={viewMode === "submissions" ? exportToXLSX : exportIncompleteCompaniesToXLSX}
+                onClick={viewMode === "submissions" ? exportToCSV : exportIncompleteCompaniesToCSV}
                 disabled={viewMode === "submissions" ? totalCount === 0 : incompleteCompanies.length === 0}
               >
                 <Download className="h-4 w-4 mr-2" />
-                Export XLSX
+                Export CSV
               </Button>
             </div>
           </div>

@@ -26,7 +26,20 @@ export async function GET(request: NextRequest) {
     const state = generateState();
 
     // Store state and redirect URL in cookies
-    await storeOAuthState(state, redirectTo);
+    // IMPORTANT: on production the OAuth callback may land on a different subdomain
+    // (e.g. apex vs www). Use a shared cookie domain so `oauth_state` is available.
+    const rawHost =
+      request.headers.get("x-forwarded-host") ||
+      request.headers.get("host") ||
+      "";
+    const host = rawHost.split(",")[0]?.trim().toLowerCase() ?? "";
+    const hostNoPort = host.split(":")[0] ?? host;
+    const cookieDomain =
+      process.env.NODE_ENV === "production" && hostNoPort.endsWith("career.vtk.be")
+        ? ".career.vtk.be"
+        : undefined;
+
+    await storeOAuthState(state, redirectTo, { domain: cookieDomain, maxAge: 1800 });
 
     // Build authorization URL
     const authUrl = buildAuthorizationUrl(authorizeUrl, clientId, callbackUrl, state, scopes);

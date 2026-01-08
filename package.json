@@ -31,7 +31,6 @@
     "@xmldom/xmldom": "^0.8.11",
     "argon2": "^0.44.0",
     "bcryptjs": "^3.0.3",
-    "build": "^0.1.4",
     "canvas": "^3.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -51,8 +50,7 @@
     "react-leaflet": "^5.0.0",
     "sharp": "^0.34.5",
     "tailwind-merge": "^3.3.1",
-    "vaul": "^1.1.2",
-    "xlsx": "^0.18.5"
+    "vaul": "^1.1.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -63,7 +61,6 @@
     "@types/nodemailer": "^7.0.3",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19",
-    "@types/xlsx": "^0.0.35",
     "baseline-browser-mapping": "^2.8.32",
     "eslint": "^9",
     "eslint-config-next": "^16.0.7",

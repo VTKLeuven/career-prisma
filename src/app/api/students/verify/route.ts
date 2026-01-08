@@ -362,18 +362,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Hash password (using bcrypt or similar - for now, store as-is and hash in future)
-    // Note: In production, you should hash the password before storing
-    // Reuse crypto import from above
-    const passwordHash = crypto
-      .createHash("sha256")
-      .update(password)
-      .digest("hex");
-
-    // Update student: set password, mark as verified, clear verification token
-    // Using server token should allow us to set all fields including verified
+    // IMPORTANT:
+    // For our Directus setup, the `students.password` field is stored as a Directus hash (e.g. Argon2id).
+    // That means we must send the *plain* password here so Directus can hash it exactly once.
+    // If we pre-hash it (e.g. SHA256), Directus will hash again and login will never match.
     const updateBody: any = {
-      password: passwordHash,
+      password,
       verified: true,
     };
     
@@ -406,6 +400,55 @@ export async function POST(request: NextRequest) {
         { error: errorData?.errors?.[0]?.message || "Failed to set password" },
         { status: 500 }
       );
+    }
+
+    // Verify what was actually stored (and self-heal if Directus didn't hash for some reason)
+    try {
+      const verifyRes = await fetch(
+        `${normalizedBase}items/${STUDENT_COLLECTION}/${studentId}?fields=password`,
+        {
+          headers: {
+            "Authorization": `Bearer ${serverToken}`,
+          },
+        }
+      );
+
+      if (verifyRes.ok) {
+        const verifyData = await verifyRes.json();
+        const storedPassword = verifyData.data?.password;
+        if (typeof storedPassword === "string") {
+          console.log(`[verify-student POST] Password stored - length: ${storedPassword.length}, prefix: ${storedPassword.substring(0, 30)}`);
+          if (storedPassword === password) {
+            console.warn("[verify-student POST] WARNING: Password stored as plain text. Attempting to store an Argon2 hash directly.");
+            // Directus didn't hash; hash ourselves so login can verify securely.
+            // @ts-ignore - argon2 may not be installed
+            const argon2 = await import("argon2").catch(() => null);
+            if (argon2 && typeof argon2.hash === "function") {
+              const hashed = await argon2.hash(password);
+              const rehashRes = await fetch(
+                `${normalizedBase}items/${STUDENT_COLLECTION}/${studentId}`,
+                {
+                  method: "PATCH",
+                  headers: {
+                    "Authorization": `Bearer ${serverToken}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({ password: hashed }),
+                }
+              );
+              if (rehashRes.ok) {
+                console.log("[verify-student POST] Successfully stored Argon2 hash directly.");
+              } else {
+                console.warn("[verify-student POST] Failed to store Argon2 hash directly:", rehashRes.status);
+              }
+            } else {
+              console.warn("[verify-student POST] argon2 not available; cannot self-hash password.");
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[verify-student POST] Post-update password verification failed:", e);
     }
 
     // Set student session cookie

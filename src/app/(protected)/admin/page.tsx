@@ -2014,9 +2014,9 @@ function CompanyFormDialog({ onCreate, onRefresh }: { onCreate: (row: CompanyRow
     <Dialog open={csvUploadOpen} onOpenChange={setCsvUploadOpen}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Upload Companies (CSV/Excel)</DialogTitle>
+          <DialogTitle>Upload Companies (CSV)</DialogTitle>
           <DialogDescription>
-            Upload a CSV or Excel file with company data. Column names should match the form field names.
+            Upload a CSV file with company data. Column names should match the form field names.
             Required columns: companyName, salesperson (salesperson name, e.g., "John Doe").
             Optional columns: vatNumber, firstName, lastName, email, street, number, zip, city, country.
           </DialogDescription>
@@ -2030,7 +2030,7 @@ function CompanyFormDialog({ onCreate, onRefresh }: { onCreate: (row: CompanyRow
             <Input
               id="csvFile"
               type="file"
-              accept=".csv,.xlsx,.xls"
+              accept=".csv"
               onChange={handleFileUpload}
               ref={fileInputRef}
               disabled={uploading}
