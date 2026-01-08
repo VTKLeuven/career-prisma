@@ -98,13 +98,13 @@ export default function OurStudentsPage() {
               </div>
               <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
                 <div className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2">
-                  6000
+                  4000
                 </div>
                 <div className="text-sm sm:text-base opacity-90">Students</div>
               </div>
               <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
                 <div className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2">
-                  1000
+                  800
                 </div>
                 <div className="text-sm sm:text-base opacity-90">Graduating students</div>
               </div>
