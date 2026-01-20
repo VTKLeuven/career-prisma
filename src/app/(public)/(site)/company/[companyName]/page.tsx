@@ -399,16 +399,6 @@ export default function CompanyPage() {
                   <div className="mt-2 text-sm text-neutral-700">{company.location}</div>
                 </div>
               )}
-              {(company.address_city || company.address_country || company.address_street) && (
-                <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-4 sm:p-6 shadow-sm">
-                  <h3 className="text-base font-semibold text-neutral-900">Headquarters</h3>
-                  <div className="mt-2 text-sm text-neutral-700">
-                    <div>{[company.address_street, company.address_number].filter(Boolean).join(" ")}</div>
-                    <div>{[company.address_zip, company.address_city].filter(Boolean).join(" ")}</div>
-                    <div>{company.address_country}</div>
-                  </div>
-                </div>
-              )}
 
               {company.website && (
                 <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-4 sm:p-6 shadow-sm">
