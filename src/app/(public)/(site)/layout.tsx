@@ -95,30 +95,22 @@ function Header() {
         return res.json();
       })
       .then((data) => {
-        // Debug logging (remove in production)
-        console.log('[Auth Check] API Response:', data);
-        
-        // Explicitly handle null/undefined - ensure we set null if API returns null or undefined
         // Only set companyRep if authenticated is explicitly true
         if (data?.companyRep?.authenticated === true) {
-          console.log('[Auth Check] Setting companyRep:', data.companyRep);
           setCompanyRep(data.companyRep);
         } else {
-          console.log('[Auth Check] No valid companyRep, setting to null. Data:', data?.companyRep);
           setCompanyRep(null);
         }
         
         // Only set student if authenticated is explicitly true
         if (data?.student?.authenticated === true) {
-          console.log('[Auth Check] Setting student:', data.student);
           setStudent(data.student);
         } else {
-          console.log('[Auth Check] No valid student, setting to null. Data:', data?.student);
           setStudent(null);
         }
       })
       .catch((error) => {
-        console.log('[Auth Check] Error:', error);
+        console.error('[Auth Check] Error:', error);
         // User not authenticated - clear state
         setCompanyRep(null);
         setStudent(null);

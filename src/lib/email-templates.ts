@@ -581,6 +581,92 @@ export function generateStudentVerificationEmailHtml({
 }
 
 /**
+ * Generate CV Book access request email HTML
+ */
+export function generateCVBookRequestEmailHtml({
+  companyName,
+  requesterName,
+  requesterEmail,
+  salespersonName,
+}: {
+  companyName: string;
+  requesterName: string;
+  requesterEmail: string;
+  salespersonName: string;
+}) {
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+            line-height: 1.6; 
+            color: #333; 
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+          }
+          .container { 
+            max-width: 600px; 
+            margin: 0 auto; 
+            padding: 40px 20px;
+            background-color: #ffffff;
+          }
+          h2 {
+            color: #111827;
+            margin-top: 0;
+          }
+          .info-box {
+            background-color: #f9fafb;
+            border-left: 4px solid #2563eb;
+            padding: 16px;
+            margin: 20px 0;
+            border-radius: 4px;
+          }
+          .info-box p {
+            margin: 8px 0;
+          }
+          .info-box strong {
+            color: #1f2937;
+          }
+          .signature {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            color: #6b7280;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h2>CV Book Access Request</h2>
+          <p>Dear ${salespersonName},</p>
+          <p>A CV Book access request has been submitted for <strong>${companyName}</strong>.</p>
+          <div class="info-box">
+            <p><strong>Requested by:</strong> ${requesterName}</p>
+            <p><strong>Email:</strong> ${requesterEmail}</p>
+            <p><strong>Company:</strong> ${companyName}</p>
+          </div>
+          <p>The company representative has requested access to the CV Book feature on the VTK Career Platform. This feature allows companies to:</p>
+          <ul>
+            <li>Browse student CVs</li>
+            <li>Search for candidates by skills and experience</li>
+            <li>Connect with talented students from the engineering faculty</li>
+          </ul>
+          <p>Please review this request and activate the CV Book sub-option for this company in the admin panel if approved.</p>
+          <div class="signature">
+            <p>Best regards,<br>The VTK Career Platform</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
+/**
  * Generate password reset email HTML
  */
 export function generatePasswordResetEmailHtml({

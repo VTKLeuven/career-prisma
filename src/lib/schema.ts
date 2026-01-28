@@ -88,6 +88,14 @@ export type CareerEvent = {
   href?: string;
 }
 
+export type CareerSubOption = {
+  id: string;
+  name: string;
+  description: string;
+  price: string;
+  active: boolean;
+}
+
 export type CareerEventOption = {
   id: string;
   name: string;
@@ -95,6 +103,7 @@ export type CareerEventOption = {
   price: string;
   events?: CareerEvent[];
   event?: CareerEvent; // Deprecated: use events instead (kept for backward compatibility)
+  sub_options?: CareerSubOption[];
 }
 
 export type CareerEventPage = {
@@ -230,6 +239,30 @@ export type FormResponse = {
   submitter_first_name?: string; // First name of person who submitted (for company forms, especially non-logged-in)
   submitter_last_name?: string; // Last name of person who submitted (for company forms, especially non-logged-in)
   submitter_email?: string; // Email of person who submitted (for company forms, especially non-logged-in)
+}
+
+export type AcademicYear = {
+  id: string;
+  name: string;
+  start_of_year: string;
+  end_of_year: string;
+}
+
+export type CVBook = {
+  id: string;
+  year: string | AcademicYear;
+  form: string | Form;
+  student_first_name_field: string;
+  student_last_name_field: string;
+  student_email_field: string;
+  student_study_field: string;
+  student_cv_field: string;
+  student_first_name_field_backup?: string;
+  student_last_name_field_backup?: string;
+  student_email_field_backup?: string;
+  student_study_field_backup?: string;
+  student_cv_field_backup?: string;
+  active: boolean;
 }
 
 // Optional: Full Directus Schema map (only collections you use)

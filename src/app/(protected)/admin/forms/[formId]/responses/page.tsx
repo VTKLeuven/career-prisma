@@ -4,7 +4,7 @@ import * as React from "react";
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { fetchFormByIdAction, fetchFormVersionsAction, fetchFormResponsesAction, fetchFormResponsesTotalCountAction, fetchAllFormResponsesAction, fetchFirstFormResponseAction, fetchLatestFormResponseAction, deleteFormResponseAction, initializeAttendantUuidsAction } from "@/app/actions/forms";
+import { fetchFormByIdAction, fetchFormVersionsAction, fetchFormResponsesAction, fetchFormResponsesTotalCountAction, fetchAllFormResponsesAction, fetchFirstFormResponseAction, fetchLatestFormResponseAction, deleteFormResponseAction, initializeAttendantUuidsAction, fetchFormResponsesForAllVersionsAction, fetchFormResponsesTotalCountForAllVersionsAction, fetchFirstFormResponseForAllVersionsAction, fetchLatestFormResponseForAllVersionsAction, fetchAllFormResponsesForAllVersionsAction } from "@/app/actions/forms";
 import { fetchCompaniesForEventAction } from "@/app/actions/companies";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,7 +48,9 @@ export default function FormResponsesPage() {
   const [form, setForm] = useState<{ id: string; name: string; slug: string } | null>(null);
   const [versions, setVersions] = useState<FormVersion[]>([]);
   const [selectedVersionId, setSelectedVersionId] = useState<string>("");
+  const [isAllVersions, setIsAllVersions] = useState(true); // Default to all versions
   const [responses, setResponses] = useState<FormResponse[]>([]);
+  const [allVersionsFields, setAllVersionsFields] = useState<Array<{ id: string; name: string; label: string; type: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [loadingResponses, setLoadingResponses] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -96,12 +98,14 @@ export default function FormResponsesPage() {
       });
       setVersions(versionsData);
 
+      // Set default version for fallback, but keep all versions mode as default
       const activeVersion = versionsData.find(v => v.is_active);
       if (activeVersion) {
         setSelectedVersionId(activeVersion.id);
       } else if (versionsData.length > 0) {
         setSelectedVersionId(versionsData[0].id);
       }
+      // Keep isAllVersions as true (default)
     } catch (error) {
       console.error("Error loading form data:", error);
     } finally {
@@ -109,19 +113,32 @@ export default function FormResponsesPage() {
     }
   }, [formId]);
 
-  const loadResponses = useCallback(async (versionId: string, page: number = 1) => {
+  const loadResponses = useCallback(async (versionId: string | null, page: number = 1, allVersions: boolean = false) => {
     setLoadingResponses(true);
     try {
-      const [responsesData, total, firstResponse, latestResponse] = await Promise.all([
-        fetchFormResponsesAction(versionId, { limit: 25, page }),
-        fetchFormResponsesTotalCountAction(versionId),
-        fetchFirstFormResponseAction(versionId),
-        fetchLatestFormResponseAction(versionId),
-      ]);
-      setResponses(responsesData);
-      setTotalCount(total);
-      setFirstResponseDate(firstResponse?.submitted_at || null);
-      setLatestResponseDate(latestResponse?.submitted_at || null);
+      if (allVersions && formId) {
+        const [responsesData, total, firstResponse, latestResponse] = await Promise.all([
+          fetchFormResponsesForAllVersionsAction(formId, { limit: 25, page }),
+          fetchFormResponsesTotalCountForAllVersionsAction(formId),
+          fetchFirstFormResponseForAllVersionsAction(formId),
+          fetchLatestFormResponseForAllVersionsAction(formId),
+        ]);
+        setResponses(responsesData);
+        setTotalCount(total);
+        setFirstResponseDate(firstResponse?.submitted_at || null);
+        setLatestResponseDate(latestResponse?.submitted_at || null);
+      } else if (versionId) {
+        const [responsesData, total, firstResponse, latestResponse] = await Promise.all([
+          fetchFormResponsesAction(versionId, { limit: 25, page }),
+          fetchFormResponsesTotalCountAction(versionId),
+          fetchFirstFormResponseAction(versionId),
+          fetchLatestFormResponseAction(versionId),
+        ]);
+        setResponses(responsesData);
+        setTotalCount(total);
+        setFirstResponseDate(firstResponse?.submitted_at || null);
+        setLatestResponseDate(latestResponse?.submitted_at || null);
+      }
     } catch (error) {
       console.error("Error loading responses:", error);
       setResponses([]);
@@ -131,35 +148,101 @@ export default function FormResponsesPage() {
     } finally {
       setLoadingResponses(false);
     }
-  }, []);
+  }, [formId]);
 
   useEffect(() => {
     loadFormData();
   }, [loadFormData]);
 
+  // Collect all unique fields from all versions, filtering out fields with no responses
+  useEffect(() => {
+    if (versions.length > 0 && responses.length > 0) {
+      const fieldMap = new Map<string, { id: string; name: string; label: string; type: string }>();
+      versions.forEach(version => {
+        if (version.schema?.fields) {
+          version.schema.fields.forEach(field => {
+            if (!fieldMap.has(field.name)) {
+              fieldMap.set(field.name, {
+                id: field.id,
+                name: field.name,
+                label: field.label || field.name,
+                type: field.type,
+              });
+            }
+          });
+        }
+      });
+      
+      // Filter out fields that have no responses (all values are null/undefined/NA)
+      const fieldsWithData = Array.from(fieldMap.values()).filter(field => {
+        return responses.some(response => {
+          const value = response.data?.[field.name];
+          return value !== null && value !== undefined && value !== '';
+        });
+      });
+      
+      setAllVersionsFields(fieldsWithData);
+    } else if (versions.length > 0) {
+      // If no responses yet, show all fields
+      const fieldMap = new Map<string, { id: string; name: string; label: string; type: string }>();
+      versions.forEach(version => {
+        if (version.schema?.fields) {
+          version.schema.fields.forEach(field => {
+            if (!fieldMap.has(field.name)) {
+              fieldMap.set(field.name, {
+                id: field.id,
+                name: field.name,
+                label: field.label || field.name,
+                type: field.type,
+              });
+            }
+          });
+        }
+      });
+      setAllVersionsFields(Array.from(fieldMap.values()));
+    }
+  }, [versions, responses]);
+
   // Reset to page 1 when version changes
   useEffect(() => {
-    if (selectedVersionId) {
+    if (selectedVersionId || isAllVersions) {
       setCurrentPage(1);
     }
-  }, [selectedVersionId]);
+  }, [selectedVersionId, isAllVersions]);
 
   // Load responses when version or page changes
   useEffect(() => {
-    if (selectedVersionId) {
-      loadResponses(selectedVersionId, currentPage);
+    if (isAllVersions) {
+      loadResponses(null, currentPage, true);
+    } else if (selectedVersionId) {
+      loadResponses(selectedVersionId, currentPage, false);
     }
-  }, [currentPage, selectedVersionId, loadResponses]);
+  }, [currentPage, selectedVersionId, isAllVersions, loadResponses]);
 
   // Load company completion stats for company forms
   useEffect(() => {
     async function loadCompanyStats() {
-      if (!selectedVersionId || versions.length === 0) {
+      if (versions.length === 0) {
         setCompanyCompletionStats(null);
         return;
       }
 
-      const version = versions.find(v => v.id === selectedVersionId);
+      // In all versions mode, find any company form version
+      // In single version mode, use the selected version
+      let version: FormVersion | undefined;
+      if (isAllVersions) {
+        version = versions.find(v => {
+          const metadata = v.metadata as any;
+          return metadata?.is_company_form && metadata?.event_id;
+        });
+      } else {
+        if (!selectedVersionId) {
+          setCompanyCompletionStats(null);
+          return;
+        }
+        version = versions.find(v => v.id === selectedVersionId);
+      }
+
       if (!version) {
         setCompanyCompletionStats(null);
         return;
@@ -228,8 +311,13 @@ export default function FormResponsesPage() {
 
         console.log('[FormResponsesPage] Eligible companies:', eligibleCompanies.length, eligibleCompanies.map(c => c.name));
 
-        // Get all responses for this version to find which companies submitted
-        const allResponses = await fetchAllFormResponsesAction(selectedVersionId);
+        // Get all responses for this version (or all versions) to find which companies submitted
+        let allResponses: FormResponse[];
+        if (isAllVersions) {
+          allResponses = await fetchAllFormResponsesForAllVersionsAction(formId);
+        } else {
+          allResponses = await fetchAllFormResponsesAction(selectedVersionId);
+        }
         const completedCompanyIds = new Set<string>();
         allResponses.forEach((response) => {
           if (response.company_id) {
@@ -259,13 +347,25 @@ export default function FormResponsesPage() {
     }
 
     loadCompanyStats();
-  }, [selectedVersionId, versions, responses.length]); // Reload stats when responses change
+  }, [selectedVersionId, versions, responses.length, isAllVersions, formId]); // Reload stats when responses change
 
   // Load incomplete companies when dialog opens
   const loadIncompleteCompanies = async () => {
-    if (!selectedVersionId || versions.length === 0) return;
+    if (versions.length === 0) return;
     
-    const version = versions.find(v => v.id === selectedVersionId);
+    // In all versions mode, find any company form version
+    // In single version mode, use the selected version
+    let version: FormVersion | undefined;
+    if (isAllVersions) {
+      version = versions.find(v => {
+        const metadata = v.metadata as any;
+        return metadata?.is_company_form && metadata?.event_id;
+      });
+    } else {
+      if (!selectedVersionId) return;
+      version = versions.find(v => v.id === selectedVersionId);
+    }
+    
     if (!version) return;
     
     const metadata = version.metadata as any;
@@ -427,7 +527,7 @@ export default function FormResponsesPage() {
   }, [viewMode, selectedVersionId, versions]);
 
   const loadReminderRecipients = async () => {
-    if (!selectedVersionId || !form || incompleteCompanies.length === 0) return;
+    if (!form || incompleteCompanies.length === 0) return;
 
     setLoadingRecipients(true);
     try {
@@ -499,7 +599,20 @@ export default function FormResponsesPage() {
   };
 
   const handleSendReminders = async () => {
-    if (!selectedVersionId || !form) return;
+    if (!form) return;
+    
+    // Find the version to use for sending reminders
+    let versionToUse: FormVersion | undefined;
+    if (isAllVersions) {
+      versionToUse = versions.find(v => {
+        const metadata = v.metadata as any;
+        return metadata?.is_company_form && metadata?.event_id;
+      });
+    } else {
+      versionToUse = versions.find(v => v.id === selectedVersionId);
+    }
+    
+    if (!versionToUse) return;
 
     // Get selected recipients
     const selectedRecipients: Array<{ companyId: string; repId: string; email: string }> = [];
@@ -528,7 +641,7 @@ export default function FormResponsesPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          formVersionId: selectedVersionId,
+          formVersionId: versionToUse.id,
           recipients: selectedRecipients,
           subject: reminderSubject,
           content: reminderContent,
@@ -581,15 +694,17 @@ export default function FormResponsesPage() {
   };
 
   const exportToCSV = async () => {
-    if (!selectedVersionId) return;
-
-    const selectedVersion = versions.find(v => v.id === selectedVersionId);
-    if (!selectedVersion) return;
+    if (isAllVersions && !formId) return;
+    if (!isAllVersions && !selectedVersionId) return;
 
     // Fetch all responses for export
     let allResponses: FormResponse[];
     try {
-      allResponses = await fetchAllFormResponsesAction(selectedVersionId);
+      if (isAllVersions) {
+        allResponses = await fetchAllFormResponsesForAllVersionsAction(formId);
+      } else {
+        allResponses = await fetchAllFormResponsesAction(selectedVersionId);
+      }
     } catch (error) {
       console.error("Error fetching all responses for export:", error);
       alert("Failed to fetch all responses. Please try again.");
@@ -601,18 +716,36 @@ export default function FormResponsesPage() {
       return;
     }
 
+    // Determine which fields to use
+    let fieldsToUse: Array<{ id: string; name: string; label: string; type: string }>;
+    if (isAllVersions) {
+      fieldsToUse = allVersionsFields;
+    } else {
+      const selectedVersion = versions.find(v => v.id === selectedVersionId);
+      if (!selectedVersion) return;
+      fieldsToUse = selectedVersion.schema.fields.map(f => ({
+        id: f.id,
+        name: f.name,
+        label: f.label || f.name,
+        type: f.type,
+      }));
+    }
+
     // Check if both firstname and lastname fields exist
-    const hasFirstNameField = selectedVersion.schema.fields.some(f => f.name === 'firstname');
-    const hasLastNameField = selectedVersion.schema.fields.some(f => f.name === 'lastname');
+    const hasFirstNameField = fieldsToUse.some(f => f.name === 'firstname');
+    const hasLastNameField = fieldsToUse.some(f => f.name === 'lastname');
     const shouldCombineName = hasFirstNameField && hasLastNameField;
 
     // Build field names and keys, combining firstname and lastname if both exist
     const fieldNames: string[] = [];
     const fieldKeys: string[] = [];
 
-    selectedVersion.schema.fields.forEach(field => {
+    fieldsToUse.forEach(field => {
       // For event registration forms, exclude email field from export since it's already in Student Email column
-      if (selectedVersion?.metadata?.is_event_registration && field.name === 'email' && field.type === 'email') {
+      const isEventRegistration = isAllVersions 
+        ? versions.some(v => v.metadata?.is_event_registration)
+        : versions.find(v => v.id === selectedVersionId)?.metadata?.is_event_registration;
+      if (isEventRegistration && field.name === 'email' && field.type === 'email') {
         return;
       }
       
@@ -633,7 +766,9 @@ export default function FormResponsesPage() {
     // Check if this is an event registration form (has attendant_uuid)
     const isEventRegistration = allResponses.some(r => r.attendant_uuid);
     // Check if this is a company form
-    const isCompanyForm = selectedVersion?.metadata?.is_company_form;
+    const isCompanyForm = isAllVersions
+      ? versions.some(v => v.metadata?.is_company_form)
+      : versions.find(v => v.id === selectedVersionId)?.metadata?.is_company_form;
     // Check if any response has student data (either in metadata or in form fields for event registration)
     const hasStudentData = allResponses.some(r => 
       r.data?._student_username || 
@@ -645,7 +780,8 @@ export default function FormResponsesPage() {
     // Prepare data for CSV
     const headerRow = [
       'Submission Date', 
-      'Response ID', 
+      'Response ID',
+      ...(isAllVersions ? ['Version'] : []),
       ...(isCompanyForm ? ['Company', 'Submitter First Name', 'Submitter Last Name', 'Submitter Email'] : []),
       ...(hasStudentData ? ['Student Username', 'Student Email', 'Student Full Name', 'Student University', 'Student University Status'] : []),
       ...fieldNames, 
@@ -654,6 +790,19 @@ export default function FormResponsesPage() {
     
     const dataRows = allResponses.map(response => {
       const date = formatDateTimeBE(response.submitted_at);
+      
+      // Get version info for this response
+      const responseVersion = isAllVersions
+        ? versions.find(v => {
+            const versionId = typeof response.form_version_id === 'string'
+              ? response.form_version_id
+              : (response.form_version_id as any)?.id;
+            return v.id === versionId;
+          })
+        : null;
+      const versionField = isAllVersions
+        ? [responseVersion ? `Version ${responseVersion.version_number}${responseVersion.is_active ? ' (Active)' : ''}` : 'N/A']
+        : [];
       
       // Add company form fields if applicable
       const companyFields = isCompanyForm ? [
@@ -716,7 +865,11 @@ export default function FormResponsesPage() {
           const fullName = `${firstName} ${lastName}`.trim();
           return fullName;
         }
-        const value = response.data[key];
+        const value = response.data?.[key];
+        // For all versions mode, show NA if field doesn't exist in this response
+        if (isAllVersions && (value === null || value === undefined)) {
+          return 'NA';
+        }
         if (value === null || value === undefined) return '';
         if (Array.isArray(value)) return value.join('; ');
         return String(value);
@@ -727,7 +880,7 @@ export default function FormResponsesPage() {
         ? `${baseUrl}/attendant/${response.attendant_uuid}`
         : '';
       
-      return [date, response.id, ...companyFields, ...studentFields, ...values, ...(isEventRegistration ? [attendantLink] : [])];
+      return [date, response.id, ...versionField, ...companyFields, ...studentFields, ...values, ...(isEventRegistration ? [attendantLink] : [])];
     });
 
     const escapeCsv = (value: unknown) => {
@@ -852,15 +1005,29 @@ export default function FormResponsesPage() {
             <div>
               <CardTitle>Form Responses</CardTitle>
               <CardDescription>
-                {totalCount} response(s) {selectedVersion && `for version ${selectedVersion.version_number}`}
+                {totalCount} response(s) {isAllVersions ? "across all versions" : selectedVersion && `for version ${selectedVersion.version_number}`}
               </CardDescription>
             </div>
             <div className="flex gap-2">
-              <Select value={selectedVersionId} onValueChange={setSelectedVersionId}>
+              <Select 
+                value={isAllVersions ? "__all__" : selectedVersionId} 
+                onValueChange={(value) => {
+                  if (value === "__all__") {
+                    setIsAllVersions(true);
+                    setSelectedVersionId("");
+                  } else {
+                    setIsAllVersions(false);
+                    setSelectedVersionId(value);
+                  }
+                }}
+              >
                 <SelectTrigger className="w-48">
                   <SelectValue placeholder="Select version" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem key="__all__" value="__all__">
+                    All Versions
+                  </SelectItem>
                   {versions.map((version) => (
                     <SelectItem key={version.id} value={version.id}>
                       Version {version.version_number}
@@ -869,7 +1036,7 @@ export default function FormResponsesPage() {
                   ))}
                 </SelectContent>
               </Select>
-              {selectedVersion?.metadata?.is_event_registration && (
+              {!isAllVersions && selectedVersion?.metadata?.is_event_registration && (
                 <Button 
                   variant="outline" 
                   onClick={handleInitializeUuids} 
@@ -889,7 +1056,7 @@ export default function FormResponsesPage() {
                   )}
                 </Button>
               )}
-              {viewMode === "incomplete" && selectedVersion?.metadata?.is_company_form && incompleteCompanies.length > 0 && (
+              {viewMode === "incomplete" && versions.some(v => v.metadata?.is_company_form) && incompleteCompanies.length > 0 && (
                 <Button
                   variant="outline"
                   onClick={handleOpenReminderDialog}
@@ -914,20 +1081,24 @@ export default function FormResponsesPage() {
             <div className="text-center py-8">Loading responses...</div>
           ) : viewMode === "submissions" && responses.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-muted-foreground mb-4">No responses yet for this version.</p>
-              <Button variant="outline" asChild>
-                <Link 
-                  href={
-                    selectedVersion?.metadata?.is_company_form && selectedVersion.metadata?.event_id
-                      ? `/forms/company/${selectedVersion.metadata.event_id}/${form.slug}`
-                      : `/forms/${form.slug}`
-                  } 
-                  target="_blank"
-                >
-                  <Eye className="h-4 w-4 mr-2" />
-                  View Public Form
-                </Link>
-              </Button>
+              <p className="text-muted-foreground mb-4">
+                {isAllVersions ? "No responses yet across all versions." : "No responses yet for this version."}
+              </p>
+              {!isAllVersions && selectedVersion && (
+                <Button variant="outline" asChild>
+                  <Link 
+                    href={
+                      selectedVersion?.metadata?.is_company_form && selectedVersion.metadata?.event_id
+                        ? `/forms/company/${selectedVersion.metadata.event_id}/${form.slug}`
+                        : `/forms/${form.slug}`
+                    } 
+                    target="_blank"
+                  >
+                    <Eye className="h-4 w-4 mr-2" />
+                    View Public Form
+                  </Link>
+                </Button>
+              )}
             </div>
           ) : (
             <div className="space-y-6">
@@ -957,7 +1128,7 @@ export default function FormResponsesPage() {
               </div>
 
               {/* Company Form Completion Stats */}
-              {selectedVersion?.metadata?.is_company_form && companyCompletionStats !== null && (
+              {versions.some(v => v.metadata?.is_company_form) && companyCompletionStats !== null && (
                 <Card>
                   <CardHeader>
                     <div className="flex items-center justify-between">
@@ -1016,7 +1187,14 @@ export default function FormResponsesPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Submitted</TableHead>
-                        {selectedVersion?.metadata?.is_company_form && (
+                        {!isAllVersions && selectedVersion?.metadata?.is_company_form && (
+                          <>
+                            <TableHead>Company</TableHead>
+                            <TableHead>Submitter Name</TableHead>
+                            <TableHead>Submitter Email</TableHead>
+                          </>
+                        )}
+                        {isAllVersions && versions.some(v => v.metadata?.is_company_form) && (
                           <>
                             <TableHead>Company</TableHead>
                             <TableHead>Submitter Name</TableHead>
@@ -1026,7 +1204,7 @@ export default function FormResponsesPage() {
                         {responses.some(r => 
                           r.data?._student_username || 
                           r.data?._student_email || 
-                          (selectedVersion?.metadata?.is_event_registration && r.data?.email)
+                          (isAllVersions ? versions.some(v => v.metadata?.is_event_registration) : selectedVersion?.metadata?.is_event_registration) && r.data?.email
                         ) && (
                           <>
                             <TableHead>Student Username</TableHead>
@@ -1036,99 +1214,24 @@ export default function FormResponsesPage() {
                             <TableHead>Student University Status</TableHead>
                           </>
                         )}
-                        {selectedVersion?.schema.fields
-                          .filter(field => {
-                            // For event registration forms, exclude email field since it's already in Student Email column
-                            if (selectedVersion?.metadata?.is_event_registration && field.name === 'email' && field.type === 'email') {
-                              return false;
-                            }
-                            return true;
-                          })
-                          .map((field) => (
-                            <TableHead key={field.id}>{field.label || field.name}</TableHead>
-                          ))}
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {responses.map((response) => (
-                        <TableRow key={response.id}>
-                          <TableCell className="font-medium">
-                            {formatDateTimeBE(response.submitted_at)}
-                          </TableCell>
-                          {selectedVersion?.metadata?.is_company_form && (
-                            <>
-                              <TableCell>
-                                {typeof response.company_id === 'object' && response.company_id?.name
-                                  ? response.company_id.name
-                                  : typeof response.company_id === 'string'
-                                  ? response.company_id
-                                  : 'N/A'}
-                              </TableCell>
-                              <TableCell>
-                                {response.submitter_first_name || response.submitter_last_name
-                                  ? `${response.submitter_first_name || ''} ${response.submitter_last_name || ''}`.trim()
-                                  : 'N/A'}
-                              </TableCell>
-                              <TableCell>
-                                {response.submitter_email || 'N/A'}
-                              </TableCell>
-                            </>
-                          )}
-                          {responses.some(r => 
-                            r.data?._student_username || 
-                            r.data?._student_email || 
-                            (selectedVersion?.metadata?.is_event_registration && r.data?.email)
-                          ) && (
-                            <>
-                              <TableCell>
-                                {(typeof response.data._student_username === 'string' ? response.data._student_username : '') || 'N/A'}
-                              </TableCell>
-                              <TableCell>
-                                {selectedVersion?.metadata?.is_event_registration
-                                  ? (typeof response.data.email === 'string' ? response.data.email : '') || (typeof response.data._student_email === 'string' ? response.data._student_email : '') || 'N/A'
-                                  : (typeof response.data._student_email === 'string' ? response.data._student_email : '') || 'N/A'}
-                              </TableCell>
-                              <TableCell>
-                                {(() => {
-                                  // For event registration forms, check metadata first (since we store it there), then student relation
-                                  if (selectedVersion?.metadata?.is_event_registration) {
-                                    // First check metadata (this is what we store for event registration forms)
-                                    const metadataFullName = response.data._student_full_name;
-                                    if (metadataFullName && typeof metadataFullName === 'string') {
-                                      return metadataFullName;
-                                    }
-                                    // Fallback to student_id relation if metadata not available
-                                    if (typeof response.student_id === 'object' && response.student_id) {
-                                      if (response.student_id.full_name) {
-                                        return response.student_id.full_name;
-                                      }
-                                      // Fallback to first_name + last_name from relation
-                                      const firstName = response.student_id.first_name || '';
-                                      const lastName = response.student_id.last_name || '';
-                                      if (firstName || lastName) {
-                                        const combinedName = `${firstName} ${lastName}`.trim();
-                                        if (combinedName) {
-                                          return combinedName;
-                                        }
-                                      }
-                                    }
-                                    return 'N/A';
-                                  }
-                                  // For non-event registration forms, use metadata
-                                  const metadataFullName = response.data._student_full_name;
-                                  return (metadataFullName && typeof metadataFullName === 'string') ? metadataFullName : 'N/A';
-                                })()}
-                              </TableCell>
-                              <TableCell>
-                                {(typeof response.data._student_university === 'string' ? response.data._student_university : '') || 'N/A'}
-                              </TableCell>
-                              <TableCell>
-                                {(typeof response.data._student_university_status === 'string' ? response.data._student_university_status : '') || 'N/A'}
-                              </TableCell>
-                            </>
-                          )}
-                          {selectedVersion?.schema.fields
+                        {isAllVersions ? (
+                          <>
+                            <TableHead>Version</TableHead>
+                            {allVersionsFields
+                              .filter(field => {
+                                // For event registration forms, exclude email field since it's already in Student Email column
+                                const isEventRegistration = versions.some(v => v.metadata?.is_event_registration);
+                                if (isEventRegistration && field.name === 'email' && field.type === 'email') {
+                                  return false;
+                                }
+                                return true;
+                              })
+                              .map((field) => (
+                                <TableHead key={field.name}>{field.label || field.name}</TableHead>
+                              ))}
+                          </>
+                        ) : (
+                          selectedVersion?.schema.fields
                             .filter(field => {
                               // For event registration forms, exclude email field since it's already in Student Email column
                               if (selectedVersion?.metadata?.is_event_registration && field.name === 'email' && field.type === 'email') {
@@ -1137,22 +1240,165 @@ export default function FormResponsesPage() {
                               return true;
                             })
                             .map((field) => (
-                              <TableCell key={field.id}>
-                                {formatFieldValue(response.data[field.name], field.type)}
-                              </TableCell>
-                            ))}
-                          <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteClick(response)}
-                              className="text-destructive hover:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                              <TableHead key={field.name}>{field.label || field.name}</TableHead>
+                            ))
+                        )}
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {responses.map((response) => {
+                        // Get the version for this response
+                        const responseVersion = isAllVersions 
+                          ? versions.find(v => {
+                              const versionId = typeof response.form_version_id === 'string' 
+                                ? response.form_version_id 
+                                : (response.form_version_id as any)?.id;
+                              return v.id === versionId;
+                            })
+                          : selectedVersion;
+                        const isCompanyForm = isAllVersions 
+                          ? versions.some(v => v.metadata?.is_company_form)
+                          : selectedVersion?.metadata?.is_company_form;
+                        const isEventRegistration = isAllVersions
+                          ? versions.some(v => v.metadata?.is_event_registration)
+                          : selectedVersion?.metadata?.is_event_registration;
+                        
+                        return (
+                          <TableRow key={response.id}>
+                            <TableCell className="font-medium">
+                              {formatDateTimeBE(response.submitted_at)}
+                            </TableCell>
+                            {isCompanyForm && (
+                              <>
+                                <TableCell>
+                                  {typeof response.company_id === 'object' && response.company_id?.name
+                                    ? response.company_id.name
+                                    : typeof response.company_id === 'string'
+                                    ? response.company_id
+                                    : 'N/A'}
+                                </TableCell>
+                                <TableCell>
+                                  {response.submitter_first_name || response.submitter_last_name
+                                    ? `${response.submitter_first_name || ''} ${response.submitter_last_name || ''}`.trim()
+                                    : 'N/A'}
+                                </TableCell>
+                                <TableCell>
+                                  {response.submitter_email || 'N/A'}
+                                </TableCell>
+                              </>
+                            )}
+                            {responses.some(r => 
+                              r.data?._student_username || 
+                              r.data?._student_email || 
+                              (isEventRegistration && r.data?.email)
+                            ) && (
+                              <>
+                                <TableCell>
+                                  {(typeof response.data._student_username === 'string' ? response.data._student_username : '') || 'N/A'}
+                                </TableCell>
+                                <TableCell>
+                                  {isEventRegistration
+                                    ? (typeof response.data.email === 'string' ? response.data.email : '') || (typeof response.data._student_email === 'string' ? response.data._student_email : '') || 'N/A'
+                                    : (typeof response.data._student_email === 'string' ? response.data._student_email : '') || 'N/A'}
+                                </TableCell>
+                                <TableCell>
+                                  {(() => {
+                                    // For event registration forms, check metadata first (since we store it there), then student relation
+                                    if (isEventRegistration) {
+                                      // First check metadata (this is what we store for event registration forms)
+                                      const metadataFullName = response.data._student_full_name;
+                                      if (metadataFullName && typeof metadataFullName === 'string') {
+                                        return metadataFullName;
+                                      }
+                                      // Fallback to student_id relation if metadata not available
+                                      if (typeof response.student_id === 'object' && response.student_id) {
+                                        if (response.student_id.full_name) {
+                                          return response.student_id.full_name;
+                                        }
+                                        // Fallback to first_name + last_name from relation
+                                        const firstName = response.student_id.first_name || '';
+                                        const lastName = response.student_id.last_name || '';
+                                        if (firstName || lastName) {
+                                          const combinedName = `${firstName} ${lastName}`.trim();
+                                          if (combinedName) {
+                                            return combinedName;
+                                          }
+                                        }
+                                      }
+                                      return 'N/A';
+                                    }
+                                    // For non-event registration forms, use metadata
+                                    const metadataFullName = response.data._student_full_name;
+                                    return (metadataFullName && typeof metadataFullName === 'string') ? metadataFullName : 'N/A';
+                                  })()}
+                                </TableCell>
+                                <TableCell>
+                                  {(typeof response.data._student_university === 'string' ? response.data._student_university : '') || 'N/A'}
+                                </TableCell>
+                                <TableCell>
+                                  {(typeof response.data._student_university_status === 'string' ? response.data._student_university_status : '') || 'N/A'}
+                                </TableCell>
+                              </>
+                            )}
+                            {isAllVersions ? (
+                              <>
+                                <TableCell>
+                                  {responseVersion 
+                                    ? `Version ${responseVersion.version_number}${responseVersion.is_active ? ' (Active)' : ''}`
+                                    : typeof response.form_version_id === 'object' && (response.form_version_id as any)?.version_number
+                                    ? `Version ${(response.form_version_id as any).version_number}`
+                                    : 'N/A'}
+                                </TableCell>
+                                {allVersionsFields
+                                  .filter(field => {
+                                    // For event registration forms, exclude email field since it's already in Student Email column
+                                    if (isEventRegistration && field.name === 'email' && field.type === 'email') {
+                                      return false;
+                                    }
+                                    return true;
+                                  })
+                                  .map((field) => {
+                                    // Get the field value from response data, or NA if not present
+                                    const fieldValue = response.data?.[field.name];
+                                    const fieldType = field.type;
+                                    return (
+                                      <TableCell key={field.name}>
+                                        {fieldValue !== null && fieldValue !== undefined
+                                          ? formatFieldValue(fieldValue, fieldType)
+                                          : <span className="text-muted-foreground italic">NA</span>}
+                                      </TableCell>
+                                    );
+                                  })}
+                              </>
+                            ) : (
+                              selectedVersion?.schema.fields
+                                .filter(field => {
+                                  // For event registration forms, exclude email field since it's already in Student Email column
+                                  if (selectedVersion?.metadata?.is_event_registration && field.name === 'email' && field.type === 'email') {
+                                    return false;
+                                  }
+                                  return true;
+                                })
+                                .map((field) => (
+                                  <TableCell key={field.name}>
+                                    {formatFieldValue(response.data[field.name], field.type)}
+                                  </TableCell>
+                                ))
+                            )}
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteClick(response)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
@@ -1465,4 +1711,5 @@ function formatFieldValue(value: unknown, fieldType: string): React.ReactNode {
 
   return <span>{strValue}</span>;
 }
+
 

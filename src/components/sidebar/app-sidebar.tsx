@@ -30,6 +30,7 @@ import { validateExistingPageImage } from "@/lib/utils/image-validation";
 import { getDirectusImageUrl } from "@/components/Images";
 import { fetchEventsAction } from "@/app/actions/events";
 import type { CareerEvent, Company } from "@/lib/schema";
+import { hasCVBookAccess } from "@/lib/utils/company-access";
 
 // Updated sidebar data
 const data = {
@@ -380,6 +381,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           {
             title: "Companies & Events",
             url: "/admin",
+          },
+          {
+            title: "CV Book",
+            url: "/admin/cv-book",
           },
           {
             title: "Pending Approvals",
