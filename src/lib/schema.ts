@@ -88,6 +88,14 @@ export type CareerEvent = {
   href?: string;
 }
 
+export type CareerSubOption = {
+  id: string;
+  name: string;
+  description: string;
+  price: string;
+  active: boolean;
+}
+
 export type CareerEventOption = {
   id: string;
   name: string;
@@ -95,6 +103,7 @@ export type CareerEventOption = {
   price: string;
   events?: CareerEvent[];
   event?: CareerEvent; // Deprecated: use events instead (kept for backward compatibility)
+  sub_options?: CareerSubOption[];
 }
 
 export type CareerEventPage = {

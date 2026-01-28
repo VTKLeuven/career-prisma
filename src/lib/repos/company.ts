@@ -33,6 +33,7 @@ export async function listCompanies(opts?: {
           "options.career_event_option_id.*",
           "options.career_event_option_id.*.*", // Get all nested fields including events junction table
           "options.career_event_option_id.*.*.*", // Get deeply nested fields
+          "options.career_event_option_id.sub_options.*", // Get sub_options
         ],
         limit,
         page,
@@ -64,6 +65,7 @@ export async function getCompanyById(id: string, usePublic = false, retries = 2)
             "options.career_event_option_id.*",
             "options.career_event_option_id.*.*", // Get all nested fields including events junction table
             "options.career_event_option_id.*.*.*", // Get deeply nested fields
+            "options.career_event_option_id.sub_options.*", // Get sub_options
           ],
         })
       ) as unknown as Company;

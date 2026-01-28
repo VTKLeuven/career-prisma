@@ -7,7 +7,7 @@ import { uploadDirectusFile, sendEmail } from "@/lib/repos/directus";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { cookies } from "next/headers";
 import { fetchMastersAction } from "@/app/actions/features";
-import { generateCompanyPageRequestEmailHtml } from "@/lib/email-templates";
+import { generateCompanyPageRequestEmailHtml, generateCVBookRequestEmailHtml } from "@/lib/email-templates";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { DirectusUser } from "@directus/sdk";
 
@@ -1287,6 +1287,101 @@ export async function requestCompanyPageAction(): Promise<{ success: boolean; er
     return { success: true };
   } catch (error) {
     console.error("Error in requestCompanyPageAction:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function requestCVBookAccessAction(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const user = await getUserFromCookies();
+    if (!user || !user.company) {
+      return { success: false, error: "User not authenticated or no company associated" };
+    }
+
+    const company = await fetchCompanyByIdAction(user.company.id);
+    if (!company) {
+      return { success: false, error: "Company not found" };
+    }
+
+    // Check if company already has CV Book access
+    const { hasCVBookAccess } = await import("@/lib/utils/company-access");
+    if (hasCVBookAccess(company)) {
+      return { success: false, error: "Company already has CV Book access" };
+    }
+
+    // Get salesperson email
+    let salespersonEmail: string | null = null;
+    let salespersonName: string = "Salesperson";
+
+    if (company.salesperson) {
+      const baseUrl = process.env.DIRECTUS_URL;
+      if (!baseUrl) {
+        return { success: false, error: "DIRECTUS_URL not configured" };
+      }
+
+      const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
+      const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
+      
+      if (!serverToken) {
+        return { success: false, error: "Server configuration error" };
+      }
+
+      const salespersonId = typeof company.salesperson === "string" 
+        ? company.salesperson 
+        : company.salesperson.id;
+
+      try {
+        const salespersonRes = await fetch(
+          `${normalizedBase}users/${salespersonId}?fields=id,email,first_name,last_name`,
+          {
+            headers: {
+              "Authorization": `Bearer ${serverToken}`,
+            },
+          }
+        );
+
+        if (salespersonRes.ok) {
+          const salespersonData = await salespersonRes.json();
+          const salesperson = salespersonData.data;
+          salespersonEmail = salesperson.email;
+          salespersonName = [salesperson.first_name, salesperson.last_name]
+            .filter(Boolean)
+            .join(" ") || "Salesperson";
+        }
+      } catch (err) {
+        console.error("Error fetching salesperson:", err);
+      }
+    }
+
+    if (!salespersonEmail) {
+      return { success: false, error: "Salesperson email not found" };
+    }
+
+    // Get requester info
+    const requesterName = user.name || user.email;
+    const requesterEmail = user.email;
+
+    // Generate email HTML
+    const emailHtml = generateCVBookRequestEmailHtml({
+      companyName: company.name,
+      requesterName,
+      requesterEmail,
+      salespersonName,
+    });
+
+    // Send email to salesperson
+    await sendEmail({
+      to: salespersonEmail,
+      subject: `CV Book Access Request: ${company.name}`,
+      html: emailHtml,
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error in requestCVBookAccessAction:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
