@@ -415,6 +415,123 @@ export async function getLatestFormResponse(formVersionId: string) {
   }
 }
 
+// Fetch responses across all versions of a form
+export async function listFormResponsesForAllVersions(formId: string, opts?: {
+  limit?: number;
+  page?: number;
+}) {
+  try {
+    const client = await getAuthedDirectusOrThrow();
+    const { limit = 25, page = 1 } = opts ?? {};
+
+    // First, get all version IDs for this form
+    const versions = await listFormVersions(formId);
+    const versionIds = versions.map(v => v.id);
+
+    if (versionIds.length === 0) {
+      return [];
+    }
+
+    const result = await client.request(
+      readItems("form_responses", {
+        fields: ["*", "user_id.name", "user_id.email", "form_version_id.form_id.name", "form_version_id.version_number", "company_id.name", "company_id.id", "student_id.full_name", "student_id.first_name", "student_id.last_name", "student_id.email"],
+        filter: { form_version_id: { _in: versionIds } },
+        limit,
+        page,
+        sort: "-submitted_at",
+      })
+    ) as unknown as FormResponse[];
+
+    return result;
+  } catch (error) {
+    console.error("Error listing form responses for all versions:", error);
+    throw error;
+  }
+}
+
+export async function getFormResponsesTotalCountForAllVersions(formId: string) {
+  try {
+    const client = await getAuthedDirectusOrThrow();
+    
+    // First, get all version IDs for this form
+    const versions = await listFormVersions(formId);
+    const versionIds = versions.map(v => v.id);
+
+    if (versionIds.length === 0) {
+      return 0;
+    }
+
+    const responses = await client.request(
+      readItems("form_responses", {
+        fields: ["id"],
+        filter: { form_version_id: { _in: versionIds } },
+        limit: -1, // Get all to count
+      })
+    ) as unknown as Array<{ id: string }>;
+    
+    return responses.length;
+  } catch (error) {
+    console.error("Error counting form responses for all versions:", error);
+    return 0;
+  }
+}
+
+export async function getFirstFormResponseForAllVersions(formId: string) {
+  try {
+    const client = await getAuthedDirectusOrThrow();
+    
+    // First, get all version IDs for this form
+    const versions = await listFormVersions(formId);
+    const versionIds = versions.map(v => v.id);
+
+    if (versionIds.length === 0) {
+      return null;
+    }
+
+    const responses = await client.request(
+      readItems("form_responses", {
+        fields: ["submitted_at"],
+        filter: { form_version_id: { _in: versionIds } },
+        limit: 1,
+        sort: "submitted_at", // Oldest first
+      })
+    ) as unknown as Array<{ submitted_at: string }>;
+    
+    return responses.length > 0 ? responses[0] : null;
+  } catch (error) {
+    console.error("Error getting first form response for all versions:", error);
+    return null;
+  }
+}
+
+export async function getLatestFormResponseForAllVersions(formId: string) {
+  try {
+    const client = await getAuthedDirectusOrThrow();
+    
+    // First, get all version IDs for this form
+    const versions = await listFormVersions(formId);
+    const versionIds = versions.map(v => v.id);
+
+    if (versionIds.length === 0) {
+      return null;
+    }
+
+    const responses = await client.request(
+      readItems("form_responses", {
+        fields: ["submitted_at"],
+        filter: { form_version_id: { _in: versionIds } },
+        limit: 1,
+        sort: "-submitted_at", // Newest first
+      })
+    ) as unknown as Array<{ submitted_at: string }>;
+    
+    return responses.length > 0 ? responses[0] : null;
+  } catch (error) {
+    console.error("Error getting latest form response for all versions:", error);
+    return null;
+  }
+}
+
 export async function getFormResponseById(id: string) {
   try {
     const client = await getAuthedDirectusOrThrow();

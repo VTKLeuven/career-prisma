@@ -283,6 +283,60 @@ export async function fetchLatestFormResponseAction(formVersionId: string) {
   }
 }
 
+// Actions for fetching responses across all versions
+export async function fetchFormResponsesForAllVersionsAction(formId: string, opts?: {
+  limit?: number;
+  page?: number;
+}) {
+  try {
+    const { listFormResponsesForAllVersions } = await import("@/lib/repos/forms");
+    return await listFormResponsesForAllVersions(formId, opts);
+  } catch (error) {
+    console.error("Error fetching form responses for all versions:", error);
+    throw error;
+  }
+}
+
+export async function fetchFormResponsesTotalCountForAllVersionsAction(formId: string) {
+  try {
+    const { getFormResponsesTotalCountForAllVersions } = await import("@/lib/repos/forms");
+    return await getFormResponsesTotalCountForAllVersions(formId);
+  } catch (error) {
+    console.error("Error fetching form responses total count for all versions:", error);
+    return 0;
+  }
+}
+
+export async function fetchFirstFormResponseForAllVersionsAction(formId: string) {
+  try {
+    const { getFirstFormResponseForAllVersions } = await import("@/lib/repos/forms");
+    return await getFirstFormResponseForAllVersions(formId);
+  } catch (error) {
+    console.error("Error fetching first form response for all versions:", error);
+    return null;
+  }
+}
+
+export async function fetchLatestFormResponseForAllVersionsAction(formId: string) {
+  try {
+    const { getLatestFormResponseForAllVersions } = await import("@/lib/repos/forms");
+    return await getLatestFormResponseForAllVersions(formId);
+  } catch (error) {
+    console.error("Error fetching latest form response for all versions:", error);
+    return null;
+  }
+}
+
+export async function fetchAllFormResponsesForAllVersionsAction(formId: string) {
+  try {
+    const { listFormResponsesForAllVersions } = await import("@/lib/repos/forms");
+    return await listFormResponsesForAllVersions(formId, { limit: -1 });
+  } catch (error) {
+    console.error("Error fetching all form responses for all versions:", error);
+    throw error;
+  }
+}
+
 export async function fetchFormResponseByIdAction(id: string) {
   try {
     return await getFormResponseById(id);
