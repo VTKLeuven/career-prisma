@@ -48,40 +48,55 @@ export async function listCompanies(opts?: {
   }
 }
 
-export async function getCompanyById(id: string, usePublic = false) {
-  try {
-    const client = usePublic ? directus : await getDirectusWithToken();
-    if (!client) return null;
-    
-    return client.request(
-      readItem("company", id, {
-        fields: [
-          "*",
-          "page_image",
-          "representatives.*",
-          "category.master_id.*",
-          "options.career_event_option_id.*",
-          "options.career_event_option_id.*.*", // Get all nested fields including events junction table
-          "options.career_event_option_id.*.*.*", // Get deeply nested fields
-        ],
-      })
-    ) as unknown as Company;
-  } catch (error: any) {
-    // Handle FORBIDDEN errors gracefully
-    if (error?.errors?.[0]?.extensions?.code === "FORBIDDEN" || 
-        error?.message?.includes("FORBIDDEN") ||
-        error?.message?.includes("permission")) {
-      // Log once but don't throw - return null to indicate the company couldn't be accessed
-      if (process.env.NODE_ENV === "development") {
-        console.warn(`[getCompanyById] Permission denied for company ${id}:`, error.message || "You don't have permission to access this.");
+export async function getCompanyById(id: string, usePublic = false, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const client = usePublic ? directus : await getDirectusWithToken();
+      if (!client) return null;
+      
+      return await client.request(
+        readItem("company", id, {
+          fields: [
+            "*",
+            "page_image",
+            "representatives.*",
+            "category.master_id.*",
+            "options.career_event_option_id.*",
+            "options.career_event_option_id.*.*", // Get all nested fields including events junction table
+            "options.career_event_option_id.*.*.*", // Get deeply nested fields
+          ],
+        })
+      ) as unknown as Company;
+    } catch (error: any) {
+      // Handle FORBIDDEN errors gracefully - don't retry these
+      if (error?.errors?.[0]?.extensions?.code === "FORBIDDEN" || 
+          error?.message?.includes("FORBIDDEN") ||
+          error?.message?.includes("permission")) {
+        if (process.env.NODE_ENV === "development") {
+          console.warn(`[getCompanyById] Permission denied for company ${id}:`, error.message || "You don't have permission to access this.");
+        }
+        return null;
       }
+      
+      // For network errors, retry with exponential backoff
+      const isNetworkError = error?.message?.includes("fetch failed") || 
+                            error?.message?.includes("network") ||
+                            error?.message?.includes("ECONNREFUSED") ||
+                            error?.message?.includes("ETIMEDOUT");
+      
+      if (isNetworkError && attempt < retries) {
+        const delay = Math.min(1000 * Math.pow(2, attempt), 5000); // Max 5 seconds
+        console.warn(`[getCompanyById] Network error (attempt ${attempt + 1}/${retries + 1}), retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      // For other errors or final retry, log and return null
+      console.error(`[getCompanyById] Error fetching company ${id}:`, error);
       return null;
     }
-    
-    // For other errors, log and return null
-    console.error(`[getCompanyById] Error fetching company ${id}:`, error);
-    return null;
   }
+  return null;
 }
 
 // Optional create/update helpers (if your role allows it)

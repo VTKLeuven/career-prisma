@@ -13,7 +13,7 @@ import type { CareerEvent, Company } from "@/lib/schema";
 import { useUser } from "@/providers/UserProvider";
 import Link from "next/link";
 import { getUpcomingEventsWithFallback, type EventWithStatus } from '@/lib/utils/events';
-import { fetchCompanyFormsForEventAction, checkCompanyFormCompletionAction } from '@/app/actions/forms';
+import { fetchCompanyFormsForEventAction, checkCompanyFormCompletionByFormIdsAction } from '@/app/actions/forms';
 import { FileText, CheckCircle2 } from 'lucide-react';
 import { formatDateTimeBE } from '@/lib/date-utils';
 
@@ -29,15 +29,6 @@ function MyEventsSection() {
     fetchCompanyByIdAction(user.company.id).then((c) => {
       if (c) {
         setCompany(c as Company);
-        // Debug: log company options structure
-        console.log("Company options structure:", {
-          optionsCount: c.options?.length || 0,
-          firstOption: c.options?.[0] ? {
-            hasCareerEventOptionId: 'career_event_option_id' in (c.options[0] as any),
-            hasEvents: 'events' in ((c.options[0] as any)?.career_event_option_id || c.options[0] as any),
-            structure: Object.keys(c.options[0] as any),
-          } : null,
-        });
       } else {
         setCompany(null);
       }
@@ -133,10 +124,6 @@ function MyEventsSection() {
       }
       
       if (!optionWithEvents) {
-        // Debug: log option structure that we couldn't parse
-        if (index === 0) {
-          console.log("Option structure that couldn't be parsed:", Object.keys(opt));
-        }
         return;
       }
       
@@ -152,9 +139,6 @@ function MyEventsSection() {
             const eventId = getStringIdFromEventRef(eventOrJunction);
             if (eventId) {
               companyEventIds.add(eventId);
-            } else if (index === 0) {
-              // Debug: log first event structure that couldn't be parsed
-              console.log("Event structure that couldn't be parsed:", eventOrJunction);
             }
           }
         });
@@ -170,24 +154,8 @@ function MyEventsSection() {
             companyEventIds.add(eventId);
           }
         }
-      } else if (index === 0) {
-        // Debug: log option that has no events
-        console.log("Option with no events field:", {
-          keys: Object.keys(optionWithEvents),
-          option: optionWithEvents,
-        });
       }
     });
-
-    // Debug: log extracted event IDs
-    if (companyEventIds.size > 0) {
-      console.log(`Extracted ${companyEventIds.size} event IDs:`, Array.from(companyEventIds));
-    } else if (companyOptions.length > 0) {
-      console.warn("No event IDs extracted from company options", {
-        optionsCount: companyOptions.length,
-        firstOption: companyOptions[0],
-      });
-    }
 
     return allEvents.filter((e) => companyEventIds.has(e.id));
   }, [allEvents, company]);
@@ -293,26 +261,14 @@ function ManageEventCard({ event, company }: { event: CareerEvent; company: Comp
       return;
     }
 
-    // Debug logging
-    console.log('[ManageEventCard] Fetching forms for event:', event.id, 'company:', company.id, 'optionIds:', companyOptionIds);
-
     fetchCompanyFormsForEventAction(event.id, companyOptionIds)
       .then(async (fetchedForms) => {
-        console.log('[ManageEventCard] Fetched forms:', fetchedForms.length, fetchedForms);
         setForms(fetchedForms);
         
-        // Check which forms are completed
+        // Check which forms are completed (across all versions, not just active version)
         if (company?.id && fetchedForms.length > 0) {
-          const formVersionIds = fetchedForms.map((f) => f.activeVersion.id);
-          const completed = await checkCompanyFormCompletionAction(company.id, formVersionIds);
-          
-          // Map form version IDs to form IDs
-          const completedFormIds = new Set<string>();
-          fetchedForms.forEach((form) => {
-            if (completed.has(form.activeVersion.id)) {
-              completedFormIds.add(form.id);
-            }
-          });
+          const formIds = fetchedForms.map((f) => f.id);
+          const completedFormIds = await checkCompanyFormCompletionByFormIdsAction(company.id, formIds);
           setCompletedFormIds(completedFormIds);
         } else {
           setCompletedFormIds(new Set());

@@ -3,7 +3,8 @@
 import * as React from "react";
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { fetchCompanyFormsForEventAction, fetchCompanyFormBySlugAndEventAction, submitFormResponseAction } from "@/app/actions/forms";
+import Link from "next/link";
+import { fetchCompanyFormsForEventAction, fetchCompanyFormBySlugAndEventAction, submitFormResponseAction, fetchLatestCompanyFormResponseAction } from "@/app/actions/forms";
 import { fetchCompanyByIdAction, fetchCompaniesForEventAction } from "@/app/actions/companies";
 import { fetchEventsAction } from "@/app/actions/events";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -21,12 +22,11 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, Loader2 } from "lucide-react";
-import type { FormField, FormSchema } from "@/lib/schema";
+import { CheckCircle2, Loader2, Download } from "lucide-react";
+import type { FormField, FormSchema, FormResponse } from "@/lib/schema";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 import { getDirectusImageUrl } from "@/components/Images";
 import NextImage from "next/image";
-import { useUser } from "@/providers/UserProvider";
 import type { Company, CareerEvent } from "@/lib/schema";
 
 type CompanyForm = {
@@ -60,7 +60,6 @@ function countWords(text: string): number {
 export default function CompanyFormPage() {
   const params = useParams();
   const router = useRouter();
-  const { user } = useUser();
   const eventId = params.eventId as string;
   const slug = params.slug as string;
 
@@ -68,6 +67,7 @@ export default function CompanyFormPage() {
   const [event, setEvent] = useState<CareerEvent | null>(null);
   const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingResponse, setLoadingResponse] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [formData, setFormData] = useState<Record<string, unknown>>({});
@@ -79,6 +79,41 @@ export default function CompanyFormPage() {
   const [submitterFirstName, setSubmitterFirstName] = useState("");
   const [submitterLastName, setSubmitterLastName] = useState("");
   const [submitterEmail, setSubmitterEmail] = useState("");
+  const [existingResponse, setExistingResponse] = useState<FormResponse | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [authCompanyId, setAuthCompanyId] = useState<string | null>(null);
+  const [authUserName, setAuthUserName] = useState<string | null>(null);
+  const [authUserEmail, setAuthUserEmail] = useState<string | null>(null);
+
+  // Load authenticated company/user info from /api/user/check (public side doesn't use UserProvider)
+  useEffect(() => {
+    const ts = Date.now();
+    fetch(`/api/user/check?t=${ts}`, {
+      method: "GET",
+      cache: "no-store",
+      credentials: "include",
+      headers: {
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+      },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const rep = data?.companyRep as any;
+        if (rep?.authenticated && rep.company && typeof rep.company === "object" && rep.company.id) {
+          setAuthCompanyId(rep.company.id as string);
+          setAuthUserName(rep.name ?? null);
+          if (rep.email) {
+            setAuthUserEmail(rep.email as string);
+            // Also set submitterEmail immediately so it's available for display
+            setSubmitterEmail(rep.email as string);
+          }
+        }
+      })
+      .catch((err) => {
+        console.error("[CompanyFormPage] Error checking auth status:", err);
+      });
+  }, []);
 
   // Load form and event data
   useEffect(() => {
@@ -95,14 +130,24 @@ export default function CompanyFormPage() {
           return;
         }
 
-        // If user is logged in, load their company
+        // If user is logged in (via authCompanyId), load their company
         let userCompany: Company | null = null;
-        if (user?.company?.id) {
-          userCompany = await fetchCompanyByIdAction(user.company.id);
+        if (authCompanyId) {
+          userCompany = await fetchCompanyByIdAction(authCompanyId);
           if (userCompany) {
             setCompany(userCompany);
             setSelectedCompanyId(userCompany.id);
             setCompanySearchTerm(userCompany.name);
+            
+            // Pre-fill submitter info from logged-in user
+            if (authUserName) {
+              const nameParts = authUserName.trim().split(/\s+/);
+              setSubmitterFirstName(nameParts[0] || "");
+              setSubmitterLastName(nameParts.slice(1).join(' ') || "");
+            }
+            if (authUserEmail) {
+              setSubmitterEmail(authUserEmail);
+            }
           }
         } else {
           // Load available companies for non-logged-in users
@@ -113,7 +158,7 @@ export default function CompanyFormPage() {
         // For logged-in users, try fetching forms filtered by their company's options first
         // If not found, fall back to direct fetch (for testing/admin purposes)
         // For non-logged-in users, fetch the form directly by slug and event
-        if (user?.company?.id && userCompany) {
+        if (authCompanyId && userCompany) {
           // Extract option IDs, handling junction table format: { career_event_option_id: CareerEventOption }
           const companyOptionIds = userCompany.options
             ?.map((opt) => {
@@ -138,20 +183,14 @@ export default function CompanyFormPage() {
             })
             .filter((id): id is string => id !== null) || [];
 
-          console.log('[CompanyFormPage] Logged-in user - company option IDs:', companyOptionIds);
-          
           const forms = await fetchCompanyFormsForEventAction(eventId, companyOptionIds);
-          console.log('[CompanyFormPage] Filtered forms found:', forms.length, forms.map(f => f.slug));
           const foundForm = forms.find((f) => f.slug === slug);
           
           // If not found in filtered list, try direct fetch (for testing/admin purposes)
           if (!foundForm) {
-            console.log('[CompanyFormPage] Form not found in filtered list, trying direct fetch...');
             const directForm = await fetchCompanyFormBySlugAndEventAction(eventId, slug);
-            console.log('[CompanyFormPage] Direct fetch result:', directForm ? 'Found' : 'Not found');
             setForm(directForm);
           } else {
-            console.log('[CompanyFormPage] Form found in filtered list');
             setForm(foundForm);
           }
         } else {
@@ -160,33 +199,152 @@ export default function CompanyFormPage() {
           const directForm = await fetchCompanyFormBySlugAndEventAction(eventId, slug);
           setForm(directForm);
         }
-      } catch (error) {
-        console.error("Error loading form:", error);
-        // Try direct fetch as last resort even if there was an error
-        try {
-          const directForm = await fetchCompanyFormBySlugAndEventAction(eventId, slug);
-          if (directForm) {
-            console.log('[CompanyFormPage] Direct fetch succeeded after error');
-            setForm(directForm);
-          } else {
+        } catch (error) {
+          console.error("Error loading form:", error);
+          // Try direct fetch as last resort even if there was an error
+          try {
+            const directForm = await fetchCompanyFormBySlugAndEventAction(eventId, slug);
+            setForm(directForm ?? null);
+          } catch (directError) {
+            console.error("Error in direct fetch fallback:", directError);
             setForm(null);
           }
-        } catch (directError) {
-          console.error("Error in direct fetch fallback:", directError);
-          setForm(null);
-        }
       } finally {
         setLoading(false);
       }
     }
 
     loadData();
-  }, [eventId, slug, user?.company?.id]);
+  }, [eventId, slug, authCompanyId, authUserName, authUserEmail]);
+
+  // Load latest existing response for this form/company (if any) and prefill data
+  useEffect(() => {
+    async function loadExistingResponse() {
+      console.log("[CompanyFormPage] loadExistingResponse - Starting", {
+        formId: form?.id,
+        formVersionId: form?.activeVersion?.id,
+        companyId: company?.id,
+        selectedCompanyId,
+      });
+
+      if (!form?.id || !form.activeVersion?.id) {
+        console.log("[CompanyFormPage] loadExistingResponse - Missing form or version, skipping");
+        setLoadingResponse(false);
+        return;
+      }
+
+      // Prefer logged-in company from state, then from auth, then manually selected company
+      const companyId = company?.id || authCompanyId || selectedCompanyId;
+      if (!companyId) {
+        console.log("[CompanyFormPage] loadExistingResponse - No company ID, skipping", {
+          companyStateId: company?.id,
+          authCompanyId,
+          selectedCompanyId,
+        });
+        setExistingResponse(null);
+        setLoadingResponse(false);
+        return;
+      }
+
+      setLoadingResponse(true);
+
+      console.log("[CompanyFormPage] loadExistingResponse - Fetching response", {
+        formId: form.id,
+        formVersionId: form.activeVersion.id,
+        companyId,
+      });
+
+      try {
+        const response = await fetchLatestCompanyFormResponseAction(form.id, form.activeVersion.id, companyId) as FormResponse | null;
+        console.log("[CompanyFormPage] loadExistingResponse - Response received", {
+          hasResponse: !!response,
+          responseId: response?.id,
+          dataType: typeof response?.data,
+          dataPreview: response?.data 
+            ? (typeof response.data === 'string' 
+                ? (response.data as string).substring(0, 100) 
+                : Object.keys(response.data as object)) 
+            : null,
+        });
+
+        if (response) {
+          setExistingResponse(response);
+
+          // Directus may store JSON fields as strings; ensure we always have an object
+          const rawData = (response as any).data;
+          let parsedData: Record<string, unknown> = {};
+          
+          console.log("[CompanyFormPage] loadExistingResponse - Parsing data", {
+            rawDataType: typeof rawData,
+            rawDataIsString: typeof rawData === "string",
+            rawDataIsObject: typeof rawData === "object",
+            rawDataKeys: typeof rawData === "object" && rawData !== null ? Object.keys(rawData) : null,
+          });
+
+          if (rawData) {
+            if (typeof rawData === "string") {
+              try {
+                parsedData = JSON.parse(rawData) as Record<string, unknown>;
+                console.log("[CompanyFormPage] loadExistingResponse - Parsed JSON string", {
+                  parsedKeys: Object.keys(parsedData),
+                  parsedValues: Object.values(parsedData).slice(0, 3),
+                });
+              } catch (e) {
+                console.error("[CompanyFormPage] Failed to parse form response data JSON:", e);
+                // Fallback: keep empty object so we don't break the form
+                parsedData = {};
+              }
+            } else if (typeof rawData === "object" && rawData !== null) {
+              parsedData = rawData as Record<string, unknown>;
+              console.log("[CompanyFormPage] loadExistingResponse - Using object directly", {
+                keys: Object.keys(parsedData),
+                values: Object.values(parsedData).slice(0, 3),
+              });
+            }
+          }
+
+          console.log("[CompanyFormPage] loadExistingResponse - Setting formData", {
+            parsedDataKeys: Object.keys(parsedData),
+            parsedDataSize: Object.keys(parsedData).length,
+          });
+          setFormData(parsedData);
+          
+          // Pre-fill submitter info from existing response (if not already set from logged-in user)
+          if (response.submitter_first_name && !submitterFirstName) {
+            setSubmitterFirstName(response.submitter_first_name);
+          }
+          if (response.submitter_last_name && !submitterLastName) {
+            setSubmitterLastName(response.submitter_last_name);
+          }
+          if (response.submitter_email && !submitterEmail) {
+            setSubmitterEmail(response.submitter_email);
+          }
+          
+          // Start in read-only mode when a response already exists
+          setIsEditing(false);
+          console.log("[CompanyFormPage] loadExistingResponse - Completed successfully, form data set");
+        } else {
+          console.log("[CompanyFormPage] loadExistingResponse - No existing response found");
+          setExistingResponse(null);
+          // If there's no existing response, allow editing immediately
+          setIsEditing(true);
+        }
+      } catch (error) {
+        console.error("[CompanyFormPage] Error loading existing response:", error);
+        setExistingResponse(null);
+        setIsEditing(true);
+      } finally {
+        setLoadingResponse(false);
+      }
+    }
+
+    loadExistingResponse();
+  }, [form?.id, form?.activeVersion?.id, company?.id, authCompanyId, selectedCompanyId]);
 
   // When a company is selected (for non-logged-in users), verify they have required options
   useEffect(() => {
     async function verifyCompanyOptions() {
-      if (!form || !selectedCompanyId || user?.company?.id) return; // Skip if logged in or no company selected
+      if (!form || !selectedCompanyId || authCompanyId) return; // Skip if logged in or no company selected
       
       try {
         const selectedCompany = await fetchCompanyByIdAction(selectedCompanyId, true);
@@ -238,7 +396,7 @@ export default function CompanyFormPage() {
     }
     
     verifyCompanyOptions();
-  }, [selectedCompanyId, form, user?.company?.id]);
+  }, [selectedCompanyId, form, authCompanyId]);
 
   // Close company search dropdown when clicking outside
   useEffect(() => {
@@ -276,7 +434,7 @@ export default function CompanyFormPage() {
     if (!form) return false;
 
     // If not logged in, require company selection and submitter info
-    if (!user?.company?.id) {
+    if (!authCompanyId) {
       if (!selectedCompanyId) {
         newErrors.company = "Please select your company";
       }
@@ -339,25 +497,29 @@ export default function CompanyFormPage() {
       // Prepare submission data (without company/submitter info - those go as separate params)
       const submissionData = { ...formData };
 
-      // Extract first and last name from user name if logged in
+      // Extract first and last name from logged-in user name or form fields
       let firstName: string | undefined;
       let lastName: string | undefined;
-      if (user?.name) {
-        const nameParts = user.name.trim().split(/\s+/);
+      if (authUserName) {
+        const nameParts = authUserName.trim().split(/\s+/);
         firstName = nameParts[0] || undefined;
         lastName = nameParts.slice(1).join(' ') || undefined;
+      } else if (submitterFirstName || submitterLastName) {
+        firstName = submitterFirstName || undefined;
+        lastName = submitterLastName || undefined;
       }
 
       await submitFormResponseAction({
         form_version_id: form.activeVersion.id,
-        user_id: user?.id,
+        user_id: undefined, // We don't have user.id in public route
         data: submissionData,
-        company_id: selectedCompanyId || company?.id || undefined,
+        company_id: authCompanyId || selectedCompanyId || company?.id || undefined,
         submitter_first_name: firstName || submitterFirstName || undefined,
         submitter_last_name: lastName || submitterLastName || undefined,
-        submitter_email: user?.email || submitterEmail || undefined,
+        submitter_email: authUserEmail || submitterEmail || undefined,
       });
 
+      // After a successful submission, consider this the latest response
       setSubmitted(true);
     } catch (error) {
       console.error("Error submitting form:", error);
@@ -380,6 +542,7 @@ export default function CompanyFormPage() {
     }
   };
 
+  // Only show full loading screen on initial load, not when loading existing response after company selection
   if (loading) {
     return (
       <div className="container mx-auto p-8 flex items-center justify-center min-h-[60vh]">
@@ -434,10 +597,16 @@ export default function CompanyFormPage() {
 
   return (
     <div className="container mx-auto p-8 max-w-3xl">
+      {loadingResponse && (
+        <div className="mb-4 p-3 bg-muted/50 border border-border rounded-md flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <p className="text-sm text-muted-foreground">Loading your previous response...</p>
+        </div>
+      )}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
               <CardTitle className="text-2xl">{form.name}</CardTitle>
               {form.description && (
                 <CardDescription className="mt-2">{form.description}</CardDescription>
@@ -454,6 +623,16 @@ export default function CompanyFormPage() {
                 </div>
               )}
             </div>
+            {existingResponse && !isEditing && !isDeadlinePassed && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsEditing(true)}
+                className="shrink-0"
+              >
+                Edit response
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -464,10 +643,60 @@ export default function CompanyFormPage() {
               </p>
             </div>
           )}
+          {/* Show message if not logged in but company has already submitted */}
+          {!authCompanyId && existingResponse && !loadingResponse && (
+            <div className="mb-4 p-6 bg-muted/50 border border-border rounded-md text-center">
+              <p className="text-muted-foreground mb-4">
+                Your company has already submitted this form. Please log in to view or edit your response.
+              </p>
+              <Button asChild>
+                <Link href="/login">Log in</Link>
+              </Button>
+            </div>
+          )}
+          {(!existingResponse || authCompanyId) && (
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Company info display for logged-in users */}
+            {!loading && authCompanyId && company && (
+              <div className="space-y-2 p-4 border rounded-md bg-muted/30">
+                <h3 className="font-semibold text-sm">Company Information</h3>
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Company:</span>
+                    <span className="ml-2 font-medium">{company.name}</span>
+                  </div>
+                  {existingResponse ? (
+                    // If there's an existing response, show "Submitted by"
+                    authUserName && (
+                      <div>
+                        <span className="text-muted-foreground">Submitted by:</span>
+                        <span className="ml-2 font-medium">{authUserName}</span>
+                      </div>
+                    )
+                  ) : (
+                    // If no existing response, show "Submitter name" and "Submitter email" separately
+                    <>
+                      {authUserName && (
+                        <div>
+                          <span className="text-muted-foreground">Submitter name:</span>
+                          <span className="ml-2 font-medium">{authUserName}</span>
+                        </div>
+                      )}
+                      {(authUserEmail || submitterEmail) && (
+                        <div>
+                          <span className="text-muted-foreground">Submitter email:</span>
+                          <span className="ml-2 font-medium">{authUserEmail || submitterEmail}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+            
             {/* Company selection and submitter info for non-logged-in users */}
             {/* Show only if user is NOT logged in as a company rep (same logic as dashboard) */}
-            {!loading && !user?.company?.id && (
+            {!loading && !authCompanyId && (
               <div className="space-y-4 p-4 border rounded-md bg-muted/50">
                 <h3 className="font-semibold">Company Information</h3>
                 <div className="space-y-2">
@@ -687,7 +916,7 @@ export default function CompanyFormPage() {
                           value={formData[field.name]}
                           onChange={(value) => handleFieldChange(field.name, value)}
                           error={errors[field.name]}
-                          disabled={isDeadlinePassed}
+                          disabled={isDeadlinePassed || (!!existingResponse && !isEditing)}
                         />
                         {errors[field.name] && (
                           <p className="text-sm text-destructive">{errors[field.name]}</p>
@@ -699,25 +928,58 @@ export default function CompanyFormPage() {
               ));
             })()}
 
-            <div className="flex justify-end gap-4 pt-4">
-              <Button type="button" variant="outline" onClick={() => router.push("/dashboard")}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={submitting || isDeadlinePassed}>
-                {submitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Submitting...
-                  </>
-                ) : (
-                  "Submit"
-                )}
-              </Button>
-            </div>
+            {(!existingResponse || isEditing) && (
+              <div className="flex justify-end gap-4 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    if (existingResponse && !submitting) {
+                      // Reset to previously submitted data and exit edit mode
+                      setFormData(existingResponse.data || {});
+                      setIsEditing(false);
+                    } else {
+                      router.push("/dashboard");
+                    }
+                  }}
+                >
+                  {existingResponse ? "Cancel editing" : "Cancel"}
+                </Button>
+                <Button type="submit" disabled={submitting || isDeadlinePassed}>
+                  {submitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Submitting...
+                    </>
+                  ) : (
+                    existingResponse ? "Save changes" : "Submit"
+                  )}
+                </Button>
+              </div>
+            )}
           </form>
+          )}
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// Component to display file info with download link (matches admin panel style)
+function FileDisplay({ fileId, index }: { fileId: string; index?: number }) {
+  // Use the same API route as admin panel for consistency
+  const downloadUrl = `/api/files/${fileId}`;
+
+  return (
+    <a
+      href={downloadUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-primary hover:underline flex items-center gap-1"
+    >
+      <Download className="h-3 w-3" />
+      <span>View/Download File</span>
+    </a>
   );
 }
 
@@ -953,6 +1215,37 @@ function FormFieldRenderer({
       const maxFileSizeMB = Math.round(maxFileSize / (1024 * 1024));
       const isMultiple = field.multiple || false;
       
+      // If editing is disabled, only show the file display (if there's a value)
+      if (disabled) {
+        if (!value) {
+          return <span className="text-muted-foreground italic">No file uploaded</span>;
+        }
+        return (
+          <div className="space-y-2">
+            {isMultiple && Array.isArray(value) ? (
+              <div className="space-y-2">
+                <p className="text-muted-foreground font-medium">✓ {value.length} file(s) uploaded:</p>
+                <ul className="space-y-1">
+                  {value.map((id, idx) => {
+                    const fileId = typeof id === 'string' ? id : String(id);
+                    return (
+                      <li key={idx} className="flex items-center gap-2">
+                        <FileDisplay fileId={fileId} index={idx} />
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground font-medium">✓ File uploaded:</span>
+                <FileDisplay fileId={typeof value === 'string' ? value : String(value)} />
+              </div>
+            )}
+          </div>
+        );
+      }
+      
       return (
         <div className="space-y-2">
           <Input
@@ -961,6 +1254,7 @@ function FormFieldRenderer({
             type="file"
             multiple={isMultiple}
             disabled={disabled}
+            required={field.required && !value}
             onChange={async (e) => {
               const files = Array.from(e.target.files || []);
               if (files.length === 0) return;
@@ -1053,25 +1347,32 @@ function FormFieldRenderer({
                 e.target.value = '';
               }
             }}
-            required={field.required}
             className={inputClassName}
           />
           <p className="text-xs text-muted-foreground">
             Maximum file size: {maxFileSizeMB}MB{isMultiple ? ' (multiple files allowed)' : ''}
           </p>
           {value ? (
-            <div className="text-sm text-muted-foreground">
+            <div className="text-sm space-y-2">
               {isMultiple && Array.isArray(value) ? (
-                <div className="space-y-1">
-                  <p>✓ {value.length} file(s) uploaded:</p>
-                  <ul className="list-disc list-inside ml-2">
-                    {value.map((id, idx) => (
-                      <li key={idx}>File {idx + 1}: {id}</li>
-                    ))}
+                <div className="space-y-2">
+                  <p className="text-muted-foreground font-medium">✓ {value.length} file(s) uploaded:</p>
+                  <ul className="space-y-1">
+                    {value.map((id, idx) => {
+                      const fileId = typeof id === 'string' ? id : String(id);
+                      return (
+                        <li key={idx} className="flex items-center gap-2">
+                          <FileDisplay fileId={fileId} index={idx} />
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               ) : (
-                <p>✓ File uploaded: {typeof value === 'string' ? value : 'File selected'}</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground font-medium">✓ File uploaded:</span>
+                  <FileDisplay fileId={typeof value === 'string' ? value : String(value)} />
+                </div>
               )}
             </div>
           ) : null}

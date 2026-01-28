@@ -133,6 +133,7 @@ export async function GET(request: NextRequest) {
       company: user.company ? (typeof user.company === 'string' ? { id: user.company } : user.company) : null,
       admin: user.admin || false,
       name: user.name || user.email || '',
+      email: user.email || '',
     } : null;
 
     // Only return student if student is actually defined and has required fields

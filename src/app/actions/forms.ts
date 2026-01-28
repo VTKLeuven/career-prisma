@@ -640,6 +640,28 @@ export async function submitFormResponseAction(data: {
   }
 }
 
+export async function fetchLatestCompanyFormResponseAction(formId: string, formVersionId: string, companyId: string) {
+  try {
+    const { getLatestCompanyFormResponse, getLatestCompanyFormResponseForForm } = await import("@/lib/repos/forms");
+
+    // First try to find a response for the specific version (covers current active version)
+    const byVersion = await getLatestCompanyFormResponse(formVersionId, companyId);
+    if (byVersion) {
+      return byVersion;
+    }
+
+    // Fallback: look across all versions of this form (covers responses submitted on older versions)
+    if (formId) {
+      return await getLatestCompanyFormResponseForForm(formId, companyId);
+    }
+
+    return null;
+  } catch (error) {
+    console.error("[fetchLatestCompanyFormResponseAction] Error fetching latest company form response:", error);
+    return null;
+  }
+}
+
 async function sendCompanyFormConfirmationEmail({
   to,
   submitterFirstName,
@@ -861,7 +883,8 @@ export async function fetchCompanyFormsForEventAction(eventId: string, companyOp
     return await getCompanyFormsForEvent(eventId, companyOptionIds);
   } catch (error) {
     console.error("[fetchCompanyFormsForEventAction] Error fetching company forms:", error);
-    throw error;
+    // Return empty array instead of throwing to prevent UI crashes
+    return [];
   }
 }
 
@@ -881,6 +904,16 @@ export async function checkCompanyFormCompletionAction(companyId: string, formVe
     return await checkCompanyFormCompletion(companyId, formVersionIds);
   } catch (error) {
     console.error("[checkCompanyFormCompletionAction] Error checking form completion:", error);
+    return new Set<string>();
+  }
+}
+
+export async function checkCompanyFormCompletionByFormIdsAction(companyId: string, formIds: string[]) {
+  try {
+    const { checkCompanyFormCompletionByFormIds } = await import("@/lib/repos/forms");
+    return await checkCompanyFormCompletionByFormIds(companyId, formIds);
+  } catch (error) {
+    console.error("[checkCompanyFormCompletionByFormIdsAction] Error checking form completion:", error);
     return new Set<string>();
   }
 }

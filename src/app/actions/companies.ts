@@ -110,8 +110,14 @@ export async function fetchCompaniesAction() {
 }
 
 export async function fetchCompanyByIdAction(company_id: string, usePublic = false): Promise<Company | null> {
-  const company = (await getCompanyById(company_id, usePublic)) as Company | null;
-  return company;
+  try {
+    const company = (await getCompanyById(company_id, usePublic)) as Company | null;
+    return company;
+  } catch (error) {
+    console.error("[fetchCompanyByIdAction] Error fetching company:", error);
+    // Return null instead of throwing to prevent UI crashes
+    return null;
+  }
 }
 
 import { slugifyCompanyName } from "@/lib/utils/slugify";
