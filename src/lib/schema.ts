@@ -241,6 +241,30 @@ export type FormResponse = {
   submitter_email?: string; // Email of person who submitted (for company forms, especially non-logged-in)
 }
 
+export type AcademicYear = {
+  id: string;
+  name: string;
+  start_of_year: string;
+  end_of_year: string;
+}
+
+export type CVBook = {
+  id: string;
+  year: string | AcademicYear;
+  form: string | Form;
+  student_first_name_field: string;
+  student_last_name_field: string;
+  student_email_field: string;
+  student_study_field: string;
+  student_cv_field: string;
+  student_first_name_field_backup?: string;
+  student_last_name_field_backup?: string;
+  student_email_field_backup?: string;
+  student_study_field_backup?: string;
+  student_cv_field_backup?: string;
+  active: boolean;
+}
+
 // Optional: Full Directus Schema map (only collections you use)
 export type Schema = {
   directus_users: CompanyRep;
