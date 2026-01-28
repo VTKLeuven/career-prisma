@@ -1,14 +1,21 @@
 'use client'
 
-import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useMemo, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { ComingSoon } from "@/components/dashboard/ComingSoon"
 import { IconFileCv, IconMail, IconUser } from "@tabler/icons-react"
 import { CVPreview } from "@/components/cv-preview"
+import { CVDocumentViewer } from "@/components/cv-document-viewer"
 import { useUser } from "@/providers/UserProvider"
 import { fetchCompanyByIdAction } from "@/app/actions/companies"
 import { getCompanySubOptionAnyStatus } from "@/lib/utils/company-access"
-import { fetchActiveCVBooksAction, fetchCVBookByYearAction, fetchCVBookStudentDataAction } from "@/app/actions/cv-book"
+import {
+  fetchActiveCVBooksAction,
+  fetchCVBookByIdAction,
+  fetchCVBookByYearAction,
+  fetchCVBookStudentDataAction,
+  fetchCVBooksAction,
+} from "@/app/actions/cv-book"
 import type { Company, CVBook, AcademicYear } from "@/lib/schema"
 import type { StudentCVGroup, StudentCVData } from "@/lib/repos/cv-book"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -16,10 +23,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 
 export default function CVBookPage() {
   const { user } = useUser()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const cvBookIdParam = searchParams.get("cvBookId")
   const [company, setCompany] = useState<Company | null>(null)
   const [loading, setLoading] = useState(true)
   const [hasAccess, setHasAccess] = useState(false)
@@ -32,41 +42,67 @@ export default function CVBookPage() {
   const [validatedCVs, setValidatedCVs] = useState<Map<string, boolean>>(new Map())
   const [viewMode, setViewMode] = useState<"grid" | "detail">("grid")
 
+  // Flatten students in the same order as the overview (study group order, then student order within each group)
+  const flatStudents = useMemo(() => {
+    return studentGroups.flatMap((g) => g.students)
+  }, [studentGroups])
+
+  const selectedStudentIndex = useMemo(() => {
+    if (!selectedStudent) return -1
+    return flatStudents.findIndex((s) => s.id === selectedStudent.id)
+  }, [flatStudents, selectedStudent])
+
+  const hasPrevStudent = selectedStudentIndex > 0
+  const hasNextStudent = selectedStudentIndex >= 0 && selectedStudentIndex < flatStudents.length - 1
+
   useEffect(() => {
     async function loadData() {
-      if (!user?.company?.id) {
+      // Admins can view CV books without a company context
+      if (!user?.admin && !user?.company?.id) {
         setLoading(false)
         return
       }
 
       try {
-        // Check if there are any active CV books
-        const activeBooks = await fetchActiveCVBooksAction()
-        setActiveCVBooks(activeBooks)
+        // Admin: allow viewing inactive books too
+        const books = user?.admin ? await fetchCVBooksAction() : await fetchActiveCVBooksAction()
+        setActiveCVBooks(books)
 
-        // If no active CV books, show coming soon
-        if (activeBooks.length === 0) {
+        // If no books at all, show coming soon
+        if (books.length === 0) {
           setLoading(false)
           return
         }
 
-        // Set default to most recent year (first in sorted list)
-        if (activeBooks.length > 0 && !selectedYearId) {
-          const mostRecentBook = activeBooks[0]
+        // If we were deep-linked to a CV book (admin "view" action), preselect its year
+        if (user?.admin && cvBookIdParam && !selectedYearId) {
+          const linkedBook = await fetchCVBookByIdAction(cvBookIdParam)
+          if (linkedBook) {
+            const yearId = typeof linkedBook.year === "object" ? linkedBook.year.id : linkedBook.year
+            setSelectedYearId(yearId)
+            setSelectedCVBook(linkedBook)
+          }
+        }
+
+        // Set default to most recent year
+        if (!selectedYearId) {
+          const mostRecentBook = books[0]
           const yearId = typeof mostRecentBook.year === "object" ? mostRecentBook.year.id : mostRecentBook.year
           setSelectedYearId(yearId)
         }
 
-        // Check if company has the CV Book sub-option
-        const fetchedCompany = await fetchCompanyByIdAction(user.company.id)
-        setCompany(fetchedCompany ?? null)
-        const companySubOption = getCompanySubOptionAnyStatus(fetchedCompany ?? null, "CV Book")
-        const access = companySubOption !== null
-        setHasAccess(access)
-        
-        // Redirect to request page if no access
-        if (!access) {
-          router.replace("/dashboard/job-platform/cv-book/request-access")
+        // Non-admin users still need access via sub-option
+        if (!user?.admin && user?.company?.id) {
+          const fetchedCompany = await fetchCompanyByIdAction(user.company.id)
+          setCompany(fetchedCompany ?? null)
+          const companySubOption = getCompanySubOptionAnyStatus(fetchedCompany ?? null, "CV Book")
+          const access = companySubOption !== null
+          setHasAccess(access)
+          if (!access) {
+            router.replace("/dashboard/job-platform/cv-book/request-access")
+          }
+        } else {
+          setHasAccess(true)
         }
       } catch (error) {
         console.error("[CVBookPage] Error fetching:", error)
@@ -79,7 +115,7 @@ export default function CVBookPage() {
     }
 
     loadData()
-  }, [user?.company?.id, router])
+  }, [user?.company?.id, user?.admin, router, cvBookIdParam, selectedYearId])
 
   // Load CV Book and student data when year changes
   useEffect(() => {
@@ -92,7 +128,25 @@ export default function CVBookPage() {
 
       setLoadingStudents(true)
       try {
-        const cvBook = await fetchCVBookByYearAction(selectedYearId)
+        // Admin can view inactive books:
+        // - If a specific cvBookId is provided, use it.
+        // - Otherwise, pick the first CV book matching the selected year.
+        let cvBook: CVBook | null = null
+        if (user?.admin) {
+          if (cvBookIdParam) {
+            cvBook = await fetchCVBookByIdAction(cvBookIdParam)
+          }
+          if (!cvBook) {
+            const yearMatch = activeCVBooks.find((b) => {
+              const y = typeof b.year === "object" ? b.year.id : b.year
+              return y === selectedYearId
+            })
+            cvBook = yearMatch ?? null
+          }
+        } else {
+          cvBook = await fetchCVBookByYearAction(selectedYearId)
+        }
+
         setSelectedCVBook(cvBook)
 
         if (cvBook) {
@@ -100,6 +154,8 @@ export default function CVBookPage() {
           // Filter and validate PDFs
           const validatedGroups = await validateAndFilterCVs(groups)
           setStudentGroups(validatedGroups)
+        } else {
+          setStudentGroups([])
         }
       } catch (error) {
         console.error("[CVBookPage] Error loading CV book data:", error)
@@ -111,7 +167,7 @@ export default function CVBookPage() {
     }
 
     loadCVBookData()
-  }, [selectedYearId])
+  }, [selectedYearId, user?.admin, cvBookIdParam, activeCVBooks])
 
   // Validate PDF CVs (one page, PDF format)
   async function validateAndFilterCVs(groups: StudentCVGroup[]): Promise<StudentCVGroup[]> {
@@ -264,32 +320,30 @@ export default function CVBookPage() {
           <CardTitle className="text-3xl sm:text-4xl font-bold mb-2">
             Resume Book
           </CardTitle>
+
+          {/* Academic Year selector (always visible; if only one year, it will just show that one) */}
+          <div className="mt-3 flex justify-center">
+            <Select value={selectedYearId} onValueChange={setSelectedYearId}>
+              <SelectTrigger id="year-select" className="w-fit px-2 gap-1">
+                {selectedYearId && availableYears.find(y => y.id === selectedYearId) ? (
+                  <span className="block truncate">
+                    {availableYears.find(y => y.id === selectedYearId)?.name}
+                  </span>
+                ) : (
+                  <SelectValue placeholder="Select year" />
+                )}
+              </SelectTrigger>
+              <SelectContent>
+                {availableYears.map((year) => (
+                  <SelectItem key={year.id} value={year.id}>
+                    {year.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {availableYears.length > 1 && (
-            <div className="space-y-2">
-              <Label htmlFor="year-select">Select Academic Year</Label>
-              <Select value={selectedYearId} onValueChange={setSelectedYearId}>
-                <SelectTrigger id="year-select" className="w-full">
-                  {selectedYearId && availableYears.find(y => y.id === selectedYearId) ? (
-                    <span className="block truncate">
-                      {availableYears.find(y => y.id === selectedYearId)?.name}
-                    </span>
-                  ) : (
-                    <SelectValue placeholder="Select an academic year" />
-                  )}
-                </SelectTrigger>
-                <SelectContent>
-                  {availableYears.map((year) => (
-                    <SelectItem key={year.id} value={year.id}>
-                      {year.name} ({year.start_of_year} - {year.end_of_year})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
           {loadingStudents ? (
             <div className="text-center py-8 text-muted-foreground">
               Loading resume book...
@@ -299,45 +353,55 @@ export default function CVBookPage() {
               {selectedCVBook ? "No student CVs available for this academic year." : "Please select an academic year."}
             </div>
           ) : viewMode === "grid" ? (
-            <div className="space-y-8">
+            <Accordion type="multiple" className="w-full space-y-3">
               {studentGroups.map((group) => (
-                <div key={group.study} className="space-y-4">
-                  <h2 className="text-2xl font-bold border-b pb-2">{group.study}</h2>
-                  <div className="grid grid-cols-2 gap-6">
-                    {group.students.map((student) => (
-                      <Card
-                        key={student.id}
-                        className="cursor-pointer hover:shadow-lg transition-shadow flex flex-col h-full"
-                        onClick={() => {
-                          setSelectedStudent(student)
-                          setViewMode("detail")
-                        }}
-                      >
-                        <CardContent className="p-4 flex flex-col h-full">
-                          <div className="rounded-lg mb-3 overflow-hidden border shadow-sm flex-1 min-h-[600px]">
-                            {student.cvFileUrl ? (
-                              <CVPreview
-                                fileUrl={student.cvFileUrl}
-                                className="w-full h-full"
-                                title={`CV for ${student.firstName} ${student.lastName}`}
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-muted-foreground bg-muted">
-                                <IconFileCv className="h-12 w-12" />
-                              </div>
-                            )}
-                          </div>
-                          <div className="text-center">
-                            <p className="font-semibold">{student.firstName} {student.lastName}</p>
-                            <p className="text-sm text-muted-foreground">{student.email}</p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
+                <AccordionItem
+                  key={group.study}
+                  value={group.study}
+                  className="border rounded-xl bg-white/80 shadow-sm ring-1 ring-black/5 px-2 hover:bg-white transition-colors"
+                >
+                  <AccordionTrigger className="px-3 cursor-pointer hover:no-underline">
+                    <div className="flex items-center justify-between w-full pr-2">
+                      <span className="text-base sm:text-lg font-semibold text-neutral-900">{group.study}</span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-3 pb-4">
+                    <div className="grid grid-cols-2 gap-6 pt-4">
+                      {group.students.map((student) => (
+                        <Card
+                          key={student.id}
+                          className="cursor-pointer hover:shadow-lg transition-shadow flex flex-col h-full"
+                          onClick={() => {
+                            setSelectedStudent(student)
+                            setViewMode("detail")
+                          }}
+                        >
+                          <CardContent className="p-4 flex flex-col h-full">
+                            <div className="rounded-lg mb-3 overflow-hidden border shadow-sm flex-1 min-h-[600px]">
+                              {student.cvFileUrl ? (
+                                <CVPreview
+                                  fileUrl={student.cvFileUrl}
+                                  className="w-full h-full"
+                                  title={`CV for ${student.firstName} ${student.lastName}`}
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-muted-foreground bg-muted">
+                                  <IconFileCv className="h-12 w-12" />
+                                </div>
+                              )}
+                            </div>
+                            <div className="text-center">
+                              <p className="font-semibold">{student.firstName} {student.lastName}</p>
+                              <p className="text-sm text-muted-foreground">{student.email}</p>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
               ))}
-            </div>
+            </Accordion>
           ) : selectedStudent ? (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
@@ -350,6 +414,32 @@ export default function CVBookPage() {
                 >
                   ← Back to Overview
                 </Button>
+
+                {/* Prev/Next student navigation (above the student's card) */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={!hasPrevStudent}
+                    onClick={() => {
+                      if (!hasPrevStudent) return
+                      const prev = flatStudents[selectedStudentIndex - 1]
+                      if (prev) setSelectedStudent(prev)
+                    }}
+                  >
+                    Previous student
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={!hasNextStudent}
+                    onClick={() => {
+                      if (!hasNextStudent) return
+                      const next = flatStudents[selectedStudentIndex + 1]
+                      if (next) setSelectedStudent(next)
+                    }}
+                  >
+                    Next student
+                  </Button>
+                </div>
               </div>
               
               <Card>
@@ -374,9 +464,8 @@ export default function CVBookPage() {
                 <CardContent>
                   {selectedStudent.cvFileUrl && (
                     <div className="mt-4">
-                      <iframe
-                        src={`${selectedStudent.cvFileUrl}#toolbar=1&navpanes=1&scrollbar=1`}
-                        className="w-full h-[800px] border rounded-lg"
+                      <CVDocumentViewer
+                        fileUrl={selectedStudent.cvFileUrl}
                         title={`CV for ${selectedStudent.firstName} ${selectedStudent.lastName}`}
                       />
                     </div>

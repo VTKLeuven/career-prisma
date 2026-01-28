@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   fetchCVBooksAction,
   createCVBookAction,
@@ -92,6 +93,7 @@ export default function AdminCVBookPage() {
 }
 
 function CVBooksTable() {
+  const router = useRouter();
   const [cvBooks, setCvBooks] = useState<CVBookRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
@@ -228,6 +230,12 @@ function CVBooksTable() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => router.push(`/dashboard/job-platform/cv-book?cvBookId=${book.id}`)}
+                >
+                  View CV Book
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 {!book.active ? (
                   <DropdownMenuItem
