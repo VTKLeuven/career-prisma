@@ -36,7 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Download, Eye, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2, Mail } from "lucide-react";
+import { ArrowLeft, Download, Eye, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2, Mail, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import type { FormVersion, FormResponse } from "@/lib/schema";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 
@@ -64,6 +64,10 @@ export default function FormResponsesPage() {
   const [viewMode, setViewMode] = useState<"submissions" | "incomplete">("submissions");
   const [incompleteCompanies, setIncompleteCompanies] = useState<Array<{ id: string; name: string; salesperson: string; optionName: string }>>([]);
   const [loadingIncompleteCompanies, setLoadingIncompleteCompanies] = useState(false);
+  const [incompleteSortField, setIncompleteSortField] = useState<"name" | "salesperson" | "optionName">("name");
+  const [incompleteSortDirection, setIncompleteSortDirection] = useState<"asc" | "desc">("asc");
+  const [submissionsSortField, setSubmissionsSortField] = useState<"submitted_at" | "company_name">("submitted_at");
+  const [submissionsSortDirection, setSubmissionsSortDirection] = useState<"asc" | "desc">("desc");
   const [companyCompletionStats, setCompanyCompletionStats] = useState<{ completed: number; incomplete: number } | null>(null);
   const [sendingReminders, setSendingReminders] = useState(false);
   const [reminderDialogOpen, setReminderDialogOpen] = useState(false);
@@ -318,6 +322,8 @@ export default function FormResponsesPage() {
         } else {
           allResponses = await fetchAllFormResponsesAction(selectedVersionId);
         }
+        
+        // Get unique company IDs that have submitted
         const completedCompanyIds = new Set<string>();
         allResponses.forEach((response) => {
           if (response.company_id) {
@@ -331,11 +337,23 @@ export default function FormResponsesPage() {
           }
         });
 
-        console.log('[FormResponsesPage] Completed company IDs:', Array.from(completedCompanyIds));
-        console.log('[FormResponsesPage] Eligible company IDs:', eligibleCompanies.map(c => String(c.id)));
+        // Get eligible company IDs as strings for comparison
+        const eligibleCompanyIds = new Set<string>(
+          eligibleCompanies.map(c => String(c.id))
+        );
 
+        console.log('[FormResponsesPage] Completed company IDs:', Array.from(completedCompanyIds));
+        console.log('[FormResponsesPage] Eligible company IDs:', Array.from(eligibleCompanyIds));
+
+        // Count completed: unique companies that have submitted
         const completed = completedCompanyIds.size;
-        const incomplete = eligibleCompanies.length - completed;
+        
+        // Count incomplete: eligible companies that haven't submitted
+        // Filter eligible companies to only those that haven't submitted
+        const incompleteCompanyIds = eligibleCompanies
+          .map(c => String(c.id))
+          .filter(id => !completedCompanyIds.has(id));
+        const incomplete = incompleteCompanyIds.length;
 
         console.log('[FormResponsesPage] Stats:', { completed, incomplete, totalEligible: eligibleCompanies.length });
 
@@ -410,7 +428,12 @@ export default function FormResponsesPage() {
       });
 
       // Get all responses to find which companies have submitted
-      const allResponses = await fetchAllFormResponsesAction(selectedVersionId);
+      let allResponses: FormResponse[];
+      if (isAllVersions) {
+        allResponses = await fetchAllFormResponsesForAllVersionsAction(formId);
+      } else {
+        allResponses = await fetchAllFormResponsesAction(selectedVersionId);
+      }
       const completedCompanyIds = new Set<string>();
       allResponses.forEach((response) => {
         if (response.company_id) {
@@ -1186,17 +1209,74 @@ export default function FormResponsesPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Submitted</TableHead>
+                        <TableHead>
+                          <button
+                            onClick={() => {
+                              if (submissionsSortField === "submitted_at") {
+                                setSubmissionsSortDirection(submissionsSortDirection === "asc" ? "desc" : "asc");
+                              } else {
+                                setSubmissionsSortField("submitted_at");
+                                setSubmissionsSortDirection("desc");
+                              }
+                            }}
+                            className="flex items-center gap-1 hover:text-foreground transition-colors"
+                          >
+                            Submitted
+                            {submissionsSortField === "submitted_at" ? (
+                              submissionsSortDirection === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                            ) : (
+                              <ArrowUpDown className="h-4 w-4 opacity-50" />
+                            )}
+                          </button>
+                        </TableHead>
                         {!isAllVersions && selectedVersion?.metadata?.is_company_form && (
                           <>
-                            <TableHead>Company</TableHead>
+                            <TableHead>
+                              <button
+                                onClick={() => {
+                                  if (submissionsSortField === "company_name") {
+                                    setSubmissionsSortDirection(submissionsSortDirection === "asc" ? "desc" : "asc");
+                                  } else {
+                                    setSubmissionsSortField("company_name");
+                                    setSubmissionsSortDirection("asc");
+                                  }
+                                }}
+                                className="flex items-center gap-1 hover:text-foreground transition-colors"
+                              >
+                                Company
+                                {submissionsSortField === "company_name" ? (
+                                  submissionsSortDirection === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                                ) : (
+                                  <ArrowUpDown className="h-4 w-4 opacity-50" />
+                                )}
+                              </button>
+                            </TableHead>
                             <TableHead>Submitter Name</TableHead>
                             <TableHead>Submitter Email</TableHead>
                           </>
                         )}
                         {isAllVersions && versions.some(v => v.metadata?.is_company_form) && (
                           <>
-                            <TableHead>Company</TableHead>
+                            <TableHead>
+                              <button
+                                onClick={() => {
+                                  if (submissionsSortField === "company_name") {
+                                    setSubmissionsSortDirection(submissionsSortDirection === "asc" ? "desc" : "asc");
+                                  } else {
+                                    setSubmissionsSortField("company_name");
+                                    setSubmissionsSortDirection("asc");
+                                  }
+                                }}
+                                className="flex items-center gap-1 hover:text-foreground transition-colors"
+                              >
+                                Company
+                                {submissionsSortField === "company_name" ? (
+                                  submissionsSortDirection === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                                ) : (
+                                  <ArrowUpDown className="h-4 w-4 opacity-50" />
+                                )}
+                              </button>
+                            </TableHead>
                             <TableHead>Submitter Name</TableHead>
                             <TableHead>Submitter Email</TableHead>
                           </>
@@ -1247,7 +1327,30 @@ export default function FormResponsesPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {responses.map((response) => {
+                      {[...responses]
+                        .sort((a, b) => {
+                          if (submissionsSortField === "submitted_at") {
+                            const aTime = new Date(a.submitted_at).getTime();
+                            const bTime = new Date(b.submitted_at).getTime();
+                            const comparison = aTime - bTime;
+                            return submissionsSortDirection === "asc" ? comparison : -comparison;
+                          } else {
+                            // Sort by company name
+                            const aCompanyName = typeof a.company_id === 'object' && a.company_id?.name
+                              ? a.company_id.name
+                              : typeof a.company_id === 'string'
+                              ? a.company_id
+                              : '';
+                            const bCompanyName = typeof b.company_id === 'object' && b.company_id?.name
+                              ? b.company_id.name
+                              : typeof b.company_id === 'string'
+                              ? b.company_id
+                              : '';
+                            const comparison = aCompanyName.toLowerCase().localeCompare(bCompanyName.toLowerCase());
+                            return submissionsSortDirection === "asc" ? comparison : -comparison;
+                          }
+                        })
+                        .map((response) => {
                         // Get the version for this response
                         const responseVersion = isAllVersions 
                           ? versions.find(v => {
@@ -1417,19 +1520,95 @@ export default function FormResponsesPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Company Name</TableHead>
-                          <TableHead>Salesperson</TableHead>
-                          <TableHead>Option</TableHead>
+                          <TableHead>
+                            <button
+                              onClick={() => {
+                                if (incompleteSortField === "name") {
+                                  setIncompleteSortDirection(incompleteSortDirection === "asc" ? "desc" : "asc");
+                                } else {
+                                  setIncompleteSortField("name");
+                                  setIncompleteSortDirection("asc");
+                                }
+                              }}
+                              className="flex items-center gap-1 hover:text-foreground transition-colors"
+                            >
+                              Company Name
+                              {incompleteSortField === "name" ? (
+                                incompleteSortDirection === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                              ) : (
+                                <ArrowUpDown className="h-4 w-4 opacity-50" />
+                              )}
+                            </button>
+                          </TableHead>
+                          <TableHead>
+                            <button
+                              onClick={() => {
+                                if (incompleteSortField === "salesperson") {
+                                  setIncompleteSortDirection(incompleteSortDirection === "asc" ? "desc" : "asc");
+                                } else {
+                                  setIncompleteSortField("salesperson");
+                                  setIncompleteSortDirection("asc");
+                                }
+                              }}
+                              className="flex items-center gap-1 hover:text-foreground transition-colors"
+                            >
+                              Salesperson
+                              {incompleteSortField === "salesperson" ? (
+                                incompleteSortDirection === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                              ) : (
+                                <ArrowUpDown className="h-4 w-4 opacity-50" />
+                              )}
+                            </button>
+                          </TableHead>
+                          <TableHead>
+                            <button
+                              onClick={() => {
+                                if (incompleteSortField === "optionName") {
+                                  setIncompleteSortDirection(incompleteSortDirection === "asc" ? "desc" : "asc");
+                                } else {
+                                  setIncompleteSortField("optionName");
+                                  setIncompleteSortDirection("asc");
+                                }
+                              }}
+                              className="flex items-center gap-1 hover:text-foreground transition-colors"
+                            >
+                              Option
+                              {incompleteSortField === "optionName" ? (
+                                incompleteSortDirection === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                              ) : (
+                                <ArrowUpDown className="h-4 w-4 opacity-50" />
+                              )}
+                            </button>
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {incompleteCompanies.map((company) => (
-                          <TableRow key={company.id}>
-                            <TableCell className="font-medium">{company.name}</TableCell>
-                            <TableCell>{company.salesperson}</TableCell>
-                            <TableCell>{company.optionName}</TableCell>
-                          </TableRow>
-                        ))}
+                        {[...incompleteCompanies]
+                          .sort((a, b) => {
+                            let aValue: string;
+                            let bValue: string;
+                            
+                            if (incompleteSortField === "name") {
+                              aValue = a.name.toLowerCase();
+                              bValue = b.name.toLowerCase();
+                            } else if (incompleteSortField === "salesperson") {
+                              aValue = a.salesperson.toLowerCase();
+                              bValue = b.salesperson.toLowerCase();
+                            } else {
+                              aValue = a.optionName.toLowerCase();
+                              bValue = b.optionName.toLowerCase();
+                            }
+                            
+                            const comparison = aValue.localeCompare(bValue);
+                            return incompleteSortDirection === "asc" ? comparison : -comparison;
+                          })
+                          .map((company) => (
+                            <TableRow key={company.id}>
+                              <TableCell className="font-medium">{company.name}</TableCell>
+                              <TableCell>{company.salesperson}</TableCell>
+                              <TableCell>{company.optionName}</TableCell>
+                            </TableRow>
+                          ))}
                       </TableBody>
                     </Table>
                   )}
