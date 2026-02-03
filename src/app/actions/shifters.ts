@@ -10,7 +10,7 @@ export async function listAllUsersAction(search?: string) {
 
         // Typecast to any because readUsers return type might be strict about system fields
         const users = await client.request(readUsers({
-            fields: ["id", "first_name", "last_name", "email", "is_shifter", "role.name"],
+            fields: ["id", "first_name", "last_name", "email", "is_shifter", "role.name"] as any,
             search: search,
             limit: 50,
         })) as any[];

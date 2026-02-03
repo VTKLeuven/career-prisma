@@ -36,10 +36,10 @@ export async function listBooths(
         ],
         limit,
         page,
-        sort,
+        sort: sort as any,
         filter: {
           Floorplan: {
-            _eq: floorplan.id, // only booths for this floorplan
+            _eq: floorplan.id as any, // only booths for this floorplan
           },
         },
         ...(search
@@ -71,7 +71,7 @@ export async function listMasters(
         fields: ["*"],
         limit,
         page,
-        sort,
+        sort: sort as any,
         ...(search
           ? { search } // optional full-text search
           : {}),

@@ -41,11 +41,11 @@ export async function listCareerEventOptions(opts?: {
     try {
       const client = await getDirectusWithToken();
       if (!client) return null;
-      
+
       const { limit: fallbackLimit = 1000 } = opts ?? {};
       return client.request(
         readItems("career_event_option", {
-          fields: ["*", "*.*", "sub_options.*"], // Use wildcard to get all fields including sub_options
+          fields: ["*", "*.*" as any, "sub_options.*" as any], // Use wildcard to get all fields including sub_options
           limit: fallbackLimit,
         })
       ) as unknown as CareerEventOption[] | null;
@@ -157,7 +157,7 @@ export async function getCVBookSubOption(): Promise<CareerSubOption | null> {
         console.error("[getCVBookSubOption] No Directus client available");
         return null;
       }
-      
+
       try {
         const result = await publicClient.request(
           readItems("career_sub_option", {
@@ -170,7 +170,7 @@ export async function getCVBookSubOption(): Promise<CareerSubOption | null> {
             limit: 1,
           })
         ) as unknown as CareerSubOption[] | null;
-        
+
         // Handle both array and { data: [...] } formats
         const items = Array.isArray(result) ? result : (result as any)?.data;
         if (items && items.length > 0) {
@@ -205,7 +205,7 @@ export async function getCVBookSubOption(): Promise<CareerSubOption | null> {
         return items[0];
       }
       console.warn("[getCVBookSubOption] No CV Book sub-option found with filter");
-      
+
       // Try without filter to see all sub-options
       const allSubOptions = await client.request(
         readItems("career_sub_option", {
@@ -213,14 +213,14 @@ export async function getCVBookSubOption(): Promise<CareerSubOption | null> {
           limit: 100,
         })
       ) as unknown as CareerSubOption[] | null;
-      
+
       const allItems = Array.isArray(allSubOptions) ? allSubOptions : (allSubOptions as any)?.data;
       console.log("[getCVBookSubOption] All sub-options:", allItems);
-      
+
       if (allItems) {
-        const cvBook = allItems.find((opt: any) => 
-          opt && typeof opt === 'object' && 
-          'name' in opt && 
+        const cvBook = allItems.find((opt: any) =>
+          opt && typeof opt === 'object' &&
+          'name' in opt &&
           typeof opt.name === 'string' &&
           opt.name.toLowerCase().trim() === "cv book".toLowerCase().trim()
         );
@@ -229,7 +229,7 @@ export async function getCVBookSubOption(): Promise<CareerSubOption | null> {
           return cvBook as CareerSubOption;
         }
       }
-      
+
       return null;
     } catch (fetchError) {
       console.error("[getCVBookSubOption] Error fetching:", fetchError);

@@ -97,10 +97,10 @@ export async function fetchCompaniesAction() {
     salesperson:
       typeof c.salesperson === "object" && c.salesperson
         ? `${c.salesperson.first_name ?? ""} ${c.salesperson.last_name ?? ""}`.trim() ||
-          c.salesperson.id
+        c.salesperson.id
         : typeof c.salesperson === "string" && c.salesperson
-        ? c.salesperson
-        : "Not set",
+          ? c.salesperson
+          : "Not set",
     status: c.status ?? "",
     // Include options so you can access events
     options: c.options ?? [],
@@ -359,23 +359,23 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
 
   if (repPayload && (repPayload.email || repPayload.first_name || repPayload.last_name)) {
     const newRep = await createRep(repPayload);
-    
+
     if (!newRep || !newRep.id) {
       console.error("[createCompanyAction] Failed to create representative:", repPayload.email);
       throw new Error("Failed to create representative");
     }
-    
+
     console.log(`[createCompanyAction] Representative created successfully: ${newRep.id} (${repPayload.email})`);
-    
+
     const updatedRep = await updateRep(newRep.id, {
       first_name: repPayload.first_name,
       last_name: repPayload.last_name,
     });
-    
+
     // Use newRep.id since updatedRep might be null if update failed
     // The user is created successfully even if the name update fails
     const repIdForCompany = updatedRep?.id || newRep.id;
-    
+
     if (!updatedRep) {
       console.warn(`[createCompanyAction] Failed to update rep details for ${newRep.id}, but continuing with user creation...`);
     }
@@ -392,41 +392,41 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
     if (repPayload.email && newRep?.id) {
       try {
         console.log(`[createCompanyAction] Generating invite token for user ${newRep.id} (${repPayload.email})`);
-        
+
         // Small delay to ensure user is fully created in Directus
         await new Promise(resolve => setTimeout(resolve, 500));
-        
+
         // Generate secure invite token
         const { generateInviteToken } = await import("@/lib/repos/users");
         const tokenData = await generateInviteToken(newRep.id);
 
         if (tokenData && tokenData.token) {
           console.log(`[createCompanyAction] Token generated successfully for ${repPayload.email}`);
-          
+
           // Build accept invite URL with token
-          const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
-            || process.env.NEXT_PUBLIC_FORM_DOMAIN 
+          const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL
+            || process.env.NEXT_PUBLIC_FORM_DOMAIN
             || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
-          
+
           const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(tokenData.token)}`;
-          
+
           // Send custom invitation email using our SMTP setup
           const { sendEmail } = await import("@/lib/repos/directus");
           const { generateInvitationEmailHtml } = await import("@/lib/email-templates");
-          
+
           const emailHtml = generateInvitationEmailHtml({
             firstName: repPayload.first_name ?? undefined,
             lastName: repPayload.last_name ?? undefined,
             companyName: companyPayload.name,
             acceptInviteUrl,
           });
-          
+
           await sendEmail({
             to: repPayload.email,
             subject: `Welcome to VTK Career Platform${companyPayload.name ? ` - ${companyPayload.name}` : ''}`,
             html: emailHtml,
           });
-          
+
           console.log(`[createCompanyAction] Invitation email sent to ${repPayload.email}`);
         } else {
           console.error(`[createCompanyAction] Failed to generate invite token for user ${newRep.id} (${repPayload.email}) - tokenData is null or missing token`);
@@ -448,12 +448,12 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
 export async function createCompanyRepAction(companyId: string, repPayload: Partial<CompanyRep>) {
   if (!repPayload) return null;
   const newRep = await createRep(repPayload);
-  
+
   if (!newRep || !newRep.id) {
     console.error("Failed to create representative");
     return null;
   }
-  
+
   await updateRep(newRep.id, {
     first_name: repPayload.first_name,
     last_name: repPayload.last_name,
@@ -461,7 +461,7 @@ export async function createCompanyRepAction(companyId: string, repPayload: Part
 
   const company = await fetchCompanyByIdAction(companyId);
 
-  if (!company) {return;}
+  if (!company) { return; }
 
   // Build representatives array as string IDs
   let representativeIds: string[] = [];
@@ -478,47 +478,47 @@ export async function createCompanyRepAction(companyId: string, repPayload: Part
 
   console.log(representativeIds)
 
-  const result = await updateCompanyAction(companyId, {representatives: representativeIds as unknown as CompanyRep[]});
+  const result = await updateCompanyAction(companyId, { representatives: representativeIds as unknown as CompanyRep[] });
 
   // Send invitation email to the representative
   if (repPayload.email && newRep?.id) {
     try {
       console.log(`[createCompanyRepAction] Generating invite token for user ${newRep.id} (${repPayload.email})`);
-      
+
       // Small delay to ensure user is fully created in Directus
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       // Generate secure invite token
       const { generateInviteToken } = await import("@/lib/repos/users");
       const tokenData = await generateInviteToken(newRep.id);
 
       if (tokenData && tokenData.token) {
         console.log(`[createCompanyRepAction] Token generated successfully for ${repPayload.email}`);
-        
+
         // Build accept invite URL with token
-        const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
-          || process.env.NEXT_PUBLIC_FORM_DOMAIN 
+        const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL
+          || process.env.NEXT_PUBLIC_FORM_DOMAIN
           || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
-        
+
         const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(tokenData.token)}`;
-        
+
         // Send custom invitation email using our SMTP setup
         const { sendEmail } = await import("@/lib/repos/directus");
         const { generateInvitationEmailHtml } = await import("@/lib/email-templates");
-        
+
         const emailHtml = generateInvitationEmailHtml({
           firstName: repPayload.first_name ?? undefined,
           lastName: repPayload.last_name ?? undefined,
           companyName: company.name,
           acceptInviteUrl,
         });
-        
+
         await sendEmail({
           to: repPayload.email,
           subject: `Welcome to VTK Career Platform${company.name ? ` - ${company.name}` : ''}`,
           html: emailHtml,
         });
-        
+
         console.log(`[createCompanyRepAction] Invitation email sent to ${repPayload.email}`);
       } else {
         console.error(`[createCompanyRepAction] Failed to generate invite token for user ${newRep.id} (${repPayload.email}) - tokenData is null or missing token`);
@@ -541,8 +541,8 @@ export async function requestRepAction(repPayload: Partial<CompanyRep>) {
   const salespersonId = typeof repPayload?.company?.salesperson === "string"
     ? repPayload.company.salesperson
     : repPayload?.company?.salesperson && typeof repPayload.company.salesperson === "object"
-    ? repPayload.company.salesperson.id
-    : undefined;
+      ? repPayload.company.salesperson.id
+      : undefined;
 
   if (!salespersonId) {
     throw new Error("Salesperson ID not found");
@@ -638,41 +638,41 @@ export async function requestRepAction(repPayload: Partial<CompanyRep>) {
     if (repPayload.email && newRep.id) {
       try {
         console.log(`[requestRepAction] Generating invite token for user ${newRep.id} (${repPayload.email})`);
-        
+
         // Small delay to ensure user is fully created in Directus
         await new Promise(resolve => setTimeout(resolve, 500));
-        
+
         // Generate secure invite token
         const { generateInviteToken } = await import("@/lib/repos/users");
         const tokenData = await generateInviteToken(newRep.id);
 
         if (tokenData && tokenData.token) {
           console.log(`[requestRepAction] Token generated successfully for ${repPayload.email}`);
-          
+
           // Build accept invite URL with token
-          const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
-            || process.env.NEXT_PUBLIC_FORM_DOMAIN 
+          const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL
+            || process.env.NEXT_PUBLIC_FORM_DOMAIN
             || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
-          
+
           const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(tokenData.token)}`;
-          
+
           // Send custom invitation email using our SMTP setup
           const { sendEmail } = await import("@/lib/repos/directus");
           const { generateInvitationEmailHtml } = await import("@/lib/email-templates");
-          
+
           const emailHtml = generateInvitationEmailHtml({
             firstName: repPayload.first_name ?? undefined,
             lastName: repPayload.last_name ?? undefined,
             companyName: company.name,
             acceptInviteUrl,
           });
-          
+
           await sendEmail({
             to: repPayload.email,
             subject: `Welcome to VTK Career Platform${company.name ? ` - ${company.name}` : ''}`,
             html: emailHtml,
           });
-          
+
           console.log(`[requestRepAction] Invitation email sent to ${repPayload.email}`);
         } else {
           console.error(`[requestRepAction] Failed to generate invite token for user ${newRep.id} (${repPayload.email})`);
@@ -721,7 +721,7 @@ export async function setupCompanyAction(
   try {
     // Fetch masters to get full master objects
     const masters = await fetchMastersAction();
-    
+
     // Build category payload from selected master IDs
     const categoryPayload = masters
       .filter((m) => selectedMasters.includes(m.id))
@@ -735,7 +735,7 @@ export async function setupCompanyAction(
     };
 
     const updated = await updateCompanyAction(companyId, updatePayload);
-    
+
     if (!updated) {
       return { success: false, error: "Failed to update company" };
     }
@@ -1056,10 +1056,10 @@ export async function resendInviteAction(userId: string, companyId: string): Pro
     console.log(`[resendInviteAction] Token generated successfully for ${userEmail}`);
 
     // Build accept invite URL with token
-    const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
-      || process.env.NEXT_PUBLIC_FORM_DOMAIN 
+    const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL
+      || process.env.NEXT_PUBLIC_FORM_DOMAIN
       || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
-    
+
     const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(tokenData.token)}`;
 
     // Send custom invitation email using our SMTP setup
@@ -1108,10 +1108,10 @@ export async function fetchPendingApprovalRequestsAction(): Promise<PendingAppro
       if (userDirectus) {
         try {
           const { readMe } = await import("@directus/sdk");
-          const me = await userDirectus.request(readMe({ fields: ["role.id"] }));
+          const me = await userDirectus.request(readMe({ fields: ["role.id"] as any })) as { role?: { id: string } | string | null };
           const salespersonRoleId = "7b128ef4-f530-47d2-8f4c-ef82518eb313";
-          const isSalesperson = me.role?.id === salespersonRoleId;
-          
+          const isSalesperson = typeof me.role !== "string" && me.role?.id === salespersonRoleId;
+
           if (!isSalesperson) {
             // User is neither admin nor salesperson - return empty array silently
             return [];
@@ -1206,7 +1206,7 @@ export async function createUserFromApprovedRequest(request: any): Promise<void>
         // User already exists - use existing user ID
         userId = existingUser.id;
         console.log(`[createUserFromApprovedRequest] User already exists: ${userId} (${request.email})`);
-        
+
         // Update user status to "invited" if it's not already set
         // Also update role if needed
         try {
@@ -1217,7 +1217,7 @@ export async function createUserFromApprovedRequest(request: any): Promise<void>
           if (existingUser.role !== userRole) {
             updatePayload.role = userRole;
           }
-          
+
           if (Object.keys(updatePayload).length > 0) {
             const updateUserRes = await fetch(
               `${normalizedBase}users/${userId}`,
@@ -1230,7 +1230,7 @@ export async function createUserFromApprovedRequest(request: any): Promise<void>
                 body: JSON.stringify(updatePayload),
               }
             );
-            
+
             if (!updateUserRes.ok) {
               console.warn(`[createUserFromApprovedRequest] Failed to update user status/role for ${userId}`);
             }
@@ -1242,7 +1242,7 @@ export async function createUserFromApprovedRequest(request: any): Promise<void>
         // User doesn't exist, create it
         isNewUser = true;
         console.log(`[createUserFromApprovedRequest] Creating new user for ${request.email}`);
-        
+
         const repPayload: Partial<CompanyRep> = {
           email: request.email,
           role: userRole,
@@ -1257,7 +1257,7 @@ export async function createUserFromApprovedRequest(request: any): Promise<void>
         if (newRep && newRep.id) {
           userId = newRep.id;
           console.log(`[createUserFromApprovedRequest] User created successfully: ${userId}`);
-          
+
           // Update rep details (name, etc.)
           await updateRep(newRep.id, {
             first_name: request.first_name || undefined,
@@ -1300,41 +1300,41 @@ export async function createUserFromApprovedRequest(request: any): Promise<void>
     if (request.email && userId) {
       try {
         console.log(`[createUserFromApprovedRequest] Generating invite token for user ${userId} (${request.email})`);
-        
+
         // Small delay to ensure user is fully created/updated in Directus
         await new Promise(resolve => setTimeout(resolve, 500));
-        
+
         // Generate secure invite token
         const { generateInviteToken } = await import("@/lib/repos/users");
         const tokenData = await generateInviteToken(userId);
 
         if (tokenData && tokenData.token) {
           console.log(`[createUserFromApprovedRequest] Token generated successfully for ${request.email}`);
-          
+
           // Build accept invite URL with token
-          const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
-            || process.env.NEXT_PUBLIC_FORM_DOMAIN 
+          const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL
+            || process.env.NEXT_PUBLIC_FORM_DOMAIN
             || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
-          
+
           const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(tokenData.token)}`;
-          
+
           // Send custom invitation email using our SMTP setup
           const { sendEmail } = await import("@/lib/repos/directus");
           const { generateInvitationEmailHtml } = await import("@/lib/email-templates");
-          
+
           const emailHtml = generateInvitationEmailHtml({
             firstName: request.first_name ?? undefined,
             lastName: request.last_name ?? undefined,
             companyName: company.name,
             acceptInviteUrl,
           });
-          
+
           await sendEmail({
             to: request.email,
             subject: `Welcome to VTK Career Platform${company.name ? ` - ${company.name}` : ''}`,
             html: emailHtml,
           });
-          
+
           console.log(`[createUserFromApprovedRequest] Invitation email sent to ${request.email}`);
         } else {
           console.error(`[createUserFromApprovedRequest] Failed to generate invite token for user ${userId} (${request.email}) - tokenData is null or missing token`);
@@ -1425,9 +1425,9 @@ export async function approveRepRequestAction(
     return { success: true };
   } catch (error) {
     console.error("Error in approveRepRequestAction:", error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : "Unknown error" 
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error"
     };
   }
 }
@@ -1461,13 +1461,13 @@ export async function requestCompanyPageAction(): Promise<{ success: boolean; er
 
       const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
       const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-      
+
       if (!serverToken) {
         return { success: false, error: "Server configuration error" };
       }
 
-      const salespersonId = typeof company.salesperson === "string" 
-        ? company.salesperson 
+      const salespersonId = typeof company.salesperson === "string"
+        ? company.salesperson
         : company.salesperson.id;
 
       try {
@@ -1556,13 +1556,13 @@ export async function requestCVBookAccessAction(): Promise<{ success: boolean; e
 
       const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
       const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-      
+
       if (!serverToken) {
         return { success: false, error: "Server configuration error" };
       }
 
-      const salespersonId = typeof company.salesperson === "string" 
-        ? company.salesperson 
+      const salespersonId = typeof company.salesperson === "string"
+        ? company.salesperson
         : company.salesperson.id;
 
       try {
@@ -1628,7 +1628,7 @@ async function companyExistsByName(name: string): Promise<boolean> {
   try {
     const companies = await listCompanies({ limit: 1000, sort: "name" });
     if (!companies) return false;
-    
+
     const normalizedName = name.trim().toLowerCase();
     return companies.some((c: Company) => c.name?.trim().toLowerCase() === normalizedName);
   } catch (error) {
@@ -1650,11 +1650,11 @@ function parseCSV(csvContent: string): Record<string, string>[] {
     const values: string[] = [];
     let current = '';
     let inQuotes = false;
-    
+
     for (let i = 0; i < line.length; i++) {
       const char = line[i];
       const nextChar = line[i + 1];
-      
+
       if (char === '"') {
         if (inQuotes && nextChar === '"') {
           // Escaped quote
@@ -1672,7 +1672,7 @@ function parseCSV(csvContent: string): Record<string, string>[] {
         current += char;
       }
     }
-    
+
     // Add last field
     values.push(current.trim());
     return values;
@@ -1680,25 +1680,25 @@ function parseCSV(csvContent: string): Record<string, string>[] {
 
   // Parse header
   const headers = parseCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, ''));
-  
+
   // Parse data rows, filtering out empty rows
   const rows: Record<string, string>[] = [];
   for (let i = 1; i < lines.length; i++) {
     const values = parseCSVLine(lines[i]).map(v => v.replace(/^"|"$/g, ''));
     if (values.length !== headers.length) continue;
-    
+
     // Skip if row is empty or all values are empty
     if (values.every(v => !v || v.trim() === '')) {
       continue;
     }
-    
+
     const row: Record<string, string> = {};
     headers.forEach((header, index) => {
       row[header] = values[index] || '';
     });
     rows.push(row);
   }
-  
+
   return rows;
 }
 
@@ -1708,42 +1708,42 @@ function parseCSV(csvContent: string): Record<string, string>[] {
 function findSalespersonByName(salespersons: DirectusUser[], name: string): string | null {
   const normalizedName = name.trim().toLowerCase();
   const nameParts = normalizedName.split(/\s+/).filter(p => p.length > 0);
-  
+
   if (nameParts.length === 0) {
     return null;
   }
-  
+
   for (const salesperson of salespersons) {
     const firstName = (salesperson.first_name || '').trim().toLowerCase();
     const lastName = (salesperson.last_name || '').trim().toLowerCase();
-    
+
     if (!firstName && !lastName) {
       continue;
     }
-    
+
     // Exact match: "First Last" === "first last"
     const fullName = `${firstName} ${lastName}`.trim();
     if (fullName === normalizedName) {
       return salesperson.id;
     }
-    
+
     // Match by first and last name parts (ignore middle names)
     // "John Middle Doe" matches "John Doe"
     if (nameParts.length >= 2) {
       const inputFirst = nameParts[0];
       const inputLast = nameParts[nameParts.length - 1];
-      
+
       if (firstName === inputFirst && lastName === inputLast) {
         return salesperson.id;
       }
     }
-    
+
     // Match by first name only (if only one part provided)
     if (nameParts.length === 1 && firstName === nameParts[0]) {
       return salesperson.id;
     }
   }
-  
+
   return null;
 }
 
@@ -1772,7 +1772,7 @@ function mapCSVRowToCompany(
 } | null {
   const companyName = row['companyName']?.trim();
   const salespersonName = row['salesperson']?.trim();
-  
+
   // Required fields
   if (!companyName || !salespersonName) {
     return null;
@@ -1803,7 +1803,7 @@ function mapCSVRowToCompany(
   const firstName = row['firstName']?.trim();
   const lastName = row['lastName']?.trim();
   const email = row['email']?.trim();
-  
+
   if (firstName || lastName || email) {
     rep = {
       first_name: firstName || undefined,
@@ -1938,10 +1938,10 @@ export async function processCompaniesCSVAction(formData: FormData): Promise<{
       for (let i = 0; i < batch.length; i++) {
         const rowIndex = batchStart + i;
         const row = batch[i];
-        
+
         try {
           const mapped = mapCSVRowToCompany(row, salespersonNameToId);
-          
+
           if (!mapped) {
             errors.push(`Row ${rowIndex + 2}: Missing required fields (companyName, salesperson)`);
             continue;
@@ -1960,7 +1960,7 @@ export async function processCompaniesCSVAction(formData: FormData): Promise<{
           // Check if company already exists (use cache first)
           const normalizedCompanyName = companyName.trim().toLowerCase();
           let companyExists = existingCompanyNames.has(normalizedCompanyName);
-          
+
           // If not found in cache and we haven't loaded all companies, check individually
           // This is a fallback for very large datasets
           if (!companyExists) {

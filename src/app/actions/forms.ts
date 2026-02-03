@@ -181,7 +181,7 @@ export async function createFormVersionAction(data: {
     // Get the next version number
     const versions = await listFormVersions(data.form_id);
     const maxVersion = Math.max(...versions.map((v) => v.version_number), 0);
-    
+
     // If metadata is not provided, preserve metadata from the previous active version
     let metadataToUse = data.metadata;
     if (!metadataToUse) {
@@ -190,7 +190,7 @@ export async function createFormVersionAction(data: {
         metadataToUse = activeVersion.metadata as FormMetadata;
       }
     }
-    
+
     return await createFormVersion({
       form_id: data.form_id,
       schema: data.schema,
@@ -399,13 +399,13 @@ export async function submitFormResponseAction(data: {
     const { getServerDirectusClient } = await import("@/lib/directus");
     const serverClient = await getServerDirectusClient();
     const { readItem } = await import("@directus/sdk");
-    
+
     const formVersion = await serverClient.request(
       readItem("form_versions", data.form_version_id, {
-        fields: ["*", "form_id.*"],
+        fields: ["*", { form_id: ["*"] } as any],
       })
     ) as unknown as FormVersion;
-    
+
     const versionMetadata = (formVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata;
 
     // Check if form requires login (event registration forms always require login) and verify student is authenticated
@@ -452,9 +452,9 @@ export async function submitFormResponseAction(data: {
             limit: -1, // Get all to count
           })
         ) as unknown as Array<{ id: string }>;
-        
+
         const currentCount = responses.length;
-        
+
         if (currentCount >= maxEntries) {
           throw new Error(`This form has reached its maximum capacity and is no longer accepting new submissions.`);
         }
@@ -464,14 +464,14 @@ export async function submitFormResponseAction(data: {
         if (errorMessage.includes('maximum capacity')) {
           throw error;
         }
-        
+
         // Check if this is an authentication error (401)
         const errorAny = error as any;
         const responseStatus = errorAny?.response?.status ?? errorAny?.status;
-        const isAuthError = responseStatus === 401 || 
-                          errorMessage.includes('Invalid user credentials') || 
-                          errorMessage.includes('Unauthorized');
-        
+        const isAuthError = responseStatus === 401 ||
+          errorMessage.includes('Invalid user credentials') ||
+          errorMessage.includes('Unauthorized');
+
         if (isAuthError) {
           console.error('[submitFormResponseAction] Authentication error checking form capacity');
           throw new Error("Unable to verify form capacity due to authentication error. Please contact support if this persists.");
@@ -564,10 +564,10 @@ export async function submitFormResponseAction(data: {
         data: enhancedFormData, // Include student info in form data (_student_id, etc.)
         attachments: data.attachments,
         ...(attendantUuid ? { attendant_uuid: attendantUuid } : {}),
-        ...(data.company_id || _company_id ? { company_id: data.company_id || _company_id } : {}),
-        ...(data.submitter_first_name || _submitter_first_name ? { submitter_first_name: data.submitter_first_name || _submitter_first_name } : {}),
-        ...(data.submitter_last_name || _submitter_last_name ? { submitter_last_name: data.submitter_last_name || _submitter_last_name } : {}),
-        ...(data.submitter_email || _submitter_email ? { submitter_email: data.submitter_email || _submitter_email } : {}),
+        ...(data.company_id || _company_id ? { company_id: (data.company_id || _company_id) as string } : {}),
+        ...(data.submitter_first_name || _submitter_first_name ? { submitter_first_name: (data.submitter_first_name || _submitter_first_name) as string } : {}),
+        ...(data.submitter_last_name || _submitter_last_name ? { submitter_last_name: (data.submitter_last_name || _submitter_last_name) as string } : {}),
+        ...(data.submitter_email || _submitter_email ? { submitter_email: (data.submitter_email || _submitter_email) as string } : {}),
       };
       response = await serverClient.request(
         createItem("form_responses", responseData)
@@ -577,11 +577,11 @@ export async function submitFormResponseAction(data: {
       // Re-throw to let the caller handle it
       throw error;
     }
-    
+
     // Find email field - check common field names (case-insensitive)
     const cleanFormData = formData || {};
     let emailValue: string | undefined;
-    
+
     // For company forms, prefer submitter_email
     if (versionMetadata?.is_company_form && (data.submitter_email || _submitter_email)) {
       emailValue = (data.submitter_email || _submitter_email) as string;
@@ -599,7 +599,7 @@ export async function submitFormResponseAction(data: {
         }
       }
     }
-    
+
     // If this is an event registration form, send confirmation email
     if (response && emailValue && versionMetadata?.is_event_registration) {
       // Get form name - prefer from loaded relation, otherwise fetch it using server client
@@ -640,7 +640,7 @@ export async function submitFormResponseAction(data: {
         // Don't throw - email failure shouldn't prevent form submission
       }
     }
-    
+
     // If this is a company form, send confirmation email (if enabled)
     if (response && emailValue && versionMetadata?.is_company_form && versionMetadata?.send_company_form_email) {
       let formName: string;
@@ -666,12 +666,12 @@ export async function submitFormResponseAction(data: {
       if (_company_id) {
         try {
           // Extract company ID - handle both string and object formats
-          const companyId = typeof _company_id === 'string' 
-            ? _company_id 
+          const companyId = typeof _company_id === 'string'
+            ? _company_id
             : (typeof _company_id === 'object' && _company_id !== null && 'id' in _company_id)
-            ? (_company_id as { id: string }).id
-            : null;
-          
+              ? (_company_id as { id: string }).id
+              : null;
+
           if (companyId) {
             const company = await serverClient.request(
               readItem("company", companyId, { fields: ["name"] })
@@ -689,7 +689,7 @@ export async function submitFormResponseAction(data: {
         // Get user info if available
         const { getUserFromCookies } = await import("@/lib/auth-server");
         const user = await getUserFromCookies();
-        
+
         await sendCompanyFormConfirmationEmail({
           to: emailValue,
           submitterFirstName: (data.submitter_first_name || _submitter_first_name || (user?.name ? user.name.split(/\s+/)[0] : '')) as string,
@@ -704,7 +704,7 @@ export async function submitFormResponseAction(data: {
         // Don't throw - email failure shouldn't prevent form submission
       }
     }
-    
+
     return response;
   } catch (error) {
     console.error("Error submitting form response:", error);
@@ -754,10 +754,10 @@ async function sendCompanyFormConfirmationEmail({
   try {
     const { sendEmail } = await import("@/lib/repos/directus");
     const { generateCompanyFormConfirmationEmailHtml } = await import("@/lib/email-templates");
-    
+
     // Combine first and last name for display
     const submitterFullName = [submitterFirstName, submitterLastName].filter(Boolean).join(' ') || 'Guest';
-    
+
     // Replace placeholders in email content
     let personalizedContent = content
       .replace(/{submitter_name}/g, submitterFullName)
@@ -765,12 +765,12 @@ async function sendCompanyFormConfirmationEmail({
       .replace(/{submitter_last_name}/g, submitterLastName || '')
       .replace(/{form_name}/g, formName)
       .replace(/{company_name}/g, companyName || 'Your Company');
-    
+
     // Only convert newlines if content doesn't appear to be HTML
     if (!personalizedContent.includes('<') || !personalizedContent.includes('>')) {
       personalizedContent = personalizedContent.replace(/\n/g, '<br>');
     }
-    
+
     const emailHtml = generateCompanyFormConfirmationEmailHtml({
       subject,
       submitterName: submitterFullName,
@@ -778,7 +778,7 @@ async function sendCompanyFormConfirmationEmail({
       formName,
       companyName: companyName || 'Your Company',
     });
-    
+
     await sendEmail({
       to,
       subject,
@@ -814,21 +814,21 @@ async function sendEventConfirmationEmail({
   try {
     const { sendEmail } = await import("@/lib/repos/directus");
     const { generateEventConfirmationEmailHtml } = await import("@/lib/email-templates");
-    
+
     const fullName = `${firstname} ${lastname}`.trim() || 'Guest';
-    
+
     // Replace placeholders in email content
     // If content is already HTML (from TipTap), just replace placeholders
     // Otherwise, convert newlines to <br>
     let personalizedContent = content
       .replace(/{firstname}/g, firstname || 'Guest')
       .replace(/{lastname}/g, lastname || '');
-    
+
     // Only convert newlines if content doesn't appear to be HTML
     if (!personalizedContent.includes('<') || !personalizedContent.includes('>')) {
       personalizedContent = personalizedContent.replace(/\n/g, '<br>');
     }
-    
+
     const emailHtml = generateEventConfirmationEmailHtml({
       subject,
       fullName,
@@ -838,7 +838,7 @@ async function sendEventConfirmationEmail({
       eventLocation: eventLocation || undefined,
       formName,
     });
-    
+
     await sendEmail({
       to,
       subject,
@@ -856,7 +856,7 @@ export async function uploadFileAction(formData: FormData) {
   try {
     // Try to get the file from FormData
     let file = formData.get('file') as File | null;
-    
+
     // If file is not found, check all entries (for debugging)
     if (!file) {
       const entries: string[] = [];
@@ -910,11 +910,11 @@ export async function uploadFileAction(formData: FormData) {
     }
 
     const result = await response.json();
-    
+
     // Extract file ID and check if folder was set
     const fileId = result?.data?.id || result?.id;
     const uploadedFolderId = result?.data?.folder || result?.folder;
-    
+
     if (!fileId) {
       throw new Error('Failed to extract file ID from upload result');
     }
@@ -1067,7 +1067,7 @@ export async function fetchPublicFormBySlugAction(slug: string) {
     }
 
     const versionMetadata = (activeVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata;
-    
+
     // Check if form requires login (event registration forms always require login) and if student is authenticated
     let requiresLogin = false;
     let isAuthenticated = false;
@@ -1125,7 +1125,7 @@ export async function fetchPublicFormBySlugAction(slug: string) {
         console.error('[fetchPublicFormBySlugAction] Error fetching existing response:', error);
       }
     }
-    
+
     // Check if form is full using server client (works for both authenticated and public access)
     let isFull = false;
     if (versionMetadata?.max_entries) {
@@ -1133,13 +1133,13 @@ export async function fetchPublicFormBySlugAction(slug: string) {
         // Use server client which has elevated permissions for counting
         const { getServerDirectusClient } = await import("@/lib/directus");
         const serverClient = await getServerDirectusClient();
-        
+
         // Check if server token is available
         const hasServerToken = !!process.env.DIRECTUS_SERVER_TOKEN;
         if (!hasServerToken) {
           console.warn('[fetchPublicFormBySlugAction] DIRECTUS_SERVER_TOKEN not set, capacity check may fail');
         }
-        
+
         const { readItems } = await import("@directus/sdk");
         const responses = await serverClient.request(
           readItems("form_responses", {
@@ -1148,7 +1148,7 @@ export async function fetchPublicFormBySlugAction(slug: string) {
             limit: -1, // Get all to count
           })
         ) as unknown as Array<{ id: string }>;
-        
+
         const currentCount = responses.length;
         const maxEntries = versionMetadata.max_entries as number;
         isFull = currentCount >= maxEntries;
@@ -1158,10 +1158,10 @@ export async function fetchPublicFormBySlugAction(slug: string) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         const errorAny = error as any;
         const responseStatus = errorAny?.response?.status ?? errorAny?.status;
-        const isAuthError = responseStatus === 401 || 
-                          errorMessage.includes('Invalid user credentials') || 
-                          errorMessage.includes('Unauthorized');
-        
+        const isAuthError = responseStatus === 401 ||
+          errorMessage.includes('Invalid user credentials') ||
+          errorMessage.includes('Unauthorized');
+
         if (isAuthError) {
           console.error('[fetchPublicFormBySlugAction] Authentication error checking form capacity');
         } else {

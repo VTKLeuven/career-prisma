@@ -7,13 +7,15 @@ import {
 } from "@directus/sdk";
 import { cookies } from "next/headers";
 
+import { Schema } from "@/lib/schema";
+
 const DIRECTUS_URL = process.env.DIRECTUS_URL || "http://localhost:8055";
 
 /**
  * Base client (no auth).
  * Good for public collections or items that don't need user context.
  */
-export const directus = createDirectus(DIRECTUS_URL).with(rest());
+export const directus = createDirectus<Schema>(DIRECTUS_URL).with(rest());
 
 /**
  * Factory: creates an authenticated client from a token
@@ -25,7 +27,7 @@ export async function getDirectusWithToken() {
   const token = cookieStore.get(ACCESS_COOKIE)?.value;
   if (!token) return null;
 
-  return createDirectus(DIRECTUS_URL).with(staticToken(token)).with(rest());
+  return createDirectus<Schema>(DIRECTUS_URL).with(staticToken(token)).with(rest());
 }
 
 export async function getAuthedDirectusOrThrow() {
@@ -52,7 +54,7 @@ export async function getServerDirectusClient() {
   // Fall back to server token for public operations
   const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
   if (serverToken && serverToken.trim() !== '') {
-    return createDirectus(DIRECTUS_URL).with(staticToken(serverToken)).with(rest());
+    return createDirectus<Schema>(DIRECTUS_URL).with(staticToken(serverToken)).with(rest());
   }
 
   // If no server token, use public client (may have limited permissions)
@@ -65,9 +67,9 @@ export async function getServerDirectusClient() {
  */
 export function getAdminDirectusClient() {
   const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-  console.log("Checking Admin Token:", serverToken ? "Present (" + serverToken.substring(0, 5) + "...)" : "MISSING");
+
   if (serverToken && serverToken.trim() !== '') {
-    return createDirectus(DIRECTUS_URL).with(staticToken(serverToken)).with(rest());
+    return createDirectus<Schema>(DIRECTUS_URL).with(staticToken(serverToken)).with(rest());
   }
 
   // If no server token, return null to indicate admin operations are not available

@@ -7,10 +7,10 @@ import ZonesClient from "./client";
 
 async function getBooths() {
     const client = await getAdminDirectusClient() || directus;
-    return client.request(readItems("Booths", {
-        fields: ["id", "booth_number", "Floorplan.name", "company.name"],
-        sort: ["Floorplan.name", "booth_number"],
-    })) as Promise<Booth[]>;
+    return client.request(readItems("booths", {
+        fields: ["id", "booth_number", "Floorplan.name", "company.name"] as any,
+        sort: ["Floorplan.name", "booth_number"] as any,
+    })) as unknown as Promise<Booth[]>;
 }
 
 export default async function AdminZonesPage() {

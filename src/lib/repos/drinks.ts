@@ -19,11 +19,11 @@ export async function listDrinks(opts?: {
 
         return client.request(
             readItems("drinks", {
-                fields: ["*", "image.*"],
+                fields: ["*", "image.*" as any],
                 filter,
-                sort: ["name"],
+                sort: ["name"] as any,
             })
-        ) as Promise<Drink[]>;
+        ) as unknown as Promise<Drink[]>;
     } catch (error) {
         console.error("Error listing drinks:", error);
         return [];

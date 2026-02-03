@@ -24,7 +24,7 @@ export async function GET(
         { status: 500 }
       );
     }
-    
+
     // Find the form response by attendant_uuid
     const responses = await client.request(
       readItems("form_responses", {
@@ -32,7 +32,7 @@ export async function GET(
           "id",
           "data",
           "submitted_at",
-          "form_version_id.form_id.name",
+          { form_version_id: { form_id: ["name"] } } as any,
         ],
         filter: {
           attendant_uuid: { _eq: uuid },

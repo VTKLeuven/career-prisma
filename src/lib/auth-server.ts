@@ -14,9 +14,9 @@ export async function getUserFromCookies(): Promise<DirectusUser | undefined> {
     // Try to fetch user info - this will throw if token is invalid/expired
     const me = await directus.request(
       readMe({
-        fields: ["*", "*.*"],
+        fields: ["*", { role: ["*"], company: ["*"] } as any],
       })
-    );
+    ) as any;
 
     // Validate that we actually got a valid user response with required fields
     if (!me || !me.id || !me.email || !me.role || !me.role.id) {

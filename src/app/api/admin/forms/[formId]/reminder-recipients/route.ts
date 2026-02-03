@@ -40,10 +40,7 @@ export async function POST(
         fields: [
           "id",
           "name",
-          "representatives.id",
-          "representatives.email",
-          "representatives.first_name",
-          "representatives.last_name",
+          { representatives: ["id", "email", "first_name", "last_name"] } as any,
         ],
         filter: {
           id: { _in: companyIds },

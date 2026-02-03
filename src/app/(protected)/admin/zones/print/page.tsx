@@ -5,9 +5,9 @@ import PrintClient from "./client";
 
 async function getBooths() {
     const client = await getAdminDirectusClient() || directus;
-    return client.request(readItems("Booths", {
-        fields: ["id", "booth_number", "Floorplan.name", "company.name", "company.id"],
-        sort: ["Floorplan.name", "booth_number"],
+    return client.request(readItems("booths", {
+        fields: ["id", "booth_number", "coords", { Floorplan: ["name"], company: ["name", "id"] }],
+        sort: ["Floorplan.name", "booth_number"] as any,
     })) as Promise<Booth[]>;
 }
 

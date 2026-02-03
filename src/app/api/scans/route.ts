@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDirectusClient } from "@/lib/directus";
-import { readItems } from "@directus/sdk";
+import { readItems, readUsers } from "@directus/sdk";
 import { getUserFromCookies } from "@/lib/auth-server";
 
 export async function GET(request: NextRequest) {
@@ -50,119 +50,78 @@ export async function GET(request: NextRequest) {
     const eventName = searchParams.get("event");
     const eventId = searchParams.get("eventId");
 
-    // Workaround for company_id type mismatch:
-    // If attendant_scans.company_id is an integer but companies use UUIDs,
-    // we filter by scanned_by.company relation instead
-    // Try using nested relation filter first (more efficient)
-    let scans;
-    try {
-      scans = await client.request(
-        readItems("attendant_scans", {
-          fields: [
-            "id",
-            "attendant_uuid",
-            "scanned_at",
-            "scanned_by.first_name",
-            "scanned_by.last_name",
-            "scanned_by.email",
-            "form_response_id.data",
-            "form_response_id.submitted_at",
-            "form_response_id.form_version_id.form_id.name",
-            "form_response_id.form_version_id.form_id.id",
-            "form_response_id.form_version_id.metadata",
-          ],
-          filter: {
-            "scanned_by.company": { _eq: companyId },
-          },
-          sort: "-scanned_at",
-          limit: -1, // Get all scans
-        })
-      ) as unknown as Array<{
-        id: string;
-        attendant_uuid: string;
-        scanned_at: string;
-        scanned_by: {
-          first_name: string | null;
-          last_name: string | null;
-          email: string;
-        };
-        form_response_id: {
-          data: Record<string, unknown>;
-          submitted_at: string;
-          form_version_id: {
-            form_id: {
-              id: string;
-              name: string;
-            };
-            metadata?: {
-              event_id?: string;
-              [key: string]: unknown;
-            };
-          };
-        };
-      }>;
-    } catch (filterError) {
-      // If nested relation filter doesn't work, fall back to fetching all and filtering in memory
-      console.warn("Nested relation filter failed, falling back to in-memory filtering:", filterError);
-      let allScans = await client.request(
-        readItems("attendant_scans", {
-          fields: [
-            "id",
-            "attendant_uuid",
-            "scanned_at",
-            "scanned_by.first_name",
-            "scanned_by.last_name",
-            "scanned_by.email",
-            "scanned_by.company",
-            "form_response_id.data",
-            "form_response_id.submitted_at",
-            "form_response_id.form_version_id.form_id.name",
-            "form_response_id.form_version_id.form_id.id",
-            "form_response_id.form_version_id.metadata",
-          ],
-          sort: "-scanned_at",
-          limit: -1, // Get all scans
-        })
-      ) as unknown as Array<{
-        id: string;
-        attendant_uuid: string;
-        scanned_at: string;
-        scanned_by: {
-          first_name: string | null;
-          last_name: string | null;
-          email: string;
-          company?: string | { id: string } | null;
-        };
-        form_response_id: {
-          data: Record<string, unknown>;
-          submitted_at: string;
-          form_version_id: {
-            form_id: {
-              id: string;
-              name: string;
-            };
-            metadata?: {
-              event_id?: string;
-              [key: string]: unknown;
-            };
-          };
-        };
-      }>;
+    // Refactored to avoid nested permission issues:
+    // 1. Fetch all users belonging to this company
+    // 2. Fetch scans where scanned_by is in that list of users
 
-      // Filter scans by company in memory
-      scans = allScans.filter(scan => {
-        const userCompany = scan.scanned_by?.company;
-        if (!userCompany) return false;
-        
-        // Handle both string and object company formats
-        if (typeof userCompany === 'string') {
-          return userCompany === companyId;
-        } else if (typeof userCompany === 'object' && userCompany !== null && 'id' in userCompany) {
-          return userCompany.id === companyId;
-        }
-        return false;
-      });
+    // Step 1: Get company users
+    const companyUsers = await client.request(
+      readUsers({
+        filter: {
+          company: { _eq: companyId },
+        } as any,
+        fields: ["id"],
+        limit: -1,
+      })
+    ) as { id: string }[];
+
+    const companyUserIds = companyUsers.map(u => u.id);
+
+    if (companyUserIds.length === 0) {
+      return NextResponse.json([]);
     }
+
+    // Step 2: Get scans for these users
+    const scans = await client.request(
+      readItems("attendant_scans", {
+        fields: [
+          "id",
+          "attendant_uuid",
+          "scanned_at",
+          {
+            scanned_by: ["first_name", "last_name", "email"],
+            form_response_id: [
+              "data",
+              "submitted_at",
+              {
+                form_version_id: [
+                  "metadata",
+                  { form_id: ["name", "id"] }
+                ]
+              }
+            ]
+          } as any,
+        ],
+        filter: {
+          "scanned_by": { _in: companyUserIds },
+        },
+        sort: "-scanned_at",
+        limit: -1,
+      })
+    ) as unknown as Array<{
+      id: string;
+      attendant_uuid: string;
+      scanned_at: string;
+      scanned_by: {
+        first_name: string | null;
+        last_name: string | null;
+        email: string;
+      };
+      form_response_id: {
+        data: Record<string, unknown>;
+        submitted_at: string;
+        form_version_id: {
+          form_id: {
+            id: string;
+            name: string;
+          };
+          metadata?: {
+            event_id?: string;
+            [key: string]: unknown;
+          };
+        };
+      };
+    }>;
 
     // Transform scans to include computed name field for compatibility
     // Remove company field from scanned_by as it's not needed in response
@@ -194,7 +153,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(filteredScans);
   } catch (error) {
     console.error("Error fetching scans:", error);
-    
+
     // Provide more detailed error information
     let errorMessage = "Failed to fetch scans";
     if (error instanceof Error) {
@@ -206,7 +165,7 @@ export async function GET(request: NextRequest) {
         errorMessage = "Scans collection not found. Please contact support.";
       }
     }
-    
+
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }

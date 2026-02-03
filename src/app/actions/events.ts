@@ -14,20 +14,20 @@ import { getDirectusWithToken } from "@/lib/directus";
 import { updateItem, readItems } from "@directus/sdk";
 
 export async function fetchEventsAction() {
-    const events = await listEvents({ limit: 50, sort: "date" }) ?? [];
-    events.map(el => {
-        el.href = `/event/${el.name.toLowerCase().replace(/\s+/g, "-")}`;
-        el.start_hour = el.start_hour.slice(0, -3)
-        el.end_hour = el.end_hour.slice(0, -3)
+  const events = await listEvents({ limit: 50, sort: "date" }) ?? [];
+  events.map(el => {
+    el.href = `/event/${el.name.toLowerCase().replace(/\s+/g, "-")}`;
+    el.start_hour = el.start_hour.slice(0, -3)
+    el.end_hour = el.end_hour.slice(0, -3)
 
-        el.description = DOMPurify.sanitize(el.description as string, {
-            ADD_ATTR: ['target', 'rel', 'allow', 'allowfullscreen', 'frameborder'],
-            FORBID_TAGS: ['iframe', 'video', 'source', 'p'],
-            // Example: only allow https: URLs
-            ALLOWED_URI_REGEXP: /^(?:(?:https?):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
-        })
+    el.description = DOMPurify.sanitize(el.description as string, {
+      ADD_ATTR: ['target', 'rel', 'allow', 'allowfullscreen', 'frameborder'],
+      FORBID_TAGS: ['iframe', 'video', 'source', 'p'],
+      // Example: only allow https: URLs
+      ALLOWED_URI_REGEXP: /^(?:(?:https?):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
     })
-    return events
+  })
+  return events
 }
 
 export async function fetchOptionsForEventAction(eventId: string) {
@@ -41,7 +41,7 @@ export async function fetchOptionsForEventAction(eventId: string) {
     // This is more reliable than querying the junction table directly
     const allOptions = await client.request(
       readItems("career_event_option", {
-        fields: ["id", "name", "description", "events.*", "events.career_event_id", "events.career_event.*", "event.*", "event.id"],
+        fields: ["id", "name", "description", { events: ["*", { career_event_id: ["*"], career_event: ["*"] }], event: ["*", "id"] } as any],
         limit: 1000,
       })
     ) as unknown as CareerEventOption[];
@@ -56,7 +56,7 @@ export async function fetchOptionsForEventAction(eventId: string) {
       if (option.events && Array.isArray(option.events)) {
         return option.events.some((eventOrJunction: unknown) => {
           if (!eventOrJunction || typeof eventOrJunction !== 'object') return false;
-          
+
           // Check if it's a junction table entry with career_event_id field
           if ('career_event_id' in eventOrJunction) {
             const junction = eventOrJunction as { career_event_id: CareerEvent | string | null };
@@ -68,7 +68,7 @@ export async function fetchOptionsForEventAction(eventId: string) {
               return eventRef === eventId;
             }
           }
-          
+
           // Check if it's a junction table entry with career_event field
           if ('career_event' in eventOrJunction) {
             const junction = eventOrJunction as { career_event: CareerEvent | string | null };
@@ -80,16 +80,16 @@ export async function fetchOptionsForEventAction(eventId: string) {
               return eventRef === eventId;
             }
           }
-          
+
           // Check if it's a direct event object
           if ('id' in eventOrJunction) {
             return (eventOrJunction as CareerEvent).id === eventId;
           }
-          
+
           return false;
         });
       }
-      
+
       // Check single event (backward compatibility)
       if (option.event) {
         const eventRef = option.event;
@@ -100,7 +100,7 @@ export async function fetchOptionsForEventAction(eventId: string) {
           return eventRef === eventId;
         }
       }
-      
+
       return false;
     });
 
@@ -158,7 +158,7 @@ export async function fetchEventPagesAction(lim = 50) {
 
 export async function fetchEventPageBySlugAction(slug: string) {
   const page = await getEventPageBySlug(slug);
-  
+
   if (!page) {
     return null;
   }
@@ -209,17 +209,17 @@ export async function findCompaniesWithEventOptions(eventId: string): Promise<Co
   try {
     // Fetch all companies with their options - use -1 for unlimited
     const allCompanies = await listCompanies({ limit: -1 }) ?? [];
-    
+
     // Filter companies that have options with this event
     const companiesWithEvent: Company[] = [];
-    
+
     for (const company of allCompanies) {
       if (!company.options || company.options.length === 0) continue;
-      
+
       // Check if any option has this event
       for (const opt of company.options) {
         let rawOption: CareerEventOption | null = null;
-        
+
         // Handle junction table format
         if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
           const junction = opt as { career_event_option_id: CareerEventOption | null };
@@ -227,14 +227,14 @@ export async function findCompaniesWithEventOptions(eventId: string): Promise<Co
         } else {
           rawOption = opt as CareerEventOption;
         }
-        
+
         if (!rawOption) continue;
-        
+
         // Check if option has events array
         if (rawOption.events && Array.isArray(rawOption.events)) {
           const hasEvent = rawOption.events.some((eventOrJunction: unknown) => {
             if (!eventOrJunction || typeof eventOrJunction !== 'object') return false;
-            
+
             // Check if it's a junction table entry
             const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
             for (const fieldName of possibleJunctionFields) {
@@ -249,15 +249,15 @@ export async function findCompaniesWithEventOptions(eventId: string): Promise<Co
                 }
               }
             }
-            
+
             // Check if it's a direct event object
             if ('id' in eventOrJunction) {
               return (eventOrJunction as CareerEvent).id === eventId;
             }
-            
+
             return false;
           });
-          
+
           if (hasEvent) {
             companiesWithEvent.push(company);
             break; // Found a matching option, no need to check others
@@ -277,7 +277,7 @@ export async function findCompaniesWithEventOptions(eventId: string): Promise<Co
         }
       }
     }
-    
+
     return companiesWithEvent;
   } catch (error) {
     console.error("Error finding companies with event options:", error);
@@ -296,46 +296,46 @@ export async function addCompaniesToEventPageAction(
     if (!companyIds || companyIds.length === 0) {
       return { success: false, error: "No companies selected" };
     }
-    
+
     const client = await getDirectusWithToken();
     if (!client) {
       return { success: false, error: "Not authenticated" };
     }
-    
+
     // Get or create event page
     const eventPage = await getOrCreateEventPage(eventId);
     if (!eventPage) {
       return { success: false, error: "Failed to get or create event page" };
     }
-    
+
     // Get current companies on the event page
     const currentPage = await client.request(
       readItems("career_event_page", {
-        fields: ["companies.company_id.id"],
+        fields: ["companies.company_id.id" as any],
         filter: {
           id: { _eq: eventPage.id },
         },
         limit: 1,
       })
     ) as unknown as Array<{ companies?: Array<{ company_id: { id: string } }> }>;
-    
+
     const existingCompanyIds = new Set(
       (currentPage[0]?.companies ?? []).map((item) => item.company_id.id)
     );
-    
+
     // Filter out companies that are already on the page
     const newCompanyIds = companyIds.filter((id) => !existingCompanyIds.has(id));
-    
+
     if (newCompanyIds.length === 0) {
       return { success: true }; // All companies already added
     }
-    
+
     // Get all current company IDs (existing + new)
     const allCompanyIds = [
       ...Array.from(existingCompanyIds),
       ...newCompanyIds,
     ];
-    
+
     // Update the event page with all companies
     // In Directus, many-to-many relationships are updated by passing an array of IDs
     await client.request(
@@ -343,7 +343,7 @@ export async function addCompaniesToEventPageAction(
         companies: allCompanyIds.map((id) => ({ company_id: id })),
       })
     );
-    
+
     return { success: true };
   } catch (error) {
     console.error("Error adding companies to event page:", error);

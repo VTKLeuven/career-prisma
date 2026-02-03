@@ -30,11 +30,11 @@ export async function listOrders(opts?: {
 
         return client.request(
             readItems("orders", {
-                fields: ["*", "booth.*", "booth.company.*", "shifter.*"],
+                fields: ["*", "booth.*" as any, "booth.company.*" as any, "shifter.*" as any],
                 filter,
-                sort: ["-date_created"], // Newest first
+                sort: ["-date_created"] as any, // Newest first
             })
-        ) as Promise<Order[]>;
+        ) as unknown as Promise<Order[]>;
     } catch (error) {
         console.error("Error listing orders:", error);
         return [];

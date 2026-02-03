@@ -15,9 +15,9 @@ export default async function BoothPage({ params }: { params: Promise<{ id: stri
     let booth;
     try {
         booth = await directus.request(
-            readItems("Booths", {
+            readItems("booths", {
                 filter: { id: { _eq: id } },
-                fields: ["*", "company.name", "company.id", "zone.*"],
+                fields: ["*", { company: ["name", "id"], zone: ["*"] }],
                 limit: 1
             })
         ) as any[];

@@ -55,10 +55,10 @@ export async function getOrCreateEventPage(eventId: string): Promise<CareerEvent
     // Try to find existing event page
     const existingPages = await client.request(
       readItems("career_event_page", {
-        fields: ["*", "event.*"],
+        fields: ["*", "event.*" as any],
         filter: {
           event: {
-            _eq: eventId,
+            _eq: eventId as any,
           },
         },
         limit: 1,
@@ -72,7 +72,7 @@ export async function getOrCreateEventPage(eventId: string): Promise<CareerEvent
     // Create new event page if it doesn't exist
     const newPage = await client.request(
       createItem("career_event_page", {
-        event: eventId,
+        event: eventId as any,
         description_EN: "",
         image: "",
       })
@@ -98,7 +98,7 @@ export async function deleteBoothsForFloorplan(floorplanId: string): Promise<boo
       deleteItems("Booths", {
         filter: {
           Floorplan: {
-            _eq: floorplanId,
+            _eq: floorplanId as any,
           },
         },
       })
@@ -143,10 +143,10 @@ export async function createBooths(booths: Array<{
         // Ensure coords is properly formatted (Directus JSON fields can accept objects)
         const boothPayload = {
           booth_number: booth.booth_number,
-          coords: typeof booth.coords === "string" ? booth.coords : JSON.stringify(booth.coords),
+          coords: (typeof booth.coords === "string" ? booth.coords : JSON.stringify(booth.coords)) as any,
           Floorplan: booth.Floorplan,
         };
-        
+
         // Check if a booth with this number already exists for this floorplan
         const existingBooths = await client.request(
           readItems("Booths", {
@@ -154,7 +154,7 @@ export async function createBooths(booths: Array<{
             filter: {
               _and: [
                 { booth_number: { _eq: booth.booth_number } },
-                { Floorplan: { _eq: booth.Floorplan } },
+                { Floorplan: { _eq: booth.Floorplan as any } },
               ],
             },
             limit: 1,
@@ -172,10 +172,10 @@ export async function createBooths(booths: Array<{
           // Create new booth
           console.log(`Creating new booth: ${booth.booth_number}`);
           created = await client.request(
-            createItem("Booths", boothPayload)
+            createItem("Booths", boothPayload as any)
           ) as unknown as Booth;
         }
-        
+
         createdBooths.push(created);
         console.log(`Successfully processed booth: ${booth.booth_number}`);
       } catch (err) {
@@ -206,14 +206,14 @@ export async function getEventPageWithFloorplan(eventId: string): Promise<Career
       readItems("career_event_page", {
         fields: [
           "*",
-          "event.*",
-          "floorplan.*",
-          "companies.company_id.*",
-          "company_guide.*", // include company guide file
+          "event.*" as any,
+          "floorplan.*" as any,
+          "companies.company_id.*" as any,
+          "company_guide.*" as any, // include company guide file
         ],
         filter: {
           event: {
-            _eq: eventId,
+            _eq: eventId as any,
           },
         },
         limit: 1,
@@ -224,7 +224,7 @@ export async function getEventPageWithFloorplan(eventId: string): Promise<Career
     if (pages.length === 0) return null;
 
     const page = pages[0];
-    
+
     // Flatten companies from junction table
     if (page.companies) {
       page.companies = (page.companies as unknown as Array<{ company_id: Company }>)?.map((item) => {
@@ -304,9 +304,9 @@ export async function getCompaniesForEvent(eventId: string): Promise<Company[]> 
     // Fetch the event page to get the directly linked companies
     const eventPage = await client.request(
       readItems("career_event_page", {
-        fields: ["companies.company_id.*"], // Only need company details
+        fields: ["companies.company_id.*" as any], // Only need company details
         filter: {
-          event: { _eq: eventId },
+          event: { _eq: eventId as any },
         },
         limit: 1,
         deep: { companies: { limit: 10000 } }, // Override Directus QUERY_LIMIT_DEFAULT (100)
@@ -335,12 +335,12 @@ export async function getBoothsForFloorplan(floorplanId: string): Promise<Booth[
       readItems("Booths", {
         fields: [
           "*",
-          "company.*",
-          "Floorplan.*",
+          "company.*" as any,
+          "Floorplan.*" as any,
         ],
         filter: {
           Floorplan: {
-            _eq: floorplanId,
+            _eq: floorplanId as any,
           },
         },
         sort: ["booth_number"],

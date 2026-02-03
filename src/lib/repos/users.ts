@@ -26,7 +26,7 @@ export async function createRep(payload: Partial<CompanyRep>) {
     console.error("[createRep] No authentication token available");
     throw new Error("No token available");
   }
-  
+
   if (!payload) {
     console.error("[createRep] No payload provided");
     throw new Error("No payload available");
@@ -83,7 +83,7 @@ export async function createRep(payload: Partial<CompanyRep>) {
 
     const json = await res.json();
     const user = json.data;
-    
+
     if (!user || !user.id) {
       console.error(`[createRep] User creation response missing user data for ${email}`);
       return null;
@@ -173,22 +173,22 @@ export async function generateInviteToken(userId: string): Promise<{ token: stri
     // Store token hash and creation time in user metadata
     // Use server token for metadata updates (required for admin operations)
     const updateAuthToken = serverToken || token;
-    
+
     if (!serverToken) {
       console.warn(`[generateInviteToken] DIRECTUS_SERVER_TOKEN not available - metadata updates may fail due to permissions`);
     }
-    
+
     // Store token hash in user metadata (if we have write permissions)
     // If metadata write fails, we'll use status-based verification instead
     // The token is still secure: it's random, tied to userId, and only works for "invited" users
     let metadataWriteSuccess = false;
-    
+
     try {
       const metadataUpdate = {
         invite_token_hash: tokenHash,
         invite_token_created: new Date().toISOString(),
       };
-      
+
       const updateRes = await fetch(
         `${normalizedBase}users/${user.id}`,
         {
@@ -209,7 +209,7 @@ export async function generateInviteToken(userId: string): Promise<{ token: stri
       } else {
         const errorData = await updateRes.json().catch(() => null);
         const errorMessage = errorData?.errors?.[0]?.message || await updateRes.text().catch(() => "Unknown error");
-        
+
         if (updateRes.status === 403) {
           console.warn(`[generateInviteToken] Cannot write metadata (403 Forbidden) - will use status-based token verification instead`);
           console.warn(`[generateInviteToken] Token will still be secure but hash verification will be skipped`);
@@ -222,7 +222,7 @@ export async function generateInviteToken(userId: string): Promise<{ token: stri
       console.warn(`[generateInviteToken] Exception writing metadata:`, err);
       // Continue anyway - token generation can proceed without metadata
     }
-    
+
     if (!metadataWriteSuccess) {
       console.log(`[generateInviteToken] Token generated without metadata storage - verification will be status-based only`);
     }
@@ -313,7 +313,7 @@ async function reassignUserFiles(userId: string, newUserId: string | null, token
       }
 
       allFiles = allFiles.concat(files);
-      
+
       // If we got fewer files than the limit, we've reached the end
       if (files.length < limit) {
         break;
@@ -352,7 +352,7 @@ async function reassignUserFiles(userId: string, newUserId: string | null, token
         console.log(`Successfully bulk reassigned files from user ${userId} to ${newUserId || 'null'}`);
         return true;
       }
-      
+
       // If bulk update failed, fall back to individual updates
       console.log("Bulk update failed, falling back to individual updates");
     } catch (bulkError) {
@@ -377,7 +377,7 @@ async function reassignUserFiles(userId: string, newUserId: string | null, token
 
     // Check if all updates succeeded
     const failures = results.filter((r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.ok));
-    
+
     if (failures.length > 0) {
       console.error(`Failed to reassign ${failures.length} file(s)`);
       // Try to get error details from the first failure
@@ -453,14 +453,14 @@ export async function deleteUser(
     if (!res.ok) {
       const error = await res.json().catch(() => null);
       const errorMessage = error?.errors?.[0]?.message || error?.message || "Unknown error";
-      
+
       // Check if it's a foreign key constraint error
       if (errorMessage.includes("foreign key constraint") || errorMessage.includes("violates foreign key")) {
         console.log("Foreign key constraint detected, attempting to reassign files...");
-        
+
         // Determine which user to reassign files to
         let targetUserId: string | null = null;
-        
+
         if (reassignToUserId !== undefined) {
           // Use provided user ID (could be null to unassign)
           targetUserId = reassignToUserId;
@@ -468,15 +468,15 @@ export async function deleteUser(
           // Try to get the current user (admin performing the deletion)
           targetUserId = await getCurrentUserId(token);
         }
-        
+
         // Reassign files (to target user or null if no target)
         const reassigned = await reassignUserFiles(userId, targetUserId, token);
-        
+
         if (!reassigned) {
           // If reassignment failed, try setting to null as fallback
           await reassignUserFiles(userId, null, token);
         }
-        
+
         // Now try to delete again
         res = await fetch(`${normalizedBase}users/${userId}`, {
           method: "DELETE",
@@ -484,17 +484,17 @@ export async function deleteUser(
             "Authorization": `Bearer ${token}`,
           },
         });
-        
+
         if (!res.ok) {
           const retryError = await res.json().catch(() => null);
           const retryErrorMessage = retryError?.errors?.[0]?.message || retryError?.message || "Unknown error";
           console.error("Failed to delete user after reassignment:", retryErrorMessage);
-          
+
           // Check if it's still a constraint error (might be other tables)
           if (retryErrorMessage.includes("foreign key constraint") || retryErrorMessage.includes("violates foreign key")) {
             return { success: false, error: "CONSTRAINT_ERROR" };
           }
-          
+
           return { success: false, error: retryErrorMessage };
         }
       } else {
@@ -553,7 +553,7 @@ export async function waitForApproval(salespersonId: string, repPayload: Partial
 
   // 2️⃣ Email salesperson with full company and user details
   const salesperson = await fetchSalespersonByID(salespersonId);
-  
+
   // Fetch full company details
   let companyDetails = null;
   if (repPayload?.company?.id) {
@@ -569,7 +569,7 @@ export async function waitForApproval(salespersonId: string, repPayload: Partial
   const formatCompanyAddress = (company: typeof companyDetails) => {
     if (!company) return "N/A";
     const parts = [
-      company.address_street && company.address_number 
+      company.address_street && company.address_number
         ? `${company.address_street} ${company.address_number}`.trim()
         : company.address_street || company.address_number || "",
       company.address_zip && company.address_city
@@ -581,19 +581,19 @@ export async function waitForApproval(salespersonId: string, repPayload: Partial
   };
 
   // Format salesperson name
-  const salespersonName = salesperson 
+  const salespersonName = salesperson
     ? `${salesperson.first_name || ""} ${salesperson.last_name || ""}`.trim() || salesperson.email
     : "N/A";
 
   // Get frontend URL for API routes (use NEXT_PUBLIC_APP_URL or construct from DIRECTUS_URL domain)
   // In production, this should be set as an environment variable
-  const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
-    || process.env.NEXT_PUBLIC_FORM_DOMAIN 
+  const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL
+    || process.env.NEXT_PUBLIC_FORM_DOMAIN
     || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
-  
+
   const approvalUrl = `${frontendBaseUrl}/api/approve-rep?requestId=${request.id}&action=approve`;
   const rejectUrl = `${frontendBaseUrl}/api/approve-rep?requestId=${request.id}&action=reject`;
-  
+
   // Build enhanced email HTML
   const emailHtml = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -792,7 +792,7 @@ export async function fetchPendingApprovalRequests(salespersonId: string): Promi
     // SECURITY: Validate the user is authenticated and authorized
     const { getUserFromCookies } = await import("@/lib/auth-server");
     const user = await getUserFromCookies();
-    
+
     if (!user || !user.id) {
       console.error("Unauthorized: No authenticated user");
       return [];
@@ -807,13 +807,13 @@ export async function fetchPendingApprovalRequests(salespersonId: string): Promi
     }
 
     const { readMe } = await import("@directus/sdk");
-    const me = await userDirectus.request(readMe({ fields: ["role.id"] }));
-    
+    const me = await userDirectus.request(readMe({ fields: ["role.id" as any] }));
+
     // Check if user is a salesperson or admin
     const salespersonRoleId = "7b128ef4-f530-47d2-8f4c-ef82518eb313";
-    const isSalesperson = me.role?.id === salespersonRoleId;
+    const isSalesperson = (me.role as any)?.id === salespersonRoleId;
     const isAdmin = user.admin || false;
-    
+
     if (!isSalesperson && !isAdmin) {
       // Don't log error for company reps - this is expected behavior
       // The action should have already filtered these out, but if it didn't, silently return
@@ -831,7 +831,7 @@ export async function fetchPendingApprovalRequests(salespersonId: string): Promi
     // This is safe because we've already validated authorization above
     const { getAdminDirectusClient } = await import("@/lib/directus");
     const directus = getAdminDirectusClient();
-    
+
     if (!directus) {
       console.error("Failed to get admin Directus client - DIRECTUS_SERVER_TOKEN may not be configured");
       return [];
@@ -876,23 +876,23 @@ export async function fetchPendingApprovalRequests(salespersonId: string): Promi
     try {
       const requests = await directus.request(
         readItems("company_user_requests", {
-          fields: baseFields,
+          fields: baseFields as any,
           filter,
           sort: ["-id"], // Sort by ID (most reliable field)
         })
       ) as any[];
-      
+
       return mapRequestsToPendingApprovalRequests(requests);
     } catch (error: any) {
       const errorMessage = error?.message || String(error);
-      
+
       // If error is about salesperson field in filter (for non-admins), 
       // we can't securely filter server-side, so return empty
       if (!isAdmin && errorMessage.includes("salesperson")) {
         console.error("Cannot filter by salesperson field - permission denied. Non-admin users cannot view requests.");
         return [];
       }
-      
+
       // For other errors, log and return empty
       console.error("Failed to fetch pending approval requests:", errorMessage);
       throw error;

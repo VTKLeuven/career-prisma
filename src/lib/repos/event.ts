@@ -19,17 +19,17 @@ export async function listEvents(opts?: {
         fields: [
           "*",
           // Try both possible junction table structures for many-to-many
-          "options.career_event_option_id.*",
-          "options.career_event_option_id.id",
-          "options.career_event_option_id.name",
-          "options.career_event_option_id.description",
-          "options.career_event_option_id.price",
-          "options.career_event_option_id.events.*",
-          "options.career_event_option_id.event.*",
+          "options.career_event_option_id.*" as any,
+          "options.career_event_option_id.id" as any,
+          "options.career_event_option_id.name" as any,
+          "options.career_event_option_id.description" as any,
+          "options.career_event_option_id.price" as any,
+          "options.career_event_option_id.events.*" as any,
+          "options.career_event_option_id.event.*" as any,
         ],
         limit,
         page,
-        sort,
+        sort: sort as any,
         ...(search
           ? { search } // Directus full-text search (if enabled)
           : {}),
@@ -138,7 +138,7 @@ export async function getEventPageBySlug(slug: string): Promise<CareerEventPage 
         ],
         filter: {
           event: {
-            _eq: matchingEvent.id,
+            _eq: matchingEvent.id as any,
           },
         },
         limit: 1,
