@@ -1,13 +1,13 @@
 import { listZones } from "@/lib/repos/zones";
-import { directus, getAdminDirectusClient } from "@/lib/directus";
+import { directus, getAdminDirectusClient, getDirectusWithToken } from "@/lib/directus";
 import { readItems } from "@directus/sdk";
 import type { Booth } from "@/lib/schema";
 import { Suspense } from "react";
 import ZonesClient from "./client";
 
 async function getBooths() {
-    const client = await getAdminDirectusClient() || directus;
-    return client.request(readItems("booths", {
+    const client = await getDirectusWithToken() || await getAdminDirectusClient() || directus;
+    return client.request(readItems("Booths", {
         fields: ["id", "booth_number", "Floorplan.name", "company.name"] as any,
         sort: ["Floorplan.name", "booth_number"] as any,
     })) as unknown as Promise<Booth[]>;
