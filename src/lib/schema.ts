@@ -11,6 +11,7 @@ export type DirectusUser = {
   admin: boolean;
   company: Company;
   status?: string;
+  is_shifter?: boolean;
 } | null;
 
 export type CompanyRep = {
@@ -191,6 +192,7 @@ export type Booth = {
   coords: { x_pct: number; y_pct: number; width_pct: number; height_pct: number };
   Floorplan: Floorplan;
   company?: Company;
+  zone?: Zone | string;
 }
 
 export type Master = {
@@ -318,6 +320,41 @@ export type CVBookFavourite = {
   date_created?: string;
 }
 
+export type Drink = {
+  id: string;
+  name: string;
+  type: 'drink' | 'snack';
+  visible_from?: string; // Time string "HH:mm" or ISO
+  visible_until?: string;
+  is_active: boolean;
+  image?: string; // Directus file ID
+  icon?: string; // Iconify string
+}
+
+export type Zone = {
+  id: string;
+  name: string;
+  booths: string[] | Booth[]; // M2M
+}
+
+export type Order = {
+  id: string;
+  booth: string | Booth;
+  company: string | Company; // Denormalized for easier querying? Or computed. Directus usually links relations.
+  items: OrderItem[]; // JSON field
+  status: 'pending' | 'preparing' | 'finished';
+  shifter?: string | DirectusUser;
+  created_at: string;
+  updated_at: string;
+  zone?: string | Zone; // Snapshot of zone at time of order? or relational.
+}
+
+export type OrderItem = {
+  drink_id: string;
+  name: string;
+  quantity: number;
+}
+
 // Optional: Full Directus Schema map (only collections you use)
 export type Schema = {
   directus_users: CompanyRep;
@@ -327,4 +364,9 @@ export type Schema = {
   form_versions: FormVersion;
   form_responses: FormResponse;
   students: Student;
+  drinks: Drink;
+  orders: Order;
+  zones: Zone;
+  site_users: DirectusUser; // Assuming specific collection for app users if not directus_users, but usually directus_users.
+  // If "shifters" are system users, they are in directus_users.
 };
