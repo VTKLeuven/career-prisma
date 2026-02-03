@@ -20,7 +20,7 @@ export async function placeOrderAction(boothId: string, companyId: string, items
             company: companyId,
             items: items,
             status: "pending",
-            created_at: new Date().toISOString(), // Directus usually handles this, but good to be explicit
+            // date_created: new Date().toISOString(), // Directus handles this
         });
 
         revalidatePath(`/booth/${boothId}`);

@@ -344,8 +344,8 @@ export type Order = {
   items: OrderItem[]; // JSON field
   status: 'pending' | 'preparing' | 'finished';
   shifter?: string | DirectusUser;
-  created_at: string;
-  updated_at: string;
+  date_created: string;
+  date_updated: string;
   zone?: string | Zone; // Snapshot of zone at time of order? or relational.
 }
 

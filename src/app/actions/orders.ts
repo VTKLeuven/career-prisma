@@ -35,7 +35,7 @@ export async function fetchOrdersAction(zoneId?: string) {
         });
     }
 
-    return activeOrders.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    return activeOrders.sort((a, b) => new Date(a.date_created).getTime() - new Date(b.date_created).getTime());
 }
 
 export async function pickUpOrderAction(orderId: string) {

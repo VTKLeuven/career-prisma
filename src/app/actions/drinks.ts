@@ -1,10 +1,14 @@
 "use server"
 
 import { createDrink, deleteDrink, updateDrink } from "@/lib/repos/drinks";
+import { getUserFromCookies } from "@/lib/auth-server";
 import { revalidatePath } from "next/cache";
 
 export async function createDrinkAction(data: any) {
     try {
+        const user = await getUserFromCookies();
+        if (!user?.admin) return { success: false, error: "Unauthorized" };
+
         await createDrink(data);
         revalidatePath("/admin/drinks");
         return { success: true };
@@ -16,6 +20,9 @@ export async function createDrinkAction(data: any) {
 
 export async function updateDrinkAction(id: string, data: any) {
     try {
+        const user = await getUserFromCookies();
+        if (!user?.admin) return { success: false, error: "Unauthorized" };
+
         await updateDrink(id, data);
         revalidatePath("/admin/drinks");
         return { success: true };
@@ -27,6 +34,9 @@ export async function updateDrinkAction(id: string, data: any) {
 
 export async function deleteDrinkAction(id: string) {
     try {
+        const user = await getUserFromCookies();
+        if (!user?.admin) return { success: false, error: "Unauthorized" };
+
         await deleteDrink(id);
         revalidatePath("/admin/drinks");
         return { success: true };

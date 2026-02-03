@@ -48,13 +48,13 @@ export async function getServerDirectusClient() {
   if (userClient) {
     return userClient;
   }
-  
+
   // Fall back to server token for public operations
   const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
   if (serverToken && serverToken.trim() !== '') {
     return createDirectus(DIRECTUS_URL).with(staticToken(serverToken)).with(rest());
   }
-  
+
   // If no server token, use public client (may have limited permissions)
   return directus;
 }
@@ -65,10 +65,11 @@ export async function getServerDirectusClient() {
  */
 export function getAdminDirectusClient() {
   const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
+  console.log("Checking Admin Token:", serverToken ? "Present (" + serverToken.substring(0, 5) + "...)" : "MISSING");
   if (serverToken && serverToken.trim() !== '') {
     return createDirectus(DIRECTUS_URL).with(staticToken(serverToken)).with(rest());
   }
-  
+
   // If no server token, return null to indicate admin operations are not available
   return null;
 }
@@ -105,7 +106,7 @@ export async function getFormUploadsFolderId(): Promise<string | null> {
   // Fallback: Try to find folder by name (requires DIRECTUS_SERVER_TOKEN)
   console.warn('[getFormUploadsFolderId] DIRECTUS_FORM_UPLOADS_FOLDER_ID not set. Attempting to find folder by name...');
   console.warn('[getFormUploadsFolderId] To avoid this lookup, set DIRECTUS_FORM_UPLOADS_FOLDER_ID in your .env file');
-  
+
   try {
     // Use admin client for folder lookup (requires elevated permissions)
     const adminClient = getAdminDirectusClient();
@@ -118,7 +119,7 @@ export async function getFormUploadsFolderId(): Promise<string | null> {
 
     const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
     const directusUrl = process.env.DIRECTUS_URL || process.env.NEXT_PUBLIC_DIRECTUS_URL;
-    
+
     if (serverToken && directusUrl) {
       // Try REST API endpoint first
       const foldersUrl = `${directusUrl.replace(/\/$/, '')}/folders?filter[name][_eq]=Form_uploads&fields=id,name&limit=1`;
@@ -133,7 +134,7 @@ export async function getFormUploadsFolderId(): Promise<string | null> {
       if (foldersResponse.ok) {
         const foldersData = await foldersResponse.json();
         const folders = foldersData?.data || [];
-        
+
         if (folders && folders.length > 0) {
           const folderId = folders[0].id ?? null;
           cachedFormUploadsFolderId = folderId;

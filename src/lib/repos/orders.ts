@@ -32,7 +32,7 @@ export async function listOrders(opts?: {
             readItems("orders", {
                 fields: ["*", "booth.*", "booth.company.*", "shifter.*"],
                 filter,
-                sort: ["-created_at"], // Newest first
+                sort: ["-date_created"], // Newest first
             })
         ) as Promise<Order[]>;
     } catch (error) {

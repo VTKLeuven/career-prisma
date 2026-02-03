@@ -22,7 +22,7 @@ import { Label } from "@/components/ui/label";
 import { createZoneAction, deleteZoneAction, updateZoneAction } from "@/app/actions/zones";
 import type { Zone, Booth } from "@/lib/schema";
 import { useRouter } from "next/navigation";
-import { Trash2, Edit, Plus } from "lucide-react";
+import { Trash2, Edit, Plus, Printer } from "lucide-react";
 
 export default function ZonesClient({ initialZones, booths }: { initialZones: Zone[], booths: Booth[] }) {
     const [zones, setZones] = useState(initialZones);
@@ -97,6 +97,9 @@ export default function ZonesClient({ initialZones, booths }: { initialZones: Zo
                         <Plus className="mr-2 h-4 w-4" /> Add Zone
                     </Button>
                 </DialogTrigger>
+                <Button variant="outline" onClick={() => router.push('/admin/zones/print')}>
+                    <Printer className="mr-2 h-4 w-4" /> Print QR Codes
+                </Button>
                 <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>{editingZone ? "Edit Zone" : "Create Zone"}</DialogTitle>

@@ -24,7 +24,9 @@ export async function getUserFromCookies(): Promise<DirectusUser | undefined> {
       return undefined;
     }
 
-    const isAdmin = me.role.id === "7b128ef4-f530-47d2-8f4c-ef82518eb313";
+    // Check for admin capability dynamically
+    const role = me.role as any;
+    const isAdmin = role?.admin_access === true || role?.name === "Administrator" || role?.id === "7b128ef4-f530-47d2-8f4c-ef82518eb313";
 
     return {
       id: me.id,
