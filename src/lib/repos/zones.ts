@@ -17,7 +17,7 @@ export async function listZones() {
         }
 
         if (!client) {
-            client = await getAdminDirectusClient() || directus;
+            client = getAdminDirectusClient() || directus;
         }
 
         const zones = await client.request(
@@ -54,7 +54,7 @@ export async function listZones() {
 }
 
 export async function createZone(data: Partial<Zone>) {
-    const adminClient = await getAdminDirectusClient();
+    const adminClient = getAdminDirectusClient();
     const userClient = await getAuthedDirectusOrThrow();
 
     // Use user client (session) primarily. Admin token is backup.
@@ -112,7 +112,7 @@ export async function createZone(data: Partial<Zone>) {
 }
 
 export async function updateZone(id: string, data: Partial<Zone>) {
-    const adminClient = await getAdminDirectusClient();
+    const adminClient = getAdminDirectusClient();
     const userClient = await getAuthedDirectusOrThrow().catch(() => null);
 
     // Prioritize user session
@@ -172,7 +172,7 @@ export async function updateZone(id: string, data: Partial<Zone>) {
 
 export async function deleteZone(id: string) {
     const userClient = await getAuthedDirectusOrThrow().catch(() => null);
-    const adminClient = await getAdminDirectusClient();
+    const adminClient = getAdminDirectusClient();
     const client = userClient || adminClient;
 
     if (!client) throw new Error("Unauthorized");

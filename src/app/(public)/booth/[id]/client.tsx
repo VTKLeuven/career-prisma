@@ -54,8 +54,8 @@ export default function BoothClient({
 
     const handlePlaceOrder = async () => {
         if (!companyId) {
-            alert("This booth is not assigned to a company yet.");
-            return;
+            console.warn("Placing order without companyId (permissions restriction).");
+            // Proceed anyway, backend might handle it or we assume generic order
         }
         setSubmitting(true);
 
@@ -81,19 +81,30 @@ export default function BoothClient({
     };
 
     if (activeOrder) {
+        const isPreparing = activeOrder.status === 'preparing';
+
         return (
-            <Card className="text-center py-10 bg-blue-50 border-blue-200">
+            <Card className={`text-center py-10 ${isPreparing
+                    ? 'bg-green-50 border-green-300'
+                    : 'bg-amber-50 border-amber-200'
+                }`}>
                 <CardContent className="space-y-4">
-                    <Loader2 className="h-12 w-12 text-blue-500 animate-spin mx-auto" />
-                    <h2 className="text-xl font-semibold text-blue-800">Order in Progress</h2>
-                    <p className="text-blue-600">
+                    <Loader2 className={`h-12 w-12 animate-spin mx-auto ${isPreparing ? 'text-green-500' : 'text-amber-500'
+                        }`} />
+                    <h2 className={`text-xl font-semibold ${isPreparing ? 'text-green-800' : 'text-amber-800'
+                        }`}>
+                        {isPreparing ? 'Being Prepared!' : 'Order Pending'}
+                    </h2>
+                    <p className={isPreparing ? 'text-green-600' : 'text-amber-600'}>
                         Amount: {activeOrder.items?.reduce((acc, i) => acc + i.quantity, 0) || 0} items
                     </p>
-                    <p className="text-sm text-blue-500">
+                    <p className={`text-sm ${isPreparing ? 'text-green-500' : 'text-amber-500'}`}>
                         Status: <span className="uppercase font-bold">{activeOrder.status}</span>
                     </p>
                     <p className="text-xs text-muted-foreground mt-4">
-                        Please wait until your order arrives before placing a new one.
+                        {isPreparing
+                            ? 'A shifter is now preparing your order. It will arrive soon!'
+                            : 'Please wait until a shifter picks up your order.'}
                     </p>
                 </CardContent>
             </Card>

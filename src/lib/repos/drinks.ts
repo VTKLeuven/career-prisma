@@ -15,7 +15,7 @@ export async function listDrinks(opts?: {
             // For now just active
         }
 
-        const client = await getAdminDirectusClient() || directus;
+        const client = getAdminDirectusClient() || directus;
 
         return client.request(
             readItems("drinks", {
@@ -31,16 +31,16 @@ export async function listDrinks(opts?: {
 }
 
 export async function createDrink(data: Partial<Drink>) {
-    const client = await getAdminDirectusClient() || await getAuthedDirectusOrThrow();
+    const client = getAdminDirectusClient() || await getAuthedDirectusOrThrow();
     return client.request(createItem("drinks", data)) as Promise<Drink>;
 }
 
 export async function updateDrink(id: string, data: Partial<Drink>) {
-    const client = await getAdminDirectusClient() || await getAuthedDirectusOrThrow();
+    const client = getAdminDirectusClient() || await getAuthedDirectusOrThrow();
     return client.request(updateItem("drinks", id, data)) as Promise<Drink>;
 }
 
 export async function deleteDrink(id: string) {
-    const client = await getAdminDirectusClient() || await getAuthedDirectusOrThrow();
+    const client = getAdminDirectusClient() || await getAuthedDirectusOrThrow();
     return client.request(deleteItem("drinks", id));
 }

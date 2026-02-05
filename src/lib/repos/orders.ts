@@ -26,11 +26,11 @@ export async function listOrders(opts?: {
             filter.shifter = { _eq: opts.shifter_id };
         }
 
-        const client = await getAdminDirectusClient() || directus; // Orders might be sensitive? Use Admin or Authed
+        const client = getAdminDirectusClient() || directus; // Orders might be sensitive? Use Admin or Authed
 
         return client.request(
             readItems("orders", {
-                fields: ["*", "booth.*" as any, "booth.company.*" as any, "shifter.*" as any],
+                fields: ["*", "booth.*" as any, "booth.company.*" as any, "booth.zone.*" as any, "shifter.*" as any],
                 filter,
                 sort: ["-date_created"] as any, // Newest first
             })
@@ -42,12 +42,9 @@ export async function listOrders(opts?: {
 }
 
 export async function createOrder(data: Partial<Order>) {
-    // Public can create orders (booth), so use plain client or specific limited client?
-    // Booths are probably not authenticated as 'users' but identified by the page they are on.
-    // We can use the public client if permissions allow "Public create orders".
-    // If not, we might need a server token wrapper.
-    // Let's assume public create is allowed for now, or use server token.
-    const client = directus;
+    // Use admin client to bypass public permission restrictions
+    // This allows booth visitors (unauthenticated users) to place orders via the QR code
+    const client = getAdminDirectusClient() || directus;
     return client.request(createItem("orders", data)) as Promise<Order>;
 }
 
@@ -57,11 +54,13 @@ export async function updateOrder(id: string, data: Partial<Order>) {
 }
 
 export async function getActiveOrderForBooth(boothId: string) {
-    const client = directus;
+    // Use admin client to check for active orders - this allows unauthenticated booth visitors
+    const client = getAdminDirectusClient() || directus;
+    const boothIdInt = parseInt(boothId, 10);
     const orders = await client.request(
         readItems("orders", {
             filter: {
-                booth: { _eq: boothId },
+                booth: { _eq: boothIdInt },
                 status: { _in: ["pending", "preparing"] }
             },
             limit: 1,

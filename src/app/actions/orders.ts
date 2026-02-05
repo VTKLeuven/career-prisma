@@ -4,7 +4,7 @@ import { listOrders } from "@/lib/repos/orders";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { getStudentFromCookies } from "@/lib/auth-student";
 import { getAdminDirectusClient } from "@/lib/directus";
-import { updateItem } from "@directus/sdk";
+import { updateItem, deleteItem } from "@directus/sdk";
 import { revalidatePath } from "next/cache";
 
 export async function fetchOrdersAction(zoneId?: string) {
@@ -44,11 +44,13 @@ export async function fetchOrdersAction(zoneId?: string) {
 export async function pickUpOrderAction(orderId: string) {
     let user = await getUserFromCookies();
     let userId = user?.id;
+    let isStudentShifter = false;
 
     if (!user) {
         const student = await getStudentFromCookies();
         if (student && student.is_shifter) {
             userId = student.id;
+            isStudentShifter = true;
         } else if (student) {
             return { success: false, error: "Not authorized as shifter" };
         }
@@ -57,13 +59,22 @@ export async function pickUpOrderAction(orderId: string) {
     if (!userId) return { success: false, error: "Not authenticated" };
 
     // Use admin client to bypass need for directus user token
-    const client = await getAdminDirectusClient();
+    const client = getAdminDirectusClient();
     if (!client) return { success: false, error: "Server configuration error" };
 
-    await client.request(updateItem("orders", orderId, {
+    console.log("[pickUpOrderAction] orderId:", orderId, "userId:", userId, "isStudentShifter:", isStudentShifter);
+
+    // Only set shifter if it's a directus_user (UUID). 
+    // Student IDs are integers and can't be stored in the shifter field (which is a UUID FK to directus_users)
+    const updateData: any = {
         status: "preparing",
-        shifter: userId,
-    }));
+    };
+
+    if (!isStudentShifter && userId) {
+        updateData.shifter = userId;
+    }
+
+    await client.request(updateItem("orders", orderId, updateData));
 
     revalidatePath("/dashboard/shifter");
     try {
@@ -88,7 +99,7 @@ export async function finishOrderAction(orderId: string) {
 
     if (!isAuthorized) return { success: false, error: "Not authorized" };
 
-    const client = await getAdminDirectusClient();
+    const client = getAdminDirectusClient();
     if (!client) return { success: false, error: "Server configuration error" };
 
     await client.request(updateItem("orders", orderId, {
@@ -97,4 +108,57 @@ export async function finishOrderAction(orderId: string) {
 
     revalidatePath("/dashboard/shifter");
     return { success: true };
+}
+
+export async function fetchCompletedOrdersAction(limit: number = 50) {
+    const allOrders = await listOrders({});
+
+    // Filter for finished orders only
+    const completedOrders = allOrders
+        .filter(o => o.status === 'finished')
+        .sort((a, b) => new Date(b.date_updated).getTime() - new Date(a.date_updated).getTime())
+        .slice(0, limit);
+
+    // Calculate statistics for each order
+    return completedOrders.map(order => {
+        const createdTime = new Date(order.date_created).getTime();
+        const updatedTime = new Date(order.date_updated).getTime();
+        const durationMs = updatedTime - createdTime;
+        const durationMinutes = Math.round(durationMs / 60000);
+
+        return {
+            ...order,
+            durationMinutes,
+            durationFormatted: durationMinutes < 60
+                ? `${durationMinutes}m`
+                : `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m`
+        };
+    });
+}
+
+export async function deleteOrderAction(orderId: string) {
+    // Check auth
+    let user = await getUserFromCookies();
+    let isAuthorized = !!user;
+
+    if (!user) {
+        const student = await getStudentFromCookies();
+        if (student && student.is_shifter) {
+            isAuthorized = true;
+        }
+    }
+
+    if (!isAuthorized) return { success: false, error: "Not authorized" };
+
+    const client = getAdminDirectusClient();
+    if (!client) return { success: false, error: "Server configuration error" };
+
+    try {
+        await client.request(deleteItem("orders", orderId));
+        revalidatePath("/dashboard/shifter");
+        return { success: true };
+    } catch (error) {
+        console.error("Error deleting order:", error);
+        return { success: false, error: "Failed to delete order" };
+    }
 }
