@@ -20,15 +20,18 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { createDrinkAction, deleteDrinkAction, updateDrinkAction } from "@/app/actions/drinks"; // You'll need to create this
+import { createDrinkAction, deleteDrinkAction, updateDrinkAction } from "@/app/actions/drinks";
+import { uploadFileAction } from "@/app/actions/media";
 import type { Drink } from "@/lib/schema";
 import { useRouter } from "next/navigation";
-import { Trash2, Edit, Plus } from "lucide-react";
+import { Trash2, Edit, Plus, Loader2 } from "lucide-react";
 
 export default function DrinksClient({ initialDrinks }: { initialDrinks: Drink[] }) {
     const [drinks, setDrinks] = useState(initialDrinks);
     const [isOpen, setIsOpen] = useState(false);
     const [editingDrink, setEditingDrink] = useState<Drink | null>(null);
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [uploading, setUploading] = useState(false);
     const router = useRouter();
 
     // Form state
@@ -38,29 +41,94 @@ export default function DrinksClient({ initialDrinks }: { initialDrinks: Drink[]
         is_active: true,
         visible_from: "",
         visible_until: "",
+        image: undefined,
     });
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setSelectedFile(file);
+            // Create a temporary URL for preview
+            const objectUrl = URL.createObjectURL(file);
+            setFormData(prev => ({ ...prev, image: objectUrl }));
+        }
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (editingDrink) {
-            await updateDrinkAction(editingDrink.id, formData);
-        } else {
-            await createDrinkAction(formData);
+        setUploading(true);
+
+        try {
+            let imageId = formData.image;
+
+            // correct: if it's a temp blob URL, we need to upload the file
+            // if it is a string but NOT a blob url, it's likely an existing ID, so keep it.
+            // But we have selectedFile to be sure.
+
+            if (selectedFile) {
+                const uploadFormData = new FormData();
+                uploadFormData.append("file", selectedFile);
+
+                const uploadRes = await uploadFileAction(uploadFormData);
+                if (!uploadRes.success || !uploadRes.data) {
+                    alert("Failed to upload image: " + (uploadRes.error || "Unknown error"));
+                    setUploading(false);
+                    return;
+                }
+
+                // Directus returns { id: ... } or { data: { id: ... } } depending on version/endpoint
+                // The SDK typically returns the object directly.
+                imageId = uploadRes.data.id;
+            } else if (typeof formData.image === 'string' && formData.image.startsWith('blob:')) {
+                // Should not happen if selectedFile logic is correct, but safety check
+                imageId = undefined;
+            }
+
+            const dataToSubmit = {
+                ...formData,
+                image: imageId,
+            };
+
+            // Remove blob url if it somehow persisted without a file (shouldn't happen)
+            if (typeof dataToSubmit.image === 'string' && dataToSubmit.image.startsWith('blob:')) {
+                dataToSubmit.image = undefined;
+            }
+
+            if (editingDrink) {
+                await updateDrinkAction(editingDrink.id, dataToSubmit);
+            } else {
+                await createDrinkAction(dataToSubmit);
+            }
+            setIsOpen(false);
+            setEditingDrink(null);
+            setFormData({ name: "", type: "drink", is_active: true });
+            setSelectedFile(null);
+            router.refresh();
+        } catch (err) {
+            console.error(err);
+            alert("Error saving drink");
+        } finally {
+            setUploading(false);
         }
-        setIsOpen(false);
-        setEditingDrink(null);
-        setFormData({ name: "", type: "drink", is_active: true });
-        router.refresh();
     };
 
     const openEdit = (drink: Drink) => {
         setEditingDrink(drink);
+        setSelectedFile(null);
+
+        // Handle potential object from Directus expansion (even if TS says string)
+        let imageVal = drink.image;
+        if (imageVal && typeof imageVal === 'object' && (imageVal as any).id) {
+            imageVal = (imageVal as any).id;
+        }
+
         setFormData({
             name: drink.name,
             type: drink.type,
             is_active: drink.is_active,
             visible_from: drink.visible_from,
             visible_until: drink.visible_until,
+            image: imageVal,
         });
         setIsOpen(true);
     };
@@ -81,6 +149,7 @@ export default function DrinksClient({ initialDrinks }: { initialDrinks: Drink[]
                 <DialogTrigger asChild>
                     <Button onClick={() => {
                         setEditingDrink(null);
+                        setSelectedFile(null);
                         setFormData({ name: "", type: "drink", is_active: true });
                     }}>
                         <Plus className="mr-2 h-4 w-4" /> Add Item
@@ -112,6 +181,41 @@ export default function DrinksClient({ initialDrinks }: { initialDrinks: Drink[]
                                 <option value="snack">Snack</option>
                             </select>
                         </div>
+
+                        {/* Image Upload Section */}
+                        <div className="grid w-full gap-2">
+                            <Label htmlFor="image">Image</Label>
+                            <div className="flex gap-4 items-center">
+                                {formData.image && (
+                                    <div className="h-16 w-16 relative border rounded overflow-hidden flex-shrink-0">
+                                        {/* Using a simple img tag for preview if it's a URL or previously saved ID */}
+                                        <img
+                                            src={typeof formData.image === 'string' && formData.image.startsWith('blob:')
+                                                ? formData.image
+                                                : `${process.env.NEXT_PUBLIC_DIRECTUS_URL}assets/${formData.image}`}
+                                            alt="Preview"
+                                            className="h-full w-full object-cover"
+                                            onError={(e) => {
+                                                // Fallback if image fails to load (e.g. invalid ID or not found)
+                                                (e.target as HTMLImageElement).style.display = 'none';
+                                            }}
+                                        />
+                                    </div>
+                                )}
+                                <div className="flex-1">
+                                    <Input
+                                        id="image"
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={handleFileChange}
+                                    />
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Select an image to upload (optional).
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="grid w-full gap-2">
                             <Label>Visibility Time (Optional)</Label>
                             <div className="flex gap-2">
@@ -137,8 +241,14 @@ export default function DrinksClient({ initialDrinks }: { initialDrinks: Drink[]
                             />
                             <Label htmlFor="active">Available</Label>
                         </div>
-                        <Button type="submit" className="w-full">
-                            {editingDrink ? "Update" : "Create"}
+                        <Button type="submit" className="w-full" disabled={uploading}>
+                            {uploading ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading...
+                                </>
+                            ) : (
+                                editingDrink ? "Update" : "Create"
+                            )}
                         </Button>
                     </form>
                 </DialogContent>

@@ -85,8 +85,8 @@ export default function BoothClient({
 
         return (
             <Card className={`text-center py-10 ${isPreparing
-                    ? 'bg-green-50 border-green-300'
-                    : 'bg-amber-50 border-amber-200'
+                ? 'bg-green-50 border-green-300'
+                : 'bg-amber-50 border-amber-200'
                 }`}>
                 <CardContent className="space-y-4">
                     <Loader2 className={`h-12 w-12 animate-spin mx-auto ${isPreparing ? 'text-green-500' : 'text-amber-500'
@@ -117,12 +117,20 @@ export default function BoothClient({
     const renderItem = (item: Drink) => {
         const qty = cart[item.id] || 0;
         return (
-            <div key={item.id} className="flex justify-between items-center py-3 border-b last:border-0">
+            <div key={item.id} className="flex justify-between items-center py-1 px-4 border-b last:border-0">
                 <div className="flex gap-3 items-center">
-                    {/* Optional Image */}
-                    {/* <div className="h-10 w-10 bg-gray-100 rounded"></div> */}
+                    {/* Image */}
+                    {item.image && (
+                        <div className="relative flex-shrink-0 rounded-md overflow-hidden bg-white" style={{ width: '80px', height: '80px' }}>
+                            <img
+                                src={getDirectusImageUrl(item.image)}
+                                alt={item.name}
+                                className="absolute inset-0 h-full w-full object-contain p-1"
+                            />
+                        </div>
+                    )}
                     <div>
-                        <p className="font-medium">{item.name}</p>
+                        <p className="font-bold text-lg">{item.name}</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -150,8 +158,8 @@ export default function BoothClient({
             {drinkItems.length > 0 && (
                 <section>
                     <h3 className="text-lg font-semibold mb-4 text-gray-700 uppercase tracking-wide text-xs">Drinks</h3>
-                    <Card>
-                        <CardContent className="pt-4">
+                    <Card className="py-0">
+                        <CardContent className="p-0">
                             {drinkItems.map(renderItem)}
                         </CardContent>
                     </Card>
@@ -161,8 +169,8 @@ export default function BoothClient({
             {snackItems.length > 0 && (
                 <section>
                     <h3 className="text-lg font-semibold mb-4 text-gray-700 uppercase tracking-wide text-xs">Snacks</h3>
-                    <Card>
-                        <CardContent className="pt-4">
+                    <Card className="py-0">
+                        <CardContent className="p-0">
                             {snackItems.map(renderItem)}
                         </CardContent>
                     </Card>
