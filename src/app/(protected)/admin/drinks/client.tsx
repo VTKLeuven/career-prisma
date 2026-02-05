@@ -1,6 +1,98 @@
 "use client";
 
-import { useState } from "react";
+
+function TimePicker24h({ value, onChange, placeholder }: { value: string, onChange: (val: string) => void, placeholder: string }) {
+    // Parse value "HH:mm"
+    const [h, m] = value ? value.split(':') : ["", ""];
+    const minutesRef = useRef<HTMLInputElement>(null);
+
+    const updateTime = (newH: string, newM: string) => {
+        if (!newH && !newM) onChange("");
+        else onChange(`${newH}:${newM}`);
+    };
+
+    const handleHourChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        let val = e.target.value.replace(/[^0-9]/g, '');
+        if (val.length > 2) val = val.slice(0, 2);
+
+        let num = parseInt(val);
+        if (isNaN(num)) {
+            // empty
+            updateTime("", m);
+            return;
+        }
+
+        // Limit to 23
+        if (num > 23) {
+            val = "23";
+        }
+
+        updateTime(val, m);
+
+        if (val.length === 2) {
+            minutesRef.current?.focus();
+        }
+    };
+
+    const handleHourBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        if (val.length > 0) {
+            updateTime(val.padStart(2, '0'), m);
+        }
+    }
+
+    const handleMinuteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        let val = e.target.value.replace(/[^0-9]/g, '');
+        if (val.length > 2) val = val.slice(0, 2);
+
+        let num = parseInt(val);
+        if (isNaN(num)) {
+            updateTime(h, "");
+            return;
+        }
+
+        if (num > 59) {
+            val = "59";
+        }
+
+        updateTime(h, val);
+    };
+
+    const handleMinuteBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        if (val.length > 0) {
+            updateTime(h, val.padStart(2, '0'));
+        }
+    }
+
+    return (
+        <div className="flex h-10 flex-1 items-center rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+            <span className="text-muted-foreground mr-2 text-xs uppercase tracking-wider">{placeholder}</span>
+            <div className="flex items-center gap-1">
+                <Input
+                    className="w-9 p-0 text-center shadow-none border-none focus-visible:ring-0 h-auto bg-transparent tabular-nums"
+                    placeholder="HH"
+                    value={h}
+                    onChange={handleHourChange}
+                    onBlur={handleHourBlur}
+                    maxLength={2}
+                />
+                <span className="text-muted-foreground">:</span>
+                <Input
+                    ref={minutesRef}
+                    className="w-9 p-0 text-center shadow-none border-none focus-visible:ring-0 h-auto bg-transparent tabular-nums"
+                    placeholder="MM"
+                    value={m}
+                    onChange={handleMinuteChange}
+                    onBlur={handleMinuteBlur}
+                    maxLength={2}
+                />
+            </div>
+        </div>
+    );
+}
+
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
     Table,
@@ -17,6 +109,13 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -159,8 +258,8 @@ export default function DrinksClient({ initialDrinks }: { initialDrinks: Drink[]
                     <DialogHeader>
                         <DialogTitle>{editingDrink ? "Edit Item" : "Add New Item"}</DialogTitle>
                     </DialogHeader>
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        <div className="grid w-full gap-2">
+                    <form onSubmit={handleSubmit} className="space-y-4 w-full min-w-0">
+                        <div className="flex flex-col gap-2">
                             <Label htmlFor="name">Name</Label>
                             <Input
                                 id="name"
@@ -169,7 +268,7 @@ export default function DrinksClient({ initialDrinks }: { initialDrinks: Drink[]
                                 required
                             />
                         </div>
-                        <div className="grid w-full gap-2">
+                        <div className="flex flex-col gap-2">
                             <Label htmlFor="type">Type</Label>
                             <select
                                 id="type"
@@ -183,7 +282,7 @@ export default function DrinksClient({ initialDrinks }: { initialDrinks: Drink[]
                         </div>
 
                         {/* Image Upload Section */}
-                        <div className="grid w-full gap-2">
+                        <div className="flex flex-col gap-2">
                             <Label htmlFor="image">Image</Label>
                             <div className="flex gap-4 items-center">
                                 {formData.image && (
@@ -216,20 +315,18 @@ export default function DrinksClient({ initialDrinks }: { initialDrinks: Drink[]
                             </div>
                         </div>
 
-                        <div className="grid w-full gap-2">
+                        <div className="flex flex-col gap-2">
                             <Label>Visibility Time (Optional)</Label>
-                            <div className="flex gap-2">
-                                <Input
-                                    type="time"
-                                    placeholder="From"
+                            <div className="flex flex-col gap-2">
+                                <TimePicker24h
                                     value={formData.visible_from || ""}
-                                    onChange={(e) => setFormData({ ...formData, visible_from: e.target.value })}
+                                    onChange={(val) => setFormData({ ...formData, visible_from: val })}
+                                    placeholder="From"
                                 />
-                                <Input
-                                    type="time"
-                                    placeholder="Until"
+                                <TimePicker24h
                                     value={formData.visible_until || ""}
-                                    onChange={(e) => setFormData({ ...formData, visible_until: e.target.value })}
+                                    onChange={(val) => setFormData({ ...formData, visible_until: val })}
+                                    placeholder="Until"
                                 />
                             </div>
                         </div>
