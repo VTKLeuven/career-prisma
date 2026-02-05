@@ -30,7 +30,7 @@ export async function getStudentFromCookies(): Promise<Student | null> {
     }
 
     const res = await fetch(
-      `${normalizedBase}items/students/${studentId}`,
+      `${normalizedBase}items/students/${studentId}?fields=*,is_shifter`,
       {
         headers: {
           "Authorization": `Bearer ${serverToken}`,

@@ -1,6 +1,6 @@
 "use server"
 
-import { readUsers, updateUser } from "@directus/sdk";
+import { readItems, updateItem } from "@directus/sdk";
 import { directus, getAdminDirectusClient } from "@/lib/directus";
 import { revalidatePath } from "next/cache";
 
@@ -8,16 +8,24 @@ export async function listAllUsersAction(search?: string) {
     try {
         const client = await getAdminDirectusClient() || directus;
 
-        // Typecast to any because readUsers return type might be strict about system fields
-        const users = await client.request(readUsers({
-            fields: ["id", "first_name", "last_name", "email", "is_shifter", "role.name"] as any,
-            search: search,
+        // Query students collection
+        const query: any = {
+            fields: ["id", "first_name", "last_name", "email", "is_shifter"],
             limit: 50,
-        })) as any[];
+        };
 
-        return users;
+        if (search) {
+            query.search = search;
+        } else {
+            // Default view: show existing shifters when no search provided
+            query.filter = { is_shifter: { _eq: true } };
+        }
+
+        const students = await client.request(readItems('students', query)) as any[];
+
+        return students;
     } catch (error) {
-        console.error("Error listing users:", error);
+        // console.error("Error listing students:", error);
         return [];
     }
 }
@@ -27,7 +35,7 @@ export async function toggleShifterStatusAction(userId: string, isShifter: boole
         const client = await getAdminDirectusClient();
         if (!client) throw new Error("No admin client available");
 
-        await client.request(updateUser(userId, {
+        await client.request(updateItem('students', userId, {
             is_shifter: isShifter,
         } as any));
 

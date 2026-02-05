@@ -9,7 +9,7 @@ export type DirectusUser = {
   tel?: string | null;
   role?: string | DirectusRole | null;
   admin: boolean;
-  company: Company;
+  company?: Company | null;
   status?: string;
   is_shifter?: boolean;
 } | null;
@@ -47,6 +47,7 @@ export type Student = {
   verification_token_created?: string; // When verification token was created
   date_created?: string;
   date_updated?: string;
+  is_shifter?: boolean;
 };
 
 export type Company = {

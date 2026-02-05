@@ -313,7 +313,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   // Add admin sections if user is admin
   const navItems = React.useMemo(() => {
-    const items: any[] = [...data.navMain];
+    let items: any[] = [];
+
+    // Only show Company Dashboard (navMain) to Admins or Company Representatives
+    if (user?.admin || user?.company) {
+      items = [...data.navMain];
+    }
 
     // Update Events section with dynamic event scan links
     const eventsIndex = items.findIndex(item => item.title === "Events");

@@ -1,7 +1,10 @@
 "use server"
 
-import { listOrders, updateOrder } from "@/lib/repos/orders";
+import { listOrders } from "@/lib/repos/orders";
 import { getUserFromCookies } from "@/lib/auth-server";
+import { getStudentFromCookies } from "@/lib/auth-student";
+import { getAdminDirectusClient } from "@/lib/directus";
+import { updateItem } from "@directus/sdk";
 import { revalidatePath } from "next/cache";
 
 export async function fetchOrdersAction(zoneId?: string) {
@@ -39,22 +42,59 @@ export async function fetchOrdersAction(zoneId?: string) {
 }
 
 export async function pickUpOrderAction(orderId: string) {
-    const user = await getUserFromCookies();
-    if (!user) return { success: false, error: "Not authenticated" };
+    let user = await getUserFromCookies();
+    let userId = user?.id;
 
-    await updateOrder(orderId, {
+    if (!user) {
+        const student = await getStudentFromCookies();
+        if (student && student.is_shifter) {
+            userId = student.id;
+        } else if (student) {
+            return { success: false, error: "Not authorized as shifter" };
+        }
+    }
+
+    if (!userId) return { success: false, error: "Not authenticated" };
+
+    // Use admin client to bypass need for directus user token
+    const client = await getAdminDirectusClient();
+    if (!client) return { success: false, error: "Server configuration error" };
+
+    await client.request(updateItem("orders", orderId, {
         status: "preparing",
-        shifter: user.id,
-    });
+        shifter: userId,
+    }));
+
     revalidatePath("/dashboard/shifter");
-    revalidatePath(`/booth/${orderId}`); // Invalidating booth page might be tricky if ID is unknown
+    try {
+        // Best effort revalidation
+        revalidatePath(`/booth/${orderId}`);
+    } catch (e) { }
+
     return { success: true };
 }
 
 export async function finishOrderAction(orderId: string) {
-    await updateOrder(orderId, {
+    // Check auth (even though we don't need user ID for the update, we need permission)
+    let user = await getUserFromCookies();
+    let isAuthorized = !!user;
+
+    if (!user) {
+        const student = await getStudentFromCookies();
+        if (student && student.is_shifter) {
+            isAuthorized = true;
+        }
+    }
+
+    if (!isAuthorized) return { success: false, error: "Not authorized" };
+
+    const client = await getAdminDirectusClient();
+    if (!client) return { success: false, error: "Server configuration error" };
+
+    await client.request(updateItem("orders", orderId, {
         status: "finished",
-    });
+    }));
+
     revalidatePath("/dashboard/shifter");
     return { success: true };
 }
