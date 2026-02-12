@@ -19,6 +19,48 @@ function RadioGroup({
   children,
   ...props
 }: RadioGroupProps) {
+  // Recursively find and clone RadioGroupItem components
+  const cloneChildren = (children: React.ReactNode): React.ReactNode => {
+    return React.Children.map(children, (child) => {
+      if (!React.isValidElement(child)) {
+        return child;
+      }
+
+      const childProps = child.props as any;
+      const childType = child.type as any;
+
+      // Check if this is a RadioGroupItem by checking for the value prop and component name
+      const isRadioGroupItem = 
+        childType?.displayName === "RadioGroupItem" ||
+        (childProps?.value !== undefined && typeof childProps.value === 'string');
+
+      // If this is a RadioGroupItem, clone it with the checked state
+      if (isRadioGroupItem) {
+        return React.cloneElement(child as React.ReactElement<any>, {
+          name: childProps.name || "radio-group",
+          value: childProps.value,
+          checked: value === childProps.value,
+          onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+            if (onValueChange && !disabled) {
+              onValueChange(e.target.value);
+            }
+          },
+          required,
+          disabled,
+        });
+      }
+
+      // If this element has children, recursively process them
+      if (childProps?.children) {
+        return React.cloneElement(child as React.ReactElement<any>, {
+          children: cloneChildren(childProps.children),
+        });
+      }
+
+      return child;
+    });
+  };
+
   return (
     <div
       data-slot="radio-group"
@@ -26,23 +68,7 @@ function RadioGroup({
       role="radiogroup"
       {...props}
     >
-      {React.Children.map(children, (child) => {
-        if (React.isValidElement(child)) {
-          return React.cloneElement(child as React.ReactElement<any>, {
-            name: (child as React.ReactElement<any>).props.name || "radio-group",
-            value: (child as React.ReactElement<any>).props.value,
-            checked: value === (child as React.ReactElement<any>).props.value,
-            onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
-              if (onValueChange && !disabled) {
-                onValueChange(e.target.value);
-              }
-            },
-            required,
-            disabled,
-          });
-        }
-        return child;
-      })}
+      {cloneChildren(children)}
     </div>
   )
 }
@@ -67,7 +93,7 @@ function RadioGroupItem({
           "border-input dark:bg-input/30",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           "disabled:cursor-not-allowed disabled:opacity-50",
-          "checked:border-primary",
+          checked && "border-primary",
           "appearance-none relative",
           className
         )}
@@ -82,6 +108,9 @@ function RadioGroupItem({
     </div>
   )
 }
+
+// Add displayName for easier identification
+RadioGroupItem.displayName = "RadioGroupItem";
 
 export { RadioGroup, RadioGroupItem }
 

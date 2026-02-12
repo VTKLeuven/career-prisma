@@ -72,6 +72,10 @@ const data = {
           url: "/dashboard/job-platform/cv-book",
         },
         {
+          title: "Matching Software",
+          url: "/dashboard/job-platform/matching-software",
+        },
+        {
           title: "Vacancies",
           url: "/dashboard/job-platform/vacancies",
         },

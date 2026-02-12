@@ -70,6 +70,8 @@ export type Company = {
   representatives?: CompanyRep[]
   category?: Master[] | { master_id: string; }[]
   options?: CareerEventOption[]
+  matching_information?: Record<string, string> | null; // JSON field storing question responses
+  culture?: Record<string, number> | null; // JSON field storing culture percentages (Clan, Adhocracy, Market, Hierarchy)
 };
 
 export type CareerEvent = {
