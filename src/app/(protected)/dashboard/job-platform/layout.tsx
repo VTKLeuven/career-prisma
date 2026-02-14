@@ -10,7 +10,6 @@ export default function JobPlatformLayout({ children }: { children: ReactNode })
       description="Manage job postings, CV books, and connect with talented students"
       items={[
         { title: "CV Book", url: "/dashboard/job-platform/cv-book" },
-        { title: "Matching Software", url: "/dashboard/job-platform/matching-software" },
         { title: "Vacancies", url: "/dashboard/job-platform/vacancies" },
       ]}
     >

@@ -1,0 +1,226 @@
+"use client";
+
+import React, { useState, useEffect, useMemo } from "react";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { IconCheck, IconRefresh } from "@tabler/icons-react";
+import {
+  getCompanyMatchingResponseAction,
+  saveCompanyMatchingResponseAction,
+} from "@/app/actions/matching-software";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+
+type Question = {
+  id: number;
+  question: string;
+  options: { label: string; value: string; culture: "Clan" | "Adhocracy" | "Market" | "Hierarchy" }[];
+};
+
+const QUESTIONS: Question[] = [
+  { id: 1, question: "How would you describe your company's general work environment?", options: [
+    { label: "A close-knit, supportive workplace.", value: "A", culture: "Clan" },
+    { label: "A dynamic, fast-changing environment.", value: "B", culture: "Adhocracy" },
+    { label: "A competitive, performance-oriented atmosphere.", value: "C", culture: "Market" },
+    { label: "A structured, formal, and organized setting.", value: "D", culture: "Hierarchy" },
+  ]},
+  { id: 2, question: "What type of leadership style is most common in your company?", options: [
+    { label: "Mentoring and supportive leaders.", value: "A", culture: "Clan" },
+    { label: "Visionary and risk-taking leaders.", value: "B", culture: "Adhocracy" },
+    { label: "Hard-driving and results-oriented leaders.", value: "C", culture: "Market" },
+    { label: "Coordinators and administrators.", value: "D", culture: "Hierarchy" },
+  ]},
+  { id: 3, question: "What is most valued when evaluating employee success?", options: [
+    { label: "Teamwork and employee engagement.", value: "A", culture: "Clan" },
+    { label: "Creativity and innovation.", value: "B", culture: "Adhocracy" },
+    { label: "Achievement of measurable goals.", value: "C", culture: "Market" },
+    { label: "Following procedures and maintaining stability.", value: "D", culture: "Hierarchy" },
+  ]},
+  { id: 4, question: "What best describes internal communication?", options: [
+    { label: "Open, inclusive, and informal.", value: "A", culture: "Clan" },
+    { label: "Spontaneous and idea-driven.", value: "B", culture: "Adhocracy" },
+    { label: "Direct, performance-focused.", value: "C", culture: "Market" },
+    { label: "Formal and standardized.", value: "D", culture: "Hierarchy" },
+  ]},
+  { id: 5, question: "How is conflict usually handled?", options: [
+    { label: "Through open discussion and mediation.", value: "A", culture: "Clan" },
+    { label: "By adapting quickly and moving forward.", value: "B", culture: "Adhocracy" },
+    { label: "By focusing on outcomes and accountability.", value: "C", culture: "Market" },
+    { label: "By following formal processes.", value: "D", culture: "Hierarchy" },
+  ]},
+  { id: 6, question: "What is most emphasized in onboarding?", options: [
+    { label: "Building relationships and connection.", value: "A", culture: "Clan" },
+    { label: "Embracing creativity and initiative.", value: "B", culture: "Adhocracy" },
+    { label: "Understanding expectations and performance metrics.", value: "C", culture: "Market" },
+    { label: "Learning systems, rules, and procedures.", value: "D", culture: "Hierarchy" },
+  ]},
+  { id: 7, question: "What qualities do you most look for when hiring?", options: [
+    { label: "Collaboration and cultural fit.", value: "A", culture: "Clan" },
+    { label: "Adaptability and entrepreneurial spirit.", value: "B", culture: "Adhocracy" },
+    { label: "Drive, ambition, and competitiveness.", value: "C", culture: "Market" },
+    { label: "Reliability and attention to detail.", value: "D", culture: "Hierarchy" },
+  ]},
+  { id: 8, question: "How would you describe career progression?", options: [
+    { label: "Based on teamwork and contribution to the group.", value: "A", culture: "Clan" },
+    { label: "Rapid for those who innovate and take risks.", value: "B", culture: "Adhocracy" },
+    { label: "Based on measurable performance indicators.", value: "C", culture: "Market" },
+    { label: "Formalized and structured through clear paths.", value: "D", culture: "Hierarchy" },
+  ]},
+  { id: 9, question: "What type of rewards are most common?", options: [
+    { label: "Recognition for teamwork and loyalty.", value: "A", culture: "Clan" },
+    { label: "Rewards for innovation and new ideas.", value: "B", culture: "Adhocracy" },
+    { label: "Bonuses tied to performance metrics.", value: "C", culture: "Market" },
+    { label: "Rewards for consistency and long-term reliability.", value: "D", culture: "Hierarchy" },
+  ]},
+  { id: 10, question: "How would you describe your company's pace of work?", options: [
+    { label: "Steady and people-centered.", value: "A", culture: "Clan" },
+    { label: "Rapid, changing, and experimental.", value: "B", culture: "Adhocracy" },
+    { label: "Fast, demanding, and competitive.", value: "C", culture: "Market" },
+    { label: "Predictable and controlled.", value: "D", culture: "Hierarchy" },
+  ]},
+  { id: 11, question: "What is the company's approach to risk?", options: [
+    { label: "Risk is taken carefully with team input.", value: "A", culture: "Clan" },
+    { label: "Risk-taking is encouraged and embraced.", value: "B", culture: "Adhocracy" },
+    { label: "Risk is acceptable if it leads to measurable success.", value: "C", culture: "Market" },
+    { label: "Risk is minimized through rules and planning.", value: "D", culture: "Hierarchy" },
+  ]},
+  { id: 12, question: "What is most celebrated inside the company?", options: [
+    { label: "Strong teamwork and collaboration.", value: "A", culture: "Clan" },
+    { label: "Breakthrough ideas and creative projects.", value: "B", culture: "Adhocracy" },
+    { label: "Hitting targets and winning deals.", value: "C", culture: "Market" },
+    { label: "Process improvements and ensuring compliance.", value: "D", culture: "Hierarchy" },
+  ]},
+  { id: 13, question: "What describes relationships between teams?", options: [
+    { label: "Supportive and cooperative.", value: "A", culture: "Clan" },
+    { label: "Flexible and spontaneous collaborations.", value: "B", culture: "Adhocracy" },
+    { label: "Competitive or performance-driven.", value: "C", culture: "Market" },
+    { label: "Clearly defined responsibilities and roles.", value: "D", culture: "Hierarchy" },
+  ]},
+];
+
+function seededShuffle<T>(array: T[], seed: number): T[] {
+  const shuffled = [...array];
+  let currentSeed = seed;
+  function seededRandom() {
+    currentSeed = (currentSeed * 9301 + 49297) % 233280;
+    return currentSeed / 233280;
+  }
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(seededRandom() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+/** Fixed order per question (seeded by question id) – not always A,B,C,D, but consistent. */
+function getOptions(question: Question) {
+  return seededShuffle(question.options, question.id);
+}
+
+function calculateCulturePercentages(answers: Record<string, string>): Record<string, number> {
+  const cultureCounts: Record<string, number> = { Clan: 0, Adhocracy: 0, Market: 0, Hierarchy: 0 };
+  const totalQuestions = QUESTIONS.length;
+  const POSITION_LETTERS = "ABCD";
+  Object.entries(answers).forEach(([questionId, answerValue]) => {
+    const question = QUESTIONS.find((q) => q.id === parseInt(questionId));
+    if (question) {
+      const options = getOptions(question);
+      const idx = POSITION_LETTERS.indexOf(answerValue);
+      if (idx >= 0 && options[idx]) cultureCounts[options[idx].culture]++;
+    }
+  });
+  return {
+    Clan: Math.round((cultureCounts.Clan / totalQuestions) * 100 * 100) / 100,
+    Adhocracy: Math.round((cultureCounts.Adhocracy / totalQuestions) * 100 * 100) / 100,
+    Market: Math.round((cultureCounts.Market / totalQuestions) * 100 * 100) / 100,
+    Hierarchy: Math.round((cultureCounts.Hierarchy / totalQuestions) * 100 * 100) / 100,
+  };
+}
+
+type Props = {
+  companyId: string;
+  matchingSoftwareId: string;
+  eventName?: string;
+};
+
+export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName }: Props) {
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [savedSnapshot, setSavedSnapshot] = useState<Record<string, string> | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getCompanyMatchingResponseAction(companyId, matchingSoftwareId)
+      .then((existing) => {
+        const existingAnswers = existing?.ocia_answers ? { ...existing.ocia_answers } : {};
+        setAnswers(existingAnswers);
+        setSavedSnapshot(existingAnswers);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [companyId, matchingSoftwareId]);
+
+  const isDirty = useMemo(() => {
+    if (!savedSnapshot) return false;
+    return JSON.stringify(answers) !== JSON.stringify(savedSnapshot);
+  }, [answers, savedSnapshot]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const ocia = calculateCulturePercentages(answers);
+    try {
+      await saveCompanyMatchingResponseAction(companyId, matchingSoftwareId, answers, ocia);
+      setSavedSnapshot({ ...answers });
+    } catch (err) {
+      console.error("[CompanyMatchingForm] Error saving:", err);
+      alert("Failed to save matching information. Please try again.");
+    }
+  }
+
+  if (loading) {
+    return <p className="text-muted-foreground">Loading...</p>;
+  }
+
+  return (
+    <Card className="rounded-2xl shadow-md">
+      <CardHeader>
+        <CardTitle className="text-xl">Matching Software{eventName ? ` – ${eventName}` : ""}</CardTitle>
+        <CardDescription>
+          Answer these questions to help us understand your company culture. Your responses will be used for matching purposes.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-8">
+          {QUESTIONS.map((question) => {
+            const options = getOptions(question);
+            const questionKey = question.id.toString();
+            const currentValue = answers[questionKey] || "";
+            return (
+              <div key={question.id} className="space-y-4 border-b pb-6 last:border-b-0">
+                <Label className="text-base font-semibold">{question.id}. {question.question}</Label>
+                <RadioGroup value={currentValue} onValueChange={(v) => setAnswers((p) => ({ ...p, [questionKey]: v }))}>
+                  {options.map((option, idx) => {
+                    const positionLetter = "ABCD"[idx];
+                    return (
+                      <div key={positionLetter} className="flex items-center space-x-2">
+                        <RadioGroupItem value={positionLetter} id={`q${question.id}-${positionLetter}`} name={`question-${question.id}`} />
+                        <Label htmlFor={`q${question.id}-${positionLetter}`} className="font-normal cursor-pointer flex-1">{option.label}</Label>
+                      </div>
+                    );
+                  })}
+                </RadioGroup>
+              </div>
+            );
+          })}
+          <div className="flex gap-2 justify-end pt-4">
+            <Button type="submit" className={`flex items-center gap-2 cursor-pointer ${!isDirty ? "bg-green-600 text-white disabled:bg-green-600 disabled:text-white" : ""}`} disabled={!isDirty}>
+              <IconCheck size={18} /> {!isDirty ? "Saved" : "Save Answers"}
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => savedSnapshot && setAnswers({ ...savedSnapshot })} className="cursor-pointer" disabled={!isDirty}>
+              <IconRefresh size={18} /> Reset
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}

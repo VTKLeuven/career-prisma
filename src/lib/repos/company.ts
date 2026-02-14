@@ -60,8 +60,6 @@ export async function getCompanyById(id: string, usePublic = false, retries = 2)
           fields: [
             "*",
             "page_image",
-            "matching_information",
-            "culture",
             "representatives.*",
             "category.master_id.*",
             "options.career_event_option_id.*",

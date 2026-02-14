@@ -14,6 +14,7 @@ import { useUser } from "@/providers/UserProvider";
 import Link from "next/link";
 import { getUpcomingEventsWithFallback, type EventWithStatus } from '@/lib/utils/events';
 import { fetchCompanyFormsForEventAction, checkCompanyFormCompletionByFormIdsAction } from '@/app/actions/forms';
+import { getMatchingSoftwareForEventAction } from '@/app/actions/matching-software';
 import { FileText, CheckCircle2 } from 'lucide-react';
 import { formatDateTimeBE } from '@/lib/date-utils';
 
@@ -229,6 +230,8 @@ function ManageEventCard({ event, company }: { event: CareerEvent; company: Comp
   }>>([]);
   const [loadingForms, setLoadingForms] = React.useState(true);
   const [completedFormIds, setCompletedFormIds] = React.useState<Set<string>>(new Set());
+  const [hasMatchingSoftware, setHasMatchingSoftware] = React.useState(false);
+  const [matchingSoftwareCompleted, setMatchingSoftwareCompleted] = React.useState(false);
 
   // Get company option IDs
   const companyOptionIds = React.useMemo(() => {
@@ -280,6 +283,25 @@ function ManageEventCard({ event, company }: { event: CareerEvent; company: Comp
       })
       .finally(() => setLoadingForms(false));
   }, [event.id, company?.id, companyOptionIds]);
+
+  // Check if event has matching software configured and if company has completed it
+  React.useEffect(() => {
+    getMatchingSoftwareForEventAction(event.id)
+      .then(async (ms) => {
+        setHasMatchingSoftware(!!ms);
+        if (ms && company?.id) {
+          const { getCompanyMatchingResponseAction } = await import('@/app/actions/matching-software');
+          const existing = await getCompanyMatchingResponseAction(company.id, ms.id);
+          setMatchingSoftwareCompleted(!!existing?.ocia_answers && Object.keys(existing.ocia_answers).length >= 13);
+        } else {
+          setMatchingSoftwareCompleted(false);
+        }
+      })
+      .catch(() => {
+        setHasMatchingSoftware(false);
+        setMatchingSoftwareCompleted(false);
+      });
+  }, [event.id, company?.id]);
 
   return (
     <Card className="border rounded-lg shadow-sm">
@@ -338,6 +360,21 @@ function ManageEventCard({ event, company }: { event: CareerEvent; company: Comp
                 })}
               </div>
             ) : null}
+
+            {/* Matching Software Button - only when event has it configured */}
+            {hasMatchingSoftware && (
+              <Button
+                asChild
+                variant={matchingSoftwareCompleted ? "outline" : "default"}
+                className="w-full justify-center"
+                size="sm"
+              >
+                <Link href={`/dashboard/matching-software/event/${encodeURIComponent(event.id)}`} className="flex items-center justify-center gap-2">
+                  Matching Software
+                  {matchingSoftwareCompleted && <CheckCircle2 className="h-4 w-4 text-green-600" />}
+                </Link>
+              </Button>
+            )}
 
             {/* Scans Button */}
             <Button asChild variant="outline" className="w-full">

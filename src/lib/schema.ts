@@ -70,8 +70,6 @@ export type Company = {
   representatives?: CompanyRep[]
   category?: Master[] | { master_id: string; }[]
   options?: CareerEventOption[]
-  matching_information?: Record<string, string> | null; // JSON field storing question responses
-  culture?: Record<string, number> | null; // JSON field storing culture percentages (Clan, Adhocracy, Market, Hierarchy)
 };
 
 export type CareerEvent = {
@@ -108,6 +106,44 @@ export type CareerEventOption = {
   sub_options?: CareerSubOption[];
 }
 
+/** Header button types that can be shown on the event page header */
+export type HeaderButtonType = 'floorplan' | 'company_guide' | 'cv_upload' | 'matching_software';
+
+/** RIASEC types for student matching (Holland codes) */
+export type RIASECType = 'R' | 'I' | 'A' | 'S' | 'E' | 'C';
+
+/** Matching software config - per year and event, with optional prerequisite form */
+export type MatchingSoftware = {
+  id: string;
+  year: string | AcademicYear;
+  event: string | CareerEvent;
+  prerequisite_form?: string | Form;
+  active: boolean;
+};
+
+/** Student's RIASEC matching response - one per student per matching software */
+export type StudentMatchingResponse = {
+  id: string;
+  student: string | Student;
+  matching_software: string | MatchingSoftware;
+  riasec_answers: Record<string, string>; // { "1": "A", "2": "B", ... }
+  riasec: Record<RIASECType, number>; // percentages
+  prerequisite_form_response?: Record<string, unknown>; // included form response data
+  companies?: string[] | Array<{ id: string; name?: string }>; // M2M – matched company IDs or expanded objects
+};
+
+/** OCIA culture types for company matching (Clan, Adhocracy, Market, Hierarchy) */
+export type OCIAType = "Clan" | "Adhocracy" | "Market" | "Hierarchy";
+
+/** Company's OCIA matching response - one per company per matching software */
+export type CompanyMatchingResponse = {
+  id: string;
+  company: string | Company;
+  matching_software: string | MatchingSoftware;
+  ocia_answers: Record<string, string>; // { "1": "A", "2": "B", ... }
+  ocia: Record<OCIAType, number>; // percentages
+};
+
 export type CareerEventPage = {
   id: string;
   event: CareerEvent;
@@ -125,6 +161,8 @@ export type CareerEventPage = {
   companies?: Company[];
   floorplan?: Floorplan;
   company_guide?: string; // Directus file ID for PDF
+  /** Which buttons to show in the event header. When empty/undefined, falls back to legacy behavior (header based on floorplan). Add a JSON field "header_buttons" to career_event_page in Directus (array of strings: "floorplan", "company_guide"). */
+  header_buttons?: HeaderButtonType[];
 };
 
 export type TimeSlot = {

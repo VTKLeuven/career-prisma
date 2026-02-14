@@ -17,7 +17,7 @@ import { useParams } from "next/navigation"
 import { fetchEventPageBySlugAction, fetchEventsAction } from "@/app/actions/events"
 import { getDirectusImageUrl } from "@/components/Images";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
-import { CareerEventPage, Company, CareerEvent } from '@/lib/schema'
+import { CareerEventPage, Company, CareerEvent, HeaderButtonType } from '@/lib/schema'
 import dynamic from "next/dynamic"
 import HeroiconDynamic from "@/components/HeroiconDynamic"
 import { ChevronDown, MapPin, Car, ExternalLink, LogOut, User } from 'lucide-react'
@@ -50,15 +50,16 @@ export default function EventPageClient({
 
   // Fetch the specific event page
   const loadedEventRef = useRef<string | null>(null)
-  const pageCacheRef = useRef<Map<string, CareerEventPage>>(new Map())
+  const pageCacheRef = useRef<Map<string, { data: CareerEventPage; ts: number }>>(new Map())
   const fetchPromiseRef = useRef<Map<string, Promise<CareerEventPage | null>>>(new Map())
+  const CACHE_TTL_MS = 30_000 // 30s - so header_buttons updates show soon after admin changes
 
   // Start fetching immediately, don't wait for useEffect
   useEffect(() => {
     // If we have initial page data, use it and skip fetching
     if (initialPage && !page && eventName) {
       setPage(initialPage)
-      pageCacheRef.current.set(eventName, initialPage)
+      pageCacheRef.current.set(eventName, { data: initialPage, ts: Date.now() })
       setIsLoading(false)
       return
     }
@@ -69,10 +70,10 @@ export default function EventPageClient({
       return
     }
 
-    // Check cache first - if cached, use it immediately
+    // Check cache first - use only if fresh (within TTL)
     const cached = pageCacheRef.current.get(eventName)
-    if (cached) {
-      setPage(cached)
+    if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+      setPage(cached.data)
       setIsLoading(false)
       return
     }
@@ -97,9 +98,9 @@ export default function EventPageClient({
       try {
         // Check cache again (might have been set by another component)
         const cached = pageCacheRef.current.get(eventName)
-        if (cached) {
+        if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
           if (loadedEventRef.current !== eventName) return
-          setPage(cached)
+          setPage(cached.data)
           setIsLoading(false)
           return
         }
@@ -108,7 +109,7 @@ export default function EventPageClient({
         let fetchPromise = fetchPromiseRef.current.get(eventName)
         if (!fetchPromise) {
           // Use API route for better caching and CDN support
-          fetchPromise = fetch(`/api/events/${eventName}`)
+          fetchPromise = fetch(`/api/events/${eventName}`, { cache: 'no-store' })
             .then(res => res.ok ? res.json() : null)
             .catch(() => {
               // Fallback to direct server action if API fails
@@ -125,7 +126,7 @@ export default function EventPageClient({
 
         if (found) {
           // Cache the result
-          pageCacheRef.current.set(eventName, found)
+          pageCacheRef.current.set(eventName, { data: found, ts: Date.now() })
           setPage(found)
           
           // Note: Next.js Image with priority will handle preloading automatically
@@ -177,12 +178,17 @@ export default function EventPageClient({
     return () => setHideLayoutHeader(false)
   }, [setHideLayoutHeader])
 
-  // Check if event has a floorplan to determine which header to show
-  const hasFloorplan = !!page?.floorplan
+  // Use header_buttons to determine which header to show.
+  // When header_buttons is undefined (legacy): use floorplan-based behavior.
+  // When header_buttons exists: show event header only when at least one button is enabled.
+  const headerButtons = page?.header_buttons
+  const useEventHeader = headerButtons === undefined
+    ? !!page?.floorplan
+    : Array.isArray(headerButtons) && headerButtons.length > 0
 
   return (
     <>
-      {hasFloorplan ? (
+      {useEventHeader ? (
         <Header page={page ?? undefined} />
       ) : (
         <HomepageHeader />
@@ -347,7 +353,6 @@ function HomepageHeader() {
               </button>
             </div>
 
-            <Link href="https://career.vtk.be/forms/cv-book" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">CV Upload</Link>
             <Link href="/our-students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
             <Link href="/vacancies" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
@@ -499,14 +504,6 @@ function HomepageHeader() {
 
                 {/* Other Links */}
                 <div className="border-t pt-4 space-y-2">
-                  <Button
-                    asChild
-                    variant="outline"
-                    className="rounded-full border-neutral-300 text-neutral-800 hover:bg-neutral-100 w-full"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    <Link href="https://career.vtk.be/forms/cv-book">CV Upload</Link>
-                  </Button>
                   <Button
                     asChild
                     variant="outline"
@@ -681,6 +678,23 @@ function HomepageHeader() {
   )
 }
 
+/** Show button only if it's in header_buttons and has data (cv_upload always has data). Legacy: when header_buttons undefined, show based on data. */
+function shouldShowHeaderButton(page: CareerEventPage, btn: HeaderButtonType): boolean {
+  const hasCompanyGuide = !!(
+    typeof page.company_guide === "string"
+      ? page.company_guide
+      : (page.company_guide as unknown as { id?: string } | null)?.id
+  )
+  const buttons = page.header_buttons
+  if (buttons === undefined) {
+    if (btn === "cv_upload" || btn === "matching_software") return false
+    return btn === "floorplan" ? !!page.floorplan : hasCompanyGuide
+  }
+  if (!Array.isArray(buttons) || !buttons.includes(btn)) return false
+  if (btn === "cv_upload" || btn === "matching_software") return true
+  return btn === "floorplan" ? !!page.floorplan : hasCompanyGuide
+}
+
 function Header({ page }: { page?: CareerEventPage }) {
   const [companyRep, setCompanyRep] = useState<{ authenticated: boolean; name: string } | null>(null)
   const [student, setStudent] = useState<{ authenticated: boolean; firstName: string | null; lastName: string | null } | null>(null)
@@ -776,49 +790,85 @@ function Header({ page }: { page?: CareerEventPage }) {
             />
           </Link>
 
-          {/* Desktop Nav */}
+          {/* Desktop Nav - Home always shown + event buttons */}
           <nav className="hidden items-center gap-2 md:flex">
             <Link href="/" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">
               Home
             </Link>
             {page && (
               <>
-                <Link
-                  href={`/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}/floorplan`}
-                  className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
-                >
-                  Floorplan
-                </Link>
-                {page.company_guide && (
+                {shouldShowHeaderButton(page, "floorplan") && (
+                  <Link
+                    href={`/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}/floorplan`}
+                    className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
+                  >
+                    Floorplan
+                  </Link>
+                )}
+                {shouldShowHeaderButton(page, "company_guide") && page.company_guide && (
                   <CompanyGuideButton 
                     companyGuide={page.company_guide} 
                     isMobile={false}
                     eventName={page.event.name.toLowerCase().replace(/\s+/g, "-")}
                   />
                 )}
+                {shouldShowHeaderButton(page, "cv_upload") && (
+                  <Link
+                    href="https://career.vtk.be/forms/cv-book"
+                    className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
+                  >
+                    CV Upload
+                  </Link>
+                )}
+                {shouldShowHeaderButton(page, "matching_software") && (
+                  <Link
+                    href={`/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}/matching-software`}
+                    className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
+                  >
+                    Matching Software
+                  </Link>
+                )}
               </>
             )}
           </nav>
 
-          {/* Mobile Nav - Show Home, Floorplan, Matching Software */}
+          {/* Mobile Nav - Home + event buttons */}
           <nav className="md:hidden flex items-center gap-1.5 overflow-x-auto flex-1 min-w-0">
             <Link href="/" className="rounded-full bg-vtk-blue px-2.5 py-1 text-xs font-medium text-white whitespace-nowrap shrink-0">
               Home
             </Link>
             {page && (
               <>
-                <Link
-                  href={`/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}/floorplan`}
-                  className="rounded-full px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 whitespace-nowrap shrink-0"
-                >
-                  Floorplan
-                </Link>
-                {page.company_guide && (
+                {shouldShowHeaderButton(page, "floorplan") && (
+                  <Link
+                    href={`/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}/floorplan`}
+                    className="rounded-full px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 whitespace-nowrap shrink-0"
+                  >
+                    Floorplan
+                  </Link>
+                )}
+                {shouldShowHeaderButton(page, "company_guide") && page.company_guide && (
                   <CompanyGuideButton 
                     companyGuide={page.company_guide} 
                     isMobile={true}
                     eventName={page.event.name.toLowerCase().replace(/\s+/g, "-")}
                   />
+                )}
+                {shouldShowHeaderButton(page, "cv_upload") && (
+                  <Link
+                    href="https://career.vtk.be/forms/cv-book"
+                    className="rounded-full px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 whitespace-nowrap shrink-0"
+                  >
+                    CV Upload
+                  </Link>
+                )}
+                {shouldShowHeaderButton(page, "matching_software") && (
+                  <Link
+                    href={`/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}/matching-software`}
+                    className="rounded-full px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 whitespace-nowrap shrink-0"
+                  >
+                    Matching Software
+                  </Link>
                 )}
               </>
             )}

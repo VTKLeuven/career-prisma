@@ -3,6 +3,9 @@
 import * as React from "react";
 import { fetchCompaniesAction, createCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction } from "@/app/actions/companies";
 import { fetchEventsAction, findCompaniesWithEventOptions, addCompaniesToEventPageAction } from "@/app/actions/events";
+import { listMatchingSoftwareAction, createMatchingSoftwareAction } from "@/app/actions/matching-software";
+import { fetchAcademicYearsAction } from "@/app/actions/cv-book";
+import { fetchFormsAction } from "@/app/actions/forms";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
@@ -60,7 +63,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { IconBuilding, IconColumns, IconMail, IconPlus, IconTaxEuro, IconFileCv } from "@tabler/icons-react";
-import type { CareerEvent, Company, CompanyRep, CareerEventOption, CareerEventPage, Booth } from "@/lib/schema";
+import type { CareerEvent, Company, CompanyRep, CareerEventOption, CareerEventPage, Booth, HeaderButtonType } from "@/lib/schema";
 import { useUser } from "@/providers/UserProvider";
 import { DirectusUser } from "@directus/sdk";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
@@ -2230,7 +2233,10 @@ function EventCard({ event }: { event: CareerEvent }) {
   const hours = [event.start_hour, event.end_hour].filter(Boolean).join(" – ");
   const [hasFloorplan, setHasFloorplan] = React.useState<boolean | null>(null);
   const [hasCompanyGuide, setHasCompanyGuide] = React.useState<boolean | null>(null);
+  const [hasMatchingSoftware, setHasMatchingSoftware] = React.useState<boolean | null>(null);
+  const [headerButtons, setHeaderButtons] = React.useState<HeaderButtonType[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [savingHeaderButtons, setSavingHeaderButtons] = React.useState(false);
 
   React.useEffect(() => {
     const checkFloorplan = async () => {
@@ -2248,16 +2254,48 @@ function EventCard({ event }: { event: CareerEvent }) {
         } else {
           setHasCompanyGuide(false);
         }
+        // Load header_buttons config
+        const buttons = eventPage?.header_buttons;
+        setHeaderButtons(Array.isArray(buttons) ? buttons : []);
+        // Check if matching software exists for this event
+        const matchingList = await listMatchingSoftwareAction({ eventId: event.id });
+        setHasMatchingSoftware((matchingList?.length ?? 0) > 0);
       } catch (error) {
         console.error("Error checking floorplan:", error);
         setHasFloorplan(false);
         setHasCompanyGuide(false);
+        setHasMatchingSoftware(false);
       } finally {
         setLoading(false);
       }
     };
     checkFloorplan();
   }, [event.id]);
+
+  const toggleHeaderButton = async (btn: HeaderButtonType) => {
+    const next = headerButtons.includes(btn)
+      ? headerButtons.filter((b) => b !== btn)
+      : [...headerButtons, btn];
+    setHeaderButtons(next);
+    setSavingHeaderButtons(true);
+    try {
+      const res = await fetch("/api/admin/event-page/header-buttons", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId: event.id, headerButtons: next }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to save");
+      }
+    } catch (err) {
+      console.error("Failed to update header buttons:", err);
+      setHeaderButtons(headerButtons); // Revert
+      alert(err instanceof Error ? err.message : "Failed to save. Add header_buttons JSON field to career_event_page in Directus.");
+    } finally {
+      setSavingHeaderButtons(false);
+    }
+  };
 
   return (
     <Card className="border rounded-lg shadow-sm">
@@ -2276,6 +2314,53 @@ function EventCard({ event }: { event: CareerEvent }) {
           <span className="font-medium text-foreground">{String(event.num_of_students ?? "–")}</span>
         </div>
         <div className="flex flex-col gap-2 items-stretch">
+          {/* Header buttons: choose which buttons appear on the public event page header. When any are on, main nav (Home, Events, etc.) is hidden. */}
+          {!loading && (
+            <div className="space-y-2 rounded-md border p-3">
+              <Label className="text-xs font-medium">Header buttons</Label>
+              <p className="text-xs text-muted-foreground">Show in event page header (replaces main nav when any are on):</p>
+              <div className="flex flex-wrap gap-3">
+                {hasFloorplan && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={headerButtons.includes("floorplan")}
+                      onCheckedChange={() => toggleHeaderButton("floorplan")}
+                      disabled={savingHeaderButtons}
+                    />
+                    <span className="text-sm">Floorplan</span>
+                  </label>
+                )}
+                {hasCompanyGuide && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={headerButtons.includes("company_guide")}
+                      onCheckedChange={() => toggleHeaderButton("company_guide")}
+                      disabled={savingHeaderButtons}
+                    />
+                    <span className="text-sm">Company guide</span>
+                  </label>
+                )}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={headerButtons.includes("cv_upload")}
+                    onCheckedChange={() => toggleHeaderButton("cv_upload")}
+                    disabled={savingHeaderButtons}
+                  />
+                  <span className="text-sm">CV Upload</span>
+                </label>
+                {hasMatchingSoftware && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={headerButtons.includes("matching_software")}
+                      onCheckedChange={() => toggleHeaderButton("matching_software")}
+                      disabled={savingHeaderButtons}
+                    />
+                    <span className="text-sm">Matching Software</span>
+                  </label>
+                )}
+              </div>
+            </div>
+          )}
           <AddCompaniesDialog event={event} />
           <AddCompanyGuideDialog event={event} hasCompanyGuide={hasCompanyGuide} />
           {loading ? (
@@ -2291,9 +2376,131 @@ function EventCard({ event }: { event: CareerEvent }) {
           ) : (
             <AddFloorplanDialog event={event} />
           )}
+          {!loading && (hasMatchingSoftware ? (
+            <Button variant="outline" size="sm" asChild className="w-full">
+              <Link href={`/admin/matching-software?eventId=${event.id}`}>
+                Edit matching software
+              </Link>
+            </Button>
+          ) : (
+            <AddMatchingSoftwareDialog event={event} onCreated={() => setHasMatchingSoftware(true)} />
+          ))}
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function AddMatchingSoftwareDialog({ event, onCreated }: { event: CareerEvent; onCreated?: () => void }) {
+  const [open, setOpen] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [academicYears, setAcademicYears] = React.useState<{ id: string; name: string; start_of_year: string; end_of_year: string }[]>([]);
+  const [forms, setForms] = React.useState<{ id: string; name: string }[]>([]);
+  const [selectedYearId, setSelectedYearId] = React.useState("");
+  const [selectedFormId, setSelectedFormId] = React.useState("");
+
+  React.useEffect(() => {
+    if (open) {
+      Promise.all([fetchAcademicYearsAction(), fetchFormsAction()]).then(([years, formsList]) => {
+        setAcademicYears(years || []);
+        setForms(formsList || []);
+      });
+    }
+  }, [open]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedYearId) {
+      setError("Please select an academic year");
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    try {
+      await createMatchingSoftwareAction({
+        year: selectedYearId,
+        event: event.id,
+        prerequisite_form: selectedFormId || undefined,
+        active: true,
+      });
+      setOpen(false);
+      setSelectedYearId("");
+      setSelectedFormId("");
+      onCreated?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="w-full">
+          <IconPlus className="h-4 w-4 mr-2" />
+          Add matching software
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>Add Matching Software</DialogTitle>
+            <DialogDescription>
+              Set up RIASEC matching for {event.name}. Students fill in 12 questions; optionally require a prerequisite form first.
+            </DialogDescription>
+          </DialogHeader>
+          {error && (
+            <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</div>
+          )}
+          <div className="space-y-2">
+            <Label>Academic Year *</Label>
+            <Select value={selectedYearId} onValueChange={setSelectedYearId} required>
+              <SelectTrigger>
+                <SelectValue placeholder="Select year" />
+              </SelectTrigger>
+              <SelectContent>
+                {academicYears.map((y) => (
+                  <SelectItem key={y.id} value={y.id}>
+                    {y.name} ({y.start_of_year} - {y.end_of_year})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Prerequisite Form (optional)</Label>
+            <Select value={selectedFormId || "__none__"} onValueChange={(v) => setSelectedFormId(v === "__none__" ? "" : v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None</SelectItem>
+                {forms.map((f) => (
+                  <SelectItem key={f.id} value={f.id}>
+                    {f.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Students must complete this form before the matching software. Response is included in the result.
+            </p>
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button type="submit" disabled={loading} className="w-full sm:w-auto">
+              {loading ? "Creating..." : "Create"}
+            </Button>
+            <DialogClose asChild>
+              <Button variant="outline" className="w-full sm:w-auto" disabled={loading}>
+                Cancel
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

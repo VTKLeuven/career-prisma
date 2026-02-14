@@ -3,7 +3,7 @@
 
 import { readItems, createItem, updateItem, deleteItems, deleteItem } from "@directus/sdk";
 import { getDirectusWithToken } from "@/lib/directus";
-import type { Floorplan, Booth, CareerEventPage, Company } from "@/lib/schema";
+import type { Floorplan, Booth, CareerEventPage, Company, HeaderButtonType } from "@/lib/schema";
 
 export async function createFloorplan(payload: {
   name: string;
@@ -349,6 +349,37 @@ export async function getBoothsForFloorplan(floorplanId: string): Promise<Booth[
   } catch (error) {
     console.error("Failed to get booths for floorplan:", error);
     return [];
+  }
+}
+
+export async function updateEventPageHeaderButtons(
+  eventId: string,
+  headerButtons: HeaderButtonType[]
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const client = await getDirectusWithToken();
+    if (!client) return { success: false, error: "Not authenticated" };
+
+    const eventPage = await getOrCreateEventPage(eventId);
+    if (!eventPage) return { success: false, error: "Event page not found" };
+
+    await client.request(
+      updateItem("career_event_page", eventPage.id, {
+        header_buttons: headerButtons,
+      })
+    );
+
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to update header buttons:", error);
+    const msg = error instanceof Error ? error.message : "Failed to update";
+    const hint = msg.includes("header_buttons") || msg.includes("doesn't exist")
+      ? " Add a JSON field 'header_buttons' to career_event_page in Directus."
+      : "";
+    return {
+      success: false,
+      error: msg + hint,
+    };
   }
 }
 

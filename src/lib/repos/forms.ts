@@ -201,6 +201,24 @@ export async function listFormVersions(formId: string) {
   }
 }
 
+/** List form versions using server client (for student/prerequisite flow). */
+export async function listFormVersionsForServer(formId: string): Promise<FormVersion[]> {
+  try {
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const client = await getServerDirectusClient();
+    return client.request(
+      readItems("form_versions", {
+        fields: ["*"],
+        filter: { form_id: { _eq: formId } },
+        sort: "-version_number",
+      })
+    ) as unknown as FormVersion[];
+  } catch (error) {
+    console.error("[listFormVersionsForServer] Error:", error);
+    return [];
+  }
+}
+
 export async function getFormVersionById(id: string) {
   try {
     // Try authenticated first, fall back to public client for public form access
@@ -332,6 +350,25 @@ export async function getActiveFormVersion(formId: string) {
   }
 }
 
+/** Get active form version using server client (for student/prerequisite flow). */
+export async function getActiveFormVersionForServer(formId: string): Promise<FormVersion | null> {
+  try {
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const client = await getServerDirectusClient();
+    const versions = await client.request(
+      readItems("form_versions", {
+        fields: ["*"],
+        filter: { form_id: { _eq: formId }, is_active: { _eq: true } },
+        limit: 1,
+      })
+    ) as unknown as FormVersion[];
+    return versions?.[0] ?? null;
+  } catch (error) {
+    console.error("[getActiveFormVersionForServer] Error:", error);
+    return null;
+  }
+}
+
 // ===================== FORM RESPONSES =====================
 
 export async function listFormResponses(formVersionId: string, opts?: {
@@ -411,6 +448,35 @@ export async function getLatestFormResponse(formVersionId: string) {
     return responses.length > 0 ? responses[0] : null;
   } catch (error) {
     console.error("Error getting latest form response:", error);
+    return null;
+  }
+}
+
+/** Get a student's latest form response across any of the given form versions. Uses server client.
+ * Matches by data._student_id (stored in form data JSON) since form_responses may not have a student_id column. */
+export async function getStudentLatestFormResponseForForm(
+  studentId: string,
+  versionIds: string[]
+): Promise<{ id: string; form_version_id: string; data: Record<string, unknown> } | null> {
+  if (versionIds.length === 0) return null;
+  try {
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const client = await getServerDirectusClient();
+    // Fetch responses for these versions and match by data._student_id (no student_id column)
+    const responses = await client.request(
+      readItems("form_responses", {
+        fields: ["id", "form_version_id", "data"],
+        filter: { form_version_id: { _in: versionIds } },
+        limit: 1000,
+        sort: "-submitted_at",
+      })
+    ) as unknown as Array<{ id: string; form_version_id: string; data?: Record<string, unknown> }>;
+    const match = responses.find(
+      (r) => (r.data as Record<string, unknown>)?._student_id === studentId
+    );
+    return match ? { id: match.id, form_version_id: match.form_version_id, data: match.data ?? {} } : null;
+  } catch (error) {
+    console.error("[getStudentLatestFormResponseForForm] Error:", error);
     return null;
   }
 }
