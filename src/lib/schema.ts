@@ -420,4 +420,5 @@ export type Schema = {
   Booths: Booth[];
   Floorplan: Floorplan[];
   company_user_requests: CompanyUserRequest[];
+  ordering_settings: { id?: string; company_ordering_enabled?: boolean }[];
 };

@@ -119,19 +119,41 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { createDrinkAction, deleteDrinkAction, updateDrinkAction } from "@/app/actions/drinks";
+import { createDrinkAction, deleteDrinkAction, updateDrinkAction, setCompanyOrderingEnabledAction } from "@/app/actions/drinks";
 import { uploadFileAction } from "@/app/actions/media";
 import type { Drink } from "@/lib/schema";
 import { useRouter } from "next/navigation";
 import { Trash2, Edit, Plus, Loader2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-export default function DrinksClient({ initialDrinks }: { initialDrinks: Drink[] }) {
+export default function DrinksClient({
+    initialDrinks,
+    initialCompanyOrderingEnabled = false,
+}: {
+    initialDrinks: Drink[];
+    initialCompanyOrderingEnabled?: boolean;
+}) {
     const [drinks, setDrinks] = useState(initialDrinks);
     const [isOpen, setIsOpen] = useState(false);
     const [editingDrink, setEditingDrink] = useState<Drink | null>(null);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [uploading, setUploading] = useState(false);
+    const [companyOrderingEnabled, setCompanyOrderingEnabled] = useState(initialCompanyOrderingEnabled);
+    const [togglingOrdering, setTogglingOrdering] = useState(false);
     const router = useRouter();
+
+    const handleCompanyOrderingToggle = async (checked: boolean) => {
+        setTogglingOrdering(true);
+        const res = await setCompanyOrderingEnabledAction(checked);
+        setTogglingOrdering(false);
+        if (res.success) {
+            setCompanyOrderingEnabled(checked);
+            router.refresh();
+        } else {
+            alert(res.error || "Failed to update setting");
+        }
+    };
 
     // Form state
     const [formData, setFormData] = useState<Partial<Drink>>({
@@ -241,6 +263,39 @@ export default function DrinksClient({ initialDrinks }: { initialDrinks: Drink[]
 
     return (
         <div className="space-y-4">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Company Dashboard</CardTitle>
+                    <CardDescription>
+                        When enabled, company representatives will see an "Ordering" tab in their dashboard
+                        that links to their booth&apos;s drink ordering page.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="flex items-center justify-between gap-4">
+                    <div className="flex flex-col gap-1">
+                        <Label htmlFor="company-ordering" className="text-sm font-medium">
+                            Show Ordering tab for company reps
+                        </Label>
+                        <div className="flex items-center gap-1.5">
+                            {togglingOrdering ? (
+                                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                            ) : (
+                                <span className={`inline-block h-2 w-2 rounded-full ${companyOrderingEnabled ? 'bg-emerald-500' : 'bg-red-400'}`} />
+                            )}
+                            <span className={`text-xs font-medium ${companyOrderingEnabled ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+                                {togglingOrdering ? 'Updating…' : companyOrderingEnabled ? 'Enabled' : 'Disabled'}
+                            </span>
+                        </div>
+                    </div>
+                    <Switch
+                        id="company-ordering"
+                        checked={companyOrderingEnabled}
+                        onCheckedChange={handleCompanyOrderingToggle}
+                        disabled={togglingOrdering}
+                    />
+                </CardContent>
+            </Card>
+
             <Dialog open={isOpen} onOpenChange={(open) => {
                 setIsOpen(open);
                 if (!open) setEditingDrink(null);

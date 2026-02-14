@@ -21,11 +21,12 @@ import {
   IconFileCv,
   IconSettings,
   IconColumns,
-  IconAlertTriangle,
+  IconGlassCocktail,
 } from "@tabler/icons-react";
 import Link from "next/link";
 import { useUser } from "@/providers/UserProvider";
 import { fetchPendingApprovalRequestsAction, fetchCompanyByIdAction } from "@/app/actions/companies";
+import { getCompanyOrderingTabInfo } from "@/app/actions/ordering";
 import { validateExistingPageImage } from "@/lib/utils/image-validation";
 import { getDirectusImageUrl } from "@/components/Images";
 import { fetchEventsAction } from "@/app/actions/events";
@@ -111,6 +112,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [pageImageInvalid, setPageImageInvalid] = React.useState<boolean>(false);
   const [companyEvents, setCompanyEvents] = React.useState<CareerEvent[]>([]);
   const [company, setCompany] = React.useState<Company | null>(null);
+  const [companyOrderingBoothId, setCompanyOrderingBoothId] = React.useState<string | null>(null);
 
   // Function to check page image validity
   const checkPageImage = React.useCallback(async () => {
@@ -224,10 +226,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   React.useEffect(() => {
     if (!user?.company?.id) {
       setCompanyEvents([]);
+      setCompanyOrderingBoothId(null);
       return;
     }
 
     let alive = true;
+
+    getCompanyOrderingTabInfo(user.company.id).then(({ enabled, boothId }) => {
+      if (alive && enabled && boothId) setCompanyOrderingBoothId(boothId);
+      else if (alive) setCompanyOrderingBoothId(null);
+    });
 
     Promise.all([
       fetchCompanyByIdAction(user.company.id),
@@ -413,23 +421,27 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       });
     }
 
-    // Add Shifter section
+    // Add Ordering section
+    const orderingItems: { title: string; url: string }[] = [];
     if (user?.is_shifter || user?.admin) {
+      orderingItems.push({ title: "Shifter Dashboard", url: "/dashboard/shifter" });
+    }
+    // Company reps: Order Drinks at their booth (when admin setting is enabled)
+    if (user?.company && companyOrderingBoothId) {
+      orderingItems.push({ title: "Order Drinks", url: `/booth/${companyOrderingBoothId}` });
+    }
+
+    if (orderingItems.length > 0) {
       items.push({
         title: "Ordering",
         url: "#",
-        icon: IconAlertTriangle, // Placeholder icon, maybe use something else
-        items: [
-          {
-            title: "Shifter Dashboard",
-            url: "/dashboard/shifter",
-          },
-        ],
+        icon: IconGlassCocktail,
+        items: orderingItems,
       });
     }
 
     return items;
-  }, [user?.admin, pendingCount, pageImageInvalid, companyEvents]);
+  }, [user?.admin, user?.company, user?.is_shifter, pendingCount, pageImageInvalid, companyEvents, companyOrderingBoothId]);
 
   return (
     <Sidebar collapsible="icon" {...props}>

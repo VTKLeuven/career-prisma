@@ -1,8 +1,26 @@
 "use server"
 
 import { createDrink, deleteDrink, updateDrink } from "@/lib/repos/drinks";
+import { getCompanyOrderingEnabled, setCompanyOrderingEnabled } from "@/lib/repos/ordering-settings";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { revalidatePath } from "next/cache";
+
+export async function getCompanyOrderingEnabledAction(): Promise<boolean> {
+    const user = await getUserFromCookies();
+    if (!user?.admin) return false;
+    return getCompanyOrderingEnabled();
+}
+
+export async function setCompanyOrderingEnabledAction(enabled: boolean) {
+    const user = await getUserFromCookies();
+    if (!user?.admin) return { success: false, error: "Unauthorized" };
+
+    const ok = await setCompanyOrderingEnabled(enabled);
+    if (!ok) return { success: false, error: "Failed to update setting" };
+
+    revalidatePath("/admin/drinks");
+    return { success: true };
+}
 
 export async function createDrinkAction(data: any) {
     try {
