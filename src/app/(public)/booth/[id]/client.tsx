@@ -70,9 +70,16 @@ export default function BoothClient({
 
         const res = await placeOrderAction(boothId, companyId, items);
         if (res.success) {
+            // Optimistically set active order BEFORE clearing cart so we have the items
+            setActiveOrder({
+                status: 'pending',
+                items: items.map(i => ({
+                    current_price: 0, // price doesn't matter for count
+                    quantity: i.quantity,
+                    drink_id: i.drink_id,
+                })) as any
+            } as Order);
             setCart({});
-            // Optimistically set active order
-            setActiveOrder({ status: 'pending' } as Order);
             router.refresh();
         } else {
             alert(res.error || "Failed");
