@@ -1,8 +1,12 @@
 import { listAllUsersAction } from "@/app/actions/shifters";
 import { Suspense } from "react";
 import ShiftersClient from "./client";
+import { getUserFromCookies } from "@/lib/auth-server";
 
 export default async function AdminShiftersPage() {
+    const user = await getUserFromCookies();
+    if (!user?.admin) return <p>NO ACCESS</p>;
+
     const users = await listAllUsersAction();
 
     return (

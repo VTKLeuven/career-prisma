@@ -2,8 +2,12 @@ import { listDrinks } from "@/lib/repos/drinks";
 import { getCompanyOrderingEnabled } from "@/lib/repos/ordering-settings";
 import { Suspense } from "react";
 import DrinksClient from "./client";
+import { getUserFromCookies } from "@/lib/auth-server";
 
 export default async function AdminDrinksPage() {
+    const user = await getUserFromCookies();
+    if (!user?.admin) return <p>NO ACCESS</p>;
+
     const [drinks, companyOrderingEnabled] = await Promise.all([
         listDrinks(),
         getCompanyOrderingEnabled(),

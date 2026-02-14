@@ -4,6 +4,7 @@ import { readItems } from "@directus/sdk";
 import type { Booth } from "@/lib/schema";
 import { Suspense } from "react";
 import ZonesClient from "./client";
+import { getUserFromCookies } from "@/lib/auth-server";
 
 async function getBooths() {
     const client = await getDirectusWithToken() || await getAdminDirectusClient() || directus;
@@ -14,6 +15,9 @@ async function getBooths() {
 }
 
 export default async function AdminZonesPage() {
+    const user = await getUserFromCookies();
+    if (!user?.admin) return <p>NO ACCESS</p>;
+
     const [zones, booths] = await Promise.all([
         listZones(),
         getBooths(),
