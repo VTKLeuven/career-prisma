@@ -336,6 +336,32 @@ export async function createMatchingSoftware(data: {
   throw lastError;
 }
 
+/** Update matching software (e.g. toggle active). */
+export async function updateMatchingSoftware(
+  id: string,
+  data: { active?: boolean }
+): Promise<MatchingSoftware | null> {
+  const client = await getAuthedDirectusOrThrow();
+  const payload: Record<string, unknown> = {};
+  if (data.active !== undefined) payload.active = data.active;
+
+  if (Object.keys(payload).length === 0) return null;
+
+  let lastError: unknown;
+  for (const collection of MATCHING_SOFTWARE_COLLECTIONS) {
+    try {
+      const result = (await client.request(
+        updateItem(collection, id, payload)
+      )) as unknown as MatchingSoftware;
+      return result;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  console.error("[updateMatchingSoftware] Error:", lastError);
+  throw lastError;
+}
+
 /** Get the logged-in student's response. Collection has student (M2O) and matching_software (M2O) fields. */
 export async function getStudentMatchingResponse(
   studentId: string | number,

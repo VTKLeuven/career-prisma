@@ -79,7 +79,7 @@ import { slugifyCompanyName } from "@/lib/utils/slugify";
 /** ------------------------------------------------------------------
  * CompanyRow — allow representatives to be Partial<CompanyRep>[]
  * ------------------------------------------------------------------ */
-type CompanyRow = Pick<Company, "id" | "name" | "VAT" | "address" | "salesperson"> & {
+type CompanyRow = Pick<Company, "id" | "name" | "VAT" | "address" | "salesperson" | "status"> & {
   representatives?: Partial<CompanyRep>[];
   options?: CareerEventOption[];
 };
@@ -115,12 +115,13 @@ function CompaniesSection() {
     fetchCompaniesAction()
       .then((rows) => {
         // Normalize representatives to Partial<CompanyRep>[]
-        const mapped: CompanyRow[] = (rows ?? []).map((r: Company) => ({
+        const mapped: CompanyRow[] = (rows ?? []).map((r: Company & { status?: string }) => ({
           id: r.id,
           name: r.name,
           VAT: r.VAT ?? "",
           address: r.address ?? formatAddress(r),
           salesperson: r.salesperson ?? "",
+          status: r.status ?? "",
           representatives: (r.representatives ?? []).map((rep) => ({ ...rep })) as Partial<CompanyRep>[],
           options: (r.options ?? []).map((opt, optIndex) => {
             // Handle both direct CareerEventOption and junction table format
@@ -214,12 +215,13 @@ function CompaniesSection() {
       .then((rows) => {
         if (!alive) return;
         // Normalize representatives to Partial<CompanyRep>[]
-        const mapped: CompanyRow[] = (rows ?? []).map((r: Company) => ({
+        const mapped: CompanyRow[] = (rows ?? []).map((r: Company & { status?: string }) => ({
           id: r.id,
           name: r.name,
           VAT: r.VAT ?? "",
           address: r.address ?? formatAddress(r),
           salesperson: r.salesperson ?? "",
+          status: r.status ?? "",
           representatives: (r.representatives ?? []).map((rep) => ({ ...rep })) as Partial<CompanyRep>[],
           options: (r.options ?? []).map((opt, optIndex) => {
             // Handle both direct CareerEventOption and junction table format
@@ -479,13 +481,20 @@ function CompaniesSection() {
                         </TableCell>
                       </TableRow>
                     ) : table.getRowModel().rows.length ? (
-                      table.getRowModel().rows.map(row => (
-                        <TableRow key={row.id}>
-                          {row.getVisibleCells().map(cell => (
-                            <TableCell key={cell.id} className="whitespace-nowrap">{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
-                          ))}
-                        </TableRow>
-                      ))
+                      table.getRowModel().rows.map(row => {
+                        const company = row.original as CompanyRow;
+                        const isUnpublished = company.status !== "published";
+                        return (
+                          <TableRow
+                            key={row.id}
+                            className={isUnpublished ? "bg-red-50/80 dark:bg-red-950/20" : undefined}
+                          >
+                            {row.getVisibleCells().map(cell => (
+                              <TableCell key={cell.id} className="whitespace-nowrap">{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+                            ))}
+                          </TableRow>
+                        );
+                      })
                     ) : (
                       <TableRow>
                         <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center">

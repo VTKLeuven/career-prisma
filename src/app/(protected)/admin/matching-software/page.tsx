@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import {
   listMatchingSoftwareAction,
   createMatchingSoftwareAction,
+  updateMatchingSoftwareAction,
 } from "@/app/actions/matching-software";
 import { fetchAcademicYearsAction } from "@/app/actions/cv-book";
 import { fetchFormsAction } from "@/app/actions/forms";
@@ -28,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus } from "lucide-react";
 import { useUser } from "@/providers/UserProvider";
 import type { MatchingSoftware, AcademicYear, Form, CareerEvent } from "@/lib/schema";
@@ -67,9 +69,11 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
   const [items, setItems] = useState<MatchingSoftwareRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadItems = React.useCallback(() => {
     setError(null);
+    setLoading(true);
     listMatchingSoftwareAction(eventId ? { eventId } : undefined)
       .then((data) => {
         const transformed = (data || []).map((item) => ({
@@ -86,6 +90,25 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
       })
       .finally(() => setLoading(false));
   }, [eventId]);
+
+  useEffect(() => {
+    loadItems();
+  }, [loadItems]);
+
+  const handleToggleActive = async (item: MatchingSoftwareRow) => {
+    setTogglingId(item.id);
+    try {
+      await updateMatchingSoftwareAction(item.id, { active: !item.active });
+      setItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, active: !i.active } : i))
+      );
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update. Please try again.");
+    } finally {
+      setTogglingId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -140,12 +163,23 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
                     {(item.prerequisite_form as Form)?.name || "None"}
                   </div>
                 </div>
-                <div className="text-sm">
-                  {item.active ? (
-                    <span className="text-green-600">Active</span>
-                  ) : (
-                    <span className="text-muted-foreground">Inactive</span>
-                  )}
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id={`active-${item.id}`}
+                    checked={item.active ?? true}
+                    onCheckedChange={() => handleToggleActive(item)}
+                    disabled={togglingId === item.id}
+                  />
+                  <Label
+                    htmlFor={`active-${item.id}`}
+                    className="text-sm cursor-pointer select-none"
+                  >
+                    {item.active ? (
+                      <span className="text-green-600">Active</span>
+                    ) : (
+                      <span className="text-muted-foreground">Inactive</span>
+                    )}
+                  </Label>
                 </div>
               </div>
             ))}

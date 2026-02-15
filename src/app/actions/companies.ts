@@ -101,7 +101,7 @@ export async function fetchCompaniesAction() {
         : typeof c.salesperson === "string" && c.salesperson
         ? c.salesperson
         : "Not set",
-
+    status: c.status ?? "",
     // Include options so you can access events
     options: c.options ?? [],
     category: c.category ?? [],

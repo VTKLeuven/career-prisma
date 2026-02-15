@@ -60,7 +60,7 @@ export default function EventMatchingSoftwarePage() {
   if (!matchingSoftware) {
     return (
       <div className="w-full gap-4 flex flex-col">
-        <p className="text-muted-foreground">No matching software is configured for this event.</p>
+        <p className="text-muted-foreground">Matching software is not available for this event.</p>
         <Button asChild variant="outline">
           <Link href="/dashboard">Back to dashboard</Link>
         </Button>

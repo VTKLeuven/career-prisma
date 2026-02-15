@@ -5,6 +5,7 @@ import {
   getActiveMatchingSoftwareForEvent,
   getFirstActiveMatchingSoftware,
   createMatchingSoftware,
+  updateMatchingSoftware,
   getStudentMatchingResponse,
   createStudentMatchingResponse,
   getCompanyMatchingResponse,
@@ -32,6 +33,10 @@ export async function createMatchingSoftwareAction(data: {
   active?: boolean;
 }) {
   return createMatchingSoftware(data);
+}
+
+export async function updateMatchingSoftwareAction(id: string, data: { active?: boolean }) {
+  return updateMatchingSoftware(id, data);
 }
 
 export async function getMatchingSoftwareForEventAction(eventId: string) {

@@ -4,6 +4,7 @@
 "use server";
 import { listEvents } from "@/lib/repos/event";
 import { listEventPages, getEventPageBySlug } from "@/lib/repos/event";
+import { getActiveMatchingSoftwareForEvent } from "@/lib/repos/matching-software";
 import DOMPurify from 'isomorphic-dompurify';
 import type { Company, CareerEvent, CareerEventOption } from "@/lib/schema";
 import { listCareerEventOptions } from "@/lib/repos/option";
@@ -195,7 +196,10 @@ export async function fetchEventPageBySlugAction(slug: string) {
   // ✅ Build href
   page.event.href = `/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}`;
 
-  return page;
+  // Check if matching software is active for this event (for header button visibility)
+  const hasActiveMatchingSoftware = !!(await getActiveMatchingSoftwareForEvent(page.event.id));
+
+  return { ...page, hasActiveMatchingSoftware };
 }
 
 /**

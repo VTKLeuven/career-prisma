@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, LogOut, User } from 'lucide-react'
+import { LogOut, User } from 'lucide-react'
 import { useRouter, usePathname } from 'next/navigation'
 import { fetchEventsAction } from "@/app/actions/events";
 import { CareerEvent } from '@/lib/schema'
@@ -185,41 +185,21 @@ function Header() {
           <nav className="hidden items-center gap-2 md:flex">
             <Link href="/" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">Home</Link>
 
-            <div className="relative">
-              <button
-                type="button"
-                onMouseEnter={() => {
-                  if (!menuOpenedViaClick) {
-                    setOpenMenu('events')
-                  }
-                }}
-                onFocus={() => setOpenMenu('events')}
-                onClick={() => {
-                  setOpenMenu('events')
-                  setMenuOpenedViaClick(true)
-                }}
-                className="inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
-                aria-expanded={openMenu === 'events'}
-                aria-controls="mega-events"
-              >
-                Events <ChevronDown className="h-4 w-4" />
-              </button>
-            </div>
+            {/* TEMPORARY: Replaced Events dropdown with Jobfair 2026 link. Revert to Events dropdown when done. */}
+            <Link href="/event/vtk-jobfair" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">
+              Jobfair 2026
+            </Link>
 
             <Link href="/our-students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
             <Link href="/vacancies" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
 
-          {/* Mobile nav - Events as simple button */}
+          {/* Mobile nav - TEMPORARY: Jobfair 2026 link (was Events button). Revert when done. */}
           <nav className="md:hidden flex items-center gap-2">
             <Link href="/" className="rounded-full bg-vtk-blue px-3 py-1.5 text-xs font-medium text-white">Home</Link>
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100"
-            >
-              Events
-            </button>
+            <Link href="/event/vtk-jobfair" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">
+              Jobfair 2026
+            </Link>
             <Link href="/vacancies" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
           </nav>
 

@@ -679,7 +679,7 @@ function HomepageHeader() {
 }
 
 /** Show button only if it's in header_buttons and has data (cv_upload always has data). Legacy: when header_buttons undefined, show based on data. */
-function shouldShowHeaderButton(page: CareerEventPage, btn: HeaderButtonType): boolean {
+function shouldShowHeaderButton(page: CareerEventPage & { hasActiveMatchingSoftware?: boolean }, btn: HeaderButtonType): boolean {
   const hasCompanyGuide = !!(
     typeof page.company_guide === "string"
       ? page.company_guide
@@ -691,7 +691,12 @@ function shouldShowHeaderButton(page: CareerEventPage, btn: HeaderButtonType): b
     return btn === "floorplan" ? !!page.floorplan : hasCompanyGuide
   }
   if (!Array.isArray(buttons) || !buttons.includes(btn)) return false
-  if (btn === "cv_upload" || btn === "matching_software") return true
+  if (btn === "matching_software") {
+    // Hide when matching software is deactivated (active=false in Directus)
+    if (page.hasActiveMatchingSoftware === false) return false
+    return true
+  }
+  if (btn === "cv_upload") return true
   return btn === "floorplan" ? !!page.floorplan : hasCompanyGuide
 }
 

@@ -158,7 +158,7 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
       <div className="container max-w-2xl mx-auto py-12 px-4">
         <Card>
           <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">No matching software is configured for this event yet.</p>
+            <p className="text-muted-foreground">Matching software is not available for this event.</p>
             <Button asChild className="mt-4">
               <Link href={`/event/${eventName.toLowerCase().replace(/\s+/g, "-")}`}>Back to event</Link>
             </Button>
