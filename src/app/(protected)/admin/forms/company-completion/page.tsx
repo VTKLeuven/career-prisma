@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import type { CareerEvent } from "@/lib/schema";
 import Link from "next/link";
+import { useUser } from "@/providers/UserProvider";
 
 type FormStatusItem = {
   formId: string;
@@ -41,7 +42,7 @@ type FormStatusItem = {
 type SalespersonInfo = { id: string; name: string } | null;
 
 type CompanyFormStatus = {
-  company: { id: string; name: string };
+  company: { id: string; name: string; status?: string };
   salesperson: SalespersonInfo;
   optionNames: string[];
   forms: FormStatusItem[];
@@ -51,6 +52,7 @@ type CompanyFormStatus = {
 type SortOption = "incomplete" | "name-asc" | "name-desc";
 
 export default function CompanyFormCompletionPage() {
+  const { user } = useUser();
   const [events, setEvents] = useState<CareerEvent[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -184,7 +186,7 @@ export default function CompanyFormCompletionPage() {
       };
 
       const companyDataList: Array<{
-        company: { id: string; name: string };
+        company: { id: string; name: string; status?: string };
         salesperson: SalespersonInfo;
         optionNames: string[];
         forms: Awaited<ReturnType<typeof fetchCompanyFormsForEventAction>>;
@@ -211,7 +213,11 @@ export default function CompanyFormCompletionPage() {
         const forms = optionSetToForms.get(key) ?? [];
         if (forms.length === 0 && !matchingSoftware) continue;
         companyDataList.push({
-          company: { id: company.id, name: company.name },
+          company: {
+            id: company.id,
+            name: company.name,
+            status: (company as { status?: string }).status,
+          },
           salesperson: getSalespersonInfo(company),
           optionNames: getOptionNamesForEvent(company),
           forms,
@@ -431,8 +437,13 @@ export default function CompanyFormCompletionPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {displayedStatuses.map((status) => (
-                      <TableRow key={status.company.id}>
+                    {displayedStatuses.map((status) => {
+                      const isUnpublished = user?.admin && status.company.status !== "published";
+                      return (
+                      <TableRow
+                        key={status.company.id}
+                        className={isUnpublished ? "bg-red-50/80 dark:bg-red-950/20" : undefined}
+                      >
                         <TableCell className="font-medium">
                           {status.company.name}
                         </TableCell>
@@ -484,7 +495,8 @@ export default function CompanyFormCompletionPage() {
                           )}
                         </TableCell>
                       </TableRow>
-                    ))}
+                    );
+                    })}
                   </TableBody>
                 </Table>
               </div>

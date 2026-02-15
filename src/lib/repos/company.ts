@@ -141,6 +141,7 @@ export async function getCompaniesForEvent(eventId: string, usePublic = false) {
       : [
           "id",
           "name",
+          "status",
           "salesperson.id",
           "salesperson.first_name",
           "salesperson.last_name",

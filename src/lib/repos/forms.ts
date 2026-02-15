@@ -848,8 +848,9 @@ export async function getCompanyFormsForEvent(
         })
       ) as unknown as Form[];
 
-      // Filter for company forms linked to this event - consider ALL versions, not just active
-      // (multiple versions may exist for different events or option combinations)
+      // Filter for company forms linked to this event.
+      // For assignment (which options must fill the form): only use the ACTIVE version's option_ids.
+      // So if an old version was assigned to many options but the active version only to a few, only those few apply.
       const companyForms: Array<{
         id: string;
         name: string;
@@ -871,36 +872,34 @@ export async function getCompanyFormsForEvent(
 
       for (const form of forms) {
         const versions = form.form_versions || [];
-        const matchingVersions = versions.filter((version) => {
-          const metadata = (version as FormVersion & { metadata?: FormMetadata })?.metadata;
-          if (!metadata?.is_company_form) return false;
-          if (String(metadata.event_id) !== String(eventId)) return false;
-          const rawOptionIds = metadata.option_ids || [];
-          if (requireOptionAssignment && rawOptionIds.length === 0) return false;
-          if (rawOptionIds.length > 0) {
-            const requiredIds = rawOptionIds.map(normalizeOptionId).filter(Boolean);
-            const hasRequiredOption = requiredIds.some((optId) => companyOptionIdSet.has(optId));
-            if (!hasRequiredOption) return false;
-          }
-          return true;
-        });
-        // One version per form: prefer active if it matches, otherwise first matching
-        const versionToUse = matchingVersions.find((v) => v.is_active) ?? matchingVersions[0];
-        if (versionToUse) {
-          const metadata = (versionToUse as FormVersion & { metadata?: FormMetadata })?.metadata!;
-          companyForms.push({
-            id: form.id,
-            name: form.name,
-            slug: form.slug,
-            description: form.description,
-            metadata,
-            activeVersion: {
-              id: versionToUse.id,
-              version_number: versionToUse.version_number,
-              schema: versionToUse.schema,
-            },
-          });
+        const activeVersion = versions.find((v) => v.is_active);
+        if (!activeVersion) continue;
+
+        const metadata = (activeVersion as FormVersion & { metadata?: FormMetadata })?.metadata;
+        if (!metadata?.is_company_form) continue;
+        if (String(metadata.event_id) !== String(eventId)) continue;
+
+        // Assignment: only active version's option_ids determine which options must fill this form
+        const rawOptionIds = metadata.option_ids || [];
+        if (requireOptionAssignment && rawOptionIds.length === 0) continue;
+        if (rawOptionIds.length > 0) {
+          const requiredIds = rawOptionIds.map(normalizeOptionId).filter(Boolean);
+          const hasRequiredOption = requiredIds.some((optId) => companyOptionIdSet.has(optId));
+          if (!hasRequiredOption) continue;
         }
+
+        companyForms.push({
+          id: form.id,
+          name: form.name,
+          slug: form.slug,
+          description: form.description,
+          metadata,
+          activeVersion: {
+            id: activeVersion.id,
+            version_number: activeVersion.version_number,
+            schema: activeVersion.schema,
+          },
+        });
       }
 
       return companyForms;
