@@ -198,6 +198,44 @@ export async function getFirstActiveMatchingSoftware(): Promise<MatchingSoftware
   }
 }
 
+/** Batch get company IDs that have completed matching software (ocia_answers with 13+ keys). */
+export async function getCompanyMatchingResponseCompletedIds(
+  matchingSoftwareId: string,
+  companyIds: string[]
+): Promise<Set<string>> {
+  const result = new Set<string>();
+  if (companyIds.length === 0) return result;
+  try {
+    const client = await getServerDirectusClient();
+    const fields = ["company", "ocia_answers"];
+    const filter = {
+      _and: [
+        { matching_software: { _eq: matchingSoftwareId } },
+        { company: { _in: companyIds } },
+      ],
+    };
+    for (const collection of COMPANY_MATCHING_RESPONSE_COLLECTIONS) {
+      try {
+        const items = (await client.request(
+          readItems(collection, { fields, filter, limit: -1 })
+        )) as unknown as CompanyMatchingResponse[];
+        for (const item of items) {
+          const companyId = typeof item.company === "string" ? item.company : (item.company as { id: string })?.id;
+          if (companyId && item.ocia_answers && Object.keys(item.ocia_answers).length >= 13) {
+            result.add(companyId);
+          }
+        }
+        return result;
+      } catch {
+        // Try next collection
+      }
+    }
+  } catch (error) {
+    console.error("[getCompanyMatchingResponseCompletedIds] Error:", error);
+  }
+  return result;
+}
+
 /** Get company's OCIA matching response. */
 export async function getCompanyMatchingResponse(
   companyId: string,

@@ -8,6 +8,7 @@ import {
   getStudentMatchingResponse,
   createStudentMatchingResponse,
   getCompanyMatchingResponse,
+  getCompanyMatchingResponseCompletedIds,
   createOrUpdateCompanyMatchingResponse,
   getStudentFormResponseForForm,
   computeAndStoreCompanyMatches,
@@ -43,6 +44,13 @@ export async function getFirstActiveMatchingSoftwareAction() {
 
 export async function getCompanyMatchingResponseAction(companyId: string, matchingSoftwareId: string) {
   return getCompanyMatchingResponse(companyId, matchingSoftwareId);
+}
+
+export async function getCompanyMatchingResponseCompletedIdsAction(
+  matchingSoftwareId: string,
+  companyIds: string[]
+) {
+  return getCompanyMatchingResponseCompletedIds(matchingSoftwareId, companyIds);
 }
 
 export async function saveCompanyMatchingResponseAction(

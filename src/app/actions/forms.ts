@@ -931,10 +931,14 @@ export async function uploadFileAction(formData: FormData) {
   }
 }
 
-export async function fetchCompanyFormsForEventAction(eventId: string, companyOptionIds: string[]) {
+export async function fetchCompanyFormsForEventAction(
+  eventId: string,
+  companyOptionIds: string[],
+  requireOptionAssignment = false
+) {
   try {
     const { getCompanyFormsForEvent } = await import("@/lib/repos/forms");
-    return await getCompanyFormsForEvent(eventId, companyOptionIds);
+    return await getCompanyFormsForEvent(eventId, companyOptionIds, 2, requireOptionAssignment);
   } catch (error) {
     console.error("[fetchCompanyFormsForEventAction] Error fetching company forms:", error);
     // Return empty array instead of throwing to prevent UI crashes
@@ -959,6 +963,33 @@ export async function checkCompanyFormCompletionAction(companyId: string, formVe
   } catch (error) {
     console.error("[checkCompanyFormCompletionAction] Error checking form completion:", error);
     return new Set<string>();
+  }
+}
+
+export async function checkCompanyFormCompletionBatchAction(
+  companyIds: string[],
+  formVersionIds: string[]
+): Promise<Map<string, Set<string>>> {
+  try {
+    const { checkCompanyFormCompletionBatch } = await import("@/lib/repos/forms");
+    return await checkCompanyFormCompletionBatch(companyIds, formVersionIds);
+  } catch (error) {
+    console.error("[checkCompanyFormCompletionBatchAction] Error:", error);
+    return new Map();
+  }
+}
+
+/** Batch check: has company completed ANY version of these forms? Returns Map<companyId, Set<formId>> */
+export async function checkCompanyFormCompletionByFormIdsBatchAction(
+  companyIds: string[],
+  formIds: string[]
+): Promise<Map<string, Set<string>>> {
+  try {
+    const { checkCompanyFormCompletionByFormIdsBatch } = await import("@/lib/repos/forms");
+    return await checkCompanyFormCompletionByFormIdsBatch(companyIds, formIds);
+  } catch (error) {
+    console.error("[checkCompanyFormCompletionByFormIdsBatchAction] Error:", error);
+    return new Map();
   }
 }
 
