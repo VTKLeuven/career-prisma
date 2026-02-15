@@ -12,6 +12,7 @@ import { slugifyCompanyName } from "@/lib/utils/slugify"
 import { usePageLayout } from '../../../layout'
 import { Button } from "@/components/ui/button"
 import { Clock, ArrowLeft, Users } from "lucide-react"
+import { StudentMatchingSoftware } from "@/components/StudentMatchingSoftware"
 
 export default function SubPage() {
   const { setHideLayoutHeader } = usePageLayout()
@@ -31,7 +32,7 @@ export default function SubPage() {
   const isCompanyGuidePage = pathname.endsWith("/company-guide")
   const isMatchingSoftwarePage = subPage === "matching-software"
 
-  // Hide layout header when rendering floorplan or company guide header
+  // Hide layout header when rendering floorplan or company guide (matching software keeps header)
   useEffect(() => {
     setHideLayoutHeader(isFloorplanPage || isCompanyGuidePage)
     return () => setHideLayoutHeader(false)
@@ -103,10 +104,9 @@ export default function SubPage() {
       )}
 
       {!isFloorplanPage && isMatchingSoftwarePage && (
-        <ComingSoonPage 
-          title="Matching Software" 
-          description="Our matching software is currently under development. Soon you'll be able to connect with companies and find the perfect match for your career."
-          eventName={page?.event?.name || eventName || 'Event'}
+        <MatchingSoftwarePage
+          page={page}
+          eventName={eventName || ''}
         />
       )}
 
@@ -1430,6 +1430,75 @@ function PDFViewer({ pdfUrl }: { pdfUrl: string }) {
         </div>
       </div>
     </>
+  )
+}
+
+function MatchingSoftwarePage({ page, eventName }: { page: CareerEventPage | null; eventName: string }) {
+  const [student, setStudent] = useState<{ id: string } | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch('/api/user/check?' + Date.now(), { cache: 'no-store', credentials: 'include' })
+      .then(res => res.json())
+      .then(data => {
+        if (data?.student?.authenticated === true && data?.student?.id) {
+          setStudent({ id: data.student.id })
+        } else {
+          setStudent(null)
+        }
+      })
+      .catch(() => setStudent(null))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const eventSlug = (page?.event?.name || eventName).toLowerCase().replace(/\s+/g, "-")
+  const eventId = (page?.event as { id?: string })?.id
+
+  if (loading) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    )
+  }
+
+  if (!student) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-vtk-blue/5 via-white to-vtk-yellow/5 flex items-center justify-center px-4 py-16">
+        <div className="max-w-2xl mx-auto text-center">
+          <h1 className="text-3xl font-bold text-neutral-900 mb-4">Matching Software</h1>
+          <p className="text-lg text-neutral-600 mb-8">
+            You need to be logged in as a student to access the matching software.
+          </p>
+          <Button asChild className="rounded-full bg-vtk-blue text-white">
+            <Link href={`/student-login?redirectTo=${encodeURIComponent(`/event/${eventSlug}/matching-software`)}`}>
+              Student Login
+            </Link>
+          </Button>
+          <div className="mt-6">
+            <Button asChild variant="outline">
+              <Link href={`/event/${eventSlug}`}>Back to event</Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!eventId) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <p className="text-muted-foreground">Event not found.</p>
+      </div>
+    )
+  }
+
+  return (
+    <StudentMatchingSoftware
+      eventId={eventId}
+      eventName={page?.event?.name || eventName}
+      studentId={student.id}
+    />
   )
 }
 

@@ -201,6 +201,24 @@ export async function listFormVersions(formId: string) {
   }
 }
 
+/** List form versions using server client (for student/prerequisite flow). */
+export async function listFormVersionsForServer(formId: string): Promise<FormVersion[]> {
+  try {
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const client = await getServerDirectusClient();
+    return client.request(
+      readItems("form_versions", {
+        fields: ["*"],
+        filter: { form_id: { _eq: formId } },
+        sort: "-version_number",
+      })
+    ) as unknown as FormVersion[];
+  } catch (error) {
+    console.error("[listFormVersionsForServer] Error:", error);
+    return [];
+  }
+}
+
 export async function getFormVersionById(id: string) {
   try {
     // Try authenticated first, fall back to public client for public form access
@@ -332,6 +350,25 @@ export async function getActiveFormVersion(formId: string) {
   }
 }
 
+/** Get active form version using server client (for student/prerequisite flow). */
+export async function getActiveFormVersionForServer(formId: string): Promise<FormVersion | null> {
+  try {
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const client = await getServerDirectusClient();
+    const versions = await client.request(
+      readItems("form_versions", {
+        fields: ["*"],
+        filter: { form_id: { _eq: formId }, is_active: { _eq: true } },
+        limit: 1,
+      })
+    ) as unknown as FormVersion[];
+    return versions?.[0] ?? null;
+  } catch (error) {
+    console.error("[getActiveFormVersionForServer] Error:", error);
+    return null;
+  }
+}
+
 // ===================== FORM RESPONSES =====================
 
 export async function listFormResponses(formVersionId: string, opts?: {
@@ -411,6 +448,35 @@ export async function getLatestFormResponse(formVersionId: string) {
     return responses.length > 0 ? responses[0] : null;
   } catch (error) {
     console.error("Error getting latest form response:", error);
+    return null;
+  }
+}
+
+/** Get a student's latest form response across any of the given form versions. Uses server client.
+ * Matches by data._student_id (stored in form data JSON) since form_responses may not have a student_id column. */
+export async function getStudentLatestFormResponseForForm(
+  studentId: string,
+  versionIds: string[]
+): Promise<{ id: string; form_version_id: string; data: Record<string, unknown> } | null> {
+  if (versionIds.length === 0) return null;
+  try {
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const client = await getServerDirectusClient();
+    // Fetch responses for these versions and match by data._student_id (no student_id column)
+    const responses = await client.request(
+      readItems("form_responses", {
+        fields: ["id", "form_version_id", "data"],
+        filter: { form_version_id: { _in: versionIds } },
+        limit: 1000,
+        sort: "-submitted_at",
+      })
+    ) as unknown as Array<{ id: string; form_version_id: string; data?: Record<string, unknown> }>;
+    const match = responses.find(
+      (r) => (r.data as Record<string, unknown>)?._student_id === studentId
+    );
+    return match ? { id: match.id, form_version_id: match.form_version_id, data: match.data ?? {} } : null;
+  } catch (error) {
+    console.error("[getStudentLatestFormResponseForForm] Error:", error);
     return null;
   }
 }
@@ -761,7 +827,13 @@ export async function initializeAttendantUuids(formId?: string) {
 
 // ===================== COMPANY FORMS =====================
 
-export async function getCompanyFormsForEvent(eventId: string, companyOptionIds: string[], retries = 2) {
+export async function getCompanyFormsForEvent(
+  eventId: string,
+  companyOptionIds: string[],
+  retries = 2,
+  /** When true, only return forms explicitly assigned via option_ids (excludes forms with empty option_ids) */
+  requireOptionAssignment = false
+) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const client = await getAuthedDirectusOrThrow();
@@ -776,43 +848,60 @@ export async function getCompanyFormsForEvent(eventId: string, companyOptionIds:
         })
       ) as unknown as Form[];
 
-      // Filter for company forms linked to this event
-      const companyForms = forms
-        .map((form) => {
-          const activeVersion = form.form_versions?.find((v) => v.is_active);
-          if (!activeVersion) return null;
-          
-          const metadata = (activeVersion as FormVersion & { metadata?: FormMetadata })?.metadata;
-          
-          if (!metadata?.is_company_form) return null;
-          
-          // Compare as strings to handle type mismatches
-          if (String(metadata.event_id) !== String(eventId)) return null;
-          
-          // Check if company has any of the required options
-          const requiredOptionIds = metadata.option_ids || [];
-          if (requiredOptionIds.length > 0) {
-            // Compare as strings to handle type mismatches
-            const hasRequiredOption = requiredOptionIds.some((optionId) =>
-              companyOptionIds.some((companyOptionId) => String(companyOptionId) === String(optionId))
-            );
-            if (!hasRequiredOption) return null;
+      // Filter for company forms linked to this event - consider ALL versions, not just active
+      // (multiple versions may exist for different events or option combinations)
+      const companyForms: Array<{
+        id: string;
+        name: string;
+        slug: string;
+        description?: string;
+        metadata: FormMetadata;
+        activeVersion: { id: string; version_number: number; schema: FormSchema };
+      }> = [];
+
+      // Normalize option ID for comparison (Directus may return string, number, or { id: string })
+      const normalizeOptionId = (id: unknown): string => {
+        if (id == null) return "";
+        if (typeof id === "string") return id;
+        if (typeof id === "number") return String(id);
+        if (typeof id === "object" && id !== null && "id" in id) return String((id as { id: unknown }).id);
+        return String(id);
+      };
+      const companyOptionIdSet = new Set(companyOptionIds.map(normalizeOptionId).filter(Boolean));
+
+      for (const form of forms) {
+        const versions = form.form_versions || [];
+        const matchingVersions = versions.filter((version) => {
+          const metadata = (version as FormVersion & { metadata?: FormMetadata })?.metadata;
+          if (!metadata?.is_company_form) return false;
+          if (String(metadata.event_id) !== String(eventId)) return false;
+          const rawOptionIds = metadata.option_ids || [];
+          if (requireOptionAssignment && rawOptionIds.length === 0) return false;
+          if (rawOptionIds.length > 0) {
+            const requiredIds = rawOptionIds.map(normalizeOptionId).filter(Boolean);
+            const hasRequiredOption = requiredIds.some((optId) => companyOptionIdSet.has(optId));
+            if (!hasRequiredOption) return false;
           }
-          
-          return {
+          return true;
+        });
+        // One version per form: prefer active if it matches, otherwise first matching
+        const versionToUse = matchingVersions.find((v) => v.is_active) ?? matchingVersions[0];
+        if (versionToUse) {
+          const metadata = (versionToUse as FormVersion & { metadata?: FormMetadata })?.metadata!;
+          companyForms.push({
             id: form.id,
             name: form.name,
             slug: form.slug,
             description: form.description,
             metadata,
             activeVersion: {
-              id: activeVersion.id,
-              version_number: activeVersion.version_number,
-              schema: activeVersion.schema,
+              id: versionToUse.id,
+              version_number: versionToUse.version_number,
+              schema: versionToUse.schema,
             },
-          };
-        })
-        .filter((form): form is NonNullable<typeof form> => form !== null);
+          });
+        }
+      }
 
       return companyForms;
     } catch (error: any) {
@@ -863,12 +952,18 @@ export async function getCompanyFormBySlugAndEvent(eventId: string, slug: string
     if (forms.length === 0) return null;
     
     const form = forms[0];
-    const activeVersion = form.form_versions?.find((v) => v.is_active);
+    // Find version that matches this event (prefer active version if it matches)
+    const versions = form.form_versions || [];
+    const eventMatchingVersions = versions.filter((v) => {
+      const meta = (v as FormVersion & { metadata?: FormMetadata })?.metadata;
+      return meta?.is_company_form && String(meta.event_id) === String(eventId);
+    });
+    const activeVersion = eventMatchingVersions.find((v) => v.is_active) ?? eventMatchingVersions[0];
     if (!activeVersion) return null;
     
     const metadata = (activeVersion as FormVersion & { metadata?: FormMetadata })?.metadata;
     if (!metadata?.is_company_form) return null;
-    if (metadata.event_id !== eventId) return null;
+    if (String(metadata.event_id) !== String(eventId)) return null;
     
     return {
       id: form.id,
@@ -915,6 +1010,40 @@ export async function checkCompanyFormCompletion(companyId: string, formVersionI
   } catch (error) {
     console.error("[checkCompanyFormCompletion] Error checking form completion:", error);
     return new Set<string>();
+  }
+}
+
+/** Batch check form completion for multiple companies. Returns Map<companyId, Set<formVersionId>> */
+export async function checkCompanyFormCompletionBatch(
+  companyIds: string[],
+  formVersionIds: string[]
+): Promise<Map<string, Set<string>>> {
+  const result = new Map<string, Set<string>>();
+  companyIds.forEach((id) => result.set(id, new Set()));
+  if (companyIds.length === 0 || formVersionIds.length === 0) return result;
+  try {
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const serverClient = await getServerDirectusClient();
+    const responses = await serverClient.request(
+      readItems("form_responses", {
+        fields: ["form_version_id", "company_id"],
+        filter: {
+          _and: [
+            { company_id: { _in: companyIds } },
+            { form_version_id: { _in: formVersionIds } },
+          ],
+        },
+        limit: -1,
+      })
+    ) as unknown as Array<{ form_version_id: string; company_id: string }>;
+    for (const r of responses) {
+      const set = result.get(r.company_id);
+      if (set) set.add(r.form_version_id);
+    }
+    return result;
+  } catch (error) {
+    console.error("[checkCompanyFormCompletionBatch] Error:", error);
+    return result;
   }
 }
 
@@ -972,6 +1101,51 @@ export async function checkCompanyFormCompletionByFormIds(companyId: string, for
   } catch (error) {
     console.error("[checkCompanyFormCompletionByFormIds] Error checking form completion:", error);
     return new Set<string>();
+  }
+}
+
+/** Batch check: has company completed ANY version of these forms? Returns Map<companyId, Set<formId>> */
+export async function checkCompanyFormCompletionByFormIdsBatch(
+  companyIds: string[],
+  formIds: string[]
+): Promise<Map<string, Set<string>>> {
+  const result = new Map<string, Set<string>>();
+  companyIds.forEach((id) => result.set(id, new Set()));
+  if (companyIds.length === 0 || formIds.length === 0) return result;
+  try {
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const serverClient = await getServerDirectusClient();
+    const formVersions = await serverClient.request(
+      readItems("form_versions", {
+        fields: ["id", "form_id"],
+        filter: { form_id: { _in: formIds } },
+        limit: -1,
+      })
+    ) as unknown as Array<{ id: string; form_id: string }>;
+    if (formVersions.length === 0) return result;
+    const formVersionIds = formVersions.map((fv) => fv.id);
+    const formVersionToFormId = new Map(formVersions.map((fv) => [fv.id, fv.form_id]));
+    const responses = await serverClient.request(
+      readItems("form_responses", {
+        fields: ["form_version_id", "company_id"],
+        filter: {
+          _and: [
+            { company_id: { _in: companyIds } },
+            { form_version_id: { _in: formVersionIds } },
+          ],
+        },
+        limit: -1,
+      })
+    ) as unknown as Array<{ form_version_id: string; company_id: string }>;
+    for (const r of responses) {
+      const formId = formVersionToFormId.get(r.form_version_id);
+      const set = result.get(r.company_id);
+      if (formId && set) set.add(formId);
+    }
+    return result;
+  } catch (error) {
+    console.error("[checkCompanyFormCompletionByFormIdsBatch] Error:", error);
+    return result;
   }
 }
 

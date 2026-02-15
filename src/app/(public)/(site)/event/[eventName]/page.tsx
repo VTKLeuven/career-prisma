@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { fetchEventPageBySlugAction } from "@/app/actions/events"
 import EventPageClient from './page-client'
 
-export const revalidate = 300 // Revalidate every 5 minutes
+export const revalidate = 30 // Revalidate every 30s so header_buttons updates show soon
 
 export default async function EventPage({
   params,

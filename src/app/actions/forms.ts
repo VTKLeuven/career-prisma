@@ -542,8 +542,8 @@ export async function submitFormResponseAction(data: {
       const responseData = {
         form_version_id: data.form_version_id,
         user_id: data.user_id,
-        ...(student ? { student_id: student.id } : {}), // Link student to response
-        data: enhancedFormData, // Include student info in form data
+        // student_id column may not exist; student is stored in data._student_id
+        data: enhancedFormData, // Include student info in form data (_student_id, etc.)
         attachments: data.attachments,
         ...(attendantUuid ? { attendant_uuid: attendantUuid } : {}),
         ...(data.company_id || _company_id ? { company_id: data.company_id || _company_id } : {}),
@@ -931,10 +931,14 @@ export async function uploadFileAction(formData: FormData) {
   }
 }
 
-export async function fetchCompanyFormsForEventAction(eventId: string, companyOptionIds: string[]) {
+export async function fetchCompanyFormsForEventAction(
+  eventId: string,
+  companyOptionIds: string[],
+  requireOptionAssignment = false
+) {
   try {
     const { getCompanyFormsForEvent } = await import("@/lib/repos/forms");
-    return await getCompanyFormsForEvent(eventId, companyOptionIds);
+    return await getCompanyFormsForEvent(eventId, companyOptionIds, 2, requireOptionAssignment);
   } catch (error) {
     console.error("[fetchCompanyFormsForEventAction] Error fetching company forms:", error);
     // Return empty array instead of throwing to prevent UI crashes
@@ -959,6 +963,33 @@ export async function checkCompanyFormCompletionAction(companyId: string, formVe
   } catch (error) {
     console.error("[checkCompanyFormCompletionAction] Error checking form completion:", error);
     return new Set<string>();
+  }
+}
+
+export async function checkCompanyFormCompletionBatchAction(
+  companyIds: string[],
+  formVersionIds: string[]
+): Promise<Map<string, Set<string>>> {
+  try {
+    const { checkCompanyFormCompletionBatch } = await import("@/lib/repos/forms");
+    return await checkCompanyFormCompletionBatch(companyIds, formVersionIds);
+  } catch (error) {
+    console.error("[checkCompanyFormCompletionBatchAction] Error:", error);
+    return new Map();
+  }
+}
+
+/** Batch check: has company completed ANY version of these forms? Returns Map<companyId, Set<formId>> */
+export async function checkCompanyFormCompletionByFormIdsBatchAction(
+  companyIds: string[],
+  formIds: string[]
+): Promise<Map<string, Set<string>>> {
+  try {
+    const { checkCompanyFormCompletionByFormIdsBatch } = await import("@/lib/repos/forms");
+    return await checkCompanyFormCompletionByFormIdsBatch(companyIds, formIds);
+  } catch (error) {
+    console.error("[checkCompanyFormCompletionByFormIdsBatchAction] Error:", error);
+    return new Map();
   }
 }
 
@@ -999,18 +1030,57 @@ export async function fetchPublicFormBySlugAction(slug: string) {
     let requiresLogin = false;
     let isAuthenticated = false;
     let studentEmail: string | undefined = undefined;
+    let studentId: string | undefined = undefined;
     if (versionMetadata?.requires_login || versionMetadata?.is_event_registration) {
       requiresLogin = true;
       try {
         const { getStudentFromCookies } = await import("@/lib/auth-student");
         const student = await getStudentFromCookies();
         isAuthenticated = !!student;
-        if (student?.email) {
-          studentEmail = student.email;
-        }
+        if (student?.email) studentEmail = student.email;
+        if (student?.id) studentId = student.id;
       } catch (error) {
         console.error('[fetchPublicFormBySlugAction] Error checking student authentication:', error);
         isAuthenticated = false;
+      }
+    } else {
+      // Still check for student (e.g. prerequisite form from matching software) to support version-upgrade flow
+      try {
+        const { getStudentFromCookies } = await import("@/lib/auth-student");
+        const student = await getStudentFromCookies();
+        if (student?.id) studentId = student.id;
+      } catch {
+        // Ignore
+      }
+    }
+
+    // If student is logged in, fetch their existing response (any version) for prefill/version-upgrade
+    let existingResponse: { form_version_id: string; data: Record<string, unknown> } | null = null;
+    if (studentId) {
+      try {
+        const { getStudentLatestFormResponseForForm } = await import("@/lib/repos/forms");
+        const { readItems } = await import("@directus/sdk");
+        const { getServerDirectusClient } = await import("@/lib/directus");
+        let versionIds = form.form_versions?.map((v: { id: string }) => v.id) ?? [];
+        // Fallback: public client may not return form_versions; fetch via server client
+        if (versionIds.length === 0 && form.id) {
+          const serverClient = await getServerDirectusClient();
+          const versions = await serverClient.request(
+            readItems("form_versions", {
+              fields: ["id"],
+              filter: { form_id: { _eq: form.id } },
+            })
+          ) as unknown as Array<{ id: string }>;
+          versionIds = versions.map((v) => v.id);
+        }
+        if (versionIds.length > 0) {
+          const resp = await getStudentLatestFormResponseForForm(studentId, versionIds);
+          if (resp) {
+            existingResponse = { form_version_id: resp.form_version_id, data: resp.data ?? {} };
+          }
+        }
+      } catch (error) {
+        console.error('[fetchPublicFormBySlugAction] Error fetching existing response:', error);
       }
     }
     
@@ -1074,6 +1144,7 @@ export async function fetchPublicFormBySlugAction(slug: string) {
       requiresLogin, // Indicates if form requires login
       isAuthenticated, // Indicates if user is authenticated (only relevant if requiresLogin is true)
       studentEmail, // Student email if authenticated (for pre-filling form fields)
+      existingResponse, // Student's latest response (any version) - for version-upgrade flow
     };
   } catch (error) {
     // Log detailed error for debugging

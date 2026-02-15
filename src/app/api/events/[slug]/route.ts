@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchEventPageBySlugAction } from "@/app/actions/events";
-
-// Cache for event pages (in-memory, could be replaced with Redis in production)
-const eventCache = new Map<string, { data: any; timestamp: number }>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+import { getCachedEventPage, setCachedEventPage } from "@/lib/event-page-cache";
 
 export async function GET(
   request: NextRequest,
@@ -14,9 +11,9 @@ export async function GET(
     const { slug } = params;
 
     // Check cache first
-    const cached = eventCache.get(slug);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      return NextResponse.json(cached.data, {
+    const cached = getCachedEventPage(slug);
+    if (cached) {
+      return NextResponse.json(cached, {
         headers: {
           'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600', // 5 min CDN, 10 min stale
           'CDN-Cache-Control': 'public, s-maxage=300',
@@ -35,7 +32,7 @@ export async function GET(
     }
 
     // Cache the result
-    eventCache.set(slug, { data: page, timestamp: Date.now() });
+    setCachedEventPage(slug, page);
 
     return NextResponse.json(page, {
       headers: {

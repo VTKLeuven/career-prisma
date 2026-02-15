@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { fetchPublicFormBySlugAction, submitFormResponseAction } from "@/app/actions/forms";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,16 +40,20 @@ type PublicForm = {
     version_number: number;
     schema: FormSchema;
   };
-  isFull?: boolean; // Indicates if form has reached max capacity
-  requiresLogin?: boolean; // Indicates if form requires login
-  isAuthenticated?: boolean; // Indicates if user is authenticated
-  studentEmail?: string; // Student email if authenticated (for pre-filling form fields)
+  isFull?: boolean;
+  requiresLogin?: boolean;
+  isAuthenticated?: boolean;
+  studentEmail?: string;
+  /** Student's latest response (any version) - for version-upgrade: show only new fields */
+  existingResponse?: { form_version_id: string; data: Record<string, unknown> } | null;
 };
 
 export default function PublicFormPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const slug = params.slug as string;
+  const redirectTo = searchParams.get("redirectTo");
 
   const [form, setForm] = useState<PublicForm | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,28 +61,54 @@ export default function PublicFormPage() {
   const [submitted, setSubmitted] = useState(false);
   const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  /** When student filled old version: fields that need new input (not in old response) */
+  const [fieldsToShowForUpgrade, setFieldsToShowForUpgrade] = useState<Set<string> | null>(null);
 
   const loadForm = React.useCallback(async () => {
     setLoading(true);
     try {
-      const formData = await fetchPublicFormBySlugAction(slug);
-      if (!formData) {
-        // Form not found or no active version
+      const fetched = await fetchPublicFormBySlugAction(slug);
+      if (!fetched) {
         setForm(null);
       } else {
-        setForm(formData);
-        
-        // Pre-fill email field from student account if available and form has an email field
-        if (formData.studentEmail && formData.activeVersion?.schema?.fields) {
-          const emailField = formData.activeVersion.schema.fields.find(f => f.name === 'email' && f.type === 'email');
-          if (emailField) {
-            setFormData((prev) => {
-              // Only set if not already filled (allows user to keep their existing input)
-              if (!prev[emailField.name]) {
-                return { ...prev, [emailField.name]: formData.studentEmail };
-              }
-              return prev;
+        setForm(fetched);
+
+        // Prefill from existing response (any version - old or latest)
+        const isOldVersion = fetched.existingResponse && fetched.existingResponse.form_version_id !== fetched.activeVersion.id;
+        const oldData = fetched.existingResponse?.data ?? {};
+        const merged: Record<string, unknown> = {};
+        const fieldsToShow: string[] = [];
+        for (const field of fetched.activeVersion?.schema?.fields ?? []) {
+          const val = oldData[field.name];
+          const hasOld = val !== undefined && val !== null && val !== "" && (!Array.isArray(val) || val.length > 0);
+          merged[field.name] = hasOld ? val : undefined;
+          if (!hasOld) fieldsToShow.push(field.name);
+        }
+        setFormData(merged);
+
+        // Pre-fill email from student account if not already set
+        if (fetched.studentEmail && fetched.activeVersion?.schema?.fields) {
+          const emailField = fetched.activeVersion.schema.fields.find(f => f.name === 'email' && f.type === 'email');
+          if (emailField && merged[emailField.name] == null) {
+            setFormData((prev) => ({ ...prev, [emailField.name]: fetched.studentEmail }));
+          }
+        }
+
+        setFieldsToShowForUpgrade(isOldVersion ? new Set(fieldsToShow) : null);
+
+        // If old version response and all fields already filled → auto-submit new response
+        if (isOldVersion && fieldsToShow.length === 0) {
+          setSubmitting(true);
+          try {
+            await submitFormResponseAction({
+              form_version_id: fetched.activeVersion.id,
+              data: merged,
             });
+            setSubmitted(true);
+          } catch (e) {
+            console.error("Auto-submit version upgrade failed:", e);
+          } finally {
+            setSubmitting(false);
           }
         }
       }
@@ -281,7 +311,11 @@ export default function PublicFormPage() {
               <p className="text-muted-foreground mb-4">
                 Your response has been submitted successfully.
               </p>
-              <Button onClick={() => router.push("/")}>Go Home</Button>
+              {redirectTo ? (
+                <Button onClick={() => router.push(redirectTo)}>Continue</Button>
+              ) : (
+                <Button onClick={() => router.push("/")}>Go Home</Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -322,6 +356,13 @@ export default function PublicFormPage() {
             <div className="mb-4 p-4 bg-muted border border-border rounded-md">
               <p className="text-muted-foreground">
                 This form has reached its maximum capacity and is no longer accepting new entries.
+              </p>
+            </div>
+          )}
+          {fieldsToShowForUpgrade !== null && (
+            <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md">
+              <p className="text-sm text-blue-800 dark:text-blue-200">
+                This form was updated. Your previous answers have been prefilled. Please review and complete any new questions.
               </p>
             </div>
           )}
