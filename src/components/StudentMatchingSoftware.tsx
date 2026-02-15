@@ -10,6 +10,13 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  GENERAL_INFO_WORK_PREFERENCE_OPTIONS,
+  GENERAL_INFO_COMPANY_TYPE_OPTIONS,
+  GENERAL_INFO_WORK_OPTIONS,
+  type GeneralInfoAnswers,
+} from "@/lib/matching-general-info";
 import {
   getMatchingSoftwareForEventAction,
   getStudentMatchingResponseForCurrentUserAction,
@@ -75,6 +82,11 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
   const [prerequisiteResponse, setPrerequisiteResponse] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [generalInfo, setGeneralInfo] = useState<GeneralInfoAnswers>({
+    work_preference: [],
+    company_preference: [],
+    options_preference: [],
+  });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [matchedCompanies, setMatchedCompanies] = useState<Array<{ id: string; name?: string; logo?: string; page_on_platform?: boolean; status?: string }>>([]);
@@ -115,6 +127,11 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
 
         if (resp) {
           setAnswers(resp.riasec_answers || {});
+          setGeneralInfo((resp as { general_info_answers?: GeneralInfoAnswers }).general_info_answers ?? {
+            work_preference: [],
+            company_preference: [],
+            options_preference: [],
+          });
           const companies = await fetchMatchedCompaniesForResponseAction(resp.id);
           setMatchedCompanies(companies);
         }
@@ -278,7 +295,7 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
     if (!allAnswered || !matchingSoftware) return;
     setSubmitting(true);
     try {
-      const resp = await submitStudentMatchingAction(matchingSoftware.id, answers, prerequisiteResponse || undefined);
+      const resp = await submitStudentMatchingAction(matchingSoftware.id, answers, prerequisiteResponse || undefined, generalInfo);
       const finalResp = resp ?? (await getStudentMatchingResponseForCurrentUserAction(matchingSoftware.id));
       if (finalResp) {
         setExistingResponse(finalResp);
@@ -322,6 +339,74 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
                 </RadioGroup>
               </div>
             ))}
+            <div className="space-y-6 pt-4 border-t">
+              <h3 className="text-lg font-semibold">General info</h3>
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-base font-medium">I prefer working...</Label>
+                  <div className="mt-2 space-y-2 flex flex-col">
+                    {GENERAL_INFO_WORK_PREFERENCE_OPTIONS.map((opt) => (
+                      <label key={opt.key} className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                          checked={generalInfo.work_preference.includes(opt.key)}
+                          onCheckedChange={(checked) => {
+                            setGeneralInfo((prev) => ({
+                              ...prev,
+                              work_preference: checked
+                                ? [...prev.work_preference, opt.key]
+                                : prev.work_preference.filter((k) => k !== opt.key),
+                            }));
+                          }}
+                        />
+                        <span className="text-sm">{opt.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-base font-medium">I prefer working for...</Label>
+                  <div className="mt-2 space-y-2 flex flex-col">
+                    {GENERAL_INFO_COMPANY_TYPE_OPTIONS.map((opt) => (
+                      <label key={opt.key} className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                          checked={(generalInfo.company_preference ?? []).includes(opt.key)}
+                          onCheckedChange={(checked) => {
+                            setGeneralInfo((prev) => ({
+                              ...prev,
+                              company_preference: checked
+                                ? [...(prev.company_preference ?? []), opt.key]
+                                : (prev.company_preference ?? []).filter((k) => k !== opt.key),
+                            }));
+                          }}
+                        />
+                        <span className="text-sm">{opt.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-base font-medium">I would like the option to...</Label>
+                  <div className="mt-2 space-y-2 flex flex-col">
+                    {GENERAL_INFO_WORK_OPTIONS.map((opt) => (
+                      <label key={opt.key} className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                          checked={(generalInfo.options_preference ?? []).includes(opt.key)}
+                          onCheckedChange={(checked) => {
+                            setGeneralInfo((prev) => ({
+                              ...prev,
+                              options_preference: checked
+                                ? [...(prev.options_preference ?? []), opt.key]
+                                : (prev.options_preference ?? []).filter((k) => k !== opt.key),
+                            }));
+                          }}
+                        />
+                        <span className="text-sm">{opt.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
             <Button type="submit" disabled={!allAnswered || submitting} className="w-full">
               {submitting ? "Submitting..." : "Submit"}
             </Button>

@@ -10,6 +10,13 @@ import {
   saveCompanyMatchingResponseAction,
 } from "@/app/actions/matching-software";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  GENERAL_INFO_WORK_PREFERENCE_OPTIONS,
+  GENERAL_INFO_COMPANY_TYPE_OPTIONS,
+  GENERAL_INFO_WORK_OPTIONS,
+  type GeneralInfoAnswers,
+} from "@/lib/matching-general-info";
 
 type Question = {
   id: number;
@@ -145,7 +152,13 @@ type Props = {
 
 export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName }: Props) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [generalInfo, setGeneralInfo] = useState<GeneralInfoAnswers>({
+    work_preference: [],
+    company_type: [],
+    work_options: [],
+  });
   const [savedSnapshot, setSavedSnapshot] = useState<Record<string, string> | null>(null);
+  const [savedGeneralInfoSnapshot, setSavedGeneralInfoSnapshot] = useState<GeneralInfoAnswers | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -154,6 +167,13 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName }
         const existingAnswers = existing?.ocia_answers ? { ...existing.ocia_answers } : {};
         setAnswers(existingAnswers);
         setSavedSnapshot(existingAnswers);
+        const gi = (existing as { general_info_answers?: GeneralInfoAnswers })?.general_info_answers ?? {
+          work_preference: [],
+          company_type: [],
+          work_options: [],
+        };
+        setGeneralInfo(gi);
+        setSavedGeneralInfoSnapshot(gi);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -161,15 +181,20 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName }
 
   const isDirty = useMemo(() => {
     if (!savedSnapshot) return false;
-    return JSON.stringify(answers) !== JSON.stringify(savedSnapshot);
-  }, [answers, savedSnapshot]);
+    const answersDirty = JSON.stringify(answers) !== JSON.stringify(savedSnapshot);
+    const generalInfoDirty = savedGeneralInfoSnapshot
+      ? JSON.stringify(generalInfo) !== JSON.stringify(savedGeneralInfoSnapshot)
+      : false;
+    return answersDirty || generalInfoDirty;
+  }, [answers, savedSnapshot, generalInfo, savedGeneralInfoSnapshot]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const ocia = calculateCulturePercentages(answers);
     try {
-      await saveCompanyMatchingResponseAction(companyId, matchingSoftwareId, answers, ocia);
+      await saveCompanyMatchingResponseAction(companyId, matchingSoftwareId, answers, ocia, generalInfo);
       setSavedSnapshot({ ...answers });
+      setSavedGeneralInfoSnapshot({ ...generalInfo });
     } catch (err) {
       console.error("[CompanyMatchingForm] Error saving:", err);
       alert("Failed to save matching information. Please try again.");
@@ -211,11 +236,79 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName }
               </div>
             );
           })}
+          <div className="space-y-6 pt-6 border-t">
+            <h3 className="text-lg font-semibold">General info</h3>
+            <div className="space-y-4">
+              <div>
+                <Label className="text-base font-medium">Engineers at our company work...</Label>
+                <div className="mt-2 space-y-2 flex flex-col">
+                  {GENERAL_INFO_WORK_PREFERENCE_OPTIONS.map((opt) => (
+                    <label key={opt.key} className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={(generalInfo.work_preference ?? []).includes(opt.key)}
+                        onCheckedChange={(checked) => {
+                          setGeneralInfo((prev) => ({
+                            ...prev,
+                            work_preference: checked
+                              ? [...(prev.work_preference ?? []), opt.key]
+                              : (prev.work_preference ?? []).filter((k) => k !== opt.key),
+                          }));
+                        }}
+                      />
+                      <span className="text-sm">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <Label className="text-base font-medium">...while they...</Label>
+                <div className="mt-2 space-y-2 flex flex-col">
+                  {GENERAL_INFO_WORK_OPTIONS.map((opt) => (
+                    <label key={opt.key} className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={(generalInfo.work_options ?? []).includes(opt.key)}
+                        onCheckedChange={(checked) => {
+                          setGeneralInfo((prev) => ({
+                            ...prev,
+                            work_options: checked
+                              ? [...(prev.work_options ?? []), opt.key]
+                              : (prev.work_options ?? []).filter((k) => k !== opt.key),
+                          }));
+                        }}
+                      />
+                      <span className="text-sm">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <Label className="text-base font-medium">Company type</Label>
+                <div className="mt-2 space-y-2 flex flex-col">
+                  {GENERAL_INFO_COMPANY_TYPE_OPTIONS.map((opt) => (
+                    <label key={opt.key} className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={(generalInfo.company_type ?? []).includes(opt.key)}
+                        onCheckedChange={(checked) => {
+                          setGeneralInfo((prev) => ({
+                            ...prev,
+                            company_type: checked
+                              ? [...(prev.company_type ?? []), opt.key]
+                              : (prev.company_type ?? []).filter((k) => k !== opt.key),
+                          }));
+                        }}
+                      />
+                      <span className="text-sm">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
           <div className="flex gap-2 justify-end pt-4">
             <Button type="submit" className={`flex items-center gap-2 cursor-pointer ${!isDirty ? "bg-green-600 text-white disabled:bg-green-600 disabled:text-white" : ""}`} disabled={!isDirty}>
               <IconCheck size={18} /> {!isDirty ? "Saved" : "Save Answers"}
             </Button>
-            <Button type="button" variant="ghost" onClick={() => savedSnapshot && setAnswers({ ...savedSnapshot })} className="cursor-pointer" disabled={!isDirty}>
+            <Button type="button" variant="ghost" onClick={() => { savedSnapshot && setAnswers({ ...savedSnapshot }); savedGeneralInfoSnapshot && setGeneralInfo({ ...savedGeneralInfoSnapshot }); }} className="cursor-pointer" disabled={!isDirty}>
               <IconRefresh size={18} /> Reset
             </Button>
           </div>

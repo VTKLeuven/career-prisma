@@ -4,6 +4,7 @@
 import { readItems, createItem, updateItem, deleteItems } from "@directus/sdk";
 import { getAuthedDirectusOrThrow, getServerDirectusClient } from "@/lib/directus";
 import type { MatchingSoftware, StudentMatchingResponse, CompanyMatchingResponse, RIASECType, OCIAType } from "@/lib/schema";
+import { countGeneralInfoOverlap, type GeneralInfoAnswers } from "@/lib/matching-general-info";
 
 const RIASEC_TYPES: RIASECType[] = ["R", "I", "A", "S", "E", "C"];
 
@@ -204,7 +205,7 @@ export async function getCompanyMatchingResponse(
 ): Promise<CompanyMatchingResponse | null> {
   try {
     const client = await getServerDirectusClient();
-    const fields = ["id", "company", "matching_software", "ocia_answers", "ocia"];
+    const fields = ["id", "company", "matching_software", "ocia_answers", "ocia", "general_info_answers"];
     const filter = { company: { _eq: companyId }, matching_software: { _eq: matchingSoftwareId } };
 
     for (const collection of COMPANY_MATCHING_RESPONSE_COLLECTIONS) {
@@ -230,6 +231,7 @@ export async function createOrUpdateCompanyMatchingResponse(data: {
   matching_software: string;
   ocia_answers: Record<string, string>;
   ocia: Record<OCIAType, number>;
+  general_info_answers?: GeneralInfoAnswers;
 }): Promise<CompanyMatchingResponse | null> {
   const client = await getServerDirectusClient();
   const payload = {
@@ -237,6 +239,7 @@ export async function createOrUpdateCompanyMatchingResponse(data: {
     matching_software: data.matching_software,
     ocia_answers: data.ocia_answers,
     ocia: data.ocia,
+    general_info_answers: data.general_info_answers ?? { work_preference: [], company_type: [], work_options: [] },
   };
 
   const existing = await getCompanyMatchingResponse(data.company, data.matching_software);
@@ -302,7 +305,7 @@ export async function getStudentMatchingResponse(
 ): Promise<StudentMatchingResponse | null> {
   try {
     const client = await getServerDirectusClient();
-    const fields = ["id", "student", "matching_software", "riasec_answers", "riasec", "prerequisite_form_response", "companies"];
+    const fields = ["id", "student", "matching_software", "riasec_answers", "riasec", "prerequisite_form_response", "general_info_answers", "companies"];
     // Try both string and number - Directus may store student FK as integer (e.g. 5) or UUID string
     const studentValues: (string | number)[] = [studentId, String(studentId)];
     if (typeof studentId === "string" && /^\d+$/.test(studentId)) {
@@ -341,6 +344,7 @@ export async function createStudentMatchingResponse(data: {
   riasec_answers: Record<string, string>;
   riasec: Record<RIASECType, number>;
   prerequisite_form_response?: Record<string, unknown>;
+  general_info_answers?: GeneralInfoAnswers;
 }): Promise<StudentMatchingResponse | null> {
   const client = await getServerDirectusClient();
   const payload = {
@@ -349,6 +353,7 @@ export async function createStudentMatchingResponse(data: {
     riasec_answers: data.riasec_answers,
     riasec: data.riasec,
     prerequisite_form_response: data.prerequisite_form_response || null,
+    general_info_answers: data.general_info_answers ?? { work_preference: [], company_preference: [], options_preference: [] },
   };
 
   for (const collection of STUDENT_MATCHING_RESPONSE_COLLECTIONS) {
@@ -362,7 +367,8 @@ export async function createStudentMatchingResponse(data: {
           result.id,
           data.matching_software,
           data.riasec,
-          data.prerequisite_form_response ?? undefined
+          data.prerequisite_form_response ?? undefined,
+          data.general_info_answers ?? undefined
         );
       } catch (matchErr) {
         console.error("[createStudentMatchingResponse] Matching failed (non-fatal):", matchErr);
@@ -400,12 +406,13 @@ export async function getStudentFormResponseForForm(
 /** Get all company matching responses for a matching software, with company and category. */
 async function getCompanyMatchingResponsesForMatchingSoftware(
   matchingSoftwareId: string
-): Promise<Array<{ companyId: string; ocia: Record<OCIAType, number>; categoryNames: string[]; hasOther: boolean }>> {
+): Promise<Array<{ companyId: string; ocia: Record<OCIAType, number>; categoryNames: string[]; hasOther: boolean; generalInfo: GeneralInfoAnswers }>> {
   const client = await getServerDirectusClient();
   const fields = [
     "id",
     "company",
     "ocia",
+    "general_info_answers",
     "company.id",
     "company.category",
     "company.category.master_id",
@@ -424,6 +431,7 @@ async function getCompanyMatchingResponsesForMatchingSoftware(
       )) as unknown as Array<{
         company: { id: string; category?: unknown[] };
         ocia: Record<OCIAType, number>;
+        general_info_answers?: GeneralInfoAnswers;
       }>;
 
       const result = items
@@ -432,11 +440,17 @@ async function getCompanyMatchingResponsesForMatchingSoftware(
           const companyId = typeof item.company === "string" ? item.company : item.company.id;
           const categoryNames = getCompanyCategoryNames(item.company as { category?: unknown });
           const hasOther = categoryNames.some((n) => n.toLowerCase() === "other");
+          const generalInfo: GeneralInfoAnswers = item.general_info_answers ?? {
+            work_preference: [],
+            company_type: [],
+            work_options: [],
+          };
           return {
             companyId,
             ocia: item.ocia ?? { Clan: 0, Adhocracy: 0, Market: 0, Hierarchy: 0 },
             categoryNames,
             hasOther,
+            generalInfo,
           };
         });
       console.log("[Matching] getCompanyMatchingResponsesForMatchingSoftware: fetched", result.length, "companies with OCIA | sample:", result.slice(0, 3).map((r) => ({ id: r.companyId, categories: r.categoryNames, hasOther: r.hasOther })));
@@ -451,21 +465,30 @@ async function getCompanyMatchingResponsesForMatchingSoftware(
 
 const TARGET_MATCH_COUNT = 30;
 
+const GENERAL_INFO_WEIGHT = 10; // Each overlapping general-info option reduces score by this much (lower score = better match)
+
 /**
  * Compute company matches for a student and store in student_matching_response.companies.
- * Uses: study_field match + OCIA similarity (RIASEC→OCIA: Clan=S+A, Adhocracy=A+E, Market=R+E, Hierarchy=C+I).
+ * Uses: study_field match + general info overlap + OCIA similarity (RIASEC→OCIA).
+ * General info is between study field and OCIA in importance.
  * Widens margin until exactly 30 matches.
  */
 export async function computeAndStoreCompanyMatches(
   studentResponseId: string,
   matchingSoftwareId: string,
   riasec: Record<RIASECType, number>,
-  prerequisiteFormResponse?: Record<string, unknown> | null
+  prerequisiteFormResponse?: Record<string, unknown> | null,
+  studentGeneralInfo?: GeneralInfoAnswers | null
 ): Promise<string[]> {
   console.log("[Matching] computeAndStoreCompanyMatches: start | responseId:", studentResponseId, "| matchingSoftwareId:", matchingSoftwareId);
 
   const studentOcia = riasecToOcia(riasec);
   const studentStudyField = extractStudyField(prerequisiteFormResponse ?? undefined);
+  const studentGi: GeneralInfoAnswers = studentGeneralInfo ?? {
+    work_preference: [],
+    company_preference: [],
+    options_preference: [],
+  };
 
   console.log("[Matching] student RIASEC:", riasec, "| OCIA:", studentOcia, "| studyField:", studentStudyField ?? "(none)");
   console.log("[Matching] prerequisite_form_response keys:", prerequisiteFormResponse ? Object.keys(prerequisiteFormResponse) : "null");
@@ -488,10 +511,15 @@ export async function computeAndStoreCompanyMatches(
     return [];
   }
 
-  const withScores = eligible.map((cr) => ({
-    companyId: cr.companyId,
-    score: ociaSimilarityScore(studentOcia, cr.ocia),
-  }));
+  const withScores = eligible.map((cr) => {
+    const ociaScore = ociaSimilarityScore(studentOcia, cr.ocia);
+    const generalInfoOverlap = countGeneralInfoOverlap(studentGi, cr.generalInfo);
+    const combinedScore = ociaScore - generalInfoOverlap * GENERAL_INFO_WEIGHT;
+    return {
+      companyId: cr.companyId,
+      score: combinedScore,
+    };
+  });
 
   withScores.sort((a, b) => a.score - b.score);
 

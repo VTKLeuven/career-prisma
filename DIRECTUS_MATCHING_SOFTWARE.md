@@ -24,12 +24,13 @@ The API uses `Matching_Software` (PascalCase). If your Directus collection key d
 | riasec_answers | JSON | | { "1": "A", "2": "B", ... } |
 | riasec | JSON | | { "R": 25, "I": 16.67, ... } |
 | prerequisite_form_response | JSON | | Optional - included form response data |
+| general_info_answers | JSON | | { work_preference: string[], company_preference: string[], options_preference: string[] } – multiselect options |
 | companies | M2M → company | | Top 30 matched company IDs (auto-filled on submit) |
 | submitted_at | DateTime | | Auto on create |
 
 **Unique constraint**: (student, matching_software) - one response per student per matching software.
 
-**Matching logic** (runs on submit): Student's `study_field` (from prerequisite form data, keys: `study_field`, `study`, `master`, `program`) must match company's category (master name). If no match, company's "Other" counts only when the student's study field is not in any of the company's categories (or when both student and company have "Other"). RIASEC→OCIA: Clan=S+A, Adhocracy=A+E, Market=R+E, Hierarchy=C+I. Top 30 by OCIA similarity.
+**Matching logic** (runs on submit): (1) Student's `study_field` (from prerequisite form) must match company's category. (2) General info overlap: count matching options across work preference, company type, and work options. (3) RIASEC→OCIA similarity. Combined score = OCIA score − (general info overlap × 10). Top 30 by combined score.
 
 ## 3. Collection: `Company_Matching_Response` (or `company_matching_response`)
 
@@ -40,6 +41,7 @@ The API uses `Matching_Software` (PascalCase). If your Directus collection key d
 | matching_software | M2O → matching_software | | Required |
 | ocia_answers | JSON | | { "1": "A", "2": "B", ... } |
 | ocia | JSON | | { "Clan": 25, "Adhocracy": 16.67, ... } |
+| general_info_answers | JSON | | { work_preference: string[], company_type: string[], work_options: string[] } – multiselect options |
 
 **Unique constraint**: (company, matching_software) - one response per company per matching software.
 

@@ -129,6 +129,7 @@ export type StudentMatchingResponse = {
   riasec_answers: Record<string, string>; // { "1": "A", "2": "B", ... }
   riasec: Record<RIASECType, number>; // percentages
   prerequisite_form_response?: Record<string, unknown>; // included form response data
+  general_info_answers?: { work_preference: string[]; company_preference?: string[]; options_preference?: string[] }; // General info multiselect
   companies?: string[] | Array<{ id: string; name?: string }>; // M2M – matched company IDs or expanded objects
 };
 
@@ -142,6 +143,7 @@ export type CompanyMatchingResponse = {
   matching_software: string | MatchingSoftware;
   ocia_answers: Record<string, string>; // { "1": "A", "2": "B", ... }
   ocia: Record<OCIAType, number>; // percentages
+  general_info_answers?: { work_preference: string[]; company_type?: string[]; work_options?: string[] }; // General info multiselect
 };
 
 export type CareerEventPage = {

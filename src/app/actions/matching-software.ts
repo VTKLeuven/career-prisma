@@ -49,13 +49,19 @@ export async function saveCompanyMatchingResponseAction(
   companyId: string,
   matchingSoftwareId: string,
   ociaAnswers: Record<string, string>,
-  ocia: Record<string, number>
+  ocia: Record<string, number>,
+  generalInfo?: { work_preference?: string[]; company_type?: string[]; work_options?: string[] }
 ) {
   return createOrUpdateCompanyMatchingResponse({
     company: companyId,
     matching_software: matchingSoftwareId,
     ocia_answers: ociaAnswers,
     ocia: ocia as Record<"Clan" | "Adhocracy" | "Market" | "Hierarchy", number>,
+    general_info_answers: {
+      work_preference: generalInfo?.work_preference ?? [],
+      company_type: generalInfo?.company_type ?? [],
+      work_options: generalInfo?.work_options ?? [],
+    },
   });
 }
 
@@ -83,7 +89,8 @@ export async function getStudentMatchingResponseForCurrentUserAction(matchingSof
 export async function submitStudentMatchingAction(
   matchingSoftwareId: string,
   answers: Record<string, string>,
-  prerequisiteFormResponse?: Record<string, unknown>
+  prerequisiteFormResponse?: Record<string, unknown>,
+  generalInfoAnswers?: { work_preference: string[]; company_preference?: string[]; options_preference?: string[] }
 ) {
   const { getStudentFromCookies } = await import("@/lib/auth-student");
   const student = await getStudentFromCookies();
@@ -95,6 +102,7 @@ export async function submitStudentMatchingAction(
     riasec_answers: answers,
     riasec,
     prerequisite_form_response: prerequisiteFormResponse,
+    general_info_answers: generalInfoAnswers ?? { work_preference: [], company_preference: [], options_preference: [] },
   });
 }
 
@@ -115,11 +123,13 @@ export async function recomputeCompanyMatchesForCurrentUserAction(matchingSoftwa
   if (!student?.id) return null;
   const resp = await getStudentMatchingResponse(student.id, matchingSoftwareId);
   if (!resp?.id || !resp.riasec) return null;
+  const generalInfo = (resp as { general_info_answers?: import("@/lib/matching-general-info").GeneralInfoAnswers }).general_info_answers;
   await computeAndStoreCompanyMatches(
     resp.id,
     matchingSoftwareId,
     resp.riasec as Record<import("@/lib/schema").RIASECType, number>,
-    resp.prerequisite_form_response ?? undefined
+    resp.prerequisite_form_response ?? undefined,
+    generalInfo ?? undefined
   );
   return getStudentMatchingResponse(student.id, matchingSoftwareId);
 }
