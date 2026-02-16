@@ -12,6 +12,14 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   GENERAL_INFO_WORK_PREFERENCE_OPTIONS,
   GENERAL_INFO_COMPANY_TYPE_OPTIONS,
   GENERAL_INFO_WORK_OPTIONS,
@@ -160,6 +168,7 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName }
   const [savedSnapshot, setSavedSnapshot] = useState<Record<string, string> | null>(null);
   const [savedGeneralInfoSnapshot, setSavedGeneralInfoSnapshot] = useState<GeneralInfoAnswers | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
 
   useEffect(() => {
     getCompanyMatchingResponseAction(companyId, matchingSoftwareId)
@@ -195,6 +204,7 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName }
       await saveCompanyMatchingResponseAction(companyId, matchingSoftwareId, answers, ocia, generalInfo);
       setSavedSnapshot({ ...answers });
       setSavedGeneralInfoSnapshot({ ...generalInfo });
+      setShowSuccessDialog(true);
     } catch (err) {
       console.error("[CompanyMatchingForm] Error saving:", err);
       alert("Failed to save matching information. Please try again.");
@@ -206,6 +216,7 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName }
   }
 
   return (
+    <>
     <Card className="rounded-2xl shadow-md">
       <CardHeader>
         <CardTitle className="text-xl">Matching Software{eventName ? ` – ${eventName}` : ""}</CardTitle>
@@ -315,5 +326,20 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName }
         </form>
       </CardContent>
     </Card>
+
+    <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Matching Software Completed</DialogTitle>
+          <DialogDescription>
+            You&apos;ve successfully filled in the matching software. Your answers have been saved and will be used for student matching.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button onClick={() => setShowSuccessDialog(false)}>OK</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
