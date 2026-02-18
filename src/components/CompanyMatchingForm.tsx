@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -223,7 +224,11 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName }
       <CardHeader>
         <CardTitle className="text-xl">Matching Software{eventName ? ` – ${eventName}` : ""}</CardTitle>
         <CardDescription>
-          Answer these questions to help us understand your company culture. Your responses will be used for matching purposes.
+          Answer these questions to help us understand your company culture. Your responses will be used for matching purposes. Your study courses of interest are taken from what you filled in under{" "}
+          <Link href="/dashboard/settings/information" className="underline font-medium text-foreground hover:no-underline">
+            Settings → Company Information
+          </Link>
+          ; you can readjust them there at any time.
         </CardDescription>
       </CardHeader>
       <CardContent>
