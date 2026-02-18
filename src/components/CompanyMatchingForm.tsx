@@ -32,28 +32,29 @@ type Question = {
   options: { label: string; value: string; culture: "Clan" | "Adhocracy" | "Market" | "Hierarchy" }[];
 };
 
+// Option order per question follows the specified display order (random order); value A/B/C/D = 1st/2nd/3rd/4th shown.
 const QUESTIONS: Question[] = [
   { id: 1, question: "How would you describe your company's general work environment?", options: [
-    { label: "A close-knit, supportive workplace.", value: "A", culture: "Clan" },
-    { label: "A dynamic, fast-changing environment.", value: "B", culture: "Adhocracy" },
-    { label: "A competitive, performance-oriented atmosphere.", value: "C", culture: "Market" },
-    { label: "A structured, formal, and organized setting.", value: "D", culture: "Hierarchy" },
+    { label: "A dynamic, fast-changing environment.", value: "A", culture: "Adhocracy" },
+    { label: "A close-knit, supportive workplace.", value: "B", culture: "Clan" },
+    { label: "A structured, formal, and organized setting.", value: "C", culture: "Hierarchy" },
+    { label: "An outcome-driven, performance-oriented atmosphere.", value: "D", culture: "Market" },
   ]},
   { id: 2, question: "What type of leadership style is most common in your company?", options: [
-    { label: "Mentoring and supportive leaders.", value: "A", culture: "Clan" },
+    { label: "Coordinators and administrators.", value: "A", culture: "Hierarchy" },
     { label: "Visionary and risk-taking leaders.", value: "B", culture: "Adhocracy" },
-    { label: "Hard-driving and results-oriented leaders.", value: "C", culture: "Market" },
-    { label: "Coordinators and administrators.", value: "D", culture: "Hierarchy" },
+    { label: "Mentoring and supportive leaders.", value: "C", culture: "Clan" },
+    { label: "Hard-driving and results-oriented leaders.", value: "D", culture: "Market" },
   ]},
   { id: 3, question: "What is most valued when evaluating employee success?", options: [
-    { label: "Teamwork and employee engagement.", value: "A", culture: "Clan" },
-    { label: "Creativity and innovation.", value: "B", culture: "Adhocracy" },
+    { label: "Creativity and innovation.", value: "A", culture: "Adhocracy" },
+    { label: "Following procedures and maintaining stability.", value: "B", culture: "Hierarchy" },
     { label: "Achievement of measurable goals.", value: "C", culture: "Market" },
-    { label: "Following procedures and maintaining stability.", value: "D", culture: "Hierarchy" },
+    { label: "Teamwork and employee engagement.", value: "D", culture: "Clan" },
   ]},
   { id: 4, question: "What best describes internal communication?", options: [
-    { label: "Open, inclusive, and informal.", value: "A", culture: "Clan" },
-    { label: "Spontaneous and idea-driven.", value: "B", culture: "Adhocracy" },
+    { label: "Spontaneous and idea-driven.", value: "A", culture: "Adhocracy" },
+    { label: "Open, inclusive, and informal.", value: "B", culture: "Clan" },
     { label: "Direct, performance-focused.", value: "C", culture: "Market" },
     { label: "Formal and standardized.", value: "D", culture: "Hierarchy" },
   ]},
@@ -72,7 +73,7 @@ const QUESTIONS: Question[] = [
   { id: 7, question: "What qualities do you most look for when hiring?", options: [
     { label: "Collaboration and cultural fit.", value: "A", culture: "Clan" },
     { label: "Adaptability and entrepreneurial spirit.", value: "B", culture: "Adhocracy" },
-    { label: "Drive, ambition, and competitiveness.", value: "C", culture: "Market" },
+    { label: "Personal drive, tenacity, and a will to win.", value: "C", culture: "Market" },
     { label: "Reliability and attention to detail.", value: "D", culture: "Hierarchy" },
   ]},
   { id: 8, question: "How would you describe career progression?", options: [
@@ -90,7 +91,7 @@ const QUESTIONS: Question[] = [
   { id: 10, question: "How would you describe your company's pace of work?", options: [
     { label: "Steady and people-centered.", value: "A", culture: "Clan" },
     { label: "Rapid, changing, and experimental.", value: "B", culture: "Adhocracy" },
-    { label: "Fast, demanding, and competitive.", value: "C", culture: "Market" },
+    { label: "Intense, demanding, and result-focused.", value: "C", culture: "Market" },
     { label: "Predictable and controlled.", value: "D", culture: "Hierarchy" },
   ]},
   { id: 11, question: "What is the company's approach to risk?", options: [
@@ -108,7 +109,7 @@ const QUESTIONS: Question[] = [
   { id: 13, question: "What describes relationships between teams?", options: [
     { label: "Supportive and cooperative.", value: "A", culture: "Clan" },
     { label: "Flexible and spontaneous collaborations.", value: "B", culture: "Adhocracy" },
-    { label: "Competitive or performance-driven.", value: "C", culture: "Market" },
+    { label: "Achievement-based or performance-driven.", value: "C", culture: "Market" },
     { label: "Clearly defined responsibilities and roles.", value: "D", culture: "Hierarchy" },
   ]},
 ];
@@ -127,9 +128,10 @@ function seededShuffle<T>(array: T[], seed: number): T[] {
   return shuffled;
 }
 
-/** Fixed order per question (seeded by question id) – not always A,B,C,D, but consistent. */
+/** Random order per question (seeded by question id so it’s consistent for save/load). */
 function getOptions(question: Question) {
-  return seededShuffle(question.options, question.id);
+  const seed = question.id * 7919 + 31;
+  return seededShuffle(question.options, seed);
 }
 
 function calculateCulturePercentages(answers: Record<string, string>): Record<string, number> {
