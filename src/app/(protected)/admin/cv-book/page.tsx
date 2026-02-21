@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   fetchCVBooksAction,
   createCVBookAction,
+  updateCVBookAction,
   deleteCVBookAction,
   fetchAcademicYearsAction,
   fetchFormsAction,
@@ -60,7 +61,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, ChevronDown, Trash2 } from "lucide-react";
+import { MoreHorizontal, ChevronDown, Trash2, Pencil } from "lucide-react";
 
 type CVBookRow = CVBook & {
   year: AcademicYear;
@@ -96,6 +97,7 @@ function CVBooksTable() {
   const router = useRouter();
   const [cvBooks, setCvBooks] = useState<CVBookRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingBook, setEditingBook] = useState<CVBookRow | null>(null);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
     academicYear: true,
     form: true,
@@ -236,6 +238,10 @@ function CVBooksTable() {
                 >
                   View CV Book
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setEditingBook(book)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit details
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 {!book.active ? (
                   <DropdownMenuItem
@@ -289,7 +295,19 @@ function CVBooksTable() {
   }
 
   return (
-    <Card>
+    <>
+      {editingBook && (
+        <EditCVBookDialog
+          cvBook={editingBook}
+          open={!!editingBook}
+          onOpenChange={(open) => !open && setEditingBook(null)}
+          onUpdated={() => {
+            loadCVBooks();
+            setEditingBook(null);
+          }}
+        />
+      )}
+      <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>All CV Books</CardTitle>
@@ -381,6 +399,7 @@ function CVBooksTable() {
         )}
       </CardContent>
     </Card>
+    </>
   );
 }
 
@@ -403,6 +422,8 @@ function CreateCVBookDialog({ onCreated }: { onCreated?: () => void }) {
   const [studentEmailFieldBackup, setStudentEmailFieldBackup] = useState<string>("");
   const [studentStudyFieldBackup, setStudentStudyFieldBackup] = useState<string>("");
   const [studentCVFieldBackup, setStudentCVFieldBackup] = useState<string>("");
+  const [studentLinkedinField, setStudentLinkedinField] = useState<string>("");
+  const [studentLinkedinFieldBackup, setStudentLinkedinFieldBackup] = useState<string>("");
 
   useEffect(() => {
     if (open) {
@@ -431,11 +452,13 @@ function CreateCVBookDialog({ onCreated }: { onCreated?: () => void }) {
             setStudentEmailField("");
             setStudentStudyField("");
             setStudentCVField("");
+            setStudentLinkedinField("");
             setStudentFirstNameFieldBackup("");
             setStudentLastNameFieldBackup("");
             setStudentEmailFieldBackup("");
             setStudentStudyFieldBackup("");
             setStudentCVFieldBackup("");
+            setStudentLinkedinFieldBackup("");
           })
           .catch((error) => {
             console.error("[CreateCVBookDialog] Error loading form fields:", error);
@@ -467,12 +490,14 @@ function CreateCVBookDialog({ onCreated }: { onCreated?: () => void }) {
         student_email_field: studentEmailField,
         student_study_field: studentStudyField,
         student_cv_field: studentCVField,
+        ...(studentLinkedinField && { student_linkedin_field: studentLinkedinField }),
         ...(backupFieldsEnabled && {
           student_first_name_field_backup: studentFirstNameFieldBackup || undefined,
           student_last_name_field_backup: studentLastNameFieldBackup || undefined,
           student_email_field_backup: studentEmailFieldBackup || undefined,
           student_study_field_backup: studentStudyFieldBackup || undefined,
           student_cv_field_backup: studentCVFieldBackup || undefined,
+          ...(studentLinkedinFieldBackup && { student_linkedin_field_backup: studentLinkedinFieldBackup }),
         }),
       };
       console.log("[CreateCVBookDialog] Submitting:", submitData);
@@ -494,6 +519,8 @@ function CreateCVBookDialog({ onCreated }: { onCreated?: () => void }) {
         setStudentEmailFieldBackup("");
         setStudentStudyFieldBackup("");
         setStudentCVFieldBackup("");
+        setStudentLinkedinField("");
+        setStudentLinkedinFieldBackup("");
         setFormFields([]);
         // Trigger table reload
         if (onCreated) {
@@ -685,6 +712,29 @@ function CreateCVBookDialog({ onCreated }: { onCreated?: () => void }) {
                 </Select>
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="student-linkedin-field">Student LinkedIn Field (Optional)</Label>
+                <Select value={studentLinkedinField || "__none__"} onValueChange={(val) => setStudentLinkedinField(val === "__none__" ? "" : val)}>
+                  <SelectTrigger id="student-linkedin-field" className="w-full">
+                    {studentLinkedinField && formFields.find(f => f.name === studentLinkedinField) ? (
+                      <span className="block truncate">
+                        {formFields.find(f => f.name === studentLinkedinField)?.label || formFields.find(f => f.name === studentLinkedinField)?.name} ({studentLinkedinField})
+                      </span>
+                    ) : (
+                      <SelectValue placeholder="Select field for LinkedIn profile URL" />
+                    )}
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {formFields.map((field) => (
+                      <SelectItem key={field.name} value={field.name}>
+                        {field.label || field.name} ({field.name})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="flex items-center space-x-2 pt-4 border-t">
                 <Checkbox
                   id="backup-fields"
@@ -807,6 +857,29 @@ function CreateCVBookDialog({ onCreated }: { onCreated?: () => void }) {
                       </SelectContent>
                     </Select>
                   </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="student-linkedin-field-backup">Student LinkedIn Field Backup (Optional)</Label>
+                    <Select value={studentLinkedinFieldBackup || "__none__"} onValueChange={(val) => setStudentLinkedinFieldBackup(val === "__none__" ? "" : val)}>
+                      <SelectTrigger id="student-linkedin-field-backup" className="w-full">
+                        {studentLinkedinFieldBackup && formFields.find(f => f.name === studentLinkedinFieldBackup) ? (
+                          <span className="block truncate">
+                            {formFields.find(f => f.name === studentLinkedinFieldBackup)?.label || formFields.find(f => f.name === studentLinkedinFieldBackup)?.name} ({studentLinkedinFieldBackup})
+                          </span>
+                        ) : (
+                          <SelectValue placeholder="Select backup field for LinkedIn profile URL" />
+                        )}
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">None</SelectItem>
+                        {formFields.map((field) => (
+                          <SelectItem key={field.name} value={field.name}>
+                            {field.label || field.name} ({field.name})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </>
               )}
             </>
@@ -824,6 +897,427 @@ function CreateCVBookDialog({ onCreated }: { onCreated?: () => void }) {
             </Button>
             <Button type="submit" disabled={loading || !selectedYearId || !selectedFormId || !studentFirstNameField || !studentLastNameField || !studentEmailField || !studentStudyField || !studentCVField}>
               {loading ? "Creating..." : "Create CV Book"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditCVBookDialog({
+  cvBook,
+  open,
+  onOpenChange,
+  onUpdated,
+}: {
+  cvBook: CVBookRow;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onUpdated: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [formFields, setFormFields] = useState<FormField[]>([]);
+  const [studentFirstNameField, setStudentFirstNameField] = useState<string>("");
+  const [studentLastNameField, setStudentLastNameField] = useState<string>("");
+  const [studentEmailField, setStudentEmailField] = useState<string>("");
+  const [studentStudyField, setStudentStudyField] = useState<string>("");
+  const [studentCVField, setStudentCVField] = useState<string>("");
+  const [studentLinkedinField, setStudentLinkedinField] = useState<string>("");
+  const [backupFieldsEnabled, setBackupFieldsEnabled] = useState(false);
+  const [studentFirstNameFieldBackup, setStudentFirstNameFieldBackup] = useState<string>("");
+  const [studentLastNameFieldBackup, setStudentLastNameFieldBackup] = useState<string>("");
+  const [studentEmailFieldBackup, setStudentEmailFieldBackup] = useState<string>("");
+  const [studentStudyFieldBackup, setStudentStudyFieldBackup] = useState<string>("");
+  const [studentCVFieldBackup, setStudentCVFieldBackup] = useState<string>("");
+  const [studentLinkedinFieldBackup, setStudentLinkedinFieldBackup] = useState<string>("");
+
+  const formId = typeof cvBook.form === "object" ? cvBook.form.id : cvBook.form;
+
+  useEffect(() => {
+    if (open && formId) {
+      getFormFieldsAcrossAllVersions(formId)
+        .then((fields) => {
+          setFormFields(fields);
+          setStudentFirstNameField(cvBook.student_first_name_field || "");
+          setStudentLastNameField(cvBook.student_last_name_field || "");
+          setStudentEmailField(cvBook.student_email_field || "");
+          setStudentStudyField(cvBook.student_study_field || "");
+          setStudentCVField(cvBook.student_cv_field || "");
+          setStudentLinkedinField(cvBook.student_linkedin_field || "");
+          setBackupFieldsEnabled(!!(
+            cvBook.student_first_name_field_backup ||
+            cvBook.student_last_name_field_backup ||
+            cvBook.student_email_field_backup ||
+            cvBook.student_study_field_backup ||
+            cvBook.student_cv_field_backup ||
+            cvBook.student_linkedin_field_backup
+          ));
+          setStudentFirstNameFieldBackup(cvBook.student_first_name_field_backup || "");
+          setStudentLastNameFieldBackup(cvBook.student_last_name_field_backup || "");
+          setStudentEmailFieldBackup(cvBook.student_email_field_backup || "");
+          setStudentStudyFieldBackup(cvBook.student_study_field_backup || "");
+          setStudentCVFieldBackup(cvBook.student_cv_field_backup || "");
+          setStudentLinkedinFieldBackup(cvBook.student_linkedin_field_backup || "");
+        })
+        .catch((error) => {
+          console.error("[EditCVBookDialog] Error loading form fields:", error);
+          setFormFields([]);
+        });
+    }
+  }, [open, formId, cvBook]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!studentFirstNameField || !studentLastNameField || !studentEmailField || !studentStudyField || !studentCVField) {
+      alert("Please fill in all required fields");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const updateData: Partial<CVBook> = {
+        student_first_name_field: studentFirstNameField,
+        student_last_name_field: studentLastNameField,
+        student_email_field: studentEmailField,
+        student_study_field: studentStudyField,
+        student_cv_field: studentCVField,
+        student_linkedin_field: studentLinkedinField || undefined,
+        ...(backupFieldsEnabled && {
+          student_first_name_field_backup: studentFirstNameFieldBackup || undefined,
+          student_last_name_field_backup: studentLastNameFieldBackup || undefined,
+          student_email_field_backup: studentEmailFieldBackup || undefined,
+          student_study_field_backup: studentStudyFieldBackup || undefined,
+          student_cv_field_backup: studentCVFieldBackup || undefined,
+          student_linkedin_field_backup: studentLinkedinFieldBackup || undefined,
+        }),
+      };
+      const result = await updateCVBookAction(cvBook.id, updateData);
+
+      if (result.success) {
+        onOpenChange(false);
+        onUpdated();
+      } else {
+        alert(`Failed to update CV Book: ${result.error}`);
+      }
+    } catch (error) {
+      console.error("[EditCVBookDialog] Error:", error);
+      alert("Failed to update CV Book");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const yearName = typeof cvBook.year === "object" ? cvBook.year?.name : "—";
+  const formName = typeof cvBook.form === "object" ? cvBook.form?.name : "—";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit CV Book Details</DialogTitle>
+          <DialogDescription>
+            Edit field mappings for this CV Book. Year: {yearName}, Form: {formName}.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {formFields.length > 0 && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="edit-student-first-name-field">Student First Name Field *</Label>
+                <Select value={studentFirstNameField} onValueChange={setStudentFirstNameField} required>
+                  <SelectTrigger id="edit-student-first-name-field" className="w-full">
+                    {studentFirstNameField && formFields.find(f => f.name === studentFirstNameField) ? (
+                      <span className="block truncate">
+                        {formFields.find(f => f.name === studentFirstNameField)?.label || formFields.find(f => f.name === studentFirstNameField)?.name} ({studentFirstNameField})
+                      </span>
+                    ) : (
+                      <SelectValue placeholder="Select field for student first name" />
+                    )}
+                  </SelectTrigger>
+                  <SelectContent>
+                    {formFields.map((field) => (
+                      <SelectItem key={field.name} value={field.name}>
+                        {field.label || field.name} ({field.name})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-student-last-name-field">Student Last Name Field *</Label>
+                <Select value={studentLastNameField} onValueChange={setStudentLastNameField} required>
+                  <SelectTrigger id="edit-student-last-name-field" className="w-full">
+                    {studentLastNameField && formFields.find(f => f.name === studentLastNameField) ? (
+                      <span className="block truncate">
+                        {formFields.find(f => f.name === studentLastNameField)?.label || formFields.find(f => f.name === studentLastNameField)?.name} ({studentLastNameField})
+                      </span>
+                    ) : (
+                      <SelectValue placeholder="Select field for student last name" />
+                    )}
+                  </SelectTrigger>
+                  <SelectContent>
+                    {formFields.map((field) => (
+                      <SelectItem key={field.name} value={field.name}>
+                        {field.label || field.name} ({field.name})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-student-email-field">Student Email Field *</Label>
+                <Select value={studentEmailField} onValueChange={setStudentEmailField} required>
+                  <SelectTrigger id="edit-student-email-field" className="w-full">
+                    {studentEmailField && formFields.find(f => f.name === studentEmailField) ? (
+                      <span className="block truncate">
+                        {formFields.find(f => f.name === studentEmailField)?.label || formFields.find(f => f.name === studentEmailField)?.name} ({studentEmailField})
+                      </span>
+                    ) : (
+                      <SelectValue placeholder="Select field for student email" />
+                    )}
+                  </SelectTrigger>
+                  <SelectContent>
+                    {formFields.map((field) => (
+                      <SelectItem key={field.name} value={field.name}>
+                        {field.label || field.name} ({field.name})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-student-study-field">Student Study Field *</Label>
+                <Select value={studentStudyField} onValueChange={setStudentStudyField} required>
+                  <SelectTrigger id="edit-student-study-field" className="w-full">
+                    {studentStudyField && formFields.find(f => f.name === studentStudyField) ? (
+                      <span className="block truncate">
+                        {formFields.find(f => f.name === studentStudyField)?.label || formFields.find(f => f.name === studentStudyField)?.name} ({studentStudyField})
+                      </span>
+                    ) : (
+                      <SelectValue placeholder="Select field for student study/program" />
+                    )}
+                  </SelectTrigger>
+                  <SelectContent>
+                    {formFields.map((field) => (
+                      <SelectItem key={field.name} value={field.name}>
+                        {field.label || field.name} ({field.name})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-student-cv-field">Student CV Field *</Label>
+                <Select value={studentCVField} onValueChange={setStudentCVField} required>
+                  <SelectTrigger id="edit-student-cv-field" className="w-full">
+                    {studentCVField && formFields.find(f => f.name === studentCVField) ? (
+                      <span className="block truncate">
+                        {formFields.find(f => f.name === studentCVField)?.label || formFields.find(f => f.name === studentCVField)?.name} ({studentCVField})
+                      </span>
+                    ) : (
+                      <SelectValue placeholder="Select field for student CV/file" />
+                    )}
+                  </SelectTrigger>
+                  <SelectContent>
+                    {formFields.map((field) => (
+                      <SelectItem key={field.name} value={field.name}>
+                        {field.label || field.name} ({field.name})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-student-linkedin-field">Student LinkedIn Field (Optional)</Label>
+                <Select value={studentLinkedinField || "__none__"} onValueChange={(val) => setStudentLinkedinField(val === "__none__" ? "" : val)}>
+                  <SelectTrigger id="edit-student-linkedin-field" className="w-full">
+                    {studentLinkedinField && formFields.find(f => f.name === studentLinkedinField) ? (
+                      <span className="block truncate">
+                        {formFields.find(f => f.name === studentLinkedinField)?.label || formFields.find(f => f.name === studentLinkedinField)?.name} ({studentLinkedinField})
+                      </span>
+                    ) : (
+                      <SelectValue placeholder="Select field for LinkedIn profile URL" />
+                    )}
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {formFields.map((field) => (
+                      <SelectItem key={field.name} value={field.name}>
+                        {field.label || field.name} ({field.name})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center space-x-2 pt-4 border-t">
+                <Checkbox
+                  id="edit-backup-fields"
+                  checked={backupFieldsEnabled}
+                  onCheckedChange={(checked) => setBackupFieldsEnabled(checked === true)}
+                />
+                <Label htmlFor="edit-backup-fields" className="text-sm font-medium cursor-pointer">
+                  Backup fields on
+                </Label>
+              </div>
+
+              {backupFieldsEnabled && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-student-first-name-field-backup">Student First Name Field Backup (Optional)</Label>
+                    <Select value={studentFirstNameFieldBackup || undefined} onValueChange={(val) => setStudentFirstNameFieldBackup(val || "")}>
+                      <SelectTrigger id="edit-student-first-name-field-backup" className="w-full">
+                        {studentFirstNameFieldBackup && formFields.find(f => f.name === studentFirstNameFieldBackup) ? (
+                          <span className="block truncate">
+                            {formFields.find(f => f.name === studentFirstNameFieldBackup)?.label || formFields.find(f => f.name === studentFirstNameFieldBackup)?.name} ({studentFirstNameFieldBackup})
+                          </span>
+                        ) : (
+                          <SelectValue placeholder="Select backup field for student first name" />
+                        )}
+                      </SelectTrigger>
+                      <SelectContent>
+                        {formFields.map((field) => (
+                          <SelectItem key={field.name} value={field.name}>
+                            {field.label || field.name} ({field.name})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-student-last-name-field-backup">Student Last Name Field Backup (Optional)</Label>
+                    <Select value={studentLastNameFieldBackup || undefined} onValueChange={(val) => setStudentLastNameFieldBackup(val || "")}>
+                      <SelectTrigger id="edit-student-last-name-field-backup" className="w-full">
+                        {studentLastNameFieldBackup && formFields.find(f => f.name === studentLastNameFieldBackup) ? (
+                          <span className="block truncate">
+                            {formFields.find(f => f.name === studentLastNameFieldBackup)?.label || formFields.find(f => f.name === studentLastNameFieldBackup)?.name} ({studentLastNameFieldBackup})
+                          </span>
+                        ) : (
+                          <SelectValue placeholder="Select backup field for student last name" />
+                        )}
+                      </SelectTrigger>
+                      <SelectContent>
+                        {formFields.map((field) => (
+                          <SelectItem key={field.name} value={field.name}>
+                            {field.label || field.name} ({field.name})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-student-email-field-backup">Student Email Field Backup (Optional)</Label>
+                    <Select value={studentEmailFieldBackup || undefined} onValueChange={(val) => setStudentEmailFieldBackup(val || "")}>
+                      <SelectTrigger id="edit-student-email-field-backup" className="w-full">
+                        {studentEmailFieldBackup && formFields.find(f => f.name === studentEmailFieldBackup) ? (
+                          <span className="block truncate">
+                            {formFields.find(f => f.name === studentEmailFieldBackup)?.label || formFields.find(f => f.name === studentEmailFieldBackup)?.name} ({studentEmailFieldBackup})
+                          </span>
+                        ) : (
+                          <SelectValue placeholder="Select backup field for student email" />
+                        )}
+                      </SelectTrigger>
+                      <SelectContent>
+                        {formFields.map((field) => (
+                          <SelectItem key={field.name} value={field.name}>
+                            {field.label || field.name} ({field.name})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-student-study-field-backup">Student Study Field Backup (Optional)</Label>
+                    <Select value={studentStudyFieldBackup || undefined} onValueChange={(val) => setStudentStudyFieldBackup(val || "")}>
+                      <SelectTrigger id="edit-student-study-field-backup" className="w-full">
+                        {studentStudyFieldBackup && formFields.find(f => f.name === studentStudyFieldBackup) ? (
+                          <span className="block truncate">
+                            {formFields.find(f => f.name === studentStudyFieldBackup)?.label || formFields.find(f => f.name === studentStudyFieldBackup)?.name} ({studentStudyFieldBackup})
+                          </span>
+                        ) : (
+                          <SelectValue placeholder="Select backup field for student study/program" />
+                        )}
+                      </SelectTrigger>
+                      <SelectContent>
+                        {formFields.map((field) => (
+                          <SelectItem key={field.name} value={field.name}>
+                            {field.label || field.name} ({field.name})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-student-cv-field-backup">Student CV Field Backup (Optional)</Label>
+                    <Select value={studentCVFieldBackup || undefined} onValueChange={(val) => setStudentCVFieldBackup(val || "")}>
+                      <SelectTrigger id="edit-student-cv-field-backup" className="w-full">
+                        {studentCVFieldBackup && formFields.find(f => f.name === studentCVFieldBackup) ? (
+                          <span className="block truncate">
+                            {formFields.find(f => f.name === studentCVFieldBackup)?.label || formFields.find(f => f.name === studentCVFieldBackup)?.name} ({studentCVFieldBackup})
+                          </span>
+                        ) : (
+                          <SelectValue placeholder="Select backup field for student CV/file" />
+                        )}
+                      </SelectTrigger>
+                      <SelectContent>
+                        {formFields.map((field) => (
+                          <SelectItem key={field.name} value={field.name}>
+                            {field.label || field.name} ({field.name})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-student-linkedin-field-backup">Student LinkedIn Field Backup (Optional)</Label>
+                    <Select value={studentLinkedinFieldBackup || "__none__"} onValueChange={(val) => setStudentLinkedinFieldBackup(val === "__none__" ? "" : val)}>
+                      <SelectTrigger id="edit-student-linkedin-field-backup" className="w-full">
+                        {studentLinkedinFieldBackup && formFields.find(f => f.name === studentLinkedinFieldBackup) ? (
+                          <span className="block truncate">
+                            {formFields.find(f => f.name === studentLinkedinFieldBackup)?.label || formFields.find(f => f.name === studentLinkedinFieldBackup)?.name} ({studentLinkedinFieldBackup})
+                          </span>
+                        ) : (
+                          <SelectValue placeholder="Select backup field for LinkedIn profile URL" />
+                        )}
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">None</SelectItem>
+                        {formFields.map((field) => (
+                          <SelectItem key={field.name} value={field.name}>
+                            {field.label || field.name} ({field.name})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {formId && formFields.length === 0 && (
+            <div className="text-sm text-muted-foreground">
+              Loading form fields...
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={loading || !studentFirstNameField || !studentLastNameField || !studentEmailField || !studentStudyField || !studentCVField}>
+              {loading ? "Saving..." : "Save changes"}
             </Button>
           </DialogFooter>
         </form>

@@ -136,6 +136,7 @@ export type StudentCVData = {
   study: string;
   cvFileId: string | null;
   cvFileUrl: string | null;
+  linkedinUrl: string | null;
 };
 
 export type StudentCVGroup = {
@@ -232,6 +233,12 @@ export async function getCVBookStudentData(cvBook: CVBook): Promise<StudentCVGro
                     (cvBook.student_study_field_backup ? data[cvBook.student_study_field_backup] : null)) as string;
       const cvFileId = (data[cvBook.student_cv_field] || 
                        (cvBook.student_cv_field_backup ? data[cvBook.student_cv_field_backup] : null)) as string | null;
+      const linkedinRaw = (cvBook.student_linkedin_field ? (data[cvBook.student_linkedin_field] || 
+                       (cvBook.student_linkedin_field_backup ? data[cvBook.student_linkedin_field_backup] : null)) : null) as string | null;
+      const linkedinUrl = linkedinRaw && typeof linkedinRaw === "string" && linkedinRaw.trim() &&
+        /^https?:\/\/(www\.)?linkedin\.com\/in\/[\w-]+\/?(\?.*)?$/i.test(linkedinRaw.trim())
+        ? linkedinRaw.trim()
+        : null;
       
       // If firstName/lastName are missing, try to extract from _student_full_name
       if (!firstName || !lastName) {
@@ -304,6 +311,7 @@ export async function getCVBookStudentData(cvBook: CVBook): Promise<StudentCVGro
         study,
         cvFileId,
         cvFileUrl,
+        linkedinUrl,
       });
     }
     
@@ -377,11 +385,13 @@ export async function createCVBook(data: {
   student_email_field: string;
   student_study_field: string;
   student_cv_field: string;
+  student_linkedin_field?: string;
   student_first_name_field_backup?: string;
   student_last_name_field_backup?: string;
   student_email_field_backup?: string;
   student_study_field_backup?: string;
   student_cv_field_backup?: string;
+  student_linkedin_field_backup?: string;
   active?: boolean;
 }) {
   try {

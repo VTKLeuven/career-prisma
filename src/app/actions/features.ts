@@ -13,7 +13,7 @@ export async function fetchFloorplanAction(page: CareerEventPage) {
   const svgText = await svgFileRes.text();
 
   // Fetch booths data
-  const data = await listBooths(page.floorplan);
+  const data = await listBooths(page.floorplan, { limit: -1 });
   if (!data) return { svg: svgText, booths: [] };
 
   // Sanitize SVG

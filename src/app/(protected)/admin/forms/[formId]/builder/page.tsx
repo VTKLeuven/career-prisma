@@ -49,14 +49,15 @@ import {
   ChevronDown,
   GripVertical,
   X,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Linkedin
 } from "lucide-react";
 import type { Form, FormVersion, FormField, FormSchema } from "@/lib/schema";
 import Link from "next/link";
 import { getDirectusImageUrl } from "@/components/Images";
 import NextImage from "next/image";
 
-type FieldType = "text" | "textarea" | "email" | "number" | "select" | "checkbox" | "radio" | "file" | "date" | "date-range" | "time";
+type FieldType = "text" | "textarea" | "email" | "number" | "select" | "checkbox" | "radio" | "file" | "date" | "date-range" | "time" | "linkedin";
 
 const FIELD_TYPES: { value: FieldType; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { value: "text", label: "Text", icon: Type },
@@ -70,6 +71,7 @@ const FIELD_TYPES: { value: FieldType; label: string; icon: React.ComponentType<
   { value: "date", label: "Date", icon: Calendar },
   { value: "date-range", label: "Date Range", icon: Calendar },
   { value: "time", label: "Time", icon: Calendar },
+  { value: "linkedin", label: "LinkedIn", icon: Linkedin },
 ];
 
 const getFieldIcon = (type: FieldType) => {
@@ -897,6 +899,16 @@ function FormFieldPreview({ field }: { field: FormField }) {
             <span>Number Input</span>
           </div>
           <Input type="number" placeholder={field.placeholder} disabled />
+        </div>
+      );
+    case "linkedin":
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <FieldIcon className="h-4 w-4" />
+            <span>LinkedIn Profile URL</span>
+          </div>
+          <Input type="url" placeholder="https://linkedin.com/in/username" disabled />
         </div>
       );
     case "text":

@@ -67,13 +67,22 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
       tx: number; 
       ty: number;
       matrix?: number[]; // Full 6-element matrix [a, b, c, d, e, f]
+      rotation_deg?: number;
     } {
       let tx = 0;
       let ty = 0;
       let matrix: number[] | undefined = undefined;
+      let rotation_deg: number | undefined = undefined;
       if (!transformStr) return { tx, ty };
 
-      // matrix(a b c d e f) -> e,f are translations
+      // rotate(angle[, cx, cy])
+      const rotateMatch = transformStr.match(/rotate\s*\(\s*([^,\)]+)(?:\s*,\s*([^,\)]+))?(?:\s*,\s*([^\)]+))?\)/);
+      if (rotateMatch) {
+        const angle = parseFloat(rotateMatch[1]);
+        if (!isNaN(angle)) rotation_deg = angle;
+      }
+
+      // matrix(a b c d e f) -> e,f are translations; a,b,c,d encode scale and rotation
       const matrixMatch = transformStr.match(/matrix\s*\(\s*([^\)]+)\)/);
       if (matrixMatch) {
         // Split by spaces or commas, handle negative numbers and -0
@@ -89,6 +98,12 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
           matrix = nums;
           tx += nums[4];
           ty += nums[5];
+          // Extract rotation from matrix: angle = atan2(b, a) in radians
+          if (rotation_deg === undefined) {
+            const [a, b] = nums;
+            const angleRad = Math.atan2(b, a);
+            if (Math.abs(angleRad) > 0.001) rotation_deg = (angleRad * 180) / Math.PI;
+          }
         }
       }
 
@@ -100,7 +115,15 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
         if (nums.length >= 2) ty += nums[1];
       }
 
-      return { tx, ty, matrix };
+      // When we have rotation but no matrix, build matrix from rotation + translation
+      if (rotation_deg != null && !matrix) {
+        const rad = (rotation_deg * Math.PI) / 180;
+        const c = Math.cos(rad);
+        const s = Math.sin(rad);
+        matrix = [c, s, -s, c, tx, ty];
+      }
+
+      return { tx, ty, matrix, rotation_deg };
     }
 
     // Apply transform matrix to a point
@@ -220,6 +243,20 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
       return { tx, ty };
     }
 
+    // Get full transform (including rotation from parent groups) for an element
+    function getFullTransformForElement(elem: Element): { tx: number; ty: number; matrix?: number[]; rotation_deg?: number } {
+      const parts: string[] = [];
+      let cur: Element | null = elem;
+      while (cur) {
+        const t = cur.getAttribute("transform");
+        if (t) parts.push(t);
+        cur = parentMap.get(cur) || null;
+      }
+      if (parts.length === 0) return { tx: 0, ty: 0 };
+      const combined = parts.reverse().join(" ");
+      return parseTransform(combined);
+    }
+
     // Collect all rect elements
     const rects: Array<{
       elem: Element;
@@ -229,6 +266,7 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
       h: number;
       cx: number;
       cy: number;
+      rotation_deg?: number;
     }> = [];
 
     const rectElements = root.getElementsByTagName("rect");
@@ -243,18 +281,29 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
         const h = parseFloat(stripUnit(r.getAttribute("height") || "0"));
 
         if (w > 0 && h > 0) {
-          const transform = parseTransform(r.getAttribute("transform"));
+          const transform = getFullTransformForElement(r);
           const transformed = applyTransform(x, y, transform);
           const transformedEnd = applyTransform(x + w, y + h, transform);
+          const bboxW = Math.abs(transformedEnd.x - transformed.x);
+          const bboxH = Math.abs(transformedEnd.y - transformed.y);
+          const cx = transformed.x + bboxW / 2;
+          const cy = transformed.y + bboxH / 2;
+          // For rotated rects: use ORIGINAL dimensions (w,h), not bbox - otherwise display is wrong
+          const hasRotation = transform.rotation_deg != null && Math.abs(transform.rotation_deg) > 0.5;
+          const useW = hasRotation ? w : bboxW;
+          const useH = hasRotation ? h : bboxH;
+          const useX = hasRotation ? cx - useW / 2 : transformed.x;
+          const useY = hasRotation ? cy - useH / 2 : transformed.y;
           
           rects.push({
             elem: r,
-            x: transformed.x,
-            y: transformed.y,
-            w: Math.abs(transformedEnd.x - transformed.x),
-            h: Math.abs(transformedEnd.y - transformed.y),
-            cx: transformed.x + Math.abs(transformedEnd.x - transformed.x) / 2,
-            cy: transformed.y + Math.abs(transformedEnd.y - transformed.y) / 2,
+            x: useX,
+            y: useY,
+            w: useW,
+            h: useH,
+            cx: cx,
+            cy: cy,
+            rotation_deg: transform.rotation_deg,
           });
         }
 
@@ -276,25 +325,33 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
       try {
         const pathRect = parsePathRect(pathData);
         if (pathRect) {
-          // Apply transform to the path rectangle
-          const transform = parseTransform(p.getAttribute("transform"));
+          // Apply transform to the path rectangle (including parent transforms)
+          const transform = getFullTransformForElement(p);
           const topLeft = applyTransform(pathRect.x, pathRect.y, transform);
           const bottomRight = applyTransform(pathRect.x + pathRect.w, pathRect.y + pathRect.h, transform);
           
-          const finalX = Math.min(topLeft.x, bottomRight.x);
-          const finalY = Math.min(topLeft.y, bottomRight.y);
-          const finalW = Math.abs(bottomRight.x - topLeft.x);
-          const finalH = Math.abs(bottomRight.y - topLeft.y);
+          const bboxX = Math.min(topLeft.x, bottomRight.x);
+          const bboxY = Math.min(topLeft.y, bottomRight.y);
+          const bboxW = Math.abs(bottomRight.x - topLeft.x);
+          const bboxH = Math.abs(bottomRight.y - topLeft.y);
+          const cx = bboxX + bboxW / 2;
+          const cy = bboxY + bboxH / 2;
+          const hasRotation = transform.rotation_deg != null && Math.abs(transform.rotation_deg) > 0.5;
+          const useW = hasRotation ? pathRect.w : bboxW;
+          const useH = hasRotation ? pathRect.h : bboxH;
+          const useX = hasRotation ? cx - useW / 2 : bboxX;
+          const useY = hasRotation ? cy - useH / 2 : bboxY;
 
-          if (finalW > 0 && finalH > 0) {
+          if (bboxW > 0 && bboxH > 0) {
             rects.push({
               elem: p,
-              x: finalX,
-              y: finalY,
-              w: finalW,
-              h: finalH,
-              cx: finalX + finalW / 2,
-              cy: finalY + finalH / 2,
+              x: useX,
+              y: useY,
+              w: useW,
+              h: useH,
+              cx,
+              cy,
+              rotation_deg: transform.rotation_deg,
             });
           }
         }
@@ -388,17 +445,32 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
       return { x, y };
     }
 
-    // Check if point is inside rect
+    // Check if point is inside rect (handles rotated rects via inverse-rotate)
     function rectContainsPoint(
-      rect: { x: number; y: number; w: number; h: number },
+      rect: { x: number; y: number; w: number; h: number; cx: number; cy: number; rotation_deg?: number },
       px: number,
       py: number
     ): boolean {
+      if (rect.rotation_deg == null || Math.abs(rect.rotation_deg) < 0.5) {
+        return (
+          px >= rect.x - 1e-6 &&
+          px <= rect.x + rect.w + 1e-6 &&
+          py >= rect.y - 1e-6 &&
+          py <= rect.y + rect.h + 1e-6
+        );
+      }
+      const rad = (-rect.rotation_deg * Math.PI) / 180;
+      const c = Math.cos(rad);
+      const s = Math.sin(rad);
+      const dx = px - rect.cx;
+      const dy = py - rect.cy;
+      const localX = dx * c - dy * s;
+      const localY = dx * s + dy * c;
       return (
-        px >= rect.x - 1e-6 &&
-        px <= rect.x + rect.w + 1e-6 &&
-        py >= rect.y - 1e-6 &&
-        py <= rect.y + rect.h + 1e-6
+        localX >= -rect.w / 2 - 1e-6 &&
+        localX <= rect.w / 2 + 1e-6 &&
+        localY >= -rect.h / 2 - 1e-6 &&
+        localY <= rect.h / 2 + 1e-6
       );
     }
 
@@ -489,9 +561,10 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
             w_px: containing.w,
             h_px: containing.h,
             match: "contains",
+            ...(containing.rotation_deg != null && { rotation_deg: containing.rotation_deg }),
           },
         };
-        console.log(`[MATCH] Booth ${boothNumber}: text(${tx.toFixed(1)}, ${ty.toFixed(1)}) -> rect(${containing.x.toFixed(1)}, ${containing.y.toFixed(1)}, ${containing.w.toFixed(1)}x${containing.h.toFixed(1)})`);
+        console.log(`[MATCH] Booth ${boothNumber}: text(${tx.toFixed(1)}, ${ty.toFixed(1)}) -> rect(${containing.x.toFixed(1)}, ${containing.y.toFixed(1)}, ${containing.w.toFixed(1)}x${containing.h.toFixed(1)}${containing.rotation_deg != null ? ` rot=${containing.rotation_deg}°` : ""})`);
         booths.push(boothData);
         continue;
       }
@@ -503,14 +576,16 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
         const rectDistances = rects.map(r => {
           const centerDist = distance(r.cx, r.cy, tx, ty);
           
-          // Check if point is inside the rectangle (with small tolerance)
-          const isInside = tx >= r.x - 1 && tx <= r.x + r.w + 1 && 
-                          ty >= r.y - 1 && ty <= r.y + r.h + 1;
+          // Check if point is inside the rectangle (handles rotated rects)
+          const isInside = rectContainsPoint(r, tx, ty);
           
-          // Calculate minimum distance from point to rectangle edges
-          const dx = Math.max(r.x - tx, 0, tx - (r.x + r.w));
-          const dy = Math.max(r.y - ty, 0, ty - (r.y + r.h));
-          const edgeDist = Math.sqrt(dx * dx + dy * dy);
+          // Calculate minimum distance from point to rectangle (use center dist for rotated)
+          const edgeDist = r.rotation_deg != null
+            ? centerDist
+            : Math.sqrt(
+                Math.pow(Math.max(r.x - tx, 0, tx - (r.x + r.w)), 2) +
+                Math.pow(Math.max(r.y - ty, 0, ty - (r.y + r.h)), 2)
+              );
           
           return {
             rect: r,
@@ -550,9 +625,10 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
             w_px: nearest.w,
             h_px: nearest.h,
             match: "nearest",
+            ...(nearest.rotation_deg != null && { rotation_deg: nearest.rotation_deg }),
           },
         };
-        console.log(`[MATCH] Booth ${boothNumber}: text(${tx.toFixed(1)}, ${ty.toFixed(1)}) -> nearest rect(${nearest.x.toFixed(1)}, ${nearest.y.toFixed(1)}, ${nearest.w.toFixed(1)}x${nearest.h.toFixed(1)}) dist=${nearestDist.toFixed(1)}`);
+        console.log(`[MATCH] Booth ${boothNumber}: text(${tx.toFixed(1)}, ${ty.toFixed(1)}) -> nearest rect(${nearest.x.toFixed(1)}, ${nearest.y.toFixed(1)}, ${nearest.w.toFixed(1)}x${nearest.h.toFixed(1)}${nearest.rotation_deg != null ? ` rot=${nearest.rotation_deg}°` : ""}) dist=${nearestDist.toFixed(1)}`);
         booths.push(boothData);
       } else {
         // No rects found - create booth with estimated size based on text position

@@ -2,6 +2,8 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { updateBoothCompany, getBoothsForFloorplan } from "@/lib/repos/floorplan";
+import { getCompanyById } from "@/lib/repos/company";
+import { getCompanySubOption } from "@/lib/utils/company-access";
 import { readItems } from "@directus/sdk";
 import { getDirectusWithToken } from "@/lib/directus";
 import type { Booth } from "@/lib/schema";
@@ -63,8 +65,12 @@ export async function POST(req: Request) {
       // Check if company is already assigned to another booth
       const existingBooth = floorplanBooths.find(b => b.company?.id === companyId && b.id !== boothId);
       if (existingBooth) {
-        // Remove company from the other booth first
-        await updateBoothCompany(existingBooth.id, null);
+        // Companies with "Extra Booth" suboption can have multiple booths - don't remove from the other
+        const company = await getCompanyById(companyId);
+        const hasExtraBooth = getCompanySubOption(company ?? undefined, "Extra Booth") !== null;
+        if (!hasExtraBooth) {
+          await updateBoothCompany(existingBooth.id, null);
+        }
       }
     }
 

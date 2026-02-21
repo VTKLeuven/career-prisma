@@ -13,7 +13,13 @@ import {
   getCVBookByYear,
   getCVBookStudentData,
 } from "@/lib/repos/cv-book";
+import {
+  listFavourites,
+  addFavourite,
+  removeFavourite,
+} from "@/lib/repos/cv-book-favourites";
 import { listForms } from "@/lib/repos/forms";
+import { getUserFromCookies } from "@/lib/auth-server";
 import { listFormVersions } from "@/lib/repos/forms";
 import type { CVBook, AcademicYear, Form, FormField } from "@/lib/schema";
 
@@ -43,11 +49,13 @@ export async function createCVBookAction(data: {
   student_email_field: string;
   student_study_field: string;
   student_cv_field: string;
+  student_linkedin_field?: string;
   student_first_name_field_backup?: string;
   student_last_name_field_backup?: string;
   student_email_field_backup?: string;
   student_study_field_backup?: string;
   student_cv_field_backup?: string;
+  student_linkedin_field_backup?: string;
 }): Promise<{ success: boolean; error?: string; cvBook?: CVBook }> {
   try {
     const cvBook = await createCVBook(data);
@@ -127,6 +135,58 @@ export async function fetchCVBookStudentDataAction(cvBook: CVBook): Promise<impo
   } catch (error) {
     console.error("[fetchCVBookStudentDataAction] Error:", error);
     return [];
+  }
+}
+
+// ===================== CV BOOK FAVOURITES =====================
+
+export async function fetchCVBookFavouritesAction(
+  cvBookId: string,
+  clientCompanyId?: string
+): Promise<string[]> {
+  try {
+    const user = await getUserFromCookies();
+    if (!user?.id) return [];
+
+    let companyId: string | undefined =
+      user.company && (typeof user.company === "string" ? user.company : user.company.id);
+    if (!companyId && clientCompanyId) {
+      companyId = clientCompanyId;
+    }
+    if (!companyId) return [];
+
+    return await listFavourites(companyId, cvBookId);
+  } catch (error) {
+    console.error("[fetchCVBookFavouritesAction] Error:", error);
+    return [];
+  }
+}
+
+export async function toggleCVBookFavouriteAction(
+  formResponseId: string,
+  cvBookId: string,
+  isFavourite: boolean
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const user = await getUserFromCookies();
+    if (!user?.company?.id) {
+      return { success: false, error: "Not authenticated or no company" };
+    }
+
+    const companyId =
+      typeof user.company === "string" ? user.company : user.company.id;
+
+    if (isFavourite) {
+      return await removeFavourite(companyId, formResponseId, cvBookId);
+    } else {
+      return await addFavourite(companyId, formResponseId, cvBookId);
+    }
+  } catch (error) {
+    console.error("[toggleCVBookFavouriteAction] Error:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to toggle favourite",
+    };
   }
 }
 
