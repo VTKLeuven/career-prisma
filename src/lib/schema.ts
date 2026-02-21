@@ -250,7 +250,7 @@ export type FormField = {
   id: string;
   name: string;
   label: string;
-  type: 'text' | 'textarea' | 'email' | 'number' | 'select' | 'checkbox' | 'radio' | 'file' | 'date' | 'date-range' | 'time';
+  type: 'text' | 'textarea' | 'email' | 'number' | 'select' | 'checkbox' | 'radio' | 'file' | 'date' | 'date-range' | 'time' | 'linkedin';
   required?: boolean;
   placeholder?: string;
   options?: string[]; // for select, radio, checkbox
@@ -299,11 +299,13 @@ export type CVBook = {
   student_email_field: string;
   student_study_field: string;
   student_cv_field: string;
+  student_linkedin_field?: string;
   student_first_name_field_backup?: string;
   student_last_name_field_backup?: string;
   student_email_field_backup?: string;
   student_study_field_backup?: string;
   student_cv_field_backup?: string;
+  student_linkedin_field_backup?: string;
   active: boolean;
 }
 

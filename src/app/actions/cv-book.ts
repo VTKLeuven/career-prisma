@@ -49,11 +49,13 @@ export async function createCVBookAction(data: {
   student_email_field: string;
   student_study_field: string;
   student_cv_field: string;
+  student_linkedin_field?: string;
   student_first_name_field_backup?: string;
   student_last_name_field_backup?: string;
   student_email_field_backup?: string;
   student_study_field_backup?: string;
   student_cv_field_backup?: string;
+  student_linkedin_field_backup?: string;
 }): Promise<{ success: boolean; error?: string; cvBook?: CVBook }> {
   try {
     const cvBook = await createCVBook(data);

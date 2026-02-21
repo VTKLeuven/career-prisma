@@ -161,6 +161,14 @@ export default function PublicFormPage() {
           }
         }
       }
+
+      // Validate LinkedIn profile URL format
+      if (field.type === "linkedin") {
+        const value = formData[field.name] as string;
+        if (value && !/^https?:\/\/(www\.)?linkedin\.com\/in\/[\w-]+\/?(\?.*)?$/i.test(value.trim())) {
+          newErrors[field.name] = `${field.label} must be a valid LinkedIn profile URL (e.g. https://linkedin.com/in/username)`;
+        }
+      }
     });
 
     setErrors(newErrors);
@@ -622,6 +630,21 @@ function FormFieldRenderer({
           type="time"
           value={(value as string) || ""}
           onChange={(e) => onChange(e.target.value)}
+          required={field.required}
+          className={inputClassName}
+          disabled={disabled}
+        />
+      );
+
+    case "linkedin":
+      return (
+        <Input
+          id={field.id}
+          name={field.name}
+          type="url"
+          value={(value as string) || ""}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={field.placeholder || "https://linkedin.com/in/username"}
           required={field.required}
           className={inputClassName}
           disabled={disabled}

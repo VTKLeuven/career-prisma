@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ComingSoon } from "@/components/dashboard/ComingSoon"
 import { IconFileCv, IconMail } from "@tabler/icons-react"
+import { Linkedin } from "lucide-react"
 import { Star } from "lucide-react"
 import { CVPreview } from "@/components/cv-preview"
 import { CVDocumentViewer } from "@/components/cv-document-viewer"
@@ -481,6 +482,19 @@ export default function CVBookPage() {
                             <div className="text-center">
                               <p className="font-semibold">{student.firstName} {student.lastName}</p>
                               <p className="text-sm text-muted-foreground">{student.email}</p>
+                              {student.linkedinUrl && (
+                                <a
+                                  href={student.linkedinUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center gap-1 mt-1 text-vtk-blue hover:underline"
+                                  aria-label="View LinkedIn profile"
+                                >
+                                  <Linkedin className="h-4 w-4" />
+                                  LinkedIn
+                                </a>
+                              )}
                             </div>
                           </CardContent>
                         </Card>
@@ -542,6 +556,19 @@ export default function CVBookPage() {
                               <div className="text-center">
                                 <p className="font-semibold">{student.firstName} {student.lastName}</p>
                                 <p className="text-sm text-muted-foreground">{student.email}</p>
+                                {student.linkedinUrl && (
+                                  <a
+                                    href={student.linkedinUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex items-center gap-1 mt-1 text-vtk-blue hover:underline"
+                                    aria-label="View LinkedIn profile"
+                                  >
+                                    <Linkedin className="h-4 w-4" />
+                                    LinkedIn
+                                  </a>
+                                )}
                               </div>
                             </CardContent>
                           </Card>
@@ -606,6 +633,19 @@ export default function CVBookPage() {
                             <div className="text-center">
                               <p className="font-semibold">{student.firstName} {student.lastName}</p>
                               <p className="text-sm text-muted-foreground">{student.email}</p>
+                              {student.linkedinUrl && (
+                                <a
+                                  href={student.linkedinUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center gap-1 mt-1 text-vtk-blue hover:underline"
+                                  aria-label="View LinkedIn profile"
+                                >
+                                  <Linkedin className="h-4 w-4" />
+                                  LinkedIn
+                                </a>
+                              )}
                             </div>
                           </CardContent>
                         </Card>
@@ -669,6 +709,18 @@ export default function CVBookPage() {
                             {selectedStudent.email}
                           </a>
                         </div>
+                        {selectedStudent.linkedinUrl && (
+                          <a
+                            href={selectedStudent.linkedinUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 text-vtk-blue hover:underline"
+                            aria-label="View LinkedIn profile"
+                          >
+                            <Linkedin className="h-5 w-5" />
+                            LinkedIn
+                          </a>
+                        )}
                         <Badge variant="secondary">{selectedStudent.study}</Badge>
                       </div>
                     </div>

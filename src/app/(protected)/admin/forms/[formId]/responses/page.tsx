@@ -1855,6 +1855,25 @@ function formatFieldValue(value: unknown, fieldType: string): React.ReactNode {
     return <Badge variant="secondary">{String(value)}</Badge>;
   }
 
+  if (fieldType === "linkedin") {
+    const url = String(value).trim();
+    if (!url) return <span className="text-muted-foreground italic">-</span>;
+    const isLinkedIn = /^https?:\/\/(www\.)?linkedin\.com\/in\/[\w-]+\/?(\?.*)?$/i.test(url);
+    if (isLinkedIn) {
+      return (
+        <a
+          href={url.startsWith("http") ? url : `https://${url}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 hover:underline"
+        >
+          {url}
+        </a>
+      );
+    }
+    return <span>{url}</span>;
+  }
+
   if (fieldType === "file") {
     if (!value) return <span className="text-muted-foreground italic">-</span>;
 
