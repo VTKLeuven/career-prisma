@@ -307,6 +307,15 @@ export type CVBook = {
   active: boolean;
 }
 
+/** Company favourite for a student CV in a CV Book. */
+export type CVBookFavourite = {
+  id: string;
+  company: string | { id: string };
+  form_response: string | FormResponse;
+  cv_book: string | CVBook;
+  date_created?: string;
+}
+
 // Optional: Full Directus Schema map (only collections you use)
 export type Schema = {
   directus_users: CompanyRep;
