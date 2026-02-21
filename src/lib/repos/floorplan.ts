@@ -342,6 +342,7 @@ export async function getBoothsForFloorplan(floorplanId: string): Promise<Booth[
           },
         },
         sort: ["booth_number"],
+        limit: -1, // Fetch all booths (Directus defaults to 100)
       })
     ) as unknown as Booth[];
 

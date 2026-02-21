@@ -59,23 +59,51 @@ export default function AdminFloorplanPage() {
         
         setPage(eventPage)
         
-        // Fetch SVG content
+        // Fetch SVG content and booths first (need booths for viewBox calculation)
         const data = await fetchFloorplanAction(eventPage)
+        const boothsData = eventPage.floorplan.id
+          ? await getBoothsForFloorplan(eventPage.floorplan.id)
+          : []
+        
         if (data) {
           setSvgContent(data.svg || "")
           
           const parser = new DOMParser()
-          const svgDoc = parser.parseFromString(data.svg || "", "image/svg+xml")
-          const originalVb = svgDoc.documentElement.getAttribute("viewBox") || "0 0 1000 600"
+          const rawSvg = data.svg || ""
+          const svgDoc = parser.parseFromString(rawSvg, "image/svg+xml")
+          const svgRoot = svgDoc.documentElement
+          const originalVb = svgRoot?.getAttribute("viewBox") || "0 0 1000 600"
           setOriginalViewBox(originalVb)
-          setViewBox(originalVb)
+          
+          // Calculate tight viewBox from booth bounds (reduces vertical whitespace)
+          const origVbParts = originalVb.split(/\s+/).map(Number)
+          if (origVbParts.length === 4 && boothsData.length > 0) {
+            const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+            boothsData.forEach((booth: Booth) => {
+              if (!booth.coords) return
+              const coords = typeof booth.coords === "string" ? JSON.parse(booth.coords) : booth.coords
+              const boothX = origVbX + (coords.x_pct / 100) * origVbWidth
+              const boothY = origVbY + (coords.y_pct / 100) * origVbHeight
+              const boothWidth = (coords.width_pct / 100) * origVbWidth
+              const boothHeight = (coords.height_pct / 100) * origVbHeight
+              minX = Math.min(minX, boothX)
+              minY = Math.min(minY, boothY)
+              maxX = Math.max(maxX, boothX + boothWidth)
+              maxY = Math.max(maxY, boothY + boothHeight)
+            })
+            if (minX < maxX && minY < maxY) {
+              const pad = Math.min(origVbWidth, origVbHeight) * 0.02
+              setViewBox(`${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`)
+            } else {
+              setViewBox(originalVb)
+            }
+          } else {
+            setViewBox(originalVb)
+          }
         }
         
-        // Fetch booths
-        if (eventPage.floorplan.id) {
-          const boothsData = await getBoothsForFloorplan(eventPage.floorplan.id)
-          setBooths(boothsData)
-        }
+        setBooths(boothsData)
         
         // Fetch companies - use from event page if available, otherwise fetch separately
         if (eventPage.companies && Array.isArray(eventPage.companies) && eventPage.companies.length > 0) {
@@ -224,11 +252,26 @@ export default function AdminFloorplanPage() {
             <svg
               ref={svgRef}
               viewBox={viewBox}
-              className="w-full h-auto min-w-0 max-h-[calc(100vh-200px)]"
+              className="w-full h-auto min-w-0 min-h-[80vh]"
               xmlns="http://www.w3.org/2000/svg"
               preserveAspectRatio="xMidYMid meet"
             >
-              <g dangerouslySetInnerHTML={{ __html: svgContent }} />
+              {/* Floorplan SVG as image - preserves exact rendering */}
+              {(() => {
+                const p = originalViewBox.split(/\s+/).map(Number)
+                if (p.length !== 4) return null
+                const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgContent)}`
+                return (
+                  <image
+                    href={dataUrl}
+                    x={p[0]}
+                    y={p[1]}
+                    width={p[2]}
+                    height={p[3]}
+                    preserveAspectRatio="xMidYMid meet"
+                  />
+                )
+              })()}
 
               {booths.map((booth) => {
                 if (!booth.coords) return null
@@ -249,16 +292,51 @@ export default function AdminFloorplanPage() {
                 const boothY = origVbY + (coords.y_pct / 100) * origVbHeight
                 const boothWidth = (coords.width_pct / 100) * origVbWidth
                 const boothHeight = (coords.height_pct / 100) * origVbHeight
+                const rotation = coords.rotation_deg
+                const boothCx = boothX + boothWidth / 2
+                const boothCy = boothY + boothHeight / 2
 
-                return (
+                const boothShape = rotation != null && Math.abs(rotation) > 0.5
+                  ? (() => {
+                      const rad = (rotation * Math.PI) / 180
+                      const c = Math.cos(rad)
+                      const s = Math.sin(rad)
+                      const hw = boothWidth / 2
+                      const hh = boothHeight / 2
+                      const x1 = boothCx + (-hw * c + hh * s)
+                      const y1 = boothCy + (-hw * s - hh * c)
+                      const x2 = boothCx + (hw * c + hh * s)
+                      const y2 = boothCy + (hw * s - hh * c)
+                      const x3 = boothCx + (hw * c - hh * s)
+                      const y3 = boothCy + (hw * s + hh * c)
+                      const x4 = boothCx + (-hw * c - hh * s)
+                      const y4 = boothCy + (-hw * s + hh * c)
+                      return `M ${x1} ${y1} L ${x2} ${y2} L ${x3} ${y3} L ${x4} ${y4} Z`
+                    })()
+                  : null
+
+                const fill = isSelected ? "rgba(0,51,102,0.4)" : hasCompany ? "rgba(0,51,102,0.15)" : "rgba(255,0,0,0.08)"
+                const stroke = isSelected ? "#003366" : hasCompany ? "#003366" : "#ff0000"
+
+                return boothShape ? (
+                  <path
+                    key={booth.id}
+                    d={boothShape}
+                    fill={fill}
+                    stroke={stroke}
+                    strokeWidth={isSelected ? 2 : 1}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => handleBoothClick(booth)}
+                  />
+                ) : (
                   <rect
                     key={booth.id}
                     x={boothX}
                     y={boothY}
                     width={boothWidth}
                     height={boothHeight}
-                    fill={isSelected ? "rgba(0,51,102,0.4)" : hasCompany ? "rgba(0,51,102,0.15)" : "rgba(255,0,0,0.08)"}
-                    stroke={isSelected ? "#003366" : hasCompany ? "#003366" : "#ff0000"}
+                    fill={fill}
+                    stroke={stroke}
                     strokeWidth={isSelected ? 2 : 1}
                     style={{ cursor: "pointer" }}
                     onClick={() => handleBoothClick(booth)}

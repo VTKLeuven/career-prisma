@@ -443,13 +443,14 @@ function Floorplan({
       const boothsData = (data.booths || []).filter((b): b is Booth => b !== null)
       setBoothsLocal(boothsData)
       setBooths(boothsData)
-      setSvgContent(data.svg || "")
       setBackgroundImage((data as any).backgroundImage || null)
 
+      const rawSvg = data.svg || ""
       const parser = new DOMParser()
-      const svgDoc = parser.parseFromString(data.svg || "", "image/svg+xml")
-      const originalVb = svgDoc.documentElement.getAttribute("viewBox") || "0 0 1000 600"
-      
+      const svgDoc = parser.parseFromString(rawSvg, "image/svg+xml")
+      const svgRoot = svgDoc.documentElement
+      const originalVb = svgRoot?.getAttribute("viewBox") || "0 0 1000 600"
+      setSvgContent(rawSvg)
       setOriginalViewBox(originalVb)
       
       // Parse original viewBox
@@ -461,9 +462,10 @@ function Floorplan({
       
       const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
       
-      // Calculate bounds from all SVG elements
+      // Calculate bounds from all SVG elements (excluding large background elements)
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
       let hasBounds = false
+      const bgThreshold = 0.5 // Exclude elements covering >50% of viewBox (likely backgrounds)
       
       const extractBounds = (element: Element) => {
         const tagName = element.tagName.toLowerCase()
@@ -549,6 +551,11 @@ function Floorplan({
         }
         
         if (valid && width > 0 && height > 0) {
+          // Skip large background elements (e.g. full-viewBox rects) that cause white space
+          const coversWidth = width >= origVbWidth * bgThreshold
+          const coversHeight = height >= origVbHeight * bgThreshold
+          if (coversWidth && coversHeight) return
+          
           minX = Math.min(minX, x)
           minY = Math.min(minY, y)
           maxX = Math.max(maxX, x + width)
@@ -579,7 +586,29 @@ function Floorplan({
           hasBounds = true
         }
       })
-      
+
+      // Use booth-only bounds when we have booths - much tighter crop, reduces vertical whitespace
+      const boothsWithCoords = boothsData.filter(b => b.coords)
+      if (boothsWithCoords.length > 0) {
+        let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity
+        boothsWithCoords.forEach(booth => {
+          const boothX = origVbX + (booth.coords!.x_pct / 100) * origVbWidth
+          const boothY = origVbY + (booth.coords!.y_pct / 100) * origVbHeight
+          const boothWidth = (booth.coords!.width_pct / 100) * origVbWidth
+          const boothHeight = (booth.coords!.height_pct / 100) * origVbHeight
+          bMinX = Math.min(bMinX, boothX)
+          bMinY = Math.min(bMinY, boothY)
+          bMaxX = Math.max(bMaxX, boothX + boothWidth)
+          bMaxY = Math.max(bMaxY, boothY + boothHeight)
+        })
+        if (bMinX < bMaxX && bMinY < bMaxY) {
+          minX = bMinX
+          minY = bMinY
+          maxX = bMaxX
+          maxY = bMaxY
+        }
+      }
+
       // Adjust viewBox if we found valid bounds
       if (hasBounds && minX < Infinity && minY < Infinity && maxX > -Infinity && maxY > -Infinity && minX < maxX && minY < maxY) {
         const contentWidth = maxX - minX
@@ -598,10 +627,10 @@ function Floorplan({
         
         // Always adjust if we found bounds and there's any whitespace
         if (contentWidth > 0 && contentHeight > 0 && (horizontalWS > 0 || verticalWS > 0)) {
-          // Very minimal padding - just enough to avoid edge clipping
+          // Minimal padding - tight crop to reduce vertical whitespace
           const padding = Math.min(
-            Math.min(contentWidth, contentHeight) * 0.005, // 0.5% padding
-            3 // or 3px, whichever is smaller
+            Math.min(contentWidth, contentHeight) * 0.015, // 1.5% padding
+            8
           )
           const newX = Math.max(origVbX, minX - padding)
           const newY = Math.max(origVbY, minY - padding)
@@ -858,7 +887,7 @@ function Floorplan({
           }}
         />
       )}
-      <div className={`pt-32 md:pt-[90px] flex justify-center w-full px-2 sm:px-4 pb-4 ${backgroundImage ? "relative z-10" : ""}`}>
+      <div className={`pt-32 md:pt-[90px] flex justify-center w-full px-2 sm:px-4 pb-4 overflow-auto min-h-0 ${backgroundImage ? "relative z-10" : ""}`}>
         <div 
           ref={floorplanContainerRef}
           className="relative w-full max-w-full md:hidden"
@@ -876,7 +905,7 @@ function Floorplan({
           <svg
             ref={svgRef}
             viewBox={viewBox}
-            className="w-full h-auto min-w-0 max-h-[calc(100vh-200px)]"
+            className="w-full h-auto min-w-0 min-h-[120vh]"
             xmlns="http://www.w3.org/2000/svg"
             preserveAspectRatio="xMidYMid meet"
           >
@@ -908,8 +937,51 @@ function Floorplan({
             const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
             const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
             const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
+            const rotation = (booth.coords as { rotation_deg?: number }).rotation_deg
+            const boothCx = boothX + boothWidth / 2
+            const boothCy = boothY + boothHeight / 2
 
-            return (
+            const boothShape = rotation != null && Math.abs(rotation) > 0.5
+              ? (() => {
+                  const rad = (rotation * Math.PI) / 180
+                  const c = Math.cos(rad)
+                  const s = Math.sin(rad)
+                  const hw = boothWidth / 2
+                  const hh = boothHeight / 2
+                  const x1 = boothCx + (-hw * c + hh * s)
+                  const y1 = boothCy + (-hw * s - hh * c)
+                  const x2 = boothCx + (hw * c + hh * s)
+                  const y2 = boothCy + (hw * s - hh * c)
+                  const x3 = boothCx + (hw * c - hh * s)
+                  const y3 = boothCy + (hw * s + hh * c)
+                  const x4 = boothCx + (-hw * c - hh * s)
+                  const y4 = boothCy + (-hw * s + hh * c)
+                  return `M ${x1} ${y1} L ${x2} ${y2} L ${x3} ${y3} L ${x4} ${y4} Z`
+                })()
+              : null
+
+            const commonProps = {
+              style: { cursor: "pointer" } as React.CSSProperties,
+              onClick: () => onBoothClick(booth.company!),
+              onMouseEnter: () => setHoveredBoothId(booth.company!.id),
+              onMouseLeave: () => { setHoveredBoothId(null); setTooltip(null) },
+              onMouseMove: (e: React.MouseEvent) => {
+                if (hoveredBoothId === booth.company?.id && booth.company) {
+                  setTooltip({ companyName: booth.company.name, x: e.clientX, y: e.clientY })
+                }
+              },
+            }
+
+            return boothShape ? (
+              <path
+                key={`unselected-${i}`}
+                d={boothShape}
+                fill="white"
+                stroke="#e5e7eb"
+                strokeWidth={1}
+                {...commonProps}
+              />
+            ) : (
               <rect
                 key={`unselected-${i}`}
                 x={boothX}
@@ -919,28 +991,28 @@ function Floorplan({
                 fill="white"
                 stroke="#e5e7eb"
                 strokeWidth={1}
-                style={{ cursor: "pointer" }}
-                onClick={() => onBoothClick(booth.company!)}
-                onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
-                onMouseLeave={() => {
-                  setHoveredBoothId(null)
-                  setTooltip(null)
-                }}
-                onMouseMove={(e) => {
-                  if (hoveredBoothId === booth.company?.id && booth.company) {
-                    setTooltip({
-                      companyName: booth.company.name,
-                      x: e.clientX,
-                      y: e.clientY
-                    })
-                  }
-                }}
+                {...commonProps}
               />
             )
           })}
 
-          {/* Second: SVG content (with pointer-events: none so it doesn't block clicks) */}
-          <g dangerouslySetInnerHTML={{ __html: svgContent }} style={{ pointerEvents: 'none' }} />
+          {/* Second: Floorplan SVG as image - preserves exact rendering (no white blocks, circles, or missing lines) */}
+          {svgContent && (() => {
+            const p = originalViewBox.split(/\s+/).map(Number)
+            if (p.length !== 4) return null
+            const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgContent)}`
+            return (
+              <image
+                href={dataUrl}
+                x={p[0]}
+                y={p[1]}
+                width={p[2]}
+                height={p[3]}
+                preserveAspectRatio="xMidYMid meet"
+                style={{ pointerEvents: 'none' }}
+              />
+            )
+          })()}
 
           {/* Third: Render selected booths on top */}
           {boothsLocal.map((booth, i) => {
@@ -970,9 +1042,52 @@ function Floorplan({
             const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
             const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
             const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
+            const rotation = (booth.coords as { rotation_deg?: number }).rotation_deg
+            const boothCx = boothX + boothWidth / 2
+            const boothCy = boothY + boothHeight / 2
             const isHovered = hoveredBoothId === booth.company?.id
 
-            return (
+            const boothShape = rotation != null && Math.abs(rotation) > 0.5
+              ? (() => {
+                  const rad = (rotation * Math.PI) / 180
+                  const c = Math.cos(rad)
+                  const s = Math.sin(rad)
+                  const hw = boothWidth / 2
+                  const hh = boothHeight / 2
+                  const x1 = boothCx + (-hw * c + hh * s)
+                  const y1 = boothCy + (-hw * s - hh * c)
+                  const x2 = boothCx + (hw * c + hh * s)
+                  const y2 = boothCy + (hw * s - hh * c)
+                  const x3 = boothCx + (hw * c - hh * s)
+                  const y3 = boothCy + (hw * s + hh * c)
+                  const x4 = boothCx + (-hw * c - hh * s)
+                  const y4 = boothCy + (-hw * s + hh * c)
+                  return `M ${x1} ${y1} L ${x2} ${y2} L ${x3} ${y3} L ${x4} ${y4} Z`
+                })()
+              : null
+
+            const commonProps = {
+              style: { cursor: "pointer" } as React.CSSProperties,
+              onClick: () => onBoothClick(booth.company!),
+              onMouseEnter: () => setHoveredBoothId(booth.company!.id),
+              onMouseLeave: () => { setHoveredBoothId(null); setTooltip(null) },
+              onMouseMove: (e: React.MouseEvent) => {
+                if (isHovered && booth.company) {
+                  setTooltip({ companyName: booth.company.name, x: e.clientX, y: e.clientY })
+                }
+              },
+            }
+
+            return boothShape ? (
+              <path
+                key={`selected-${i}`}
+                d={boothShape}
+                fill="rgba(0,51,102,0.35)"
+                stroke="#003366"
+                strokeWidth={1}
+                {...commonProps}
+              />
+            ) : (
               <rect
                 key={`selected-${i}`}
                 x={boothX}
@@ -982,22 +1097,7 @@ function Floorplan({
                 fill="rgba(0,51,102,0.35)"
                 stroke="#003366"
                 strokeWidth={1}
-                style={{ cursor: "pointer" }}
-                onClick={() => onBoothClick(booth.company!)}
-                onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
-                onMouseLeave={() => {
-                  setHoveredBoothId(null)
-                  setTooltip(null)
-                }}
-                onMouseMove={(e) => {
-                  if (isHovered && booth.company) {
-                    setTooltip({
-                      companyName: booth.company.name,
-                      x: e.clientX,
-                      y: e.clientY
-                    })
-                  }
-                }}
+                {...commonProps}
               />
             )
           })}
@@ -1020,7 +1120,7 @@ function Floorplan({
         <div className="hidden md:block relative w-full max-w-full">
           <svg
             viewBox={viewBox}
-            className="w-full h-auto min-w-0 max-h-[calc(100vh-200px)]"
+            className="w-full h-auto min-w-0 min-h-[120vh]"
             xmlns="http://www.w3.org/2000/svg"
             preserveAspectRatio="xMidYMid meet"
           >
@@ -1052,8 +1152,51 @@ function Floorplan({
             const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
             const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
             const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
+            const rotation = (booth.coords as { rotation_deg?: number }).rotation_deg
+            const boothCx = boothX + boothWidth / 2
+            const boothCy = boothY + boothHeight / 2
 
-            return (
+            const boothShape = rotation != null && Math.abs(rotation) > 0.5
+              ? (() => {
+                  const rad = (rotation * Math.PI) / 180
+                  const c = Math.cos(rad)
+                  const s = Math.sin(rad)
+                  const hw = boothWidth / 2
+                  const hh = boothHeight / 2
+                  const x1 = boothCx + (-hw * c + hh * s)
+                  const y1 = boothCy + (-hw * s - hh * c)
+                  const x2 = boothCx + (hw * c + hh * s)
+                  const y2 = boothCy + (hw * s - hh * c)
+                  const x3 = boothCx + (hw * c - hh * s)
+                  const y3 = boothCy + (hw * s + hh * c)
+                  const x4 = boothCx + (-hw * c - hh * s)
+                  const y4 = boothCy + (-hw * s + hh * c)
+                  return `M ${x1} ${y1} L ${x2} ${y2} L ${x3} ${y3} L ${x4} ${y4} Z`
+                })()
+              : null
+
+            const commonProps = {
+              style: { cursor: "pointer" } as React.CSSProperties,
+              onClick: () => onBoothClick(booth.company!),
+              onMouseEnter: () => setHoveredBoothId(booth.company!.id),
+              onMouseLeave: () => { setHoveredBoothId(null); setTooltip(null) },
+              onMouseMove: (e: React.MouseEvent) => {
+                if (hoveredBoothId === booth.company?.id && booth.company) {
+                  setTooltip({ companyName: booth.company.name, x: e.clientX, y: e.clientY })
+                }
+              },
+            }
+
+            return boothShape ? (
+              <path
+                key={`unselected-desktop-${i}`}
+                d={boothShape}
+                fill="white"
+                stroke="#e5e7eb"
+                strokeWidth={1}
+                {...commonProps}
+              />
+            ) : (
               <rect
                 key={`unselected-desktop-${i}`}
                 x={boothX}
@@ -1063,28 +1206,28 @@ function Floorplan({
                 fill="white"
                 stroke="#e5e7eb"
                 strokeWidth={1}
-                style={{ cursor: "pointer" }}
-                onClick={() => onBoothClick(booth.company!)}
-                onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
-                onMouseLeave={() => {
-                  setHoveredBoothId(null)
-                  setTooltip(null)
-                }}
-                onMouseMove={(e) => {
-                  if (hoveredBoothId === booth.company?.id && booth.company) {
-                    setTooltip({
-                      companyName: booth.company.name,
-                      x: e.clientX,
-                      y: e.clientY
-                    })
-                  }
-                }}
+                {...commonProps}
               />
             )
           })}
 
-          {/* Second: SVG content (with pointer-events: none so it doesn't block clicks) */}
-          <g dangerouslySetInnerHTML={{ __html: svgContent }} style={{ pointerEvents: 'none' }} />
+          {/* Second: Floorplan SVG as image - preserves exact rendering (no white blocks, circles, or missing lines) */}
+          {svgContent && (() => {
+            const p = originalViewBox.split(/\s+/).map(Number)
+            if (p.length !== 4) return null
+            const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgContent)}`
+            return (
+              <image
+                href={dataUrl}
+                x={p[0]}
+                y={p[1]}
+                width={p[2]}
+                height={p[3]}
+                preserveAspectRatio="xMidYMid meet"
+                style={{ pointerEvents: 'none' }}
+              />
+            )
+          })()}
 
           {/* Third: Render selected booths on top */}
           {boothsLocal.map((booth, i) => {
@@ -1114,9 +1257,52 @@ function Floorplan({
             const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
             const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
             const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
+            const rotation = (booth.coords as { rotation_deg?: number }).rotation_deg
+            const boothCx = boothX + boothWidth / 2
+            const boothCy = boothY + boothHeight / 2
             const isHovered = hoveredBoothId === booth.company?.id
 
-            return (
+            const boothShape = rotation != null && Math.abs(rotation) > 0.5
+              ? (() => {
+                  const rad = (rotation * Math.PI) / 180
+                  const c = Math.cos(rad)
+                  const s = Math.sin(rad)
+                  const hw = boothWidth / 2
+                  const hh = boothHeight / 2
+                  const x1 = boothCx + (-hw * c + hh * s)
+                  const y1 = boothCy + (-hw * s - hh * c)
+                  const x2 = boothCx + (hw * c + hh * s)
+                  const y2 = boothCy + (hw * s - hh * c)
+                  const x3 = boothCx + (hw * c - hh * s)
+                  const y3 = boothCy + (hw * s + hh * c)
+                  const x4 = boothCx + (-hw * c - hh * s)
+                  const y4 = boothCy + (-hw * s + hh * c)
+                  return `M ${x1} ${y1} L ${x2} ${y2} L ${x3} ${y3} L ${x4} ${y4} Z`
+                })()
+              : null
+
+            const commonProps = {
+              style: { cursor: "pointer" } as React.CSSProperties,
+              onClick: () => onBoothClick(booth.company!),
+              onMouseEnter: () => setHoveredBoothId(booth.company!.id),
+              onMouseLeave: () => { setHoveredBoothId(null); setTooltip(null) },
+              onMouseMove: (e: React.MouseEvent) => {
+                if (isHovered && booth.company) {
+                  setTooltip({ companyName: booth.company.name, x: e.clientX, y: e.clientY })
+                }
+              },
+            }
+
+            return boothShape ? (
+              <path
+                key={`selected-desktop-${i}`}
+                d={boothShape}
+                fill="rgba(0,51,102,0.35)"
+                stroke="#003366"
+                strokeWidth={1}
+                {...commonProps}
+              />
+            ) : (
               <rect
                 key={`selected-desktop-${i}`}
                 x={boothX}
@@ -1126,22 +1312,7 @@ function Floorplan({
                 fill="rgba(0,51,102,0.35)"
                 stroke="#003366"
                 strokeWidth={1}
-                style={{ cursor: "pointer" }}
-                onClick={() => onBoothClick(booth.company!)}
-                onMouseEnter={() => setHoveredBoothId(booth.company!.id)}
-                onMouseLeave={() => {
-                  setHoveredBoothId(null)
-                  setTooltip(null)
-                }}
-                onMouseMove={(e) => {
-                  if (isHovered && booth.company) {
-                    setTooltip({
-                      companyName: booth.company.name,
-                      x: e.clientX,
-                      y: e.clientY
-                    })
-                  }
-                }}
+                {...commonProps}
               />
             )
           })}

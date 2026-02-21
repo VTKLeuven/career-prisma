@@ -15,7 +15,7 @@ export async function listBooths(
   try {
     if (!floorplan?.id) return []
 
-    const { search, limit = 300, page = 1, sort = "booth_number" } = opts ?? {}
+    const { search, limit = -1, page = 1, sort = "booth_number" } = opts ?? {}
     return directus.request(
       readItems("Booths", {
         fields: [

@@ -20,6 +20,7 @@ export interface BoothExtraction {
     w_px: number;
     h_px: number;
     match: "sibling" | "contains" | "nearest" | "no_rects_found";
+    rotation_deg?: number; // For rotated booths
   };
 }
 
