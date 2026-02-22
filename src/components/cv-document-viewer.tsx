@@ -25,6 +25,12 @@ export function CVDocumentViewer({ fileUrl, className = '', title }: CVDocumentV
     const scrollContainer = scrollContainerRef.current
     const pagesContainer = pagesContainerRef.current
 
+    function getContainerSize() {
+      const w = scrollContainer.clientWidth || 900
+      const h = scrollContainer.clientHeight || (typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.85) : 800)
+      return { w, h }
+    }
+
     async function loadAndRenderAllPages() {
       try {
         setLoading(true)
@@ -47,15 +53,16 @@ export function CVDocumentViewer({ fileUrl, className = '', title }: CVDocumentV
         if (!alive) return
 
         const numPages = pdf.numPages || 1
-        const containerWidth = scrollContainer.clientWidth || 900
+        const { w: containerWidth } = getContainerSize()
+        const firstPage = await pdf.getPage(1)
+        const defaultViewport = firstPage.getViewport({ scale: 1.0 })
+        const scale = (containerWidth / defaultViewport.width) * 2.0
 
         for (let i = 1; i <= numPages; i++) {
           if (!alive) return
 
           const page = await pdf.getPage(i)
-          const defaultViewport = page.getViewport({ scale: 1.0 })
-          const scale = containerWidth / defaultViewport.width
-          const viewport = page.getViewport({ scale: scale * 2.0 })
+          const viewport = page.getViewport({ scale })
 
           const canvas = document.createElement('canvas')
           canvas.width = viewport.width
@@ -89,9 +96,11 @@ export function CVDocumentViewer({ fileUrl, className = '', title }: CVDocumentV
       }
     }
 
-    loadAndRenderAllPages()
+    // Defer slightly so container has dimensions after layout
+    const t = setTimeout(loadAndRenderAllPages, 50)
     return () => {
       alive = false
+      clearTimeout(t)
       pagesContainer.innerHTML = ''
     }
   }, [fileUrl, mounted, title])
@@ -113,11 +122,11 @@ export function CVDocumentViewer({ fileUrl, className = '', title }: CVDocumentV
   }
 
   return (
-    <div className={className}>
+    <div className={`flex flex-col min-h-0 ${className}`.trim()}>
       <div
         ref={scrollContainerRef}
-        className="bg-white overflow-y-auto overflow-x-hidden border rounded-lg shadow-sm relative"
-        style={{ minHeight: '800px', height: 'calc(100vh - 5rem)', width: '100%' }}
+        className="flex-1 min-h-[70vh] bg-white overflow-y-auto overflow-x-hidden border rounded-lg shadow-sm relative"
+        style={{ minHeight: '70vh', height: 'calc(100vh - 10rem)', width: '100%' }}
       >
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-muted z-10">

@@ -37,8 +37,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ArrowLeft, Download, Eye, Trash2, Pencil, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2, Mail, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
-import type { FormVersion, FormResponse } from "@/lib/schema";
+import type { FormVersion, FormResponse, FormField } from "@/lib/schema";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
+import { FormFieldRenderer } from "@/components/FormFieldRenderer";
+import { getDirectusImageUrl } from "@/components/Images";
+import NextImage from "next/image";
 
 export default function FormResponsesPage() {
   const params = useParams();
@@ -1882,7 +1885,7 @@ export default function FormResponsesPage() {
         setEditDialogOpen(open);
         if (!open) setResponseToEdit(null);
       }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Form Response</DialogTitle>
             <DialogDescription>
@@ -1899,10 +1902,45 @@ export default function FormResponsesPage() {
                 })
               : selectedVersion;
             const schemaFields = responseVersion?.schema?.fields ?? [];
-            const fields = schemaFields.length > 0
+            const fields: FormField[] = schemaFields.length > 0
               ? schemaFields
-              : allVersionsFields.map(f => ({ id: f.id, name: f.name, label: f.label, type: f.type, options: undefined as string[] | undefined, placeholder: undefined as string | undefined }));
+              : allVersionsFields.map(f => ({ id: f.id, name: f.name, label: f.label, type: f.type as FormField["type"], options: undefined, placeholder: undefined }));
+            const filteredFields = fields.filter(field => {
+              if (responseVersion?.metadata?.is_event_registration && field.name === "email" && field.type === "email") return false;
+              return true;
+            });
             const isCompanyForm = responseVersion?.metadata?.is_company_form && responseVersion?.metadata?.event_id;
+
+            // Group fields by layout rows (same as public form)
+            const rows: FormField[][] = [];
+            let currentRow: FormField[] = [];
+            let currentRowWidth = 0;
+            filteredFields.forEach((field) => {
+              const layout = field.layout || "full";
+              const width = layout === "half" ? 0.5 : layout === "third" ? 1 / 3 : layout === "two-thirds" ? 2 / 3 : 1;
+              if (currentRowWidth + width > 1 && currentRow.length > 0) {
+                rows.push(currentRow);
+                currentRow = [];
+                currentRowWidth = 0;
+              }
+              currentRow.push(field);
+              currentRowWidth += width;
+              if (currentRowWidth >= 1 || layout === "full") {
+                rows.push(currentRow);
+                currentRow = [];
+                currentRowWidth = 0;
+              }
+            });
+            if (currentRow.length > 0) rows.push(currentRow);
+
+            const getColSpanClass = (layout: string) => {
+              switch (layout) {
+                case "half": return "md:col-span-6";
+                case "third": return "md:col-span-4";
+                case "two-thirds": return "md:col-span-8";
+                default: return "md:col-span-12";
+              }
+            };
 
             return (
               <div className="space-y-6 py-4">
@@ -1939,149 +1977,38 @@ export default function FormResponsesPage() {
                   </div>
                 )}
 
-                <div className="space-y-4">
+                <div className="space-y-6">
                   <h4 className="font-medium">Form Data</h4>
-                  {fields
-                    .filter(field => {
-                      if (responseVersion?.metadata?.is_event_registration && field.name === "email" && field.type === "email") {
-                        return false;
-                      }
-                      return true;
-                    })
-                    .map((field) => {
-                      const value = editFormData[field.name];
-                      const setValue = (v: unknown) => setEditFormData(prev => ({ ...prev, [field.name]: v }));
-
-                      if (field.type === "file") {
+                  {rows.map((row, rowIndex) => (
+                    <div key={`row-${rowIndex}`} className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                      {row.map((field) => {
+                        const layout = field.layout || "full";
+                        const imageUrl = field.image ? getDirectusImageUrl(field.image) : null;
                         return (
-                          <div key={field.id} className="space-y-2">
-                            <Label>{field.label || field.name}</Label>
-                            <div className="text-sm text-muted-foreground flex items-center gap-2">
-                              {value ? (
-                                <a
-                                  href={`/api/files/${typeof value === "string" ? value : (value as { id?: string })?.id || value}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:underline"
-                                >
-                                  View current file
-                                </a>
-                              ) : (
-                                <span className="italic">No file uploaded</span>
-                              )}
-                              <span className="text-xs">(File fields cannot be edited here)</span>
-                            </div>
-                          </div>
-                        );
-                      }
-
-                      if (field.type === "textarea") {
-                        return (
-                          <div key={field.id} className="space-y-2">
-                            <Label htmlFor={`edit-${field.name}`}>{field.label || field.name}</Label>
-                            <Textarea
-                              id={`edit-${field.name}`}
-                              value={typeof value === "string" ? value : Array.isArray(value) ? value.join("\n") : String(value ?? "")}
-                              onChange={(e) => setValue(e.target.value)}
-                              placeholder={field.placeholder}
-                              rows={4}
-                            />
-                          </div>
-                        );
-                      }
-
-                      if (field.type === "checkbox") {
-                        const options = field.options ?? [];
-                        if (options.length > 0) {
-                          const val = value;
-                          const isArray = Array.isArray(val);
-                          const selected = isArray ? (val as string[]) : val ? [String(val)] : [];
-                          return (
-                            <div key={field.id} className="space-y-2">
-                              <Label>{field.label || field.name}</Label>
-                              <div className="flex flex-wrap gap-4">
-                                {options.map((opt) => (
-                                  <div key={opt} className="flex items-center gap-2">
-                                    <Checkbox
-                                      id={`edit-${field.name}-${opt}`}
-                                      checked={selected.includes(opt)}
-                                      onCheckedChange={(checked) => {
-                                        const newSelected = checked
-                                          ? [...selected, opt]
-                                          : selected.filter(s => s !== opt);
-                                        setValue((field as { multiple?: boolean }).multiple ? newSelected : newSelected[0]);
-                                      }}
-                                    />
-                                    <Label htmlFor={`edit-${field.name}-${opt}`} className="font-normal">{opt}</Label>
-                                  </div>
-                                ))}
+                          <div key={field.id} className={`space-y-2 ${getColSpanClass(layout)}`}>
+                            <Label htmlFor={field.id}>
+                              {field.label}
+                              {field.required && <span className="text-destructive ml-1">*</span>}
+                            </Label>
+                            {field.description && (
+                              <p className="text-sm text-muted-foreground">{field.description}</p>
+                            )}
+                            {imageUrl && (
+                              <div className="relative w-full h-48 bg-muted rounded-md overflow-hidden border">
+                                <NextImage src={imageUrl} alt={field.label || "Field image"} fill className="object-contain" />
                               </div>
-                            </div>
-                          );
-                        }
-                        return (
-                          <div key={field.id} className="flex items-center gap-2">
-                            <Checkbox
-                              id={`edit-${field.name}`}
-                              checked={value === true || value === "true" || value === "yes"}
-                              onCheckedChange={(checked) => setValue(!!checked)}
+                            )}
+                            <FormFieldRenderer
+                              field={field}
+                              value={editFormData[field.name]}
+                              onChange={(v) => setEditFormData(prev => ({ ...prev, [field.name]: v }))}
+                              disabled={false}
                             />
-                            <Label htmlFor={`edit-${field.name}`} className="font-normal">{field.label || field.name}</Label>
                           </div>
                         );
-                      }
-
-                      if ((field.type === "select" || field.type === "radio") && (field.options?.length ?? 0) > 0) {
-                        const options = field.options ?? [];
-                        const val = String(value ?? "");
-                        return (
-                          <div key={field.id} className="space-y-2">
-                            <Label htmlFor={`edit-${field.name}`}>{field.label || field.name}</Label>
-                            <Select value={val} onValueChange={setValue}>
-                              <SelectTrigger id={`edit-${field.name}`}>
-                                <SelectValue placeholder={`Select ${field.label || field.name}`} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="">(Empty)</SelectItem>
-                                {options.map((opt) => (
-                                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        );
-                      }
-
-                      const inputType = field.type === "email"
-                        ? "email"
-                        : field.type === "number"
-                        ? "number"
-                        : field.type === "date" || field.type === "date-range"
-                        ? "date"
-                        : field.type === "time"
-                        ? "time"
-                        : "text";
-                      const displayValue = typeof value === "string" || typeof value === "number"
-                        ? String(value)
-                        : Array.isArray(value)
-                        ? value.join(", ")
-                        : value != null ? String(value) : "";
-                      return (
-                        <div key={field.id} className="space-y-2">
-                          <Label htmlFor={`edit-${field.name}`}>{field.label || field.name}</Label>
-                          <Input
-                            id={`edit-${field.name}`}
-                            type={inputType}
-                            value={displayValue}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setValue(field.type === "number" ? (v === "" ? undefined : Number(v)) : v);
-                            }}
-                            placeholder={field.placeholder}
-                          />
-                        </div>
-                      );
-                    })}
+                      })}
+                    </div>
+                  ))}
                 </div>
               </div>
             );
