@@ -2,9 +2,8 @@
 "use server"
 
 import { readItems, readItem, createItem, updateItem } from "@directus/sdk";
-import { getDirectusWithToken, directus } from "@/lib/directus";
+import { getDirectusWithToken, directus, getServerDirectusClient } from "@/lib/directus";
 import type { Company } from "@/lib/schema";
-import { getServerDirectusClient } from "@/lib/directus";
 
 
 export async function listCompanies(opts?: {
@@ -13,12 +12,16 @@ export async function listCompanies(opts?: {
   page?: number;        // 1-based
   sort?: string;        // e.g. "-date_created" or "name"
   usePublic?: boolean;  // Use public client for unauthenticated access
+  useServerClient?: boolean;  // Use server token (for public page fetches when no user)
 }) {
   try {
-    const { usePublic = false, search, limit = 25, page = 1, sort = "name" } = opts ?? {};
+    const { usePublic = false, useServerClient = false, search, limit = 25, page = 1, sort = "name" } = opts ?? {};
     
-    // Use public client if requested, otherwise try authenticated
-    const client = usePublic ? directus : await getDirectusWithToken();
+    const client = useServerClient
+      ? await getServerDirectusClient()
+      : usePublic
+        ? directus
+        : await getDirectusWithToken();
     if (!client) return null;
 
     return client.request(
@@ -34,8 +37,15 @@ export async function listCompanies(opts?: {
           "options.career_event_option_id.*.*", // Get all nested fields including events junction table
           "options.career_event_option_id.*.*.*", // Get deeply nested fields
           "options.career_event_option_id.sub_options.*", // Option's available sub_options
+          "options.career_event_option_id.sub_options.career_sub_option_id.*", // Option's sub_options expanded
+          "options.career_event_option_id.events.career_event_option_id.sub_options.*", // Nested: sub_options in events junction
+          "options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option_id.*",
+          "options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option.*",
           "options.sub_options.*", // Company's selected sub_options (junction table)
-          "options.sub_options.career_sub_option_id.*", // Handle junction wrapper
+          "options.sub_options.career_sub_option_id.*", // Company's selected sub_options expanded
+          "options.sub_options.career_sub_option.*", // Handle alternate Directus field name
+          "options.career_sub_options.*", // Alternate junction field name
+          "options.career_sub_options.career_sub_option_id.*",
         ],
         limit,
         page,
@@ -51,10 +61,15 @@ export async function listCompanies(opts?: {
   }
 }
 
-export async function getCompanyById(id: string, usePublic = false, retries = 2) {
+export async function getCompanyById(id: string, usePublic = false, retries = 2, useServerClient = false) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const client = usePublic ? directus : await getDirectusWithToken();
+      // useServerClient: for public page fetches - need full nested options; public role may not have permission
+      const client = useServerClient
+        ? await getServerDirectusClient()
+        : usePublic
+          ? directus
+          : await getDirectusWithToken();
       if (!client) return null;
       
       return await client.request(
@@ -68,8 +83,14 @@ export async function getCompanyById(id: string, usePublic = false, retries = 2)
             "options.career_event_option_id.*.*", // Get all nested fields including events junction table
             "options.career_event_option_id.*.*.*", // Get deeply nested fields
             "options.career_event_option_id.sub_options.*", // Option's available sub_options
+            "options.career_event_option_id.sub_options.career_sub_option_id.*", // Option's sub_options expanded
+            "options.career_event_option_id.events.career_event_option_id.sub_options.*", // Nested (like floorplan Extra Booth)
+            "options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option_id.*",
             "options.sub_options.*", // Company's selected sub_options (junction table)
-            "options.sub_options.career_sub_option_id.*", // Handle junction wrapper
+            "options.sub_options.career_sub_option_id.*", // Company's selected sub_options expanded
+            "options.sub_options.career_sub_option.*", // Handle alternate Directus field name
+            "options.career_sub_options.*", // Alternate junction field name
+            "options.career_sub_options.career_sub_option_id.*",
           ],
         })
       ) as unknown as Company;
@@ -145,6 +166,9 @@ export async function getCompaniesForEvent(eventId: string, usePublic = false) {
           "options.sub_options.career_sub_option_id.*",
           "options.career_event_option_id.sub_options.*",
           "options.career_event_option_id.sub_options.career_sub_option_id.*",
+          "options.career_event_option_id.events.career_event_option_id.sub_options.*",
+          "options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option_id.*",
+          "options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option.*",
         ]
       : [
           "id",
@@ -163,6 +187,9 @@ export async function getCompaniesForEvent(eventId: string, usePublic = false) {
           "options.sub_options.career_sub_option_id.*",
           "options.career_event_option_id.sub_options.*",
           "options.career_event_option_id.sub_options.career_sub_option_id.*",
+          "options.career_event_option_id.events.career_event_option_id.sub_options.*",
+          "options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option_id.*",
+          "options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option.*",
         ];
 
     const companies = await client.request(

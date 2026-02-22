@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { fetchCompaniesAction, createCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, addSubOptionToCompanyAction, removeSubOptionFromCompanyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction } from "@/app/actions/companies";
+import { fetchCompaniesAction, fetchCompaniesWithSubOptionsAction, createCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, addSubOptionToCompanyAction, removeSubOptionFromCompanyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction, fetchCompanyOptionsDebugAction } from "@/app/actions/companies";
 import { fetchEventsAction, findCompaniesWithEventOptions, addCompaniesToEventPageAction } from "@/app/actions/events";
 import { listMatchingSoftwareAction, createMatchingSoftwareAction } from "@/app/actions/matching-software";
 import { fetchAcademicYearsAction } from "@/app/actions/cv-book";
@@ -99,21 +99,149 @@ export default function AdminPage() {
   );
 }
 
-/** Extract company's selected sub_options from junction (handles Directus formats) */
-function extractCompanySubOptions(opt: unknown): CareerSubOption[] {
-  if (!opt || typeof opt !== 'object' || !('sub_options' in opt)) return [];
-  const subOpts = (opt as { sub_options?: unknown[] }).sub_options;
+/** Extract suboption IDs from option (option.sub_options or nested in option.events[].career_event_option_id.sub_options). Handles IDs and expanded objects with career_sub_option_id. */
+function getSubOptionIdsFromOption(option: unknown): string[] {
+  const extractId = (s: unknown): string => {
+    if (typeof s === 'string') return s;
+    if (typeof s === 'number') return String(s);
+    if (s && typeof s === 'object') {
+      if ('career_sub_option_id' in s) {
+        const ref = (s as { career_sub_option_id: { id?: string | number } | string | null }).career_sub_option_id;
+        if (typeof ref === 'string') return ref;
+        if (ref && typeof ref === 'object' && ref.id != null) return String(ref.id);
+      }
+      if ('career_sub_option' in s) {
+        const ref = (s as { career_sub_option: { id?: string | number } | string | null }).career_sub_option;
+        if (typeof ref === 'string') return ref;
+        if (ref && typeof ref === 'object' && ref.id != null) return String(ref.id);
+      }
+      if ('id' in s) return String((s as { id: string | number }).id);
+    }
+    return '';
+  };
+  if (!option || typeof option !== 'object') return [];
+  const raw = option as Record<string, unknown>;
+  const topLevel = raw.sub_options as unknown[] | undefined;
+  if (Array.isArray(topLevel) && topLevel.length > 0) {
+    return topLevel.map(extractId).filter(Boolean);
+  }
+  const events = raw.events as Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(events)) {
+    for (const ev of events) {
+      const nestedOpt = ev?.career_event_option_id as { sub_options?: unknown[] } | undefined;
+      const nested = nestedOpt?.sub_options;
+      if (Array.isArray(nested) && nested.length > 0) {
+        return nested.map(extractId).filter(Boolean);
+      }
+    }
+  }
+  return [];
+}
+
+/** Get sub_option IDs from junction (handles various Directus formats) */
+function getSubOptionIdsFromJunction(opt: unknown): string[] {
+  if (!opt || typeof opt !== 'object') return [];
+  const raw = opt as Record<string, unknown>;
+  const subOpts = (raw.sub_options ?? raw.career_sub_options ?? raw.sub_option) as unknown[] | undefined;
   if (!Array.isArray(subOpts)) return [];
   return subOpts
+    .map((s) => {
+      if (typeof s === 'string') return s;
+      if (s && typeof s === 'object' && 'id' in s) return (s as { id: string }).id;
+      if (s && typeof s === 'object' && 'career_sub_option_id' in s) {
+        const ref = (s as { career_sub_option_id: string | { id: string } | null }).career_sub_option_id;
+        return typeof ref === 'string' ? ref : ref?.id ?? '';
+      }
+      if (s && typeof s === 'object' && 'career_sub_option' in s) {
+        const ref = (s as { career_sub_option: string | { id: string } | null }).career_sub_option;
+        return typeof ref === 'string' ? ref : ref?.id ?? '';
+      }
+      return '';
+    })
+    .filter(Boolean);
+}
+
+/** Resolve suboption from junction/object format (career_sub_option_id, career_sub_option, or direct) */
+function resolveSubOptionFromItem(s: unknown): CareerSubOption | null {
+  if (!s || typeof s !== 'object') return null;
+  if ('name' in s && typeof (s as { name: unknown }).name === 'string') return s as CareerSubOption;
+  if ('career_sub_option_id' in s) {
+    const ref = (s as { career_sub_option_id: CareerSubOption | null }).career_sub_option_id;
+    return ref && typeof ref === 'object' && 'name' in ref ? (ref as CareerSubOption) : null;
+  }
+  if ('career_sub_option' in s) {
+    const ref = (s as { career_sub_option: CareerSubOption | null }).career_sub_option;
+    return ref && typeof ref === 'object' && 'name' in ref ? (ref as CareerSubOption) : null;
+  }
+  return null;
+}
+
+/** Extract company's selected sub_options from junction and/or option (handles Directus formats). Uses expanded career_sub_option_id when available. */
+function extractCompanySubOptions(opt: unknown, allSubOptions?: CareerSubOption[], rawOption?: unknown): CareerSubOption[] {
+  if (!opt || typeof opt !== 'object') return [];
+  const raw = opt as Record<string, unknown>;
+  let subOpts = (raw.sub_options ?? raw.career_sub_options ?? raw.sub_option) as unknown[] | undefined;
+
+  // Primary: option's sub_options from nested path (option.events[].career_event_option_id.sub_options) - expanded objects with career_sub_option_id
+  if (rawOption && typeof rawOption === 'object') {
+    const optionRaw = rawOption as Record<string, unknown>;
+    const events = optionRaw.events as Array<Record<string, unknown>> | undefined;
+    if (Array.isArray(events)) {
+      for (const ev of events) {
+        const nestedOpt = ev?.career_event_option_id as { sub_options?: unknown[] } | undefined;
+        const nested = nestedOpt?.sub_options;
+        if (Array.isArray(nested) && nested.length > 0) {
+          const resolved = nested.map(resolveSubOptionFromItem).filter((s): s is CareerSubOption => s != null);
+          if (resolved.length > 0) return resolved;
+        }
+      }
+    }
+    const topSubOpts = optionRaw.sub_options as unknown[] | undefined;
+    if (Array.isArray(topSubOpts) && topSubOpts.length > 0) {
+      const resolved = topSubOpts.map(resolveSubOptionFromItem).filter((s): s is CareerSubOption => s != null);
+      if (resolved.length > 0) return resolved;
+    }
+  }
+
+  // Fallback: junction's sub_options (company selected)
+  if ((!Array.isArray(subOpts) || subOpts.length === 0) && rawOption) {
+    const ids = getSubOptionIdsFromOption(rawOption);
+    if (ids.length > 0 && allSubOptions) {
+      const byId = new Map(allSubOptions.map((s) => [String(s.id), s]));
+      return ids.map((id) => byId.get(id) ?? byId.get(String(id))).filter((s): s is CareerSubOption => Boolean(s));
+    }
+  }
+  if (!Array.isArray(subOpts)) return [];
+
+  const resolved = subOpts
     .map((s) => {
       if (s && typeof s === 'object' && 'name' in s) return s as CareerSubOption;
       if (s && typeof s === 'object' && 'career_sub_option_id' in s) {
         const ref = (s as { career_sub_option_id: CareerSubOption | null }).career_sub_option_id;
         return ref && typeof ref === 'object' ? (ref as CareerSubOption) : null;
       }
+      if (s && typeof s === 'object' && 'career_sub_option' in s) {
+        const ref = (s as { career_sub_option: CareerSubOption | null }).career_sub_option;
+        return ref && typeof ref === 'object' ? (ref as CareerSubOption) : null;
+      }
+      if (typeof s === 'string' && allSubOptions) {
+        return allSubOptions.find((a) => a.id === s) ?? null;
+      }
+      if (s && typeof s === 'object' && 'id' in s && allSubOptions) {
+        return allSubOptions.find((a) => a.id === (s as { id: string }).id) ?? null;
+      }
       return null;
     })
     .filter((s): s is CareerSubOption => s !== null);
+
+  if (resolved.length > 0) return resolved;
+  // Fallback: resolve by IDs from junction or option
+  const ids = getSubOptionIdsFromJunction(opt).length > 0 ? getSubOptionIdsFromJunction(opt) : getSubOptionIdsFromOption(rawOption ?? opt);
+  if (ids.length > 0 && allSubOptions) {
+    const byId = new Map(allSubOptions.map((s) => [String(s.id), s]));
+    return ids.map((id) => byId.get(id) ?? byId.get(String(id))).filter((s): s is CareerSubOption => Boolean(s));
+  }
+  return [];
 }
 
 /** ------------------------------------------------------------------
@@ -132,8 +260,8 @@ function CompaniesSection() {
 
   const refreshCompanies = React.useCallback(() => {
     setLoading(true);
-    fetchCompaniesAction()
-      .then((rows) => {
+    fetchCompaniesWithSubOptionsAction()
+      .then(({ companies: rows, allSubOptions }) => {
         // Normalize representatives to Partial<CompanyRep>[]
         const mapped: CompanyRow[] = (rows ?? []).map((r: Company & { status?: string }) => ({
           id: r.id,
@@ -158,7 +286,17 @@ function CompaniesSection() {
               return null;
             }
 
-            const companySubOptions = extractCompanySubOptions(opt);
+            const companySubOptions = extractCompanySubOptions(opt, allSubOptions, rawOption);
+
+            // Resolve option's sub_options (can be IDs from nested events path) for SubOptionsDialog
+            const optionSubOptionIds = getSubOptionIdsFromOption(rawOption);
+            const resolvedSubOptions: CareerSubOption[] = optionSubOptionIds.length > 0 && allSubOptions
+              ? optionSubOptionIds
+                  .map((id) => allSubOptions.find((s) => String(s.id) === String(id)))
+                  .filter((s): s is CareerSubOption => Boolean(s))
+              : (Array.isArray(rawOption.sub_options) ? rawOption.sub_options : []).filter(
+                  (s): s is CareerSubOption => s && typeof s === 'object' && 'name' in s
+                );
 
             // Create a new object to avoid mutation, preserving all fields
             const normalizedOption: CareerEventOptionWithCompanySubOptions = {
@@ -166,7 +304,7 @@ function CompaniesSection() {
               name: rawOption.name,
               description: rawOption.description,
               price: rawOption.price,
-              sub_options: rawOption.sub_options,
+              sub_options: resolvedSubOptions.length > 0 ? resolvedSubOptions : rawOption.sub_options,
               companySubOptions: companySubOptions.length > 0 ? companySubOptions : undefined,
             };
 
@@ -240,8 +378,8 @@ function CompaniesSection() {
 
   React.useEffect(() => {
     let alive = true;
-    fetchCompaniesAction()
-      .then((rows) => {
+    fetchCompaniesWithSubOptionsAction()
+      .then(({ companies: rows, allSubOptions }) => {
         if (!alive) return;
         // Normalize representatives to Partial<CompanyRep>[]
         const mapped: CompanyRow[] = (rows ?? []).map((r: Company & { status?: string }) => ({
@@ -267,7 +405,17 @@ function CompaniesSection() {
               return null;
             }
 
-            const companySubOptions = extractCompanySubOptions(opt);
+            const companySubOptions = extractCompanySubOptions(opt, allSubOptions, rawOption);
+
+            // Resolve option's sub_options (can be IDs from nested events path) for SubOptionsDialog
+            const optionSubOptionIds = getSubOptionIdsFromOption(rawOption);
+            const resolvedSubOptions: CareerSubOption[] = optionSubOptionIds.length > 0 && allSubOptions
+              ? optionSubOptionIds
+                  .map((id) => allSubOptions.find((s) => String(s.id) === String(id)))
+                  .filter((s): s is CareerSubOption => Boolean(s))
+              : (Array.isArray(rawOption.sub_options) ? rawOption.sub_options : []).filter(
+                  (s): s is CareerSubOption => s && typeof s === 'object' && 'name' in s
+                );
 
             // Create a new object to avoid mutation, preserving all fields
             const normalizedOption: CareerEventOptionWithCompanySubOptions = {
@@ -275,7 +423,7 @@ function CompaniesSection() {
               name: rawOption.name,
               description: rawOption.description,
               price: rawOption.price,
-              sub_options: rawOption.sub_options,
+              sub_options: resolvedSubOptions.length > 0 ? resolvedSubOptions : rawOption.sub_options,
               companySubOptions: companySubOptions.length > 0 ? companySubOptions : undefined,
             };
 
@@ -372,6 +520,20 @@ function CompaniesSection() {
     () => Array.from(new Set(data.map(d => d.salesperson).filter(Boolean))).sort() as string[],
     [data]
   );
+
+  // Debug: log raw options structure + allSubOptions when viewing a company with options (check browser console)
+  React.useEffect(() => {
+    if (selectedCompany?.id && (selectedCompany.options?.length ?? 0) > 0 && process.env.NODE_ENV === "development") {
+      fetchCompanyOptionsDebugAction(selectedCompany.id).then(({ options, allSubOptions, junctionDiscovery, error }) => {
+        if (error) console.warn("[Admin] Options debug error:", error);
+        else {
+          console.log("[Admin] Raw options structure for", selectedCompany.name, ":", JSON.stringify(options, null, 2));
+          if (allSubOptions?.length) console.log("[Admin] allSubOptions IDs:", allSubOptions.map((s) => (s as CareerSubOption).id));
+          if (junctionDiscovery) console.log("[Admin] Junction discovery (ids 7,8,9,18 are junction IDs):", junctionDiscovery);
+        }
+      });
+    }
+  }, [selectedCompany?.id, selectedCompany?.name, selectedCompany?.options?.length]);
 
   // helper to persist a new user locally (updates both `data` and `selectedCompany`)
   const addUserToCompany = React.useCallback((companyId: string, newUser: Partial<CompanyRep>) => {

@@ -16,8 +16,24 @@ function resolveSubOption(subOpt: unknown): CareerSubOption | null {
   return null;
 }
 
-/** Get sub_options to check: BOTH junction's sub_options AND option's sub_options */
-function getSubOptionsToCheck(opt: unknown, option: CareerEventOption | null): CareerSubOption[] {
+/** Collect suboption IDs from an array (handles IDs as numbers or strings) */
+function collectSubOptionIds(arr: unknown[]): string[] {
+  return arr
+    .map((s) => {
+      if (typeof s === 'string') return s;
+      if (typeof s === 'number') return String(s);
+      if (s && typeof s === 'object' && 'id' in s) return String((s as { id: string | number }).id);
+      return null;
+    })
+    .filter((id): id is string => id != null && id !== '');
+}
+
+/** Get sub_options to check: junction, option.sub_options, and option.events[].career_event_option_id.sub_options (nested). Handles IDs when allSubOptions provided. */
+function getSubOptionsToCheck(
+  opt: unknown,
+  option: CareerEventOption | null,
+  allSubOptions?: CareerSubOption[]
+): CareerSubOption[] {
   const result: CareerSubOption[] = [];
   const seen = new Set<string>();
   const add = (resolved: CareerSubOption | null) => {
@@ -26,21 +42,57 @@ function getSubOptionsToCheck(opt: unknown, option: CareerEventOption | null): C
       result.push(resolved);
     }
   };
+  const resolveIds = (ids: string[]) => {
+    if (!allSubOptions || ids.length === 0) return;
+    const byId = new Map<string, CareerSubOption>();
+    for (const s of allSubOptions) {
+      const k = String(s.id);
+      byId.set(k, s);
+      if (k !== s.id) byId.set(s.id as string, s);
+    }
+    for (const id of ids) {
+      add(byId.get(id) ?? byId.get(String(id)) ?? null);
+    }
+  };
+
   // 1) Junction's sub_options (company's selected sub_options)
-  if (opt && typeof opt === 'object' && 'sub_options' in opt) {
-    const subOpts = (opt as { sub_options?: unknown[] }).sub_options;
-    if (Array.isArray(subOpts)) {
-      for (const s of subOpts) {
-        add(resolveSubOption(s));
+  const rawOpt = opt as Record<string, unknown> | null;
+  const junctionSubOpts = (rawOpt?.sub_options ?? rawOpt?.career_sub_options) as unknown[] | undefined;
+  if (Array.isArray(junctionSubOpts)) {
+    for (const s of junctionSubOpts) {
+      const resolved = resolveSubOption(s);
+      if (resolved) add(resolved);
+    }
+    resolveIds(collectSubOptionIds(junctionSubOpts));
+  }
+
+  // 2) Option's sub_options (can be IDs [7,8,9,18] or objects)
+  const optSubOpts = option?.sub_options;
+  if (Array.isArray(optSubOpts)) {
+    for (const s of optSubOpts) {
+      const resolved = resolveSubOption(s);
+      if (resolved) add(resolved);
+    }
+    resolveIds(collectSubOptionIds(optSubOpts));
+  }
+
+  // 3) Nested: option.events[].career_event_option_id.sub_options (Directus nests sub_options in events junction)
+  const events = option?.events;
+  if (Array.isArray(events)) {
+    for (const ev of events) {
+      const nested = ev as Record<string, unknown>;
+      const nestedOpt = nested?.career_event_option_id as { sub_options?: unknown[] } | undefined;
+      const nestedSubOpts = nestedOpt?.sub_options;
+      if (Array.isArray(nestedSubOpts)) {
+        for (const s of nestedSubOpts) {
+          const resolved = resolveSubOption(s);
+          if (resolved) add(resolved);
+        }
+        resolveIds(collectSubOptionIds(nestedSubOpts));
       }
     }
   }
-  // 2) Option's sub_options (suboptions of the options they have)
-  if (option?.sub_options && Array.isArray(option.sub_options)) {
-    for (const s of option.sub_options) {
-      add(resolveSubOption(s));
-    }
-  }
+
   return result;
 }
 
@@ -48,11 +100,13 @@ function getSubOptionsToCheck(opt: unknown, option: CareerEventOption | null): C
  * Check if a company has access to a specific sub-option by name
  * @param company The company to check
  * @param subOptionName The name of the sub-option to check (e.g., "CV Book")
+ * @param allSubOptions Optional list to resolve sub_options when they're returned as IDs
  * @returns The sub-option if found and active, null otherwise
  */
 export function getCompanySubOption(
   company: Company | null | undefined,
-  subOptionName: string
+  subOptionName: string,
+  allSubOptions?: CareerSubOption[]
 ): CareerSubOption | null {
   if (!company?.options || !Array.isArray(company.options)) {
     return null;
@@ -70,7 +124,7 @@ export function getCompanySubOption(
       option = opt as CareerEventOption;
     }
 
-    const subOpts = getSubOptionsToCheck(opt, option);
+    const subOpts = getSubOptionsToCheck(opt, option, allSubOptions);
     for (const subOption of subOpts) {
       if (
         subOption &&
@@ -92,11 +146,13 @@ export function getCompanySubOption(
  * Get a sub-option by name regardless of active status (useful for getting price info)
  * @param company The company to check
  * @param subOptionName The name of the sub-option to check (e.g., "CV Book")
+ * @param allSubOptions Optional list to resolve sub_options when they're returned as IDs
  * @returns The sub-option if found, null otherwise
  */
 export function getCompanySubOptionAnyStatus(
   company: Company | null | undefined,
-  subOptionName: string
+  subOptionName: string,
+  allSubOptions?: CareerSubOption[]
 ): CareerSubOption | null {
   if (!company?.options || !Array.isArray(company.options)) {
     return null;
@@ -114,7 +170,7 @@ export function getCompanySubOptionAnyStatus(
       option = opt as CareerEventOption;
     }
 
-    const subOpts = getSubOptionsToCheck(opt, option);
+    const subOpts = getSubOptionsToCheck(opt, option, allSubOptions);
     for (const subOption of subOpts) {
       if (
         subOption &&
@@ -144,28 +200,22 @@ type CompanyLike = { options?: unknown[]; page_on_platform?: boolean; status?: s
 
 /**
  * Check if a company has access to view their company page (public profile)
- * Requires: page_on_platform, published status, and "Company Page" sub-option when that sub-option exists
+ * Requires: published status AND either the "Company Page On Platform" sub-option (in options or suboptions)
+ * or page_on_platform for backward compatibility.
+ * Uses getCompanySubOptionAnyStatus so we don't require active flag (Directus may omit it when expanding).
  * @param company The company to check (Company or minimal { options, page_on_platform, status })
+ * @param allSubOptions Optional list to resolve sub_options when they're returned as IDs (e.g. [7,8,9,18])
  * @returns true if company can view their company page
  */
-export function hasCompanyPageAccess(company: CompanyLike): boolean {
+export function hasCompanyPageAccess(company: CompanyLike, allSubOptions?: CareerSubOption[]): boolean {
   if (!company) return false;
   if (company.status !== "published") return false;
-  if (!company.page_on_platform) return false;
-  // Check "Company Page On Platform" sub-option: if company has it, require it; else allow (backward compat)
-  const companyPageSub = getCompanySubOption(company as Company | null | undefined, "Company Page On Platform");
-  // When sub-option exists and is used, require it; when not used, allow page_on_platform alone
-  const optionHasCompanyPageSub = (company.options ?? []).some((opt) => {
-    let option: CareerEventOption | null = null;
-    if (typeof opt === "object" && opt && "career_event_option_id" in opt) {
-      option = (opt as { career_event_option_id: CareerEventOption }).career_event_option_id;
-    } else if (typeof opt === "object" && opt && "id" in opt) {
-      option = opt as CareerEventOption;
-    }
-    const subOpts = option?.sub_options ?? [];
-    return subOpts.some((s) => resolveSubOption(s)?.name?.toLowerCase() === "company page on platform");
-  });
-  if (optionHasCompanyPageSub && !companyPageSub) return false;
-  return true;
+  // Primary check: company has "Company Page On Platform" suboption (in junction, option, or nested events)
+  // Use AnyStatus - Directus may omit active when expanding; presence of suboption = has access
+  const companyPageSub = getCompanySubOptionAnyStatus(company as Company | null | undefined, "Company Page On Platform", allSubOptions);
+  if (companyPageSub) return true;
+  // Backward compat: allow page_on_platform alone when suboption is not used
+  if (company.page_on_platform) return true;
+  return false;
 }
 

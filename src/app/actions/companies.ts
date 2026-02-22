@@ -109,9 +109,63 @@ export async function fetchCompaniesAction() {
   }));
 }
 
-export async function fetchCompanyByIdAction(company_id: string, usePublic = false): Promise<Company | null> {
+/** Extract all suboption IDs from companies' options (handles nested events path) */
+function extractAllSubOptionIdsFromCompanies(companies: Awaited<ReturnType<typeof fetchCompaniesAction>>): (string | number)[] {
+  const ids = new Set<string | number>();
+  for (const c of companies ?? []) {
+    const opts = (c as { options?: unknown[] }).options ?? [];
+    for (const opt of opts) {
+      const junction = opt as { career_event_option_id?: { sub_options?: unknown[]; events?: Array<{ career_event_option_id?: { sub_options?: unknown[] } }> } };
+      const option = junction?.career_event_option_id;
+      if (!option) continue;
+      const topLevel = option.sub_options;
+      if (Array.isArray(topLevel)) {
+        for (const s of topLevel) {
+          if (typeof s === "number" || typeof s === "string") ids.add(s);
+        }
+      }
+      const events = option.events;
+      if (Array.isArray(events)) {
+        for (const ev of events) {
+          const nested = ev?.career_event_option_id?.sub_options;
+          if (Array.isArray(nested)) {
+            for (const s of nested) {
+              if (typeof s === "number" || typeof s === "string") ids.add(s);
+            }
+          }
+        }
+      }
+    }
+  }
+  return Array.from(ids);
+}
+
+/** Fetch companies + all suboptions (for resolving suboption IDs in admin). Also fetches by IDs found in options. */
+export async function fetchCompaniesWithSubOptionsAction(): Promise<{
+  companies: Awaited<ReturnType<typeof fetchCompaniesAction>>;
+  allSubOptions: import("@/lib/schema").CareerSubOption[];
+}> {
+  const companies = (await fetchCompaniesAction()) ?? [];
+  const optionIds = extractAllSubOptionIdsFromCompanies(companies);
+  const { listCareerSubOptions, getCareerSubOptionsByIds } = await import("@/lib/repos/option");
+  const [allFromList, byIds] = await Promise.all([
+    listCareerSubOptions({ limit: 500 }),
+    optionIds.length > 0 ? getCareerSubOptionsByIds(optionIds) : Promise.resolve([]),
+  ]);
+  const byIdMap = new Map<string, import("@/lib/schema").CareerSubOption>();
+  for (const s of byIds ?? []) {
+    byIdMap.set(String(s.id), s);
+  }
+  for (const s of allFromList ?? []) {
+    if (!byIdMap.has(String(s.id))) byIdMap.set(String(s.id), s);
+  }
+  const allSubOptions = Array.from(byIdMap.values());
+  return { companies, allSubOptions };
+}
+
+export async function fetchCompanyByIdAction(company_id: string, usePublic = false, useServerClient = false): Promise<Company | null> {
   try {
-    const company = (await getCompanyById(company_id, usePublic)) as Company | null;
+    const company = (await getCompanyById(company_id, usePublic, 2, useServerClient)) as Company | null;
     return company;
   } catch (error) {
     console.error("[fetchCompanyByIdAction] Error fetching company:", error);
@@ -135,6 +189,105 @@ export async function fetchCompaniesForEventAction(eventId: string, usePublic = 
   }
 }
 
+/** Debug: returns raw options structure + allSubOptions + junction discovery for a company */
+export async function fetchCompanyOptionsDebugAction(companyId: string): Promise<{
+  options: unknown;
+  allSubOptions?: unknown[];
+  junctionDiscovery?: Record<string, unknown>;
+  error?: string;
+}> {
+  try {
+    const [company, allSubOptions, { getCareerSubOptionsByIds }] = await Promise.all([
+      fetchCompanyByIdAction(companyId),
+      import("@/lib/repos/option").then((m) => m.listCareerSubOptions({ limit: 50 })),
+      import("@/lib/repos/option"),
+    ]);
+    if (!company) return { options: null, error: "Company not found" };
+    const ids = extractSubOptionIdsFromCompany(company);
+    const byIds = ids.length > 0 ? await getCareerSubOptionsByIds(ids) : [];
+    const junctionDiscovery: Record<string, unknown> = {};
+    if (ids.length > 0 && byIds.length === 0) {
+      const { getServerDirectusClient } = await import("@/lib/directus");
+      const directusUrl = process.env.DIRECTUS_URL || "http://localhost:8055";
+      const client = await getServerDirectusClient();
+      try {
+        const collRes = await fetch(`${directusUrl.replace(/\/$/, "")}/collections?limit=-1`, {
+          headers: { "Content-Type": "application/json", ...(process.env.DIRECTUS_SERVER_TOKEN ? { Authorization: `Bearer ${process.env.DIRECTUS_SERVER_TOKEN}` } : {}) },
+        });
+        const collData = (await collRes.json()) as { data?: Array<{ collection: string }> };
+        const allCollections = (collData?.data ?? []).map((c) => c.collection).filter(Boolean);
+        const junctionCandidates = allCollections.filter(
+          (c) => c.includes("sub_option") || (c.includes("career_event_option") && c.includes("career_sub"))
+        );
+        junctionDiscovery["_collectionsContainingSubOption"] = junctionCandidates;
+        const toTry = ["career_event_option_sub_options", "career_event_option_career_sub_option", ...junctionCandidates];
+        for (const jn of toTry) {
+          if (junctionDiscovery[jn] !== undefined) continue;
+          try {
+            const r = await client.request((await import("@directus/sdk")).readItem(jn, ids[0], { fields: ["*"] })) as unknown;
+            junctionDiscovery[jn] = r;
+          } catch (e) {
+            junctionDiscovery[jn] = (e as Error).message;
+          }
+        }
+      } catch (e) {
+        junctionDiscovery["_error"] = (e as Error).message;
+      }
+    }
+    return { options: company.options ?? [], allSubOptions: allSubOptions ?? [], junctionDiscovery: Object.keys(junctionDiscovery).length ? junctionDiscovery : undefined };
+  } catch (e) {
+    return { options: null, error: String(e) };
+  }
+}
+
+/** Extract career_sub_option IDs from a single company's options (handles IDs and expanded objects) */
+function extractSubOptionIdsFromCompany(company: Company | null): (string | number)[] {
+  const extractId = (s: unknown): string | number | null => {
+    if (typeof s === "string" || typeof s === "number") return s;
+    if (s && typeof s === "object") {
+      if ("career_sub_option_id" in s) {
+        const ref = (s as { career_sub_option_id?: { id?: string | number } | string | null }).career_sub_option_id;
+        if (typeof ref === "string" || typeof ref === "number") return ref;
+        if (ref && typeof ref === "object" && ref.id != null) return ref.id;
+      }
+      if ("career_sub_option" in s) {
+        const ref = (s as { career_sub_option?: { id?: string | number } | string | null }).career_sub_option;
+        if (typeof ref === "string" || typeof ref === "number") return ref;
+        if (ref && typeof ref === "object" && ref.id != null) return ref.id;
+      }
+      if ("id" in s) return (s as { id: string | number }).id;
+    }
+    return null;
+  };
+  if (!company?.options || !Array.isArray(company.options)) return [];
+  const ids = new Set<string | number>();
+  for (const opt of company.options) {
+    const junction = opt as { career_event_option_id?: { sub_options?: unknown[]; events?: Array<{ career_event_option_id?: { sub_options?: unknown[] } }> } };
+    const option = junction?.career_event_option_id;
+    if (!option) continue;
+    const topLevel = option.sub_options;
+    if (Array.isArray(topLevel)) {
+      for (const s of topLevel) {
+        const id = extractId(s);
+        if (id != null) ids.add(id);
+      }
+    }
+    const events = option.events;
+    if (Array.isArray(events)) {
+      for (const ev of events) {
+        const nested = ev?.career_event_option_id?.sub_options;
+        if (Array.isArray(nested)) {
+          for (const s of nested) {
+            const id = extractId(s);
+            if (id != null) ids.add(id);
+          }
+        }
+      }
+    }
+  }
+  return Array.from(ids);
+}
+
 export async function fetchCompanyBySlugAction(slug: string): Promise<Company | null> {
   // Decode URL-encoded chars (e.g. %2B -> +, %20 -> space) then normalize for matching
   let decodedSlug = slug;
@@ -145,8 +298,8 @@ export async function fetchCompanyBySlugAction(slug: string): Promise<Company | 
   }
   const normalizedSlug = slugifyName(decodedSlug);
 
-  // Fetch enough companies to find by slug (W, X, Y, Z names can be beyond first 200)
-  const companies = (await listCompanies({ limit: 10000, sort: "name", usePublic: true })) ?? [];
+  // Fetch enough companies to find by slug (use server client when no user - public role may lack permission)
+  const companies = (await listCompanies({ limit: 10000, sort: "name", useServerClient: true })) ?? [];
 
   // Debug logging
   if (process.env.NODE_ENV === "development") {
@@ -170,14 +323,36 @@ export async function fetchCompanyBySlugAction(slug: string): Promise<Company | 
     return null;
   }
 
-  // Fetch full company details with all relations (use public client)
-  const fullCompany = await fetchCompanyByIdAction(match.id, true);
+  // Fetch full company details with all relations (use server client for nested options - public role may lack permission)
+  const fullCompany = await fetchCompanyByIdAction(match.id, false, true);
 
   if (process.env.NODE_ENV === "development") {
     console.log("fetchCompanyBySlugAction - Found company:", fullCompany?.name);
   }
 
   return fullCompany;
+}
+
+/** Fetch company by slug + suboptions for access check (resolves IDs from options) */
+export async function fetchCompanyBySlugWithSubOptionsAction(slug: string): Promise<{
+  company: Company | null;
+  allSubOptions: import("@/lib/schema").CareerSubOption[];
+}> {
+  const company = await fetchCompanyBySlugAction(slug);
+  const ids = extractSubOptionIdsFromCompany(company);
+  const { listCareerSubOptions, getCareerSubOptionsByIds } = await import("@/lib/repos/option");
+  const [allFromList, byIds] = await Promise.all([
+    listCareerSubOptions({ limit: 500 }),
+    ids.length > 0 ? getCareerSubOptionsByIds(ids) : Promise.resolve([]),
+  ]);
+  const byIdMap = new Map<string, import("@/lib/schema").CareerSubOption>();
+  for (const s of byIds ?? []) {
+    byIdMap.set(String(s.id), s);
+  }
+  for (const s of allFromList ?? []) {
+    if (!byIdMap.has(String(s.id))) byIdMap.set(String(s.id), s);
+  }
+  return { company, allSubOptions: Array.from(byIdMap.values()) };
 }
 
 export async function createCompanyAction(companyPayload: Partial<Company>, repPayload?: Partial<CompanyRep>) {

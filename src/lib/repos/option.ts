@@ -2,7 +2,7 @@
 "use server"
 
 import { readItems } from "@directus/sdk";
-import { getDirectusWithToken, directus } from "@/lib/directus";
+import { getDirectusWithToken, directus, getServerDirectusClient } from "@/lib/directus";
 import type { CareerEventOption, CareerSubOption } from "@/lib/schema";
 
 /**
@@ -61,8 +61,8 @@ export async function listCareerEventOptions(opts?: {
  */
 export async function listCareerSubOptions(opts?: { limit?: number }): Promise<CareerSubOption[]> {
   try {
-    const { limit = 100 } = opts ?? {};
-    const client = await getDirectusWithToken();
+    const { limit = 200 } = opts ?? {};
+    const client = (await getDirectusWithToken()) ?? (await getServerDirectusClient());
     if (!client) return [];
 
     const result = await client.request(
@@ -77,6 +77,69 @@ export async function listCareerSubOptions(opts?: { limit?: number }): Promise<C
     return items;
   } catch (error) {
     console.error("[listCareerSubOptions] Error:", error);
+    return [];
+  }
+}
+
+/**
+ * Fetch career sub-options by IDs. Handles both:
+ * - career_sub_option IDs (when sub_options returns related item IDs)
+ * - Junction table IDs (when sub_options returns junction IDs - fetches career_sub_option_id from junction)
+ */
+export async function getCareerSubOptionsByIds(ids: (string | number)[]): Promise<CareerSubOption[]> {
+  if (ids.length === 0) return [];
+  try {
+    const client = (await getDirectusWithToken()) ?? (await getServerDirectusClient());
+    if (!client) return [];
+
+    const result = await client.request(
+      readItems("career_sub_option", {
+        fields: ["*"],
+        filter: { id: { _in: ids } },
+        limit: ids.length,
+      })
+    ) as unknown as CareerSubOption[] | { data: CareerSubOption[] } | null;
+
+    let items = Array.isArray(result) ? result : (result as { data?: CareerSubOption[] })?.data ?? [];
+
+    // If empty, ids might be junction table IDs - try fetching from junction tables
+    if (items.length === 0) {
+      const junctionConfigs: { name: string; fkFields: string[] }[] = [
+        { name: "career_event_option_sub_options", fkFields: ["career_sub_option_id", "career_sub_option"] },
+        { name: "career_event_option_career_sub_option", fkFields: ["career_sub_option_id", "career_sub_option"] },
+        { name: "career_event_option_id_sub_options", fkFields: ["career_sub_option_id", "career_sub_option"] },
+        { name: "career_event_option_events_sub_options", fkFields: ["career_sub_option_id", "career_sub_option"] },
+        { name: "career_event_option_events_career_sub_option", fkFields: ["career_sub_option_id", "career_sub_option"] },
+        { name: "career_event_option_id_career_sub_option_id", fkFields: ["career_sub_option_id"] },
+      ];
+      for (const { name: junctionName, fkFields } of junctionConfigs) {
+        for (const fkField of fkFields) {
+          try {
+            const junctionResult = await client.request(
+              readItems(junctionName, {
+                fields: [fkField, `${fkField}.*`],
+                filter: { id: { _in: ids } },
+                limit: ids.length,
+              })
+            ) as unknown as Array<Record<string, unknown>> | { data: Array<Record<string, unknown>> } | null;
+            const junctionItems = Array.isArray(junctionResult) ? junctionResult : (junctionResult as { data?: Array<Record<string, unknown>> })?.data ?? [];
+            items = junctionItems
+              .map((j) => {
+                const ref = j[fkField];
+                return ref && typeof ref === "object" && "name" in ref ? (ref as CareerSubOption) : null;
+              })
+              .filter((s): s is CareerSubOption => s != null);
+            if (items.length > 0) break;
+          } catch {
+            continue;
+          }
+        }
+        if (items.length > 0) break;
+      }
+    }
+    return items;
+  } catch (error) {
+    console.error("[getCareerSubOptionsByIds] Error:", error);
     return [];
   }
 }

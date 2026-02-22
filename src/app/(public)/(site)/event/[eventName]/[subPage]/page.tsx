@@ -20,7 +20,7 @@ export default function SubPage() {
   const [page, setPage] = useState<CareerEventPage | null>(null)
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [allCategories, setAllCategories] = useState<Master[]>([])
-  const [popupCompany, setPopupCompany] = useState<Company | null>(null)
+  const [popupBooth, setPopupBooth] = useState<Booth | null>(null)
   const [booths, setBooths] = useState<Booth[]>([])
   const [flickerCompanyId, setFlickerCompanyId] = useState<string | null>(null)
   const [flickerState, setFlickerState] = useState(false)
@@ -94,7 +94,7 @@ export default function SubPage() {
           <Floorplan
             page={page}
             selectedCategories={selectedCategories}
-            onBoothClick={setPopupCompany}
+            onBoothClick={setPopupBooth}
             setBooths={setBooths}
             flickerCompanyId={flickerCompanyId}
             flickerState={flickerState}
@@ -124,8 +124,13 @@ export default function SubPage() {
         </div>
       )}
 
-      {popupCompany && (
-        <Popup company={popupCompany} onClose={() => setPopupCompany(null)} />
+      {popupBooth?.company && (
+        <Popup
+          booth={popupBooth}
+          onClose={() => setPopupBooth(null)}
+          booths={booths.filter(b => b.company).sort((a, b) => (a.booth_number ?? 0) - (b.booth_number ?? 0))}
+          onSelectBooth={setPopupBooth}
+        />
       )}
     </main>
   )
@@ -399,7 +404,7 @@ function Floorplan({
 }: {
   page: CareerEventPage
   selectedCategories: string[]
-  onBoothClick: (company: Company) => void
+  onBoothClick: (booth: Booth) => void
   setBooths: (b: Booth[]) => void
   flickerCompanyId: string | null
   flickerState: boolean
@@ -770,13 +775,14 @@ function Floorplan({
 
             const commonProps = {
               style: { cursor: "pointer" } as React.CSSProperties,
-              onClick: () => onBoothClick(booth.company!),
-              onMouseEnter: () => setHoveredBoothId(booth.company!.id),
+              onClick: () => onBoothClick(booth),
+              onMouseEnter: (e: React.MouseEvent) => {
+                setHoveredBoothId(booth.company!.id)
+                setTooltip({ companyName: booth.company!.name, x: e.clientX, y: e.clientY })
+              },
               onMouseLeave: () => { setHoveredBoothId(null); setTooltip(null) },
               onMouseMove: (e: React.MouseEvent) => {
-                if (hoveredBoothId === booth.company?.id && booth.company) {
-                  setTooltip({ companyName: booth.company.name, x: e.clientX, y: e.clientY })
-                }
+                if (booth.company) setTooltip({ companyName: booth.company.name, x: e.clientX, y: e.clientY })
               },
             }
 
@@ -853,7 +859,6 @@ function Floorplan({
             const rotation = (booth.coords as { rotation_deg?: number }).rotation_deg
             const boothCx = boothX + boothWidth / 2
             const boothCy = boothY + boothHeight / 2
-            const isHovered = hoveredBoothId === booth.company?.id
 
             const boothShape = rotation != null && Math.abs(rotation) > 0.5
               ? (() => {
@@ -876,13 +881,14 @@ function Floorplan({
 
             const commonProps = {
               style: { cursor: "pointer" } as React.CSSProperties,
-              onClick: () => onBoothClick(booth.company!),
-              onMouseEnter: () => setHoveredBoothId(booth.company!.id),
+              onClick: () => onBoothClick(booth),
+              onMouseEnter: (e: React.MouseEvent) => {
+                setHoveredBoothId(booth.company!.id)
+                setTooltip({ companyName: booth.company!.name, x: e.clientX, y: e.clientY })
+              },
               onMouseLeave: () => { setHoveredBoothId(null); setTooltip(null) },
               onMouseMove: (e: React.MouseEvent) => {
-                if (isHovered && booth.company) {
-                  setTooltip({ companyName: booth.company.name, x: e.clientX, y: e.clientY })
-                }
+                if (booth.company) setTooltip({ companyName: booth.company.name, x: e.clientX, y: e.clientY })
               },
             }
 
@@ -910,18 +916,6 @@ function Floorplan({
             )
           })}
           </svg>
-          {/* Tooltip that follows mouse */}
-          {tooltip && (
-            <div
-              className="fixed pointer-events-none z-50 bg-neutral-900/80 text-white text-[10px] px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap"
-              style={{
-                left: `${tooltip.x + 8}px`,
-                top: `${tooltip.y + 8}px`,
-              }}
-            >
-              {tooltip.companyName}
-            </div>
-          )}
         </div>
         
         {/* Desktop version without zoom */}
@@ -985,13 +979,14 @@ function Floorplan({
 
             const commonProps = {
               style: { cursor: "pointer" } as React.CSSProperties,
-              onClick: () => onBoothClick(booth.company!),
-              onMouseEnter: () => setHoveredBoothId(booth.company!.id),
+              onClick: () => onBoothClick(booth),
+              onMouseEnter: (e: React.MouseEvent) => {
+                setHoveredBoothId(booth.company!.id)
+                setTooltip({ companyName: booth.company!.name, x: e.clientX, y: e.clientY })
+              },
               onMouseLeave: () => { setHoveredBoothId(null); setTooltip(null) },
               onMouseMove: (e: React.MouseEvent) => {
-                if (hoveredBoothId === booth.company?.id && booth.company) {
-                  setTooltip({ companyName: booth.company.name, x: e.clientX, y: e.clientY })
-                }
+                if (booth.company) setTooltip({ companyName: booth.company.name, x: e.clientX, y: e.clientY })
               },
             }
 
@@ -1068,7 +1063,6 @@ function Floorplan({
             const rotation = (booth.coords as { rotation_deg?: number }).rotation_deg
             const boothCx = boothX + boothWidth / 2
             const boothCy = boothY + boothHeight / 2
-            const isHovered = hoveredBoothId === booth.company?.id
 
             const boothShape = rotation != null && Math.abs(rotation) > 0.5
               ? (() => {
@@ -1091,13 +1085,14 @@ function Floorplan({
 
             const commonProps = {
               style: { cursor: "pointer" } as React.CSSProperties,
-              onClick: () => onBoothClick(booth.company!),
-              onMouseEnter: () => setHoveredBoothId(booth.company!.id),
+              onClick: () => onBoothClick(booth),
+              onMouseEnter: (e: React.MouseEvent) => {
+                setHoveredBoothId(booth.company!.id)
+                setTooltip({ companyName: booth.company!.name, x: e.clientX, y: e.clientY })
+              },
               onMouseLeave: () => { setHoveredBoothId(null); setTooltip(null) },
               onMouseMove: (e: React.MouseEvent) => {
-                if (isHovered && booth.company) {
-                  setTooltip({ companyName: booth.company.name, x: e.clientX, y: e.clientY })
-                }
+                if (booth.company) setTooltip({ companyName: booth.company.name, x: e.clientX, y: e.clientY })
               },
             }
 
@@ -1126,13 +1121,26 @@ function Floorplan({
           })}
           </svg>
         </div>
+
+        {/* Tooltip that follows mouse - shared for mobile and desktop */}
+        {tooltip && (
+          <div
+            className="fixed pointer-events-none z-50 bg-neutral-900/80 text-white text-[10px] px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap"
+            style={{
+              left: `${tooltip.x + 8}px`,
+              top: `${tooltip.y + 8}px`,
+            }}
+          >
+            {tooltip.companyName}
+          </div>
+        )}
       </div>
 
       {/* Company List */}
       <CompanyList 
         booths={boothsLocal}
         selectedCategories={selectedCategories}
-        onCompanyClick={onBoothClick}
+        onBoothClick={onBoothClick}
       />
 
       {/* Mobile: Categories at bottom */}
@@ -1171,11 +1179,11 @@ function Floorplan({
 function CompanyList({
   booths,
   selectedCategories,
-  onCompanyClick,
+  onBoothClick,
 }: {
   booths: Booth[]
   selectedCategories: string[]
-  onCompanyClick: (company: Company) => void
+  onBoothClick: (booth: Booth) => void
 }) {
   // Filter booths that have companies, sort alphabetically, then limit to max 2 entries per company (double booths)
   const allEntries = booths
@@ -1185,10 +1193,7 @@ function CompanyList({
       boothNumber: b.booth_number!,
       boothId: b.id,
     }))
-    .sort((a, b) => {
-      const nameCmp = (a.company.name ?? "").localeCompare(b.company.name ?? "", undefined, { sensitivity: "base" })
-      return nameCmp !== 0 ? nameCmp : a.boothNumber - b.boothNumber
-    })
+    .sort((a, b) => a.boothNumber - b.boothNumber)
   // Limit to at most 2 entries per company (double booths only show twice)
   const companyCount = new Map<string, number>()
   const companiesWithBooths = allEntries.filter(({ company }) => {
@@ -1260,8 +1265,10 @@ function CompanyList({
                 key={boothId}
                 company={company}
                 boothNumber={boothNumber}
+                boothId={boothId}
+                booths={booths}
                 isHighlighted={isHighlighted}
-                onCompanyClick={onCompanyClick}
+                onBoothClick={onBoothClick}
               />
             )
           })}
@@ -1275,17 +1282,22 @@ function CompanyList({
 function CompanyListItem({
   company,
   boothNumber,
+  boothId,
+  booths,
   isHighlighted,
-  onCompanyClick,
+  onBoothClick,
 }: {
   company: Company
   boothNumber: number
+  boothId: string
+  booths: Booth[]
   isHighlighted: boolean
-  onCompanyClick: (company: Company) => void
+  onBoothClick: (booth: Booth) => void
 }) {
+  const booth = booths.find(b => b.id === boothId)
   return (
     <button
-      onClick={() => onCompanyClick(company)}
+      onClick={() => booth && onBoothClick(booth)}
       className={`w-full text-left p-3 rounded-lg border transition-all cursor-pointer ${
         isHighlighted
           ? 'border-vtk-blue font-bold'
@@ -1548,7 +1560,31 @@ function ComingSoonPage({ title, description, eventName }: { title: string; desc
   )
 }
 
-function Popup({ company, onClose }: { company: Company; onClose: () => void }) {
+function Popup({ booth, onClose, booths, onSelectBooth }: { booth: Booth; onClose: () => void; booths: Booth[]; onSelectBooth: (b: Booth) => void }) {
+  const company = booth.company!
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose()
+        return
+      }
+      if (booths.length <= 1) return
+      const idx = booths.findIndex(b => b.id === booth.id)
+      if (idx < 0) return
+      if (e.key === "ArrowLeft") {
+        e.preventDefault()
+        const nextIdx = idx <= 0 ? booths.length - 1 : idx - 1
+        onSelectBooth(booths[nextIdx])
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault()
+        const nextIdx = idx >= booths.length - 1 ? 0 : idx + 1
+        onSelectBooth(booths[nextIdx])
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [booth.id, booths, onClose, onSelectBooth])
+
   // Get company categories/masters
   const companyCategories: Master[] = Array.isArray(company.category)
     ? company.category.filter((c): c is Master => c !== null)
@@ -1563,12 +1599,9 @@ function Popup({ company, onClose }: { company: Company; onClose: () => void }) 
         className="relative rounded-2xl bg-white text-neutral-900 px-8 py-6 shadow-2xl max-w-3xl w-full mx-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          className="absolute top-3 right-3 text-neutral-500 hover:text-neutral-800 text-2xl leading-none"
-          onClick={onClose}
-        >
-          ✕
-        </button>
+        <div className="absolute top-3 right-3 text-neutral-600 font-semibold text-sm">
+          Booth {booth.booth_number}
+        </div>
         {company.logo && (
           <div className="flex justify-center mb-4">
             <NextImage

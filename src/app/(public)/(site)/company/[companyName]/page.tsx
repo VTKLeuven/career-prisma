@@ -8,7 +8,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { validateExistingPageImage } from "@/lib/utils/image-validation";
 import { Calendar } from "lucide-react";
-import { fetchCompanyBySlugAction } from "@/app/actions/companies";
+import { fetchCompanyBySlugWithSubOptionsAction } from "@/app/actions/companies";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
 import { fetchEventsAction } from "@/app/actions/events";
 import { Button } from "@/components/ui/button";
@@ -81,11 +81,13 @@ export default function CompanyPage() {
 
     async function loadCompany() {
       try {
-        const fetched = await fetchCompanyBySlugAction(companyName ?? "");
+        const [{ company: fetched, allSubOptions }, { hasCompanyPageAccess }] = await Promise.all([
+          fetchCompanyBySlugWithSubOptionsAction(companyName ?? ""),
+          import("@/lib/utils/company-access"),
+        ]);
         if (fetched) {
           // Check if company has access to company page (sub-option + page_on_platform + published)
-          const { hasCompanyPageAccess } = await import("@/lib/utils/company-access");
-          if (!hasCompanyPageAccess(fetched)) {
+          if (!hasCompanyPageAccess(fetched, allSubOptions ?? [])) {
             setCompany(null);
             setLoading(false);
             return;
