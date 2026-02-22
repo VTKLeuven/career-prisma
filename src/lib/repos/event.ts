@@ -2,7 +2,7 @@
 "use server"
 
 import { readItems } from "@directus/sdk";
-import { directus } from "@/lib/directus";
+import { directus, getServerDirectusClient } from "@/lib/directus";
 import type { CareerEvent, CareerEventPage } from "@/lib/schema";
 
 export async function listEvents(opts?: {
@@ -48,8 +48,9 @@ export async function listEventPages(opts?: {
 }) {
   try {
     const { search, limit = 25, page = 1, sort = "event.date"} = opts ?? {};
+    const client = (await getServerDirectusClient()) ?? directus;
 
-    const list = await directus.request(
+    const list = await client.request(
       readItems("career_event_page", {
         fields: [
           "*",
@@ -59,6 +60,7 @@ export async function listEventPages(opts?: {
           "companies.company_id.*",
           "companies.company_id.page_on_platform",
           "companies.company_id.status",
+          "companies.company_id.options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option_id.*",
           "floorplan.*", // include floorplan relation
           "company_guide.*", // include company guide file
         ],
@@ -119,7 +121,8 @@ export async function getEventPageBySlug(slug: string): Promise<CareerEventPage 
     }
 
     // Step 2: Fetch the event page for this specific event
-    const pages = await directus.request(
+    const client = (await getServerDirectusClient()) ?? directus;
+    const pages = await client.request(
       readItems("career_event_page", {
         fields: [
           "*",
@@ -129,6 +132,7 @@ export async function getEventPageBySlug(slug: string): Promise<CareerEventPage 
           "companies.company_id.*",
           "companies.company_id.page_on_platform",
           "companies.company_id.status",
+          "companies.company_id.options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option_id.*",
           "floorplan.*", // include floorplan relation
           "company_guide.*", // include company guide file
         ],

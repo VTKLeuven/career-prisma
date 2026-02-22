@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
         const q = new URLSearchParams({
           [`filter[${fkField}][_eq]`]: pageId,
           limit: "-1",
-          fields: "company_id.*",
+          fields: "company_id.*,company_id.logo,company_id.options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option_id.*",
         });
         const res = await fetch(`${baseUrl}/items/${jn}?${q}`, { headers });
         if (!res.ok) continue;
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
     const q = new URLSearchParams({
       "filter[event][_eq]": eventId,
       limit: "1",
-      fields: "companies.company_id.*",
+      fields: "companies.company_id.*,companies.company_id.logo,companies.company_id.options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option_id.*",
       "deep[companies][limit]": "10000",
     });
     const res = await fetch(`${baseUrl}/items/career_event_page?${q}`, { headers });

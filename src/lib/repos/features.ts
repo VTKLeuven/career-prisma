@@ -1,5 +1,5 @@
 // lib/repos/features.ts
-import { directus } from "@/lib/directus"
+import { getServerDirectusClient } from "@/lib/directus"
 import type { Floorplan, Booth, Master } from "@/lib/schema"
 import { readItems } from "@directus/sdk"
 
@@ -15,16 +15,24 @@ export async function listBooths(
   try {
     if (!floorplan?.id) return []
 
+    const client = await getServerDirectusClient()
+    if (!client) return null
+
     const { search, limit = -1, page = 1, sort = "booth_number" } = opts ?? {}
-    return directus.request(
+    return client.request(
       readItems("Booths", {
         fields: [
           "*",
           "*.*",
           "*.*.*",
           "*.*.*.*",
+          "company.*",
+          "company.logo",
           "company.page_on_platform",
           "company.status",
+          "company.category.master_id.*",
+          "company.category.master_id.logo",
+          "company.options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option_id.*",
         ],
         limit,
         page,
@@ -54,8 +62,11 @@ export async function listMasters(
   }
 ): Promise<Master[] | null> {
   try {
+    const client = await getServerDirectusClient()
+    if (!client) return null
+
     const { search, limit = 300, page = 1, sort = "name" } = opts ?? {}
-    return directus.request(
+    return client.request(
       readItems("master", {
         fields: ["*"],
         limit,
