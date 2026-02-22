@@ -15,6 +15,7 @@ import { getDirectusImageUrl } from "@/components/Images";
 import NextImage from "next/image";
 import { Textarea } from "@/components/ui/textarea";
 import { validatePageImageDimensions, validateExistingPageImage } from "@/lib/utils/image-validation";
+import { hasCompanyPageAccess } from "@/lib/utils/company-access";
 
 // --- Helpers ---
 function isFileLike(value: unknown): value is File {
@@ -543,7 +544,7 @@ export default function CompanyForm() {
           </div>
           {company && (
             <Link
-              href={company.page_on_platform 
+              href={hasCompanyPageAccess(company)
                 ? `/company/${(company.name ?? "")
                     .toLowerCase()
                     .trim()
@@ -555,7 +556,7 @@ export default function CompanyForm() {
               }
             >
               <Button type="button" variant="outline" className="cursor-pointer">
-                {company.page_on_platform ? "View Company Page" : "Request Company Page"}
+                {hasCompanyPageAccess(company) ? "View Company Page" : "Request Company Page"}
               </Button>
             </Link>
           )}

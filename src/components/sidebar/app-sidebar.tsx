@@ -30,7 +30,7 @@ import { validateExistingPageImage } from "@/lib/utils/image-validation";
 import { getDirectusImageUrl } from "@/components/Images";
 import { fetchEventsAction } from "@/app/actions/events";
 import type { CareerEvent, Company } from "@/lib/schema";
-import { hasCVBookAccess } from "@/lib/utils/company-access";
+import { hasCompanyPageAccess } from "@/lib/utils/company-access";
 
 // Updated sidebar data
 const data = {

@@ -29,7 +29,7 @@ export async function listCareerEventOptions(opts?: {
     // Directus will automatically include junction table data when using wildcards
     const result = await client.request(
       readItems("career_event_option", {
-        fields: ["*", "*.*", "*.*.*", "sub_options.*"], // Get all fields including nested relationships and sub_options
+        fields: ["*", "*.*", "*.*.*", "sub_options.*", "sub_options.career_sub_option_id.*"],
         limit,
       })
     ) as unknown as CareerEventOption[] | null;
@@ -53,6 +53,31 @@ export async function listCareerEventOptions(opts?: {
       console.error("Fallback query also failed:", fallbackError);
       return null;
     }
+  }
+}
+
+/**
+ * Fetch all career sub-options from career_sub_option collection
+ */
+export async function listCareerSubOptions(opts?: { limit?: number }): Promise<CareerSubOption[]> {
+  try {
+    const { limit = 100 } = opts ?? {};
+    const client = await getDirectusWithToken();
+    if (!client) return [];
+
+    const result = await client.request(
+      readItems("career_sub_option", {
+        fields: ["*"],
+        limit,
+        sort: ["name"],
+      })
+    ) as unknown as CareerSubOption[] | { data: CareerSubOption[] } | null;
+
+    const items = Array.isArray(result) ? result : (result as { data?: CareerSubOption[] })?.data ?? [];
+    return items;
+  } catch (error) {
+    console.error("[listCareerSubOptions] Error:", error);
+    return [];
   }
 }
 

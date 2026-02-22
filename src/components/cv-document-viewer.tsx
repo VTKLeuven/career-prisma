@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Button } from '@/components/ui/button'
 
 interface CVDocumentViewerProps {
   fileUrl: string
@@ -10,29 +9,27 @@ interface CVDocumentViewerProps {
 }
 
 export function CVDocumentViewer({ fileUrl, className = '', title }: CVDocumentViewerProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const pagesContainerRef = useRef<HTMLDivElement>(null)
 
   const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const [numPages, setNumPages] = useState<number>(1)
-  const [pageNumber, setPageNumber] = useState<number>(1)
-
   useEffect(() => setMounted(true), [])
 
   useEffect(() => {
-    if (!mounted) return
+    if (!mounted || !scrollContainerRef.current || !pagesContainerRef.current) return
 
     let alive = true
+    const scrollContainer = scrollContainerRef.current
+    const pagesContainer = pagesContainerRef.current
 
-    async function loadAndRender() {
-      if (!canvasRef.current || !containerRef.current) return
-
+    async function loadAndRenderAllPages() {
       try {
         setLoading(true)
         setError(null)
+        pagesContainer.innerHTML = ''
 
         const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
         pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -49,36 +46,40 @@ export function CVDocumentViewer({ fileUrl, className = '', title }: CVDocumentV
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
         if (!alive) return
 
-        setNumPages(pdf.numPages || 1)
-        const clampedPage = Math.min(Math.max(1, pageNumber), pdf.numPages || 1)
-        if (clampedPage !== pageNumber) setPageNumber(clampedPage)
+        const numPages = pdf.numPages || 1
+        const containerWidth = scrollContainer.clientWidth || 900
 
-        const page = await pdf.getPage(clampedPage)
-        if (!alive) return
+        for (let i = 1; i <= numPages; i++) {
+          if (!alive) return
 
-        const containerWidth = containerRef.current.clientWidth || 900
-        const defaultViewport = page.getViewport({ scale: 1.0 })
-        const scale = containerWidth / defaultViewport.width
-        const viewport = page.getViewport({ scale: scale * 2.0 })
+          const page = await pdf.getPage(i)
+          const defaultViewport = page.getViewport({ scale: 1.0 })
+          const scale = containerWidth / defaultViewport.width
+          const viewport = page.getViewport({ scale: scale * 2.0 })
 
-        const canvas = canvasRef.current
-        canvas.width = viewport.width
-        canvas.height = viewport.height
+          const canvas = document.createElement('canvas')
+          canvas.width = viewport.width
+          canvas.height = viewport.height
 
-        const ctx = canvas.getContext('2d')
-        if (!ctx) throw new Error('Could not get canvas context')
+          const ctx = canvas.getContext('2d')
+          if (!ctx) throw new Error('Could not get canvas context')
 
-        await page.render({ canvas, canvasContext: ctx, viewport } as any).promise
-        if (!alive) return
+          await page.render({ canvas, canvasContext: ctx, viewport } as any).promise
 
-        // Fit container height to rendered page aspect ratio
-        const aspectRatio = viewport.height / viewport.width
-        containerRef.current.style.height = `${containerWidth * aspectRatio}px`
-        canvas.style.width = '100%'
-        canvas.style.height = '100%'
-        canvas.style.display = 'block'
+          canvas.style.width = '100%'
+          canvas.style.height = 'auto'
+          canvas.style.display = 'block'
+          canvas.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)'
+          canvas.style.borderRadius = '0.375rem'
+          canvas.title = title || ''
 
-        setLoading(false)
+          const wrapper = document.createElement('div')
+          wrapper.className = 'mb-4 last:mb-0'
+          wrapper.appendChild(canvas)
+          pagesContainer.appendChild(wrapper)
+        }
+
+        if (alive) setLoading(false)
       } catch (e) {
         console.error('[CVDocumentViewer] Error rendering PDF:', e)
         if (alive) {
@@ -88,12 +89,12 @@ export function CVDocumentViewer({ fileUrl, className = '', title }: CVDocumentV
       }
     }
 
-    loadAndRender()
+    loadAndRenderAllPages()
     return () => {
       alive = false
+      pagesContainer.innerHTML = ''
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fileUrl, mounted, pageNumber])
+  }, [fileUrl, mounted, title])
 
   if (!mounted) {
     return (
@@ -113,41 +114,17 @@ export function CVDocumentViewer({ fileUrl, className = '', title }: CVDocumentV
 
   return (
     <div className={className}>
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <div className="text-sm text-muted-foreground">
-          Page {pageNumber} / {numPages}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={pageNumber <= 1 || loading}
-            onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
-          >
-            Previous
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={pageNumber >= numPages || loading}
-            onClick={() => setPageNumber((p) => Math.min(numPages, p + 1))}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
-
       <div
-        ref={containerRef}
-        className="bg-white overflow-hidden border rounded-lg shadow-sm relative"
-        style={{ minHeight: '800px', width: '100%' }}
+        ref={scrollContainerRef}
+        className="bg-white overflow-y-auto overflow-x-hidden border rounded-lg shadow-sm relative"
+        style={{ minHeight: '600px', maxHeight: 'calc(100vh - 16rem)', width: '100%' }}
       >
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-muted z-10">
             <div className="text-muted-foreground">Loading...</div>
           </div>
         )}
-        <canvas ref={canvasRef} title={title} style={{ display: loading ? 'none' : 'block' }} />
+        <div ref={pagesContainerRef} className="p-2" />
       </div>
     </div>
   )

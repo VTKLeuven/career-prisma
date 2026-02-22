@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { UserProvider } from "@/providers/UserProvider";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
+import { hasCompanyPageAccess } from "@/lib/utils/company-access";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -50,7 +51,7 @@ export default async function WithSidebarLayout({ children }: { children: React.
                   You are viewing this page as a representative for{' '}
                   <Link 
                     href={
-                      user.company.page_on_platform
+                      hasCompanyPageAccess(user.company)
                         ? `/company/${slugifyCompanyName(user.company.name)}`
                         : "/dashboard/settings/information/request-page"
                     }

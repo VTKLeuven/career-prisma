@@ -136,12 +136,21 @@ export async function fetchCompaniesForEventAction(eventId: string, usePublic = 
 }
 
 export async function fetchCompanyBySlugAction(slug: string): Promise<Company | null> {
-  // Use public client for unauthenticated access
-  const companies = (await listCompanies({ limit: 200, sort: "name", usePublic: true })) ?? [];
+  // Decode URL-encoded chars (e.g. %2B -> +, %20 -> space) then normalize for matching
+  let decodedSlug = slug;
+  try {
+    decodedSlug = decodeURIComponent(slug);
+  } catch {
+    // Keep original if malformed encoding
+  }
+  const normalizedSlug = slugifyName(decodedSlug);
+
+  // Fetch enough companies to find by slug (W, X, Y, Z names can be beyond first 200)
+  const companies = (await listCompanies({ limit: 10000, sort: "name", usePublic: true })) ?? [];
 
   // Debug logging
   if (process.env.NODE_ENV === "development") {
-    console.log("fetchCompanyBySlugAction - Looking for slug:", slug);
+    console.log("fetchCompanyBySlugAction - Looking for slug:", slug, "normalized:", normalizedSlug);
     console.log("fetchCompanyBySlugAction - Available companies:", companies.map(c => ({
       id: c.id,
       name: c.name,
@@ -151,7 +160,7 @@ export async function fetchCompanyBySlugAction(slug: string): Promise<Company | 
 
   const match = companies.find((c: Company) => {
     const companySlug = slugifyName(c.name);
-    return companySlug === slug;
+    return companySlug === normalizedSlug;
   });
 
   if (!match) {
@@ -570,33 +579,21 @@ export async function uploadCompanyLogo(file: File) {
   return await uploadDirectusFile(file);
 }
 
-export async function addOptionToCompanyAction(companyId: string, optionId: string) {
+export async function addOptionToCompanyAction(companyId: string, optionId: string, subOptionIds?: string[]) {
   const company = await fetchCompanyByIdAction(companyId);
 
   if (!company) return null;
 
-  // Build options array as junction table format
-  let optionJunctions: Array<{ career_event_option_id: string }> = [];
-
-  if (company.options) {
-    // Handle both direct CareerEventOption and junction table format
-    optionJunctions = (company.options as unknown[]).map((opt) => {
-      if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
-        const junction = opt as { career_event_option_id: CareerEventOption | string | null };
-        const optId = typeof junction.career_event_option_id === 'string'
-          ? junction.career_event_option_id
-          : junction.career_event_option_id?.id ?? '';
-        return { career_event_option_id: optId };
-      }
-      // If it's a direct CareerEventOption, extract the id
-      const option = opt as { id?: string };
-      return { career_event_option_id: option.id ?? '' };
-    }).filter(j => j.career_event_option_id);
-  }
+  // Build options array as junction table format (preserves sub_options)
+  let optionJunctions = buildOptionJunctions(company);
 
   // Add the new option (check if it's not already there)
   if (!optionJunctions.some(j => j.career_event_option_id === optionId)) {
-    optionJunctions.push({ career_event_option_id: optionId });
+    const newJunction: { career_event_option_id: string; sub_options?: string[] } = { career_event_option_id: optionId };
+    if (subOptionIds && subOptionIds.length > 0) {
+      newJunction.sub_options = subOptionIds;
+    }
+    optionJunctions.push(newJunction);
   }
 
   // Check if the option being added is "Jobfair Package" or "Ultimate Package" and set page_on_platform to true
@@ -633,6 +630,80 @@ export async function addOptionToCompanyAction(companyId: string, optionId: stri
   return await updateCompanyAction(companyId, updatePayload);
 }
 
+/** Extract sub_option IDs from a junction entry (handles various Directus formats) */
+function getSubOptionIdsFromJunction(opt: unknown): string[] {
+  if (!opt || typeof opt !== 'object' || !('sub_options' in opt)) return [];
+  const subOpts = (opt as { sub_options?: unknown[] }).sub_options;
+  if (!Array.isArray(subOpts)) return [];
+  return subOpts
+    .map((s) => {
+      if (typeof s === 'string') return s;
+      if (s && typeof s === 'object' && 'id' in s) return (s as { id: string }).id;
+      if (s && typeof s === 'object' && 'career_sub_option_id' in s) {
+        const ref = (s as { career_sub_option_id: string | { id: string } | null }).career_sub_option_id;
+        return typeof ref === 'string' ? ref : ref?.id ?? '';
+      }
+      return '';
+    })
+    .filter(Boolean);
+}
+
+/** Build option junctions preserving sub_options for Directus update */
+function buildOptionJunctions(company: Company): Array<{ career_event_option_id: string; sub_options?: string[] }> {
+  if (!company.options || !Array.isArray(company.options)) return [];
+  return (company.options as unknown[]).map((opt) => {
+    let optId = '';
+    if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
+      const junction = opt as { career_event_option_id: CareerEventOption | string | null };
+      optId = typeof junction.career_event_option_id === 'string'
+        ? junction.career_event_option_id
+        : junction.career_event_option_id?.id ?? '';
+    } else if (opt && typeof opt === 'object' && 'id' in opt) {
+      optId = (opt as { id: string }).id ?? '';
+    }
+    const subIds = getSubOptionIdsFromJunction(opt);
+    const result: { career_event_option_id: string; sub_options?: string[] } = { career_event_option_id: optId };
+    if (subIds.length > 0) result.sub_options = subIds;
+    return result;
+  }).filter((j) => j.career_event_option_id);
+}
+
+export async function addSubOptionToCompanyAction(companyId: string, optionId: string, subOptionId: string): Promise<Company | null> {
+  const company = await fetchCompanyByIdAction(companyId);
+  if (!company) return null;
+
+  const junctions = buildOptionJunctions(company);
+  const junction = junctions.find((j) => j.career_event_option_id === optionId);
+  if (!junction) return null; // Company doesn't have this option
+
+  const subIds = junction.sub_options ?? [];
+  if (subIds.includes(subOptionId)) return company; // Already has it
+
+  junction.sub_options = [...subIds, subOptionId];
+  return await updateCompanyAction(companyId, {
+    options: junctions as unknown as Company['options'],
+  });
+}
+
+export async function removeSubOptionFromCompanyAction(companyId: string, optionId: string, subOptionId: string): Promise<Company | null> {
+  const company = await fetchCompanyByIdAction(companyId);
+  if (!company) return null;
+
+  const junctions = buildOptionJunctions(company);
+  const junction = junctions.find((j) => j.career_event_option_id === optionId);
+  if (!junction) return company;
+
+  const subIds = (junction.sub_options ?? []).filter((id) => id !== subOptionId);
+  if (subIds.length > 0) {
+    junction.sub_options = subIds;
+  } else {
+    delete junction.sub_options;
+  }
+  return await updateCompanyAction(companyId, {
+    options: junctions as unknown as Company['options'],
+  });
+}
+
 export async function removeOptionFromCompanyAction(companyId: string, optionId: string) {
   const company = await fetchCompanyByIdAction(companyId);
 
@@ -663,24 +734,10 @@ export async function removeOptionFromCompanyAction(companyId: string, optionId:
     }
   }
 
-  // Build options array as junction table format, excluding the option to remove
-  let optionJunctions: Array<{ career_event_option_id: string }> = [];
-
-  if (company.options) {
-    // Handle both direct CareerEventOption and junction table format
-    optionJunctions = (company.options as unknown[]).map((opt) => {
-      if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
-        const junction = opt as { career_event_option_id: CareerEventOption | string | null };
-        const optId = typeof junction.career_event_option_id === 'string'
-          ? junction.career_event_option_id
-          : junction.career_event_option_id?.id ?? '';
-        return { career_event_option_id: optId };
-      }
-      // If it's a direct CareerEventOption, extract the id
-      const option = opt as { id?: string };
-      return { career_event_option_id: option.id ?? '' };
-    }).filter(j => j.career_event_option_id && j.career_event_option_id !== optionId);
-  }
+  // Build options array as junction table format, excluding the option to remove (preserves sub_options)
+  const optionJunctions = buildOptionJunctions(company).filter(
+    (j) => j.career_event_option_id && j.career_event_option_id !== optionId
+  );
 
   const updatePayload: Partial<Company> = {
     options: optionJunctions as unknown as Company['options']

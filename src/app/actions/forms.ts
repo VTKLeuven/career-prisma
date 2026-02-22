@@ -18,6 +18,7 @@ import {
   getFormResponseById,
   createFormResponse,
   deleteFormResponse,
+  updateFormResponse,
   countFormResponses,
   countFormVersionResponses,
 } from "@/lib/repos/forms";
@@ -351,6 +352,23 @@ export async function deleteFormResponseAction(id: string) {
     return await deleteFormResponse(id);
   } catch (error) {
     console.error("Error deleting form response:", error);
+    throw error;
+  }
+}
+
+export async function updateFormResponseAction(
+  id: string,
+  data: {
+    data?: Record<string, unknown>;
+    submitter_first_name?: string;
+    submitter_last_name?: string;
+    submitter_email?: string;
+  }
+) {
+  try {
+    return await updateFormResponse(id, data);
+  } catch (error) {
+    console.error("Error updating form response:", error);
     throw error;
   }
 }
