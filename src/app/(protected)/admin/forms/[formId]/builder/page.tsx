@@ -551,7 +551,7 @@ function FieldEditor({
               </div>
               <div className="space-y-1">
                 <Label htmlFor={`field-${index}-type`}>Field Type</Label>
-                <Select value={field.type} onValueChange={(value) => onUpdate({ type: value as FieldType })}>
+                <Select value={field.type || "text"} onValueChange={(value) => onUpdate({ type: value as FieldType })}>
                   <SelectTrigger id={`field-${index}-type`}>
                     <SelectValue />
                   </SelectTrigger>
@@ -661,7 +661,7 @@ function FieldEditor({
                   <Checkbox
                     id={`field-${index}-multiple`}
                     checked={field.multiple ?? false}
-                    onCheckedChange={(checked) => onUpdate({ multiple: checked as boolean })}
+                    onCheckedChange={(checked) => onUpdate({ multiple: checked === true })}
                   />
                   <Label htmlFor={`field-${index}-multiple`} className="font-normal">
                     Allow multiple file uploads
@@ -754,7 +754,7 @@ function FieldEditor({
               <Checkbox
                 id={`field-${index}-required`}
                 checked={field.required ?? false}
-                onCheckedChange={(checked) => onUpdate({ required: checked as boolean })}
+                onCheckedChange={(checked) => onUpdate({ required: checked === true })}
               />
               <Label htmlFor={`field-${index}-required`} className="font-normal">
                 Required field

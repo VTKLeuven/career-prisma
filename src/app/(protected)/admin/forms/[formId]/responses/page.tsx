@@ -36,7 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Download, Eye, Trash2, Pencil, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2, Mail, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowLeft, Download, Eye, Trash2, Pencil, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2, Mail, ArrowUpDown, ArrowUp, ArrowDown, Check, X } from "lucide-react";
 import type { FormVersion, FormResponse, FormField } from "@/lib/schema";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 import { FormFieldRenderer } from "@/components/FormFieldRenderer";
@@ -53,7 +53,7 @@ export default function FormResponsesPage() {
   const [selectedVersionId, setSelectedVersionId] = useState<string>("");
   const [isAllVersions, setIsAllVersions] = useState(true); // Default to all versions
   const [responses, setResponses] = useState<FormResponse[]>([]);
-  const [allVersionsFields, setAllVersionsFields] = useState<Array<{ id: string; name: string; label: string; type: string }>>([]);
+  const [allVersionsFields, setAllVersionsFields] = useState<FormField[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingResponses, setLoadingResponses] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -64,6 +64,9 @@ export default function FormResponsesPage() {
   const [editFormData, setEditFormData] = useState<Record<string, unknown>>({});
   const [editSubmitterInfo, setEditSubmitterInfo] = useState<{ first_name: string; last_name: string; email: string }>({ first_name: "", last_name: "", email: "" });
   const [editing, setEditing] = useState(false);
+  const [editingField, setEditingField] = useState<{ responseId: string; fieldName: string } | null>(null);
+  const [editingFieldValue, setEditingFieldValue] = useState("");
+  const [savingField, setSavingField] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [firstResponseDate, setFirstResponseDate] = useState<string | null>(null);
@@ -166,25 +169,20 @@ export default function FormResponsesPage() {
     loadFormData();
   }, [loadFormData]);
 
-  // Collect all unique fields from all versions, filtering out fields with no responses
+  // Collect all unique fields from all versions (include options for checkbox/select/radio)
   useEffect(() => {
     if (versions.length > 0 && responses.length > 0) {
-      const fieldMap = new Map<string, { id: string; name: string; label: string; type: string }>();
+      const fieldMap = new Map<string, FormField>();
       versions.forEach(version => {
         if (version.schema?.fields) {
-          version.schema.fields.forEach(field => {
+          version.schema.fields.forEach((field: FormField) => {
             if (!fieldMap.has(field.name)) {
-              fieldMap.set(field.name, {
-                id: field.id,
-                name: field.name,
-                label: field.label || field.name,
-                type: field.type,
-              });
+              fieldMap.set(field.name, { ...field, label: field.label || field.name });
             }
           });
         }
       });
-      
+
       // Filter out fields that have no responses (all values are null/undefined/NA)
       const fieldsWithData = Array.from(fieldMap.values()).filter(field => {
         return responses.some(response => {
@@ -192,21 +190,16 @@ export default function FormResponsesPage() {
           return value !== null && value !== undefined && value !== '';
         });
       });
-      
+
       setAllVersionsFields(fieldsWithData);
     } else if (versions.length > 0) {
       // If no responses yet, show all fields
-      const fieldMap = new Map<string, { id: string; name: string; label: string; type: string }>();
+      const fieldMap = new Map<string, FormField>();
       versions.forEach(version => {
         if (version.schema?.fields) {
-          version.schema.fields.forEach(field => {
+          version.schema.fields.forEach((field: FormField) => {
             if (!fieldMap.has(field.name)) {
-              fieldMap.set(field.name, {
-                id: field.id,
-                name: field.name,
-                label: field.label || field.name,
-                type: field.type,
-              });
+              fieldMap.set(field.name, { ...field, label: field.label || field.name });
             }
           });
         }
@@ -959,6 +952,8 @@ export default function FormResponsesPage() {
   const handleEditClick = (response: FormResponse) => {
     setResponseToEdit(response);
     setEditFormData({ ...(response.data || {}) });
+    setEditingField(null);
+    setEditingFieldValue("");
     setEditSubmitterInfo({
       first_name: response.submitter_first_name || "",
       last_name: response.submitter_last_name || "",
@@ -1020,6 +1015,63 @@ export default function FormResponsesPage() {
     } finally {
       setEditing(false);
     }
+  };
+
+  const valueToEditString = (value: unknown, fieldType: string): string => {
+    if (value === null || value === undefined) return "";
+    if (Array.isArray(value)) return value.map((v) => String(v)).join("\n");
+    if (typeof value === "object" && value !== null && "start" in value && "end" in value) {
+      const dr = value as { start?: string; end?: string };
+      return [dr.start || "", dr.end || ""].filter(Boolean).join(" – ");
+    }
+    return String(value);
+  };
+
+  const parseEditStringToValue = (text: string, fieldType: string): unknown => {
+    const trimmed = text.trim();
+    if (fieldType === "checkbox") {
+      return trimmed ? trimmed.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean) : [];
+    }
+    if (fieldType === "number") {
+      const num = parseFloat(trimmed);
+      return isNaN(num) ? "" : num;
+    }
+    if (fieldType === "date-range") {
+      const parts = trimmed.split(/[–-]/).map((s) => s.trim());
+      return { start: parts[0] || "", end: parts[1] || "" };
+    }
+    return trimmed;
+  };
+
+  const handleInlineEditStart = (responseId: string, fieldName: string, value: unknown, fieldType: string) => {
+    setEditingField({ responseId, fieldName });
+    setEditingFieldValue(valueToEditString(value, fieldType));
+  };
+
+  const handleInlineEditCancel = () => {
+    setEditingField(null);
+    setEditingFieldValue("");
+  };
+
+  const handleInlineEditSave = () => {
+    if (!editingField || !responseToEdit) return;
+    if (editingField.responseId !== responseToEdit.id) return;
+
+    const fields = (() => {
+      const schemaFields = (() => {
+        const v = isAllVersions
+          ? versions.find((v) => v.id === (typeof responseToEdit.form_version_id === "string" ? responseToEdit.form_version_id : (responseToEdit.form_version_id as { id?: string })?.id))
+          : selectedVersion;
+        return v?.schema?.fields ?? [];
+      })();
+      return schemaFields.length > 0 ? schemaFields : allVersionsFields;
+    })();
+    const field = fields.find((f) => f.name === editingField.fieldName);
+    const fieldType = field?.type ?? "text";
+
+    const newValue = parseEditStringToValue(editingFieldValue, fieldType);
+    setEditFormData((prev) => ({ ...prev, [editingField.fieldName]: newValue }));
+    handleInlineEditCancel();
   };
 
   const handleInitializeUuids = async () => {
@@ -1536,7 +1588,6 @@ export default function FormResponsesPage() {
                                     return true;
                                   })
                                   .map((field) => {
-                                    // Get the field value from response data, or NA if not present
                                     const fieldValue = response.data?.[field.name];
                                     const fieldType = field.type;
                                     return (
@@ -1551,10 +1602,7 @@ export default function FormResponsesPage() {
                             ) : (
                               selectedVersion?.schema.fields
                                 .filter(field => {
-                                  // For event registration forms, exclude email field since it's already in Student Email column
-                                  if (selectedVersion?.metadata?.is_event_registration && field.name === 'email' && field.type === 'email') {
-                                    return false;
-                                  }
+                                  if (selectedVersion?.metadata?.is_event_registration && field.name === 'email' && field.type === 'email') return false;
                                   return true;
                                 })
                                 .map((field) => (
@@ -1883,7 +1931,11 @@ export default function FormResponsesPage() {
       {/* Edit Response Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={(open) => {
         setEditDialogOpen(open);
-        if (!open) setResponseToEdit(null);
+        if (!open) {
+          setResponseToEdit(null);
+          setEditingField(null);
+          setEditingFieldValue("");
+        }
       }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1904,7 +1956,7 @@ export default function FormResponsesPage() {
             const schemaFields = responseVersion?.schema?.fields ?? [];
             const fields: FormField[] = schemaFields.length > 0
               ? schemaFields
-              : allVersionsFields.map(f => ({ id: f.id, name: f.name, label: f.label, type: f.type as FormField["type"], options: undefined, placeholder: undefined }));
+              : allVersionsFields.map(f => ({ ...f, type: f.type as FormField["type"] }));
             const filteredFields = fields.filter(field => {
               if (responseVersion?.metadata?.is_event_registration && field.name === "email" && field.type === "email") return false;
               return true;
@@ -1984,12 +2036,28 @@ export default function FormResponsesPage() {
                       {row.map((field) => {
                         const layout = field.layout || "full";
                         const imageUrl = field.image ? getDirectusImageUrl(field.image) : null;
+                        const isEditing = responseToEdit && editingField?.responseId === responseToEdit.id && editingField?.fieldName === field.name;
+                        const fieldValue = editFormData[field.name];
                         return (
                           <div key={field.id} className={`space-y-2 ${getColSpanClass(layout)}`}>
-                            <Label htmlFor={field.id}>
-                              {field.label}
-                              {field.required && <span className="text-destructive ml-1">*</span>}
-                            </Label>
+                            <div className="flex items-center justify-between gap-2">
+                              <Label htmlFor={field.id}>
+                                {field.label}
+                                {field.required && <span className="text-destructive ml-1">*</span>}
+                              </Label>
+                              {!isEditing && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-muted-foreground hover:text-foreground shrink-0"
+                                  onClick={() => handleInlineEditStart(responseToEdit!.id, field.name, fieldValue, field.type)}
+                                  title="Replace with text"
+                                >
+                                  <Pencil className="h-3 w-3 mr-1" />
+                                  Edit
+                                </Button>
+                              )}
+                            </div>
                             {field.description && (
                               <p className="text-sm text-muted-foreground">{field.description}</p>
                             )}
@@ -1998,12 +2066,34 @@ export default function FormResponsesPage() {
                                 <NextImage src={imageUrl} alt={field.label || "Field image"} fill className="object-contain" />
                               </div>
                             )}
-                            <FormFieldRenderer
-                              field={field}
-                              value={editFormData[field.name]}
-                              onChange={(v) => setEditFormData(prev => ({ ...prev, [field.name]: v }))}
-                              disabled={false}
-                            />
+                            {isEditing ? (
+                              <div className="space-y-2">
+                                <Textarea
+                                  value={editingFieldValue}
+                                  onChange={(e) => setEditingFieldValue(e.target.value)}
+                                  className="min-h-[80px] text-sm"
+                                  placeholder="Enter new value to replace..."
+                                  autoFocus
+                                />
+                                <div className="flex gap-1">
+                                  <Button size="sm" variant="default" onClick={handleInlineEditSave}>
+                                    <Check className="h-3 w-3 mr-1" />
+                                    Replace
+                                  </Button>
+                                  <Button size="sm" variant="ghost" onClick={handleInlineEditCancel}>
+                                    <X className="h-3 w-3 mr-1" />
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <FormFieldRenderer
+                                field={field}
+                                value={fieldValue}
+                                onChange={(v) => setEditFormData(prev => ({ ...prev, [field.name]: v }))}
+                                disabled={false}
+                              />
+                            )}
                           </div>
                         );
                       })}

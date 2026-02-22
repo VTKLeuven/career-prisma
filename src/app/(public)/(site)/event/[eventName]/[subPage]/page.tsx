@@ -1177,14 +1177,25 @@ function CompanyList({
   selectedCategories: string[]
   onCompanyClick: (company: Company) => void
 }) {
-  // Filter booths that have companies and sort by booth number
-  const companiesWithBooths = booths
+  // Filter booths that have companies, sort alphabetically, then limit to max 2 entries per company (double booths)
+  const allEntries = booths
     .filter(b => b.company && b.booth_number)
     .map(b => ({
       company: b.company!,
       boothNumber: b.booth_number!,
+      boothId: b.id,
     }))
-    .sort((a, b) => a.boothNumber - b.boothNumber)
+    .sort((a, b) => {
+      const nameCmp = (a.company.name ?? "").localeCompare(b.company.name ?? "", undefined, { sensitivity: "base" })
+      return nameCmp !== 0 ? nameCmp : a.boothNumber - b.boothNumber
+    })
+  // Limit to at most 2 entries per company (double booths only show twice)
+  const companyCount = new Map<string, number>()
+  const companiesWithBooths = allEntries.filter(({ company }) => {
+    const count = (companyCount.get(company.id) ?? 0) + 1
+    companyCount.set(company.id, count)
+    return count <= 2
+  })
 
   if (companiesWithBooths.length === 0) {
     return null
@@ -1241,12 +1252,12 @@ function CompanyList({
             `
           }} />
           <div className="company-list-columns">
-          {companiesWithBooths.map(({ company, boothNumber }) => {
+          {companiesWithBooths.map(({ company, boothNumber, boothId }) => {
             const isHighlighted = hasSelectedCategory(company)
             
             return (
               <CompanyListItem
-                key={company.id}
+                key={boothId}
                 company={company}
                 boothNumber={boothNumber}
                 isHighlighted={isHighlighted}

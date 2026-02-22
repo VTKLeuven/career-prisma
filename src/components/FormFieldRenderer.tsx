@@ -50,7 +50,7 @@ export function FormFieldRenderer({
 
   switch (field.type) {
     case "textarea": {
-      const textareaValue = (value as string) || "";
+      const textareaValue = value != null && value !== "" ? String(value) : "";
       const wordLimit = field.validation?.wordLimit;
       const wordCount = countWords(textareaValue);
       const isOverLimit = wordLimit && wordCount > wordLimit;
@@ -86,7 +86,7 @@ export function FormFieldRenderer({
           id={field.id}
           name={field.name}
           type="email"
-          value={(value as string) || ""}
+          value={value != null && value !== "" ? String(value) : ""}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder}
           required={field.required}
@@ -101,7 +101,7 @@ export function FormFieldRenderer({
           id={field.id}
           name={field.name}
           type="number"
-          value={(value as string) || ""}
+          value={value != null && value !== "" ? String(value) : ""}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder}
           required={field.required}
@@ -118,7 +118,7 @@ export function FormFieldRenderer({
           id={field.id}
           name={field.name}
           type="date"
-          value={(value as string) || ""}
+          value={value != null && value !== "" ? String(value) : ""}
           onChange={(e) => onChange(e.target.value)}
           required={field.required}
           className={inputClassName}
@@ -127,7 +127,11 @@ export function FormFieldRenderer({
       );
 
     case "date-range": {
-      const dateRangeValue = (value as { start?: string; end?: string }) || {};
+      const raw = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+      const dateRangeValue = {
+        start: raw.start != null && raw.start !== "" ? String(raw.start) : "",
+        end: raw.end != null && raw.end !== "" ? String(raw.end) : "",
+      };
       return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1">
@@ -167,7 +171,7 @@ export function FormFieldRenderer({
           id={field.id}
           name={field.name}
           type="time"
-          value={(value as string) || ""}
+          value={value != null && value !== "" ? String(value) : ""}
           onChange={(e) => onChange(e.target.value)}
           required={field.required}
           className={inputClassName}
@@ -181,7 +185,7 @@ export function FormFieldRenderer({
           id={field.id}
           name={field.name}
           type="url"
-          value={(value as string) || ""}
+          value={value != null && value !== "" ? String(value) : ""}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder || "https://linkedin.com/in/username"}
           required={field.required}
@@ -235,30 +239,36 @@ export function FormFieldRenderer({
     case "checkbox": {
       const options = field.options || [];
       if (options.length === 0) {
+        const isChecked = value === true || value === "true" || value === "yes" || value === 1;
         return (
           <Checkbox
             id={field.id}
-            checked={value === true || value === "true" || value === "yes"}
-            onCheckedChange={(checked) => onChange(!!checked)}
+            checked={isChecked}
+            onCheckedChange={(checked) => onChange(checked === true)}
             disabled={disabled}
           />
         );
       }
+      // Multi-option checkbox: value is array of strings. Normalize for DB/JSON (array, single string, or null).
+      const currentValues: string[] = Array.isArray(value)
+        ? (value as unknown[]).map((v) => String(v))
+        : value != null && value !== ""
+          ? [String(value)]
+          : [];
       return (
         <div className="space-y-2">
           {options.map((option, index) => {
-            const checked = Array.isArray(value) ? value.includes(option) : value === option;
+            const checked = currentValues.some((v) => String(v) === option);
             return (
               <div key={index} className="flex items-center space-x-2">
                 <Checkbox
                   id={`${field.id}-${index}`}
                   checked={checked}
                   onCheckedChange={(isChecked) => {
-                    const currentValues = (Array.isArray(value) ? value : []) as string[];
-                    if (isChecked) {
-                      onChange([...currentValues, option]);
+                    if (isChecked === true) {
+                      onChange([...currentValues.filter((v) => String(v) !== option), option]);
                     } else {
-                      onChange(currentValues.filter((v) => v !== option));
+                      onChange(currentValues.filter((v) => String(v) !== option));
                     }
                   }}
                   disabled={disabled}
@@ -273,9 +283,10 @@ export function FormFieldRenderer({
       );
     }
 
-    case "radio":
+    case "radio": {
+      const radioValue = value != null && value !== "" ? String(value) : "";
       return (
-        <RadioGroup value={(value as string) || ""} onValueChange={onChange} required={field.required} disabled={disabled}>
+        <RadioGroup value={radioValue} onValueChange={onChange} required={field.required} disabled={disabled}>
           {(field.options || []).map((option, index) => (
             <div key={index} className="flex items-center space-x-2">
               <RadioGroupItem id={`${field.id}-${index}`} value={option} disabled={disabled} />
@@ -289,6 +300,7 @@ export function FormFieldRenderer({
           ))}
         </RadioGroup>
       );
+    }
 
     case "file": {
       const maxFileSize = field.validation?.maxFileSize || 50 * 1024 * 1024;
@@ -389,7 +401,7 @@ export function FormFieldRenderer({
           id={field.id}
           name={field.name}
           type="text"
-          value={(value as string) || ""}
+          value={value != null && value !== "" ? String(value) : ""}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder}
           required={field.required}
