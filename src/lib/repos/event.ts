@@ -65,6 +65,7 @@ export async function listEventPages(opts?: {
         limit,
         page,
         ...(search ? { search } : {}),
+        deep: { companies: { limit: 10000 } }, // Override Directus QUERY_LIMIT_DEFAULT (100)
       })
     ) as unknown as CareerEventPage[];
 
@@ -137,6 +138,7 @@ export async function getEventPageBySlug(slug: string): Promise<CareerEventPage 
           },
         },
         limit: 1,
+        deep: { companies: { limit: 10000 } }, // Override Directus QUERY_LIMIT_DEFAULT (100) (no default limit)
       })
     ) as unknown as CareerEventPage[];
 
