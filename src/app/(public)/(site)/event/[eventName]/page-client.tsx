@@ -1062,26 +1062,39 @@ function Hero({
     }
   };
 
-  const handleExploreCompanies = (e: React.MouseEvent) => {
+  const handleExploreCompanies = async (e: React.MouseEvent) => {
     e.preventDefault()
 
-    const companies: Company[] = (page?.companies ?? []).filter(
-      (c): c is NonNullable<typeof c> => !!c
-    )
-
-    if (companies.length === 0) {
+    const eventId = page?.event?.id
+    if (!eventId) {
       showPopupMessage("Company list coming soon!")
       return
     }
 
-    // Determine max per row: 8 max
-    const maxPerRow = companies.length <= 8 ? companies.length : 8
-    const rows: Company[][] = []
-    for (let i = 0; i < companies.length; i += maxPerRow) {
-      rows.push(companies.slice(i, i + maxPerRow))
-    }
+    showPopupContent(<p className="text-vtk-blue py-8">Loading companies...</p>)
 
-    showPopupContent(<CompanyPopup companies={companies} />)
+    try {
+      const res = await fetch(`/api/events/companies?eventId=${encodeURIComponent(eventId)}`)
+      const data = (await res.json()) as { companies?: Company[] }
+      let companies = (data.companies ?? []).filter((c): c is NonNullable<typeof c> => !!c)
+
+      if (companies.length === 0) {
+        companies = (page?.companies ?? []).filter((c): c is NonNullable<typeof c> => !!c)
+      }
+
+      if (companies.length === 0) {
+        showPopupMessage("Company list coming soon!")
+        return
+      }
+      showPopupContent(<CompanyPopup companies={companies} />)
+    } catch {
+      const fallback = (page?.companies ?? []).filter((c): c is NonNullable<typeof c> => !!c)
+      if (fallback.length > 0) {
+        showPopupContent(<CompanyPopup companies={fallback} />)
+      } else {
+        showPopupMessage("Company list coming soon!")
+      }
+    }
   }
 
   return (
@@ -1298,16 +1311,20 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
     );
   }
 
-  // All companies grid (smaller boxes)
+  // All companies grid
+  const gridCols = companies.length > 20
+    ? "grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8"
+    : "grid-cols-3 sm:grid-cols-4 md:grid-cols-4"
+
   return (
-    <div className="flex flex-col items-center gap-6 px-6 py-4 max-w-5xl mx-auto">
-      <h2 className="text-2xl font-semibold text-vtk-blue mb-4 text-center">Attending Companies</h2>
+    <div className="flex flex-col items-center gap-5 px-4 py-3 w-full">
+      <h2 className="text-xl font-semibold text-vtk-blue mb-2 text-center">Attending Companies</h2>
 
       <motion.div
         initial="hidden"
         animate="show"
-        variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }}
-        className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-4"
+        variants={{ hidden: {}, show: { transition: { staggerChildren: 0.04 } } }}
+        className={`grid gap-3 ${gridCols}`}
       >
         {companies.map((company, i) => {
           const logoUrl = company.logo ? getDirectusImageUrl(company.logo) : undefined
@@ -1315,18 +1332,18 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
           return (
             <motion.div
               key={i}
-              className="group cursor-pointer"
-              whileHover={{ y: -2, scale: 1.03 }}
+              className="group cursor-pointer flex justify-center"
+              whileHover={{ y: -1, scale: 1.02 }}
               onClick={() => setSelectedCompany(company)}
             >
-              <div className="rounded-lg bg-white/90 p-3 text-center shadow-[0_6px_20px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md hover:shadow-lg transition-shadow duration-200">
-                <div className="h-16 w-full flex items-center justify-center">
+              <div className="rounded-lg bg-white/90 p-2.5 shadow-[0_4px_12px_rgba(11,77,140,0.06)] ring-1 ring-black/5 hover:shadow-md transition-shadow">
+                <div className="size-14 flex items-center justify-center">
                   <Image
                     src={logoUrl}
                     alt={company.name ?? "Company logo"}
-                    width={80}
-                    height={48}
-                    className="object-contain"
+                    width={56}
+                    height={56}
+                    className="object-contain max-w-full max-h-full"
                   />
                 </div>
               </div>
@@ -1394,7 +1411,7 @@ function Popup({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.2 }}
-        className="rounded-2xl bg-white text-neutral-900 px-8 py-6 shadow-2xl max-w-3xl w-full mx-auto"
+        className="rounded-2xl bg-white text-neutral-900 px-6 py-5 shadow-2xl max-w-4xl w-full mx-auto max-h-[85vh] overflow-y-auto scrollbar-hide"
         onClick={(e) => e.stopPropagation()}
       >
         <button

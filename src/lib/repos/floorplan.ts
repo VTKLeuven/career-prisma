@@ -217,6 +217,7 @@ export async function getEventPageWithFloorplan(eventId: string): Promise<Career
           },
         },
         limit: 1,
+        deep: { companies: { limit: 10000 } }, // Override Directus QUERY_LIMIT_DEFAULT (100)
       })
     ) as unknown as CareerEventPage[];
 
@@ -308,6 +309,7 @@ export async function getCompaniesForEvent(eventId: string): Promise<Company[]> 
           event: { _eq: eventId },
         },
         limit: 1,
+        deep: { companies: { limit: 10000 } }, // Override Directus QUERY_LIMIT_DEFAULT (100)
       })
     ) as unknown as Array<{ companies?: Array<{ company_id: Company }> }>;
 
