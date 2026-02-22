@@ -22,7 +22,8 @@ import { Label } from "@/components/ui/label";
 import { createZoneAction, deleteZoneAction, updateZoneAction } from "@/app/actions/zones";
 import type { Zone, Booth } from "@/lib/schema";
 import { useRouter } from "next/navigation";
-import { Trash2, Edit, Plus, Printer } from "lucide-react";
+import { Trash2, Edit, Plus, Printer, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 export default function ZonesClient({ initialZones, booths }: { initialZones: Zone[], booths: Booth[] }) {
     const [zones, setZones] = useState(initialZones);
@@ -38,6 +39,10 @@ export default function ZonesClient({ initialZones, booths }: { initialZones: Zo
         booths: [],
     });
 
+    const [rangeFrom, setRangeFrom] = useState("");
+    const [rangeTo, setRangeTo] = useState("");
+    const [ranges, setRanges] = useState<{ from: number; to: number }[]>([]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (editingZone) {
@@ -48,6 +53,9 @@ export default function ZonesClient({ initialZones, booths }: { initialZones: Zo
         setIsOpen(false);
         setEditingZone(null);
         setFormData({ name: "", booths: [] });
+        setRanges([]);
+        setRangeFrom("");
+        setRangeTo("");
         router.refresh();
     };
 
@@ -83,6 +91,46 @@ export default function ZonesClient({ initialZones, booths }: { initialZones: Zo
         });
     };
 
+    const addRange = () => {
+        const from = parseInt(rangeFrom);
+        const to = parseInt(rangeTo);
+        if (isNaN(from) || isNaN(to) || from > to) return;
+
+        const boothIdsInRange = booths
+            .filter(b => b.booth_number >= from && b.booth_number <= to)
+            .map(b => b.id);
+
+        setFormData(prev => {
+            const merged = new Set([...prev.booths, ...boothIdsInRange]);
+            return { ...prev, booths: Array.from(merged) };
+        });
+        setRanges(prev => [...prev, { from, to }]);
+        setRangeFrom("");
+        setRangeTo("");
+    };
+
+    const removeRange = (index: number) => {
+        const range = ranges[index];
+        const boothIdsInRange = new Set(
+            booths
+                .filter(b => b.booth_number >= range.from && b.booth_number <= range.to)
+                .map(b => b.id)
+        );
+
+        const otherRanges = ranges.filter((_, i) => i !== index);
+        const boothIdsInOtherRanges = new Set(
+            otherRanges.flatMap(r =>
+                booths.filter(b => b.booth_number >= r.from && b.booth_number <= r.to).map(b => b.id)
+            )
+        );
+
+        setFormData(prev => ({
+            ...prev,
+            booths: prev.booths.filter(id => !boothIdsInRange.has(id) || boothIdsInOtherRanges.has(id)),
+        }));
+        setRanges(otherRanges);
+    };
+
     return (
         <div className="space-y-4">
             <Dialog open={isOpen} onOpenChange={(open) => {
@@ -93,6 +141,9 @@ export default function ZonesClient({ initialZones, booths }: { initialZones: Zo
                     <Button onClick={() => {
                         setEditingZone(null);
                         setFormData({ name: "", booths: [] });
+                        setRanges([]);
+                        setRangeFrom("");
+                        setRangeTo("");
                     }}>
                         <Plus className="mr-2 h-4 w-4" /> Add Zone
                     </Button>
@@ -115,8 +166,92 @@ export default function ZonesClient({ initialZones, booths }: { initialZones: Zo
                             />
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="space-y-3">
                             <Label>Assign Booths</Label>
+
+                            <div className="space-y-2 rounded-md border p-3 bg-muted/30">
+                                <p className="text-sm font-medium">Quick add by range</p>
+                                <div className="flex items-end gap-2">
+                                    <div className="grid gap-1">
+                                        <Label htmlFor="range-from" className="text-xs">From booth</Label>
+                                        <Input
+                                            id="range-from"
+                                            type="number"
+                                            min={1}
+                                            placeholder="e.g. 1"
+                                            value={rangeFrom}
+                                            onChange={(e) => setRangeFrom(e.target.value)}
+                                            className="w-24"
+                                        />
+                                    </div>
+                                    <div className="grid gap-1">
+                                        <Label htmlFor="range-to" className="text-xs">To booth</Label>
+                                        <Input
+                                            id="range-to"
+                                            type="number"
+                                            min={1}
+                                            placeholder="e.g. 20"
+                                            value={rangeTo}
+                                            onChange={(e) => setRangeTo(e.target.value)}
+                                            className="w-24"
+                                        />
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        onClick={addRange}
+                                        disabled={!rangeFrom || !rangeTo || parseInt(rangeFrom) > parseInt(rangeTo)}
+                                    >
+                                        <Plus className="mr-1 h-3 w-3" /> Add Range
+                                    </Button>
+                                </div>
+                                {ranges.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 pt-1">
+                                        {ranges.map((range, i) => (
+                                            <Badge key={i} variant="secondary" className="gap-1 pr-1">
+                                                Booth {range.from}–{range.to}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeRange(i)}
+                                                    className="ml-0.5 rounded-full hover:bg-muted p-0.5"
+                                                >
+                                                    <X className="h-3 w-3" />
+                                                </button>
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                                <p className="text-sm text-muted-foreground">
+                                    {formData.booths.length} of {booths.length} booths selected
+                                </p>
+                                <div className="flex gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                            setFormData(prev => ({ ...prev, booths: booths.map(b => b.id) }));
+                                        }}
+                                    >
+                                        Select All
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                            setFormData(prev => ({ ...prev, booths: [] }));
+                                            setRanges([]);
+                                        }}
+                                    >
+                                        Clear All
+                                    </Button>
+                                </div>
+                            </div>
+
                             <div className="border rounded-md p-4 h-60 overflow-y-auto grid grid-cols-2 gap-2">
                                 {booths.map(booth => {
                                     const companyName = booth.company?.name || "Unassigned";
