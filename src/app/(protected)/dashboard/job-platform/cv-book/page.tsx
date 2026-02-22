@@ -656,8 +656,8 @@ export default function CVBookPage() {
               )}
             </Accordion>
           ) : selectedStudent ? (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
+            <div className="flex flex-col min-h-0" style={{ minHeight: 'calc(100vh - 12rem)' }}>
+              <div className="flex items-center justify-between shrink-0 mb-4">
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -695,7 +695,7 @@ export default function CVBookPage() {
                 </div>
               </div>
               
-              <Card>
+              <Card className="flex flex-col flex-1 min-h-0">
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
@@ -739,12 +739,13 @@ export default function CVBookPage() {
                     )}
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="flex-1 min-h-0 flex flex-col">
                   {selectedStudent.cvFileUrl && (
-                    <div className="mt-4">
+                    <div className="mt-4 flex-1 min-h-0 flex flex-col">
                       <CVDocumentViewer
                         fileUrl={selectedStudent.cvFileUrl}
                         title={`CV for ${selectedStudent.firstName} ${selectedStudent.lastName}`}
+                        className="flex-1 min-h-[70vh]"
                       />
                     </div>
                   )}
