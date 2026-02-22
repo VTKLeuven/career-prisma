@@ -1198,8 +1198,8 @@ function Hero({
                     Student registration
                   </Button>
 
-                  {/* Floorplan button if floorplan exists, otherwise Explore companies */}
-                  {page?.floorplan ? (
+                  {/* Floorplan button only when floorplan is in header_buttons (admin panel), otherwise Explore companies */}
+                  {shouldShowHeaderButton(page, "floorplan") ? (
                     <Button
                       asChild
                       variant="ghost"
