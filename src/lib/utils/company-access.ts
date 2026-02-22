@@ -8,28 +8,37 @@ function resolveSubOption(subOpt: unknown): CareerSubOption | null {
     const ref = (subOpt as { career_sub_option_id: CareerSubOption | string | null }).career_sub_option_id;
     if (ref && typeof ref === 'object' && 'name' in ref) return ref as CareerSubOption;
   }
+  if ('career_sub_option' in subOpt) {
+    const ref = (subOpt as { career_sub_option: CareerSubOption | string | null }).career_sub_option;
+    if (ref && typeof ref === 'object' && 'name' in ref) return ref as CareerSubOption;
+  }
   if ('name' in subOpt) return subOpt as CareerSubOption;
   return null;
 }
 
-/** Get sub_options to check: prefer junction's sub_options (company's selected), else option's sub_options */
+/** Get sub_options to check: BOTH junction's sub_options AND option's sub_options */
 function getSubOptionsToCheck(opt: unknown, option: CareerEventOption | null): CareerSubOption[] {
   const result: CareerSubOption[] = [];
-  // Junction's sub_options (company's selected sub_options for this option)
+  const seen = new Set<string>();
+  const add = (resolved: CareerSubOption | null) => {
+    if (resolved && !seen.has(resolved.id || resolved.name)) {
+      seen.add(resolved.id || resolved.name);
+      result.push(resolved);
+    }
+  };
+  // 1) Junction's sub_options (company's selected sub_options)
   if (opt && typeof opt === 'object' && 'sub_options' in opt) {
     const subOpts = (opt as { sub_options?: unknown[] }).sub_options;
     if (Array.isArray(subOpts)) {
       for (const s of subOpts) {
-        const resolved = resolveSubOption(s);
-        if (resolved) result.push(resolved);
+        add(resolveSubOption(s));
       }
     }
   }
-  // Fallback: option's sub_options (all sub_options of this option type - backward compatibility)
-  if (result.length === 0 && option?.sub_options && Array.isArray(option.sub_options)) {
+  // 2) Option's sub_options (suboptions of the options they have)
+  if (option?.sub_options && Array.isArray(option.sub_options)) {
     for (const s of option.sub_options) {
-      const resolved = resolveSubOption(s);
-      if (resolved) result.push(resolved);
+      add(resolveSubOption(s));
     }
   }
   return result;

@@ -590,9 +590,10 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
               <Checkbox
                 id="event-registration"
                 checked={isEventRegistration}
-                onCheckedChange={(checked: boolean) => {
-                  setIsEventRegistration(checked);
-                  if (checked) setIsCompanyForm(false); // Mutually exclusive
+                onCheckedChange={(checked) => {
+                  const isChecked = checked === true;
+                  setIsEventRegistration(isChecked);
+                  if (isChecked) setIsCompanyForm(false); // Mutually exclusive
                 }}
               />
               <Label htmlFor="event-registration" className="font-normal cursor-pointer">
@@ -604,9 +605,10 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
             <Checkbox
               id="company-form"
               checked={isCompanyForm}
-              onCheckedChange={(checked: boolean) => {
-                setIsCompanyForm(checked);
-                if (checked) setIsEventRegistration(false); // Mutually exclusive
+              onCheckedChange={(checked) => {
+                const isChecked = checked === true;
+                setIsCompanyForm(isChecked);
+                if (isChecked) setIsEventRegistration(false); // Mutually exclusive
               }}
             />
             <Label htmlFor="company-form" className="font-normal cursor-pointer">
@@ -730,6 +732,9 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
                           {event.name}
                         </SelectItem>
                       ))}
+                      {selectedCompanyFormEventId && !events.some((e) => e.id === selectedCompanyFormEventId) && selectedCompanyFormEventId !== "none" && (
+                        <SelectItem value={selectedCompanyFormEventId}>(Current: loading or deleted)</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
@@ -752,7 +757,7 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
                               id={`option-${option.id}`}
                               checked={selectedOptionIds.includes(option.id)}
                               onCheckedChange={(checked) => {
-                                if (checked) {
+                                if (checked === true) {
                                   setSelectedOptionIds([...selectedOptionIds, option.id]);
                                 } else {
                                   setSelectedOptionIds(selectedOptionIds.filter((id) => id !== option.id));
@@ -776,7 +781,7 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
                   <Checkbox
                     id="send-company-form-email"
                     checked={sendCompanyFormEmail}
-                    onCheckedChange={(checked: boolean) => setSendCompanyFormEmail(checked)}
+                    onCheckedChange={(checked) => setSendCompanyFormEmail(checked === true)}
                   />
                   <Label htmlFor="send-company-form-email" className="font-normal cursor-pointer">
                     Send confirmation email
@@ -1353,9 +1358,10 @@ function EditFormDialog({
               <Checkbox
                 id="edit-event-registration"
                 checked={isEventRegistration}
-                onCheckedChange={(checked: boolean) => {
-                  setIsEventRegistration(checked);
-                  if (checked) setIsCompanyForm(false); // Mutually exclusive
+                onCheckedChange={(checked) => {
+                  const isChecked = checked === true;
+                  setIsEventRegistration(isChecked);
+                  if (isChecked) setIsCompanyForm(false); // Mutually exclusive
                 }}
               />
               <Label htmlFor="edit-event-registration" className="font-normal cursor-pointer">
@@ -1367,9 +1373,10 @@ function EditFormDialog({
               <Checkbox
                 id="edit-company-form"
                 checked={isCompanyForm}
-                onCheckedChange={(checked: boolean) => {
-                  setIsCompanyForm(checked);
-                  if (checked) setIsEventRegistration(false); // Mutually exclusive
+                onCheckedChange={(checked) => {
+                  const isChecked = checked === true;
+                  setIsCompanyForm(isChecked);
+                  if (isChecked) setIsEventRegistration(false); // Mutually exclusive
                 }}
               />
               <Label htmlFor="edit-company-form" className="font-normal cursor-pointer">
@@ -1493,6 +1500,9 @@ function EditFormDialog({
                           {event.name}
                         </SelectItem>
                       ))}
+                      {selectedCompanyFormEventId && !events.some((e) => e.id === selectedCompanyFormEventId) && selectedCompanyFormEventId !== "none" && (
+                        <SelectItem value={selectedCompanyFormEventId}>(Current: loading or deleted)</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
@@ -1515,7 +1525,7 @@ function EditFormDialog({
                               id={`edit-option-${option.id}`}
                               checked={selectedOptionIds.includes(option.id)}
                               onCheckedChange={(checked) => {
-                                if (checked) {
+                                if (checked === true) {
                                   setSelectedOptionIds([...selectedOptionIds, option.id]);
                                 } else {
                                   setSelectedOptionIds(selectedOptionIds.filter((id) => id !== option.id));
@@ -1539,7 +1549,7 @@ function EditFormDialog({
                   <Checkbox
                     id="edit-send-company-form-email"
                     checked={sendCompanyFormEmail}
-                    onCheckedChange={(checked: boolean) => setSendCompanyFormEmail(checked)}
+                    onCheckedChange={(checked) => setSendCompanyFormEmail(checked === true)}
                   />
                   <Label htmlFor="edit-send-company-form-email" className="font-normal cursor-pointer">
                     Send confirmation email

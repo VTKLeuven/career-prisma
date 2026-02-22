@@ -6,6 +6,7 @@ import Link from "next/link"
 import NextImage from "next/image"
 import { fetchEventPagesAction } from "@/app/actions/events"
 import { fetchFloorplanAction } from "@/app/actions/features"
+import { fetchCompaniesForEventAction } from "@/app/actions/companies"
 import type { CareerEventPage, Booth, Company } from '@/lib/schema'
 import { getDirectusImageUrl } from "@/components/Images"
 import { Button } from "@/components/ui/button"
@@ -17,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { getCompanySubOptionAnyStatus } from "@/lib/utils/company-access"
 import {
   Dialog,
   DialogContent,
@@ -48,7 +50,7 @@ export default function AdminFloorplanPage() {
       if (!eventId) return
       
       try {
-        const { getEventPageWithFloorplan, getBoothsForFloorplan, getCompaniesForEvent } = await import("@/lib/repos/floorplan")
+        const { getEventPageWithFloorplan, getBoothsForFloorplan } = await import("@/lib/repos/floorplan")
         
         // Fetch event page with floorplan
         const eventPage = await getEventPageWithFloorplan(eventId)
@@ -79,13 +81,9 @@ export default function AdminFloorplanPage() {
         
         setBooths(boothsData)
         
-        // Fetch companies - use from event page if available, otherwise fetch separately
-        if (eventPage.companies && Array.isArray(eventPage.companies) && eventPage.companies.length > 0) {
-          setCompanies(eventPage.companies)
-        } else {
-          const companiesData = await getCompaniesForEvent(eventId)
-          setCompanies(companiesData)
-        }
+        // Fetch all companies for event (no cap - uses company options, limit: -1)
+        const companiesData = await fetchCompaniesForEventAction(eventId, false)
+        setCompanies(companiesData ?? [])
       } catch (error) {
         console.error("Error loading floorplan data:", error)
       }
@@ -167,10 +165,23 @@ export default function AdminFloorplanPage() {
     }
   }
 
-  const assignedCompanyIds = new Set(booths.filter(b => b.company).map(b => b.company!.id))
-  const availableCompanies = companies.filter(
-    c => !assignedCompanyIds.has(c.id) || (selectedBooth?.company?.id === c.id)
-  )
+  // Count how many booths each company is assigned to
+  const assignedBoothCountByCompany = new Map<string, number>()
+  for (const b of booths) {
+    if (b.company?.id) {
+      assignedBoothCountByCompany.set(b.company.id, (assignedBoothCountByCompany.get(b.company.id) ?? 0) + 1)
+    }
+  }
+  const availableCompanies = companies
+    .filter(c => {
+      const assignedCount = assignedBoothCountByCompany.get(c.id) ?? 0
+      const hasExtraBooth = getCompanySubOptionAnyStatus(c, "Extra Booth") !== null
+      const maxBooths = hasExtraBooth ? 2 : 1
+      const isAtLimit = assignedCount >= maxBooths
+      const isSelectedBoothCompany = selectedBooth?.company?.id === c.id
+      return !isAtLimit || isSelectedBoothCompany
+    })
+    .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", undefined, { sensitivity: "base" }))
 
   if (!page || !page.floorplan) {
     return (

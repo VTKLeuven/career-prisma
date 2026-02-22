@@ -141,6 +141,10 @@ export async function getCompaniesForEvent(eventId: string, usePublic = false) {
           "options.career_event_option_id.events.career_event_id.*",
           "options.career_event_option_id.event.id", // Backward compatibility
           "options.career_event_option_id.event.*",
+          "options.sub_options.*",
+          "options.sub_options.career_sub_option_id.*",
+          "options.career_event_option_id.sub_options.*",
+          "options.career_event_option_id.sub_options.career_sub_option_id.*",
         ]
       : [
           "id",
@@ -155,6 +159,10 @@ export async function getCompaniesForEvent(eventId: string, usePublic = false) {
           "options.career_event_option_id.events.career_event_id.*",
           "options.career_event_option_id.event.id", // Backward compatibility
           "options.career_event_option_id.event.*",
+          "options.sub_options.*",
+          "options.sub_options.career_sub_option_id.*",
+          "options.career_event_option_id.sub_options.*",
+          "options.career_event_option_id.sub_options.career_sub_option_id.*",
         ];
 
     const companies = await client.request(
