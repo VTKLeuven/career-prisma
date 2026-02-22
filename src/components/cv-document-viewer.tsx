@@ -117,7 +117,7 @@ export function CVDocumentViewer({ fileUrl, className = '', title }: CVDocumentV
       <div
         ref={scrollContainerRef}
         className="bg-white overflow-y-auto overflow-x-hidden border rounded-lg shadow-sm relative"
-        style={{ minHeight: '600px', maxHeight: 'calc(100vh - 16rem)', width: '100%' }}
+        style={{ minHeight: '800px', height: 'calc(100vh - 5rem)', width: '100%' }}
       >
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-muted z-10">
