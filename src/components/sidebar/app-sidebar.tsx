@@ -428,7 +428,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
     // Company reps: Order Drinks at their booth (when admin setting is enabled)
     if (user?.company && companyOrderingBoothId) {
-      orderingItems.push({ title: "Order Drinks", url: `/booth/${companyOrderingBoothId}` });
+      orderingItems.push({ title: "Order Drinks", url: `/dashboard/order-drinks` });
     }
 
     if (orderingItems.length > 0) {
