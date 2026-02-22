@@ -74,33 +74,7 @@ export default function AdminFloorplanPage() {
           const svgRoot = svgDoc.documentElement
           const originalVb = svgRoot?.getAttribute("viewBox") || "0 0 1000 600"
           setOriginalViewBox(originalVb)
-          
-          // Calculate tight viewBox from booth bounds (reduces vertical whitespace)
-          const origVbParts = originalVb.split(/\s+/).map(Number)
-          if (origVbParts.length === 4 && boothsData.length > 0) {
-            const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
-            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-            boothsData.forEach((booth: Booth) => {
-              if (!booth.coords) return
-              const coords = typeof booth.coords === "string" ? JSON.parse(booth.coords) : booth.coords
-              const boothX = origVbX + (coords.x_pct / 100) * origVbWidth
-              const boothY = origVbY + (coords.y_pct / 100) * origVbHeight
-              const boothWidth = (coords.width_pct / 100) * origVbWidth
-              const boothHeight = (coords.height_pct / 100) * origVbHeight
-              minX = Math.min(minX, boothX)
-              minY = Math.min(minY, boothY)
-              maxX = Math.max(maxX, boothX + boothWidth)
-              maxY = Math.max(maxY, boothY + boothHeight)
-            })
-            if (minX < maxX && minY < maxY) {
-              const pad = Math.min(origVbWidth, origVbHeight) * 0.02
-              setViewBox(`${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`)
-            } else {
-              setViewBox(originalVb)
-            }
-          } else {
-            setViewBox(originalVb)
-          }
+          setViewBox(originalVb)
         }
         
         setBooths(boothsData)
@@ -247,12 +221,12 @@ export default function AdminFloorplanPage() {
 
       {/* Floorplan */}
       <div className="flex justify-center w-full px-2 sm:px-4 pb-4">
-        <div className="w-full max-w-full">
+        <div className="w-full max-w-full min-w-0">
           {svgContent ? (
             <svg
               ref={svgRef}
               viewBox={viewBox}
-              className="w-full h-auto min-w-0 min-h-[80vh]"
+              className="w-full h-auto min-w-0"
               xmlns="http://www.w3.org/2000/svg"
               preserveAspectRatio="xMidYMid meet"
             >

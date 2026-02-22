@@ -272,6 +272,8 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
     const rectElements = root.getElementsByTagName("rect");
     console.log(`Found ${rectElements.length} <rect> elements in SVG`);
     
+    const bgThreshold = 0.5; // Exclude rects covering >50% of SVG in EITHER dimension (background/frame - causes booth 106 etc to match wrong)
+    
     for (let i = 0; i < rectElements.length; i++) {
       const r = rectElements[i];
       try {
@@ -286,6 +288,7 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
           const transformedEnd = applyTransform(x + w, y + h, transform);
           const bboxW = Math.abs(transformedEnd.x - transformed.x);
           const bboxH = Math.abs(transformedEnd.y - transformed.y);
+          if (bboxW >= width * bgThreshold || bboxH >= height * bgThreshold) continue;
           const cx = transformed.x + bboxW / 2;
           const cy = transformed.y + bboxH / 2;
           // For rotated rects: use ORIGINAL dimensions (w,h), not bbox - otherwise display is wrong
@@ -334,6 +337,7 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
           const bboxY = Math.min(topLeft.y, bottomRight.y);
           const bboxW = Math.abs(bottomRight.x - topLeft.x);
           const bboxH = Math.abs(bottomRight.y - topLeft.y);
+          if (bboxW >= width * bgThreshold || bboxH >= height * bgThreshold) continue;
           const cx = bboxX + bboxW / 2;
           const cy = bboxY + bboxH / 2;
           const hasRotation = transform.rotation_deg != null && Math.abs(transform.rotation_deg) > 0.5;
@@ -572,8 +576,39 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
       // 2) Fallback: nearest rect by center distance, but with better matching
       // Find all rectangles within a reasonable distance threshold
       if (rects.length > 0) {
+        // Exclude oversized rects from nearest match (frame/background - e.g. booth 106 matching full SVG)
+        const maxRectW = width * 0.4;
+        const maxRectH = height * 0.4;
+        const candidateRects = rects.filter(r => r.w < maxRectW && r.h < maxRectH);
+        // Only use non-oversized rects; if all rects are oversized, fall through to estimated booth
+        if (candidateRects.length === 0) {
+          // All rects are oversized (frame/background) - use estimated booth at text position
+          const defaultWidth = width * 0.02;
+          const defaultHeight = height * 0.02;
+          const boothX = tx - defaultWidth / 2;
+          const boothY = ty - defaultHeight / 2;
+          const boothNumber = parseInt(boothLabel, 10);
+          if (!isNaN(boothNumber)) {
+            booths.push({
+              booth_number: boothNumber,
+              coords: {
+                type: "rect" as const,
+                x_pct: Number(((boothX / width) * 100).toFixed(4)),
+                y_pct: Number(((boothY / height) * 100).toFixed(4)),
+                width_pct: Number(((defaultWidth / width) * 100).toFixed(4)),
+                height_pct: Number(((defaultHeight / height) * 100).toFixed(4)),
+                x_px: boothX,
+                y_px: boothY,
+                w_px: defaultWidth,
+                h_px: defaultHeight,
+                match: "no_rects_found",
+              },
+            });
+          }
+          continue;
+        }
         // Calculate distance to all rectangles and find the closest
-        const rectDistances = rects.map(r => {
+        const rectDistances = candidateRects.map(r => {
           const centerDist = distance(r.cx, r.cy, tx, ty);
           
           // Check if point is inside the rectangle (handles rotated rects)
@@ -604,8 +639,9 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
           return a.edgeDist - b.edgeDist;
         });
 
-        const nearest = rectDistances[0].rect;
-        const nearestDist = rectDistances[0].centerDist;
+        const nearest = rectDistances[0]?.rect;
+        const nearestDist = rectDistances[0]?.centerDist ?? Infinity;
+        if (!nearest) continue;
         
         const boothNumber = parseInt(boothLabel, 10);
         if (isNaN(boothNumber)) {
