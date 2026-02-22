@@ -23,13 +23,15 @@ export default async function AdminZonesPage() {
         getBooths(),
     ]);
 
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://career.vtk.be";
+
     return (
         <div className="container mx-auto py-6 space-y-6">
             <div className="flex justify-between items-center">
                 <h1 className="text-3xl font-bold">Zones & Booths</h1>
             </div>
             <Suspense fallback={<div>Loading...</div>}>
-                <ZonesClient initialZones={zones} booths={booths} />
+                <ZonesClient initialZones={zones} booths={booths} baseUrl={baseUrl} />
             </Suspense>
         </div>
     );

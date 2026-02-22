@@ -131,6 +131,12 @@ export default function ShifterDashboardClient({ initialZones, currentUserId }: 
         });
     };
 
+    const getMinutesAgo = (dateStr: string) => {
+        const mins = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
+        if (mins < 1) return "just now";
+        return `${mins}m ago`;
+    };
+
     // Get zone info from order by looking up booth in zones
     const getOrderZone = (order: ExtendedOrder): { id: string; name: string } | null => {
         const boothId = order.booth?.id || order.booth;
@@ -172,6 +178,17 @@ export default function ShifterDashboardClient({ initialZones, currentUserId }: 
 
         return null;
     };
+
+    // Re-render every 30s so "X min ago" stays fresh between polls
+    const [, setTick] = useState(0);
+    useEffect(() => {
+        const timer = setInterval(() => setTick(t => t + 1), 30000);
+        return () => clearInterval(timer);
+    }, []);
+
+    const sortedOrders = [...orders].sort(
+        (a, b) => new Date(a.date_created).getTime() - new Date(b.date_created).getTime()
+    );
 
     // Calculate summary stats
     const avgDuration = completedOrders.length > 0
@@ -342,11 +359,11 @@ export default function ShifterDashboardClient({ initialZones, currentUserId }: 
             ) : (
                 /* Active Orders View */
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {orders.length === 0 && !loading && (
+                    {sortedOrders.length === 0 && !loading && (
                         <p className="col-span-full text-center text-muted-foreground py-12">No pending orders.</p>
                     )}
 
-                    {orders.map((order) => {
+                    {sortedOrders.map((order) => {
                         const isMyOrder = order.shifter?.id === currentUserId || order.shifter === currentUserId;
                         const isTaken = !!order.shifter && !isMyOrder;
                         const zone = getOrderZone(order);
@@ -355,10 +372,12 @@ export default function ShifterDashboardClient({ initialZones, currentUserId }: 
                             <Card key={order.id} className={`${order.status === 'preparing' ? 'border-primary' : ''} ${isTaken ? 'opacity-70 bg-gray-50' : ''}`}>
                                 <CardHeader className="pb-2">
                                     <div className="flex justify-between items-start">
-                                        <CardTitle>Booth {order.booth?.booth_number}</CardTitle>
+                                        <CardTitle>{order.booth?.company?.name || "Unknown Company"}</CardTitle>
                                         <div className="flex items-center gap-2">
                                             <Badge variant={order.status === 'preparing' ? "default" : "secondary"}>
-                                                {order.status}
+                                                {isTaken
+                                                    ? `Being prepared by ${typeof order.shifter === 'object' ? order.shifter.first_name : 'someone'}`
+                                                    : order.status}
                                             </Badge>
                                             <AlertDialog>
                                                 <AlertDialogTrigger asChild>
@@ -386,19 +405,20 @@ export default function ShifterDashboardClient({ initialZones, currentUserId }: 
                                             </AlertDialog>
                                         </div>
                                     </div>
-                                    <CardDescription>{order.booth?.company?.name || "Unknown Company"}</CardDescription>
+                                    <CardDescription className="flex items-center justify-between">
+                                        <span>Booth {order.booth?.booth_number}</span>
+                                        <span className="flex items-center gap-1 text-xs">
+                                            <Clock className="h-3 w-3" />
+                                            {getMinutesAgo(order.date_created)}
+                                        </span>
+                                    </CardDescription>
 
-                                    {/* Zone indicator - always show */}
+                                    {/* Zone indicator */}
                                     <div className="flex items-center gap-2 mt-1">
                                         <span className={`w-3 h-3 rounded-full ${zone ? getZoneColor(zone.id, initialZones) : 'bg-gray-300'}`} />
                                         <span className="text-sm text-muted-foreground">{zone ? zone.name : 'No Zone'}</span>
                                     </div>
 
-                                    {isTaken && (
-                                        <p className="text-xs text-amber-600 font-bold">
-                                            Being prepared by {typeof order.shifter === 'object' ? order.shifter.first_name : 'another shifter'}
-                                        </p>
-                                    )}
                                     {isMyOrder && (
                                         <p className="text-xs text-primary font-bold">
                                             You are working on this

@@ -22,10 +22,10 @@ import { Label } from "@/components/ui/label";
 import { createZoneAction, deleteZoneAction, updateZoneAction } from "@/app/actions/zones";
 import type { Zone, Booth } from "@/lib/schema";
 import { useRouter } from "next/navigation";
-import { Trash2, Edit, Plus, Printer, X } from "lucide-react";
+import { Trash2, Edit, Plus, Printer, X, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
-export default function ZonesClient({ initialZones, booths }: { initialZones: Zone[], booths: Booth[] }) {
+export default function ZonesClient({ initialZones, booths, baseUrl }: { initialZones: Zone[], booths: Booth[], baseUrl: string }) {
     const [zones, setZones] = useState(initialZones);
     const [isOpen, setIsOpen] = useState(false);
     const [editingZone, setEditingZone] = useState<Zone | null>(null);
@@ -131,6 +131,27 @@ export default function ZonesClient({ initialZones, booths }: { initialZones: Zo
         setRanges(otherRanges);
     };
 
+    const exportCSV = () => {
+        const escapeCsv = (value: string) => {
+            if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+                return `"${value.replace(/"/g, '""')}"`;
+            }
+            return value;
+        };
+
+        const header = "Company,Booth URL";
+        const rows = booths
+            .filter(b => b.company?.name)
+            .map(b => `${escapeCsv(b.company!.name)},${baseUrl}/booth/${b.id}`);
+
+        const csv = [header, ...rows].join("\n");
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `booth-qr-urls-${new Date().toISOString().split("T")[0]}.csv`;
+        link.click();
+    };
+
     return (
         <div className="space-y-4">
             <Dialog open={isOpen} onOpenChange={(open) => {
@@ -150,6 +171,9 @@ export default function ZonesClient({ initialZones, booths }: { initialZones: Zo
                 </DialogTrigger>
                 <Button variant="outline" onClick={() => router.push('/admin/zones/print')}>
                     <Printer className="mr-2 h-4 w-4" /> Print QR Codes
+                </Button>
+                <Button variant="outline" onClick={exportCSV}>
+                    <Download className="mr-2 h-4 w-4" /> Export CSV
                 </Button>
                 <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
                     <DialogHeader>

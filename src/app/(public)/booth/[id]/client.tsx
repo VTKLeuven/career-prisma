@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Minus, Plus, ShoppingCart, Loader2 } from "lucide-react";
-import { placeOrderAction, checkOrderStatusAction } from "@/app/actions/booth";
+import { Minus, Plus, ShoppingCart, Loader2, XCircle } from "lucide-react";
+import { placeOrderAction, checkOrderStatusAction, cancelOrderAction } from "@/app/actions/booth";
 import type { Drink, Order } from "@/lib/schema";
 import { useRouter } from "next/navigation";
 import { getDirectusImageUrl } from "@/components/Images";
@@ -23,6 +23,7 @@ export default function BoothClient({
     const [cart, setCart] = useState<{ [key: string]: number }>({});
     const [activeOrder, setActiveOrder] = useState<Order | null>(initialActiveOrder);
     const [submitting, setSubmitting] = useState(false);
+    const [cancelling, setCancelling] = useState(false);
     const router = useRouter();
 
     // Poll for order status updates if active order exists
@@ -70,14 +71,13 @@ export default function BoothClient({
 
         const res = await placeOrderAction(boothId, companyId, items);
         if (res.success) {
-            // Optimistically set active order BEFORE clearing cart so we have the items
             setActiveOrder({
                 status: 'pending',
                 items: items.map(i => ({
-                    current_price: 0, // price doesn't matter for count
-                    quantity: i.quantity,
                     drink_id: i.drink_id,
-                })) as any
+                    name: i.name,
+                    quantity: i.quantity,
+                })),
             } as Order);
             setCart({});
             router.refresh();
@@ -87,8 +87,22 @@ export default function BoothClient({
         setSubmitting(false);
     };
 
+    const handleCancel = async () => {
+        if (!activeOrder?.id) return;
+        setCancelling(true);
+        const res = await cancelOrderAction(boothId, activeOrder.id);
+        if (res.success) {
+            setActiveOrder(null);
+            router.refresh();
+        } else {
+            alert(res.error || "Failed to cancel order");
+        }
+        setCancelling(false);
+    };
+
     if (activeOrder) {
         const isPreparing = activeOrder.status === 'preparing';
+        const totalItems = activeOrder.items?.reduce((acc, i) => acc + i.quantity, 0) || 0;
 
         return (
             <Card className={`text-center py-10 ${isPreparing
@@ -102,9 +116,22 @@ export default function BoothClient({
                         }`}>
                         {isPreparing ? 'Being Prepared!' : 'Order Pending'}
                     </h2>
-                    <p className={isPreparing ? 'text-green-600' : 'text-amber-600'}>
-                        Amount: {activeOrder.items?.reduce((acc, i) => acc + i.quantity, 0) || 0} items
-                    </p>
+
+                    {activeOrder.items && activeOrder.items.length > 0 && (
+                        <div className={`text-sm text-left inline-block rounded-md px-4 py-2 ${isPreparing ? 'bg-green-100/60' : 'bg-amber-100/60'}`}>
+                            {activeOrder.items.map((item, idx) => (
+                                <div key={idx} className={`flex justify-between gap-6 py-0.5 ${isPreparing ? 'text-green-700' : 'text-amber-700'}`}>
+                                    <span>{item.name || 'Unknown item'}</span>
+                                    <span className="font-semibold">x{item.quantity}</span>
+                                </div>
+                            ))}
+                            <div className={`border-t mt-1 pt-1 flex justify-between gap-6 font-semibold ${isPreparing ? 'border-green-300 text-green-800' : 'border-amber-300 text-amber-800'}`}>
+                                <span>Total</span>
+                                <span>{totalItems} items</span>
+                            </div>
+                        </div>
+                    )}
+
                     <p className={`text-sm ${isPreparing ? 'text-green-500' : 'text-amber-500'}`}>
                         Status: <span className="uppercase font-bold">{activeOrder.status}</span>
                     </p>
@@ -113,6 +140,18 @@ export default function BoothClient({
                             ? 'A shifter is now preparing your order. It will arrive soon!'
                             : 'Please wait until a shifter picks up your order.'}
                     </p>
+
+                    {!isPreparing && (
+                        <Button
+                            variant="outline"
+                            className="mt-2 border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+                            onClick={handleCancel}
+                            disabled={cancelling}
+                        >
+                            {cancelling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
+                            Cancel Order
+                        </Button>
+                    )}
                 </CardContent>
             </Card>
         );

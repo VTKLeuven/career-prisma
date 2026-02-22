@@ -1,6 +1,8 @@
 "use server"
 
 import { createOrder, getActiveOrderForBooth } from "@/lib/repos/orders";
+import { getAdminDirectusClient } from "@/lib/directus";
+import { deleteItem, readItem } from "@directus/sdk";
 import { revalidatePath } from "next/cache";
 
 export async function placeOrderAction(boothId: string, companyId: string | null | undefined, items: { drink_id: string; name: string; quantity: number }[]) {
@@ -39,4 +41,30 @@ export async function placeOrderAction(boothId: string, companyId: string | null
 export async function checkOrderStatusAction(boothId: string) {
     const order = await getActiveOrderForBooth(boothId);
     return order;
+}
+
+export async function cancelOrderAction(boothId: string, orderId: string) {
+    try {
+        const client = getAdminDirectusClient();
+        if (!client) return { success: false, error: "Server configuration error" };
+
+        const order = await client.request(readItem("orders", orderId)) as any;
+        if (!order) return { success: false, error: "Order not found" };
+
+        const orderBoothId = typeof order.booth === "object" ? order.booth?.id : order.booth;
+        if (String(orderBoothId) !== String(boothId)) {
+            return { success: false, error: "Order does not belong to this booth" };
+        }
+
+        if (order.status !== "pending") {
+            return { success: false, error: "Only pending orders can be cancelled" };
+        }
+
+        await client.request(deleteItem("orders", orderId));
+        revalidatePath(`/booth/${boothId}`);
+        return { success: true };
+    } catch (error) {
+        console.error("Error cancelling order:", error);
+        return { success: false, error: "Failed to cancel order" };
+    }
 }
