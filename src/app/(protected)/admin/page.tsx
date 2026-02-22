@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { fetchCompaniesAction, createCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction } from "@/app/actions/companies";
+import { fetchCompaniesAction, createCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, addSubOptionToCompanyAction, removeSubOptionFromCompanyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction } from "@/app/actions/companies";
 import { fetchEventsAction, findCompaniesWithEventOptions, addCompaniesToEventPageAction } from "@/app/actions/events";
 import { listMatchingSoftwareAction, createMatchingSoftwareAction } from "@/app/actions/matching-software";
 import { fetchAcademicYearsAction } from "@/app/actions/cv-book";
@@ -63,7 +63,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { IconBuilding, IconColumns, IconMail, IconPlus, IconTaxEuro, IconFileCv } from "@tabler/icons-react";
-import type { CareerEvent, Company, CompanyRep, CareerEventOption, CareerEventPage, Booth, HeaderButtonType } from "@/lib/schema";
+import type { CareerEvent, Company, CompanyRep, CareerEventOption, CareerEventPage, Booth, HeaderButtonType, CareerSubOption } from "@/lib/schema";
 import { useUser } from "@/providers/UserProvider";
 import { DirectusUser } from "@directus/sdk";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
@@ -76,12 +76,15 @@ import { slugifyCompanyName } from "@/lib/utils/slugify";
  * - role stays a string id.
  */
 
+/** Option with company's selected sub_options (from junction table) */
+type CareerEventOptionWithCompanySubOptions = CareerEventOption & { companySubOptions?: CareerSubOption[] };
+
 /** ------------------------------------------------------------------
  * CompanyRow — allow representatives to be Partial<CompanyRep>[]
  * ------------------------------------------------------------------ */
 type CompanyRow = Pick<Company, "id" | "name" | "VAT" | "address" | "salesperson" | "status"> & {
   representatives?: Partial<CompanyRep>[];
-  options?: CareerEventOption[];
+  options?: CareerEventOptionWithCompanySubOptions[];
 };
 
 export default function AdminPage() {
@@ -94,6 +97,23 @@ export default function AdminPage() {
       <EventsSection />
     </div>
   );
+}
+
+/** Extract company's selected sub_options from junction (handles Directus formats) */
+function extractCompanySubOptions(opt: unknown): CareerSubOption[] {
+  if (!opt || typeof opt !== 'object' || !('sub_options' in opt)) return [];
+  const subOpts = (opt as { sub_options?: unknown[] }).sub_options;
+  if (!Array.isArray(subOpts)) return [];
+  return subOpts
+    .map((s) => {
+      if (s && typeof s === 'object' && 'name' in s) return s as CareerSubOption;
+      if (s && typeof s === 'object' && 'career_sub_option_id' in s) {
+        const ref = (s as { career_sub_option_id: CareerSubOption | null }).career_sub_option_id;
+        return ref && typeof ref === 'object' ? (ref as CareerSubOption) : null;
+      }
+      return null;
+    })
+    .filter((s): s is CareerSubOption => s !== null);
 }
 
 /** ------------------------------------------------------------------
@@ -137,15 +157,19 @@ function CompaniesSection() {
             if (!rawOption || !rawOption.id) {
               return null;
             }
-            
+
+            const companySubOptions = extractCompanySubOptions(opt);
+
             // Create a new object to avoid mutation, preserving all fields
-            const normalizedOption: CareerEventOption = {
+            const normalizedOption: CareerEventOptionWithCompanySubOptions = {
               id: rawOption.id,
               name: rawOption.name,
               description: rawOption.description,
               price: rawOption.price,
+              sub_options: rawOption.sub_options,
+              companySubOptions: companySubOptions.length > 0 ? companySubOptions : undefined,
             };
-            
+
             // Normalize events: handle junction table format and direct events
             // In Directus many-to-many, events can come in various formats
             if (rawOption.events && Array.isArray(rawOption.events)) {
@@ -201,9 +225,14 @@ function CompaniesSection() {
             }
             
             return normalizedOption;
-          }).filter((opt): opt is CareerEventOption => opt !== null && opt !== undefined && opt.id !== undefined),
+          }).filter((opt): opt is CareerEventOptionWithCompanySubOptions => opt !== null && opt !== undefined && opt.id !== undefined),
         }));
         setData(mapped);
+        setSelectedCompany((prev) => {
+          if (!prev) return prev;
+          const updated = mapped.find((c) => c.id === prev.id);
+          return updated ?? prev;
+        });
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -237,15 +266,19 @@ function CompaniesSection() {
             if (!rawOption || !rawOption.id) {
               return null;
             }
-            
+
+            const companySubOptions = extractCompanySubOptions(opt);
+
             // Create a new object to avoid mutation, preserving all fields
-            const normalizedOption: CareerEventOption = {
+            const normalizedOption: CareerEventOptionWithCompanySubOptions = {
               id: rawOption.id,
               name: rawOption.name,
               description: rawOption.description,
               price: rawOption.price,
+              sub_options: rawOption.sub_options,
+              companySubOptions: companySubOptions.length > 0 ? companySubOptions : undefined,
             };
-            
+
             // Normalize events: handle junction table format and direct events
             // In Directus many-to-many, events can come in various formats
             if (rawOption.events && Array.isArray(rawOption.events)) {
@@ -301,7 +334,7 @@ function CompaniesSection() {
             }
             
             return normalizedOption;
-          }).filter((opt): opt is CareerEventOption => opt !== null && opt !== undefined && opt.id !== undefined),
+          }).filter((opt): opt is CareerEventOptionWithCompanySubOptions => opt !== null && opt !== undefined && opt.id !== undefined),
         }));
         setData(mapped);
       })
@@ -533,13 +566,12 @@ function CompaniesSection() {
           <CompanyOptionsTable
             company={selectedCompany}
             onAddOption={(newOption) => {
-              // locally add option and also update main data list
               addOptionToCompany(selectedCompany.id, newOption);
             }}
             onRemoveOption={(optionId) => {
-              // locally remove option and also update main data list
               removeOptionFromCompany(selectedCompany.id, optionId);
             }}
+            onSubOptionsChange={() => refreshCompanies()}
           />
         ) : null}
       </CardContent>
@@ -922,7 +954,12 @@ function UserFormDialog({ company, onCreate }: {
  * Company Options Table (full-featured)
  * - displays all options a company has
  * ------------------------------------------------------------------ */
-function CompanyOptionsTable({ company, onAddOption, onRemoveOption }: { company: CompanyRow; onAddOption: (newOption: CareerEventOption) => void; onRemoveOption: (optionId: string) => void }) {
+function CompanyOptionsTable({ company, onAddOption, onRemoveOption, onSubOptionsChange }: {
+  company: CompanyRow;
+  onAddOption: (newOption: CareerEventOption) => void;
+  onRemoveOption: (optionId: string) => void;
+  onSubOptionsChange?: () => void;
+}) {
   const [globalFilter, setGlobalFilter] = React.useState("");
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -937,9 +974,9 @@ function CompanyOptionsTable({ company, onAddOption, onRemoveOption }: { company
     setLocalRows(company.options ?? []);
   }, [company.id, company.options]);
 
-  const table = useReactTable<CareerEventOption>({
+  const table = useReactTable<CareerEventOptionWithCompanySubOptions>({
     data: localRows,
-    columns: getOptionColumns(onRemoveOption, company.id) as ColumnDef<CareerEventOption>[],
+    columns: getOptionColumns(onRemoveOption, company.id, onSubOptionsChange) as ColumnDef<CareerEventOptionWithCompanySubOptions>[],
     state: { globalFilter, columnFilters, columnVisibility, rowSelection, sorting },
     onGlobalFilterChange: setGlobalFilter,
     onColumnFiltersChange: setColumnFilters,
@@ -1069,9 +1106,148 @@ function stripHtml(html: string): string {
 }
 
 /** ------------------------------------------------------------------
+ * SubOptionsDialog - manage sub-options for a company's option
+ * ------------------------------------------------------------------ */
+function SubOptionsDialog({
+  companyId,
+  option,
+  companySubOptions,
+  availableSubOptions,
+  onUpdate,
+}: {
+  companyId: string;
+  option: CareerEventOptionWithCompanySubOptions;
+  companySubOptions: CareerSubOption[];
+  availableSubOptions: CareerSubOption[];
+  onUpdate?: () => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [allSubOptions, setAllSubOptions] = React.useState<CareerSubOption[]>([]);
+  const [loading, setLoading] = React.useState(false);
+
+  // If option has no sub_options defined, fetch all from career_sub_option
+  const subOptionsToShow = availableSubOptions.length > 0 ? availableSubOptions : allSubOptions;
+
+  React.useEffect(() => {
+    if (open && availableSubOptions.length === 0) {
+      setLoading(true);
+      import("@/lib/repos/option")
+        .then(({ listCareerSubOptions }) => listCareerSubOptions())
+        .then((opts) => {
+          setAllSubOptions(opts ?? []);
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [open, availableSubOptions.length]);
+
+  const companySubIds = new Set(companySubOptions.map((s) => s.id));
+  const canAdd = subOptionsToShow.filter((s) => !companySubIds.has(s.id));
+  const canRemove = companySubOptions;
+
+  const handleAdd = async (subOptionId: string) => {
+    try {
+      await addSubOptionToCompanyAction(companyId, option.id, subOptionId);
+      onUpdate?.();
+    } catch (e) {
+      console.error("Error adding sub-option:", e);
+    }
+  };
+
+  const handleRemove = async (subOptionId: string) => {
+    try {
+      await removeSubOptionFromCompanyAction(companyId, option.id, subOptionId);
+      onUpdate?.();
+    } catch (e) {
+      console.error("Error removing sub-option:", e);
+    }
+  };
+
+  const displayText = companySubOptions.length > 0
+    ? companySubOptions.map((s) => s.name).join(", ")
+    : "—";
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-8 text-left font-normal max-w-[200px] truncate">
+          {displayText}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Sub-options for {option.name}</DialogTitle>
+          <DialogDescription>
+            Add or remove sub-options for this company&apos;s {option.name} package.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          {loading ? (
+            <div className="text-sm text-muted-foreground">Loading sub-options...</div>
+          ) : subOptionsToShow.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No sub-options available for this option.</div>
+          ) : (
+            <>
+              <div>
+                <Label className="text-xs">Current sub-options</Label>
+                {canRemove.length > 0 ? (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {canRemove.map((s) => (
+                      <span
+                        key={s.id}
+                        className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-sm"
+                      >
+                        {s.name}
+                        <button
+                          type="button"
+                          onClick={() => handleRemove(s.id)}
+                          className="ml-1 rounded hover:bg-destructive/20"
+                          aria-label={`Remove ${s.name}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-sm text-muted-foreground">None selected</p>
+                )}
+              </div>
+              <div>
+                <Label className="text-xs">Add sub-option</Label>
+                {canAdd.length > 0 ? (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {canAdd.map((s) => (
+                      <Button
+                        key={s.id}
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => handleAdd(s.id)}
+                      >
+                        + {s.name}
+                      </Button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-sm text-muted-foreground">All sub-options already added</p>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** ------------------------------------------------------------------
  * Option columns definition
  * ------------------------------------------------------------------ */
-function getOptionColumns(onRemoveOption: (optionId: string) => void, companyId: string): ColumnDef<CareerEventOption>[] {
+function getOptionColumns(
+  onRemoveOption: (optionId: string) => void,
+  companyId: string,
+  onSubOptionsChange?: () => void
+): ColumnDef<CareerEventOptionWithCompanySubOptions>[] {
   return [
     {
       id: "select",
@@ -1111,6 +1287,24 @@ function getOptionColumns(onRemoveOption: (optionId: string) => void, companyId:
       accessorKey: "price",
       header: "Price",
       cell: ({ row }) => <div className="font-medium">{String(row.getValue("price") ?? "—")}</div>,
+    },
+    {
+      id: "sub_options",
+      header: "Sub-options",
+      cell: ({ row }) => {
+        const option = row.original;
+        const companySubs = option.companySubOptions ?? [];
+        const availableSubs = option.sub_options ?? [];
+        return (
+          <SubOptionsDialog
+            companyId={companyId}
+            option={option}
+            companySubOptions={companySubs}
+            availableSubOptions={availableSubs}
+            onUpdate={onSubOptionsChange}
+          />
+        );
+      },
     },
     {
       id: "event",
@@ -1319,7 +1513,9 @@ function OptionFormDialog({ company, onCreate }: {
 }) {
   const [open, setOpen] = React.useState(false);
   const [selectedOptionId, setSelectedOptionId] = React.useState<string>("");
+  const [selectedSubOptionIds, setSelectedSubOptionIds] = React.useState<Set<string>>(new Set());
   const [allOptions, setAllOptions] = React.useState<CareerEventOption[]>([]);
+  const [allSubOptions, setAllSubOptions] = React.useState<CareerSubOption[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [showDropdown, setShowDropdown] = React.useState(false);
@@ -1394,7 +1590,7 @@ function OptionFormDialog({ company, onCreate }: {
           });
         }
         
-        // Normalize options: ensure events array is properly structured
+        // Normalize options: ensure events array and sub_options are properly structured
         // In Directus many-to-many, events come as array of junction table entries
         return options.map((option: any) => {
           const normalized: CareerEventOption = {
@@ -1403,6 +1599,7 @@ function OptionFormDialog({ company, onCreate }: {
             description: option.description,
             price: option.price,
             events: [],
+            sub_options: option.sub_options ?? undefined,
           };
           
           // Handle events - could be in junction table format or direct
@@ -1580,12 +1777,19 @@ function OptionFormDialog({ company, onCreate }: {
     const selectedOption = allOptions.find(opt => opt.id === selectedOptionId);
     if (!selectedOption) return;
 
-    // Call server action to add option to company
-    addOptionToCompanyAction(company.id, selectedOptionId)
+    // Include default sub-options (automatic) + extra sub-options (user-selected)
+    const defaultIds = defaultSubOptionsForSelectedOption.map((s) => s.id);
+    const extraIds = Array.from(selectedSubOptionIds);
+    const subOptionIds = [...defaultIds, ...extraIds];
+    const subOptionIdsToPass = subOptionIds.length > 0 ? subOptionIds : undefined;
+
+    // Call server action to add option to company (with suboptions: default + extra)
+    addOptionToCompanyAction(company.id, selectedOptionId, subOptionIdsToPass)
       .then(() => {
         onCreate(selectedOption);
         setOpen(false);
         setSelectedOptionId("");
+        setSelectedSubOptionIds(new Set());
         setSearchQuery("");
         (e.target as HTMLFormElement).reset();
       })
@@ -1594,11 +1798,72 @@ function OptionFormDialog({ company, onCreate }: {
       });
   };
 
+  const toggleSubOption = (subOptionId: string) => {
+    setSelectedSubOptionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(subOptionId)) next.delete(subOptionId);
+      else next.add(subOptionId);
+      return next;
+    });
+  };
+
+  // Fetch all sub-options when dialog opens
+  React.useEffect(() => {
+    if (open) {
+      import("@/lib/repos/option")
+        .then(({ listCareerSubOptions }) => listCareerSubOptions({ limit: 200 }))
+        .then((opts) => setAllSubOptions(opts ?? []))
+        .catch((err) => {
+          console.error("Error loading sub-options:", err);
+          setAllSubOptions([]);
+        });
+    }
+  }, [open]);
+
+  // Reset suboptions when option changes
+  React.useEffect(() => {
+    setSelectedSubOptionIds(new Set());
+  }, [selectedOptionId]);
+
+  // Default sub-options (come automatically with the option - no need to ask)
+  const defaultSubOptionsForSelectedOption = React.useMemo(() => {
+    if (!selectedOptionId) return [];
+    const selectedOption = allOptions.find((o) => o.id === selectedOptionId);
+    const fromOption = (selectedOption as { sub_options?: unknown[]; career_sub_option?: unknown[] })?.sub_options
+      ?? (selectedOption as { sub_options?: unknown[]; career_sub_option?: unknown[] })?.career_sub_option;
+    if (!fromOption || !Array.isArray(fromOption) || fromOption.length === 0) return [];
+    const resolved: CareerSubOption[] = [];
+    for (const s of fromOption) {
+      if (typeof s === "string") {
+        const match = allSubOptions.find((a) => a.id === s) ?? { id: s, name: s, description: "", price: "", active: true };
+        resolved.push(match);
+      } else if (typeof s === "object" && s && "id" in s && "name" in s) {
+        resolved.push(s as CareerSubOption);
+      } else if (typeof s === "object" && s && "career_sub_option_id" in s) {
+        const ref = (s as { career_sub_option_id: CareerSubOption | string | null }).career_sub_option_id;
+        if (ref && typeof ref === "object" && "id" in ref) resolved.push(ref as CareerSubOption);
+        else if (typeof ref === "string") {
+          const match = allSubOptions.find((a) => a.id === ref) ?? { id: ref, name: ref, description: "", price: "", active: true };
+          resolved.push(match);
+        }
+      }
+    }
+    return resolved;
+  }, [selectedOptionId, allOptions, allSubOptions]);
+
+  // Extra sub-options (optional add-ons, not included with the option - show selector for these)
+  const extraSubOptionsForSelectedOption = React.useMemo(() => {
+    if (!selectedOptionId) return [];
+    const defaultIds = new Set(defaultSubOptionsForSelectedOption.map((s) => s.id));
+    return allSubOptions.filter((s) => !defaultIds.has(s.id));
+  }, [selectedOptionId, defaultSubOptionsForSelectedOption, allSubOptions]);
+
   // Reset search when dialog closes
   React.useEffect(() => {
     if (!open) {
       setSearchQuery("");
       setSelectedOptionId("");
+      setSelectedSubOptionIds(new Set());
       setShowDropdown(false);
     }
   }, [open]);
@@ -1702,6 +1967,38 @@ function OptionFormDialog({ company, onCreate }: {
               </div>
             )}
           </div>
+
+          {selectedOptionId && defaultSubOptionsForSelectedOption.length > 0 && (
+            <div className="w-full space-y-1">
+              <Label className="text-xs">Included with this option</Label>
+              <p className="text-xs text-muted-foreground">
+                {defaultSubOptionsForSelectedOption.map((s) => s.name).join(", ")}
+              </p>
+            </div>
+          )}
+
+          {selectedOptionId && extraSubOptionsForSelectedOption.length > 0 && (
+            <div className="w-full space-y-2">
+              <Label className="text-xs">Extra sub-options (optional)</Label>
+              <p className="text-xs text-muted-foreground">
+                Select additional sub-options to add with this option.
+              </p>
+              <div className="flex flex-wrap gap-3 rounded-md border p-3">
+                {extraSubOptionsForSelectedOption.map((sub) => (
+                  <div key={sub.id} className="flex items-center gap-2">
+                    <Checkbox
+                      id={`subopt-${sub.id}`}
+                      checked={selectedSubOptionIds.has(sub.id)}
+                      onCheckedChange={() => toggleSubOption(sub.id)}
+                    />
+                    <Label htmlFor={`subopt-${sub.id}`} className="font-normal text-sm cursor-pointer">
+                      {sub.name}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button type="submit" disabled={!selectedOptionId || loading || availableOptions.length === 0} className="w-full sm:w-auto">Add</Button>

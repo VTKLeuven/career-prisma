@@ -17,6 +17,7 @@ import { useParams } from "next/navigation"
 import { fetchEventPageBySlugAction, fetchEventsAction } from "@/app/actions/events"
 import { getDirectusImageUrl } from "@/components/Images";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
+import { hasCompanyPageAccess } from "@/lib/utils/company-access";
 import { CareerEventPage, Company, CareerEvent, HeaderButtonType } from '@/lib/schema'
 import dynamic from "next/dynamic"
 import HeroiconDynamic from "@/components/HeroiconDynamic"
@@ -1282,7 +1283,7 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
             ← Back
           </button>
 
-          {selectedCompany?.page_on_platform === true && selectedCompany?.status === "published" && (
+          {hasCompanyPageAccess(selectedCompany) && (
             <Link
               href={`/company/${slug}`}
               // (Optional) also stop bubbling on the link itself:

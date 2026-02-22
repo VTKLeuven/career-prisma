@@ -637,6 +637,26 @@ export async function createFormResponse(data: {
   }
 }
 
+export async function updateFormResponse(
+  id: string,
+  data: Partial<{
+    data: Record<string, unknown>;
+    submitter_first_name?: string;
+    submitter_last_name?: string;
+    submitter_email?: string;
+  }>
+) {
+  try {
+    const client = await getAuthedDirectusOrThrow();
+    return client.request(
+      updateItem("form_responses", id, data)
+    ) as unknown as FormResponse;
+  } catch (error) {
+    console.error("Error updating form response:", error);
+    throw error;
+  }
+}
+
 export async function deleteFormResponse(id: string) {
   try {
     const client = await getAuthedDirectusOrThrow();

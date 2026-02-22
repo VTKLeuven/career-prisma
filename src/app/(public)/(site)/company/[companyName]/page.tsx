@@ -9,6 +9,7 @@ import Link from "next/link";
 import { validateExistingPageImage } from "@/lib/utils/image-validation";
 import { Calendar } from "lucide-react";
 import { fetchCompanyBySlugAction } from "@/app/actions/companies";
+import { slugifyCompanyName } from "@/lib/utils/slugify";
 import { fetchEventsAction } from "@/app/actions/events";
 import { Button } from "@/components/ui/button";
 import {
@@ -71,9 +72,10 @@ export default function CompanyPage() {
       return;
     }
     
-    // Redirect if underscore found
-    if (companyName.includes("_")) {
-      router.replace(`/company/${companyName.replace(/_/g, "-")}`);
+    // Redirect to canonical slug if URL has special chars (+, _, etc.) so links work consistently
+    const canonicalSlug = slugifyCompanyName(companyName);
+    if (canonicalSlug && companyName !== canonicalSlug) {
+      router.replace(`/company/${canonicalSlug}`);
       return;
     }
 
@@ -81,8 +83,9 @@ export default function CompanyPage() {
       try {
         const fetched = await fetchCompanyBySlugAction(companyName ?? "");
         if (fetched) {
-          // Check if company has page_on_platform enabled and is published
-          if (!fetched?.page_on_platform || fetched?.status !== "published") {
+          // Check if company has access to company page (sub-option + page_on_platform + published)
+          const { hasCompanyPageAccess } = await import("@/lib/utils/company-access");
+          if (!hasCompanyPageAccess(fetched)) {
             setCompany(null);
             setLoading(false);
             return;

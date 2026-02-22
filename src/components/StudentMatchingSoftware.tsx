@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
+import { hasCompanyPageAccess } from "@/lib/utils/company-access";
 import { getDirectusImageUrl } from "@/components/Images";
 import { useRouter } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -233,7 +234,7 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
               {matchedCompanies.length > 0 ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   {matchedCompanies.map((c) => {
-                    const hasPage = c.page_on_platform === true && c.status === "published";
+                    const hasPage = hasCompanyPageAccess(c);
                     const logoUrl = c.logo ? getDirectusImageUrl(c.logo) : null;
                     const cardContent = (
                       <div className="rounded-lg bg-muted/50 p-4 text-center shadow-sm ring-1 ring-border/50 hover:shadow-md transition-shadow flex flex-col items-center justify-center min-h-[120px]">

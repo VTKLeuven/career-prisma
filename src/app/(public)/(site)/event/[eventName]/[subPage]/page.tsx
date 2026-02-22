@@ -9,6 +9,7 @@ import { fetchFloorplanAction, fetchMastersAction } from "@/app/actions/features
 import type { CareerEventPage, Booth, Master, Company } from '@/lib/schema'
 import { getDirectusImageUrl } from "@/components/Images"
 import { slugifyCompanyName } from "@/lib/utils/slugify"
+import { hasCompanyPageAccess } from "@/lib/utils/company-access"
 import { usePageLayout } from '../../../layout'
 import { Button } from "@/components/ui/button"
 import { Clock, ArrowLeft, Users } from "lucide-react"
@@ -1604,7 +1605,7 @@ function Popup({ company, onClose }: { company: Company; onClose: () => void }) 
           </div>
         )}
 
-        {company?.page_on_platform === true && company?.status === "published" && (
+        {hasCompanyPageAccess(company) && (
           <div className="mt-5 flex items-center justify-center gap-3">
             <Link
               href={`/company/${slugifyCompanyName(company.name)}`}

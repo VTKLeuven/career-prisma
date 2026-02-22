@@ -4,7 +4,7 @@ import * as React from "react";
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { fetchFormByIdAction, fetchFormVersionsAction, fetchFormResponsesAction, fetchFormResponsesTotalCountAction, fetchAllFormResponsesAction, fetchFirstFormResponseAction, fetchLatestFormResponseAction, deleteFormResponseAction, initializeAttendantUuidsAction, fetchFormResponsesForAllVersionsAction, fetchFormResponsesTotalCountForAllVersionsAction, fetchFirstFormResponseForAllVersionsAction, fetchLatestFormResponseForAllVersionsAction, fetchAllFormResponsesForAllVersionsAction } from "@/app/actions/forms";
+import { fetchFormByIdAction, fetchFormVersionsAction, fetchFormResponsesAction, fetchFormResponsesTotalCountAction, fetchAllFormResponsesAction, fetchFirstFormResponseAction, fetchLatestFormResponseAction, deleteFormResponseAction, updateFormResponseAction, initializeAttendantUuidsAction, fetchFormResponsesForAllVersionsAction, fetchFormResponsesTotalCountForAllVersionsAction, fetchFirstFormResponseForAllVersionsAction, fetchLatestFormResponseForAllVersionsAction, fetchAllFormResponsesForAllVersionsAction } from "@/app/actions/forms";
 import { fetchCompaniesForEventAction } from "@/app/actions/companies";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,7 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Download, Eye, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2, Mail, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowLeft, Download, Eye, Trash2, Pencil, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2, Mail, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import type { FormVersion, FormResponse } from "@/lib/schema";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 
@@ -56,6 +56,11 @@ export default function FormResponsesPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [responseToDelete, setResponseToDelete] = useState<FormResponse | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [responseToEdit, setResponseToEdit] = useState<FormResponse | null>(null);
+  const [editFormData, setEditFormData] = useState<Record<string, unknown>>({});
+  const [editSubmitterInfo, setEditSubmitterInfo] = useState<{ first_name: string; last_name: string; email: string }>({ first_name: "", last_name: "", email: "" });
+  const [editing, setEditing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [firstResponseDate, setFirstResponseDate] = useState<string | null>(null);
@@ -948,6 +953,72 @@ export default function FormResponsesPage() {
     }
   };
 
+  const handleEditClick = (response: FormResponse) => {
+    setResponseToEdit(response);
+    setEditFormData({ ...(response.data || {}) });
+    setEditSubmitterInfo({
+      first_name: response.submitter_first_name || "",
+      last_name: response.submitter_last_name || "",
+      email: response.submitter_email || "",
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleEditSave = async () => {
+    if (!responseToEdit) return;
+
+    setEditing(true);
+    try {
+      const updatePayload: {
+        data: Record<string, unknown>;
+        submitter_first_name?: string;
+        submitter_last_name?: string;
+        submitter_email?: string;
+      } = {
+        data: editFormData,
+      };
+
+      const responseVersion = isAllVersions
+        ? versions.find(v => {
+            const versionId = typeof responseToEdit.form_version_id === "string"
+              ? responseToEdit.form_version_id
+              : (responseToEdit.form_version_id as { id?: string })?.id;
+            return v.id === versionId;
+          })
+        : selectedVersion;
+      const isCompanyForm = responseVersion?.metadata?.is_company_form && responseVersion?.metadata?.event_id;
+
+      if (isCompanyForm) {
+        updatePayload.submitter_first_name = editSubmitterInfo.first_name || undefined;
+        updatePayload.submitter_last_name = editSubmitterInfo.last_name || undefined;
+        updatePayload.submitter_email = editSubmitterInfo.email || undefined;
+      }
+
+      await updateFormResponseAction(responseToEdit.id, updatePayload);
+
+      setResponses(responses.map(r =>
+        r.id === responseToEdit.id
+          ? {
+              ...r,
+              data: editFormData,
+              ...(isCompanyForm && {
+                submitter_first_name: editSubmitterInfo.first_name,
+                submitter_last_name: editSubmitterInfo.last_name,
+                submitter_email: editSubmitterInfo.email,
+              }),
+            }
+          : r
+      ));
+      setEditDialogOpen(false);
+      setResponseToEdit(null);
+    } catch (error) {
+      console.error("Error updating response:", error);
+      alert("Failed to update response. Please try again.");
+    } finally {
+      setEditing(false);
+    }
+  };
+
   const handleInitializeUuids = async () => {
     if (!form) return;
     
@@ -1490,14 +1561,25 @@ export default function FormResponsesPage() {
                                 ))
                             )}
                             <TableCell className="text-right">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDeleteClick(response)}
-                                className="text-destructive hover:text-destructive"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEditClick(response)}
+                                  title="Edit response"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteClick(response)}
+                                  className="text-destructive hover:text-destructive"
+                                  title="Delete response"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         );
@@ -1789,6 +1871,233 @@ export default function FormResponsesPage() {
                   <Mail className="h-4 w-4 mr-2" />
                   Send
                 </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Response Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={(open) => {
+        setEditDialogOpen(open);
+        if (!open) setResponseToEdit(null);
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Form Response</DialogTitle>
+            <DialogDescription>
+              Make adjustments to this form submission. Changes will be saved immediately when you click Save.
+            </DialogDescription>
+          </DialogHeader>
+          {responseToEdit && (() => {
+            const responseVersion = isAllVersions
+              ? versions.find(v => {
+                  const versionId = typeof responseToEdit.form_version_id === "string"
+                    ? responseToEdit.form_version_id
+                    : (responseToEdit.form_version_id as { id?: string })?.id;
+                  return v.id === versionId;
+                })
+              : selectedVersion;
+            const schemaFields = responseVersion?.schema?.fields ?? [];
+            const fields = schemaFields.length > 0
+              ? schemaFields
+              : allVersionsFields.map(f => ({ id: f.id, name: f.name, label: f.label, type: f.type, options: undefined as string[] | undefined, placeholder: undefined as string | undefined }));
+            const isCompanyForm = responseVersion?.metadata?.is_company_form && responseVersion?.metadata?.event_id;
+
+            return (
+              <div className="space-y-6 py-4">
+                {isCompanyForm && (
+                  <div className="space-y-4 p-4 rounded-lg border bg-muted/30">
+                    <h4 className="font-medium">Submitter Information</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-submitter-first">First Name</Label>
+                        <Input
+                          id="edit-submitter-first"
+                          value={editSubmitterInfo.first_name}
+                          onChange={(e) => setEditSubmitterInfo(prev => ({ ...prev, first_name: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-submitter-last">Last Name</Label>
+                        <Input
+                          id="edit-submitter-last"
+                          value={editSubmitterInfo.last_name}
+                          onChange={(e) => setEditSubmitterInfo(prev => ({ ...prev, last_name: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-2 md:col-span-1">
+                        <Label htmlFor="edit-submitter-email">Email</Label>
+                        <Input
+                          id="edit-submitter-email"
+                          type="email"
+                          value={editSubmitterInfo.email}
+                          onChange={(e) => setEditSubmitterInfo(prev => ({ ...prev, email: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  <h4 className="font-medium">Form Data</h4>
+                  {fields
+                    .filter(field => {
+                      if (responseVersion?.metadata?.is_event_registration && field.name === "email" && field.type === "email") {
+                        return false;
+                      }
+                      return true;
+                    })
+                    .map((field) => {
+                      const value = editFormData[field.name];
+                      const setValue = (v: unknown) => setEditFormData(prev => ({ ...prev, [field.name]: v }));
+
+                      if (field.type === "file") {
+                        return (
+                          <div key={field.id} className="space-y-2">
+                            <Label>{field.label || field.name}</Label>
+                            <div className="text-sm text-muted-foreground flex items-center gap-2">
+                              {value ? (
+                                <a
+                                  href={`/api/files/${typeof value === "string" ? value : (value as { id?: string })?.id || value}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:underline"
+                                >
+                                  View current file
+                                </a>
+                              ) : (
+                                <span className="italic">No file uploaded</span>
+                              )}
+                              <span className="text-xs">(File fields cannot be edited here)</span>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      if (field.type === "textarea") {
+                        return (
+                          <div key={field.id} className="space-y-2">
+                            <Label htmlFor={`edit-${field.name}`}>{field.label || field.name}</Label>
+                            <Textarea
+                              id={`edit-${field.name}`}
+                              value={typeof value === "string" ? value : Array.isArray(value) ? value.join("\n") : String(value ?? "")}
+                              onChange={(e) => setValue(e.target.value)}
+                              placeholder={field.placeholder}
+                              rows={4}
+                            />
+                          </div>
+                        );
+                      }
+
+                      if (field.type === "checkbox") {
+                        const options = field.options ?? [];
+                        if (options.length > 0) {
+                          const val = value;
+                          const isArray = Array.isArray(val);
+                          const selected = isArray ? (val as string[]) : val ? [String(val)] : [];
+                          return (
+                            <div key={field.id} className="space-y-2">
+                              <Label>{field.label || field.name}</Label>
+                              <div className="flex flex-wrap gap-4">
+                                {options.map((opt) => (
+                                  <div key={opt} className="flex items-center gap-2">
+                                    <Checkbox
+                                      id={`edit-${field.name}-${opt}`}
+                                      checked={selected.includes(opt)}
+                                      onCheckedChange={(checked) => {
+                                        const newSelected = checked
+                                          ? [...selected, opt]
+                                          : selected.filter(s => s !== opt);
+                                        setValue((field as { multiple?: boolean }).multiple ? newSelected : newSelected[0]);
+                                      }}
+                                    />
+                                    <Label htmlFor={`edit-${field.name}-${opt}`} className="font-normal">{opt}</Label>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div key={field.id} className="flex items-center gap-2">
+                            <Checkbox
+                              id={`edit-${field.name}`}
+                              checked={value === true || value === "true" || value === "yes"}
+                              onCheckedChange={(checked) => setValue(!!checked)}
+                            />
+                            <Label htmlFor={`edit-${field.name}`} className="font-normal">{field.label || field.name}</Label>
+                          </div>
+                        );
+                      }
+
+                      if ((field.type === "select" || field.type === "radio") && (field.options?.length ?? 0) > 0) {
+                        const options = field.options ?? [];
+                        const val = String(value ?? "");
+                        return (
+                          <div key={field.id} className="space-y-2">
+                            <Label htmlFor={`edit-${field.name}`}>{field.label || field.name}</Label>
+                            <Select value={val} onValueChange={setValue}>
+                              <SelectTrigger id={`edit-${field.name}`}>
+                                <SelectValue placeholder={`Select ${field.label || field.name}`} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="">(Empty)</SelectItem>
+                                {options.map((opt) => (
+                                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
+                      }
+
+                      const inputType = field.type === "email"
+                        ? "email"
+                        : field.type === "number"
+                        ? "number"
+                        : field.type === "date" || field.type === "date-range"
+                        ? "date"
+                        : field.type === "time"
+                        ? "time"
+                        : "text";
+                      const displayValue = typeof value === "string" || typeof value === "number"
+                        ? String(value)
+                        : Array.isArray(value)
+                        ? value.join(", ")
+                        : value != null ? String(value) : "";
+                      return (
+                        <div key={field.id} className="space-y-2">
+                          <Label htmlFor={`edit-${field.name}`}>{field.label || field.name}</Label>
+                          <Input
+                            id={`edit-${field.name}`}
+                            type={inputType}
+                            value={displayValue}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setValue(field.type === "number" ? (v === "" ? undefined : Number(v)) : v);
+                            }}
+                            placeholder={field.placeholder}
+                          />
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            );
+          })()}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={editing}>
+              Cancel
+            </Button>
+            <Button onClick={handleEditSave} disabled={editing}>
+              {editing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Changes"
               )}
             </Button>
           </DialogFooter>
