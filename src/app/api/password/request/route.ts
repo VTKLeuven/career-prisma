@@ -3,7 +3,8 @@
 // It generates the reset token manually and sends the email via our SMTP service
 import { NextRequest, NextResponse } from "next/server";
 import { sendEmail } from "@/lib/repos/directus";
-import { generatePasswordResetEmailHtml } from "@/lib/email-templates";
+import { generatePasswordResetEmailHtml, generateInvitationEmailHtml } from "@/lib/email-templates";
+import { generateInviteTokenServer } from "@/lib/invite-token";
 
 export async function POST(request: NextRequest) {
   try {
@@ -80,62 +81,90 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Generate secure random token using crypto
-      // Using hex encoding which is simpler and more compatible
-      const crypto = await import("crypto");
-      const randomToken = crypto.randomBytes(32).toString("hex");
-      
-      // Store the token in the user's password_reset_token field
-      // Directus expects this field to contain the reset token
-      const updateRes = await fetch(
-        `${normalizedBase}users/${user.id}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Authorization": `Bearer ${serverToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            password_reset_token: randomToken,
-          }),
-        }
-      );
-
-      if (!updateRes.ok) {
-        const errorData = await updateRes.json().catch(() => null);
-        console.error(`[password/request] Failed to set reset token for user ${user.id}:`, errorData);
-        // Still return success for security
-        return NextResponse.json({ 
-          success: true, 
-          message: "If an account with that email exists, a password reset link has been sent." 
-        });
-      }
-
-      // Generate the reset URL
       const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
         || process.env.NEXT_PUBLIC_FORM_DOMAIN 
         || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
-      
-      const resetUrl = `${frontendBaseUrl}/reset-password?token=${encodeURIComponent(randomToken)}`;
-      
-      // Send email using our own service
-      try {
-        const emailHtml = generatePasswordResetEmailHtml({
-          firstName: user.first_name || undefined,
-          lastName: user.last_name || undefined,
-          resetUrl,
-        });
 
-        await sendEmail({
-          to: user.email,
-          subject: "Reset Your Password - VTK Career Platform",
-          html: emailHtml,
-        });
+      const isInvited = user.status === "invited";
+
+      if (isInvited) {
+        // Invited users: use full activation flow (accept-invite) so they can fill in company info first
+        const tokenData = await generateInviteTokenServer(user.id);
+        if (!tokenData) {
+          console.error(`[password/request] Failed to generate invite token for invited user ${user.id}`);
+          return NextResponse.json({ 
+            success: true, 
+            message: "If an account with that email exists, a password reset link has been sent." 
+          });
+        }
+
+        const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(tokenData.token)}`;
+
+        try {
+          const emailHtml = generateInvitationEmailHtml({
+            firstName: user.first_name || undefined,
+            lastName: user.last_name || undefined,
+            acceptInviteUrl,
+            companyName: undefined,
+          });
+
+          await sendEmail({
+            to: user.email,
+            subject: "Set Up Your Account - VTK Career Platform",
+            html: emailHtml,
+          });
+          
+          console.log(`[password/request] Activation email sent to ${user.email} (invited user)`);
+        } catch (emailError) {
+          console.error(`[password/request] Error sending activation email:`, emailError);
+        }
+      } else {
+        // Active users: use reset-password flow
+        const crypto = await import("crypto");
+        const randomToken = crypto.randomBytes(32).toString("hex");
         
-        console.log(`[password/request] Password reset email sent to ${user.email}`);
-      } catch (emailError) {
-        console.error(`[password/request] Error sending password reset email:`, emailError);
-        // Don't reveal email sending failure to user
+        const updateRes = await fetch(
+          `${normalizedBase}users/${user.id}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Authorization": `Bearer ${serverToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              password_reset_token: randomToken,
+            }),
+          }
+        );
+
+        if (!updateRes.ok) {
+          const errorData = await updateRes.json().catch(() => null);
+          console.error(`[password/request] Failed to set reset token for user ${user.id}:`, errorData);
+          return NextResponse.json({ 
+            success: true, 
+            message: "If an account with that email exists, a password reset link has been sent." 
+          });
+        }
+
+        const resetUrl = `${frontendBaseUrl}/reset-password?token=${encodeURIComponent(randomToken)}`;
+
+        try {
+          const emailHtml = generatePasswordResetEmailHtml({
+            firstName: user.first_name || undefined,
+            lastName: user.last_name || undefined,
+            resetUrl,
+          });
+
+          await sendEmail({
+            to: user.email,
+            subject: "Reset Your Password - VTK Career Platform",
+            html: emailHtml,
+          });
+          
+          console.log(`[password/request] Password reset email sent to ${user.email}`);
+        } catch (emailError) {
+          console.error(`[password/request] Error sending password reset email:`, emailError);
+        }
       }
 
       // Always return success (security best practice - don't reveal if email exists)
