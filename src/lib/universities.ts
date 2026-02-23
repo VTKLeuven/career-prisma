@@ -3,6 +3,7 @@
 
 export const UNIVERSITIES = [
   // Belgium
+  "KU Leuven (KUL)",
   "Universiteit Gent (UGent)",
   "Universiteit Antwerpen (UAntwerpen)",
   "Vrije Universiteit Brussel (VUB)",
