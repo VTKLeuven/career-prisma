@@ -1,7 +1,8 @@
 // app/api/forgot-password/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { sendEmail } from "@/lib/repos/directus";
-import { generatePasswordResetEmailHtml } from "@/lib/email-templates";
+import { generatePasswordResetEmailHtml, generateInvitationEmailHtml } from "@/lib/email-templates";
+import { generateInviteTokenServer } from "@/lib/invite-token";
 
 export async function POST(request: NextRequest) {
   try {
@@ -78,90 +79,94 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Generate secure random token using crypto
-      // Using hex encoding which is simpler and more compatible
-      const crypto = await import("crypto");
-      const randomToken = crypto.randomBytes(32).toString("hex");
-      
-      console.log(`[forgot-password] Generated reset token for user ${user.id}, length: ${randomToken.length}`);
-      
-      // Store the token in the user's password_reset_token field
-      // Directus expects this field to contain the reset token
-      const updateRes = await fetch(
-        `${normalizedBase}users/${user.id}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Authorization": `Bearer ${serverToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            password_reset_token: randomToken,
-          }),
-        }
-      );
-
-      if (!updateRes.ok) {
-        const errorData = await updateRes.json().catch(() => null);
-        console.error(`[forgot-password] Failed to set reset token for user ${user.id}:`, errorData);
-        // Still return success for security
-        return NextResponse.json({ 
-          success: true, 
-          message: "If an account with that email exists, a password reset link has been sent." 
-        });
-      }
-
-      // Verify the token was stored correctly by fetching it back
-      const verifyRes = await fetch(
-        `${normalizedBase}users/${user.id}?fields=password_reset_token`,
-        {
-          headers: {
-            "Authorization": `Bearer ${serverToken}`,
-          },
-        }
-      );
-
-      if (verifyRes.ok) {
-        const verifyData = await verifyRes.json();
-        const storedToken = verifyData.data?.password_reset_token;
-        if (storedToken === randomToken) {
-          console.log(`[forgot-password] Token verified - stored correctly for user ${user.id}`);
-        } else {
-          console.warn(`[forgot-password] Token mismatch! Generated: ${randomToken.substring(0, 20)}..., Stored: ${storedToken?.substring(0, 20)}...`);
-        }
-      }
-
-      // Generate the reset URL
-      // base64url encoding is already URL-safe, so we can use it directly
-      // However, we'll still encode it to be safe with any edge cases
       const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
         || process.env.NEXT_PUBLIC_FORM_DOMAIN 
         || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
-      
-      // Use the token directly since base64url is URL-safe, but encodeURIComponent is also safe
-      const resetUrl = `${frontendBaseUrl}/reset-password?token=${encodeURIComponent(randomToken)}`;
-      
-      console.log(`[forgot-password] Reset URL generated for user ${user.id}`);
-      console.log(`[forgot-password] Token in URL (first 30 chars): ${randomToken.substring(0, 30)}...`);
-      
-      // Send email using our own service
-      try {
-        const emailHtml = generatePasswordResetEmailHtml({
-          firstName: user.first_name || undefined,
-          lastName: user.last_name || undefined,
-          resetUrl,
-        });
 
-        await sendEmail({
-          to: user.email,
-          subject: "Reset Your Password - VTK Career Platform",
-          html: emailHtml,
-        });
+      const isInvited = user.status === "invited";
+
+      if (isInvited) {
+        // Invited users: use full activation flow (accept-invite) so they can fill in company info first
+        const tokenData = await generateInviteTokenServer(user.id);
+        if (!tokenData) {
+          console.error(`[forgot-password] Failed to generate invite token for invited user ${user.id}`);
+          return NextResponse.json({ 
+            success: true, 
+            message: "If an account with that email exists, a password reset link has been sent." 
+          });
+        }
+
+        const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(tokenData.token)}`;
+
+        try {
+          const emailHtml = generateInvitationEmailHtml({
+            firstName: user.first_name || undefined,
+            lastName: user.last_name || undefined,
+            acceptInviteUrl,
+            companyName: undefined,
+          });
+
+          await sendEmail({
+            to: user.email,
+            subject: "Set Up Your Account - VTK Career Platform",
+            html: emailHtml,
+          });
+          
+          console.log(`[forgot-password] Activation email sent to ${user.email} (invited user)`);
+        } catch (emailError) {
+          console.error(`[forgot-password] Error sending activation email:`, emailError);
+        }
+      } else {
+        // Active users: use reset-password flow
+        const crypto = await import("crypto");
+        const randomToken = crypto.randomBytes(32).toString("hex");
         
-        console.log(`[forgot-password] Password reset email sent to ${user.email}`);
-      } catch (emailError) {
-        console.error(`[forgot-password] Error sending password reset email:`, emailError);
-        // Don't reveal email sending failure to user
+        console.log(`[forgot-password] Generated reset token for user ${user.id}, length: ${randomToken.length}`);
+        
+        const updateRes = await fetch(
+          `${normalizedBase}users/${user.id}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Authorization": `Bearer ${serverToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              password_reset_token: randomToken,
+            }),
+          }
+        );
+
+        if (!updateRes.ok) {
+          const errorData = await updateRes.json().catch(() => null);
+          console.error(`[forgot-password] Failed to set reset token for user ${user.id}:`, errorData);
+          return NextResponse.json({ 
+            success: true, 
+            message: "If an account with that email exists, a password reset link has been sent." 
+          });
+        }
+
+        const resetUrl = `${frontendBaseUrl}/reset-password?token=${encodeURIComponent(randomToken)}`;
+        
+        console.log(`[forgot-password] Reset URL generated for user ${user.id}`);
+        
+        try {
+          const emailHtml = generatePasswordResetEmailHtml({
+            firstName: user.first_name || undefined,
+            lastName: user.last_name || undefined,
+            resetUrl,
+          });
+
+          await sendEmail({
+            to: user.email,
+            subject: "Reset Your Password - VTK Career Platform",
+            html: emailHtml,
+          });
+          
+          console.log(`[forgot-password] Password reset email sent to ${user.email}`);
+        } catch (emailError) {
+          console.error(`[forgot-password] Error sending password reset email:`, emailError);
+        }
       }
 
       // Always return success (security best practice - don't reveal if email exists)
