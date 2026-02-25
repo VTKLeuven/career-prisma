@@ -36,7 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Download, Eye, Trash2, Pencil, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2, Mail, ArrowUpDown, ArrowUp, ArrowDown, Check, X } from "lucide-react";
+import { ArrowLeft, Download, Eye, Trash2, Pencil, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2, Mail, ArrowUpDown, ArrowUp, ArrowDown, Check, X, FileArchive } from "lucide-react";
 import type { FormVersion, FormResponse, FormField } from "@/lib/schema";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 import { FormFieldRenderer } from "@/components/FormFieldRenderer";
@@ -96,6 +96,7 @@ export default function FormResponsesPage() {
     }>;
   }>>([]);
   const [loadingRecipients, setLoadingRecipients] = useState(false);
+  const [downloadingAllFiles, setDownloadingAllFiles] = useState(false);
   const pageSize = 25; // Constant page size
 
   const loadFormData = useCallback(async () => {
@@ -925,6 +926,34 @@ export default function FormResponsesPage() {
     window.URL.revokeObjectURL(url);
   };
 
+  const handleDownloadAllFiles = async () => {
+    if (!formId) return;
+    setDownloadingAllFiles(true);
+    try {
+      const res = await fetch(`/api/admin/forms/${formId}/download-all-files`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || err.message || "Download failed");
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${form?.slug ?? formId}-all-files.zip`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error downloading all files:", error);
+      alert(`Failed to download files: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setDownloadingAllFiles(false);
+    }
+  };
+
+  const hasFileFields = versions.some((v) =>
+    v.schema?.fields?.some((f) => f.type === "file")
+  );
+
   const handleDeleteClick = (response: FormResponse) => {
     setResponseToDelete(response);
     setDeleteDialogOpen(true);
@@ -1212,6 +1241,25 @@ export default function FormResponsesPage() {
                 >
                   <Mail className="h-4 w-4 mr-2" />
                   Send Reminders
+                </Button>
+              )}
+              {hasFileFields && (
+                <Button
+                  variant="outline"
+                  onClick={handleDownloadAllFiles}
+                  disabled={downloadingAllFiles || (viewMode === "submissions" && totalCount === 0)}
+                >
+                  {downloadingAllFiles ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Downloading...
+                    </>
+                  ) : (
+                    <>
+                      <FileArchive className="h-4 w-4 mr-2" />
+                      Download all files
+                    </>
+                  )}
                 </Button>
               )}
               <Button
