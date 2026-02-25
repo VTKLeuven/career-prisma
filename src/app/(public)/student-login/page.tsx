@@ -130,22 +130,22 @@ export default function StudentLoginPage() {
 
             <div className="space-y-6">
               {/* KU Leuven Student Option */}
-              <div className="border-2 border-vtk-blue rounded-lg p-6 bg-vtk-light/30">
+              <div className="border-2 border-vtk-yellow rounded-lg p-6 bg-vtk-yellow/10 hover:bg-vtk-yellow/15 transition-colors">
                 <div className="flex flex-col gap-3">
                   <div>
                     <h2 className="text-lg font-semibold text-foreground mb-1">
-                      KU Leuven Student
+                      Engineering Science Students
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      Login with your KU Leuven authenticator account
+                      Sign in using your VTK account
                     </p>
                   </div>
                   <Button
                     type="button"
-                    className="w-full bg-vtk-blue hover:bg-vtk-blueDark cursor-pointer"
+                    className="w-full bg-vtk-yellow text-black hover:bg-vtk-yellow/90 shadow-sm transition-colors cursor-pointer"
                     onClick={handleOAuthLogin}
                   >
-                    Login with KU Leuven Authenticator
+                    Login with your VTK account
                   </Button>
                 </div>
               </div>
