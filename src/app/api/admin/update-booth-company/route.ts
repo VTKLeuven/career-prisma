@@ -37,7 +37,7 @@ export async function POST(req: Request) {
       }
 
       const currentBooth = await client.request(
-        readItems("booths", {
+        readItems("booths" as any, {
           fields: ["*", { Floorplan: ["id"] }],
           filter: {
             id: {

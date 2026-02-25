@@ -384,19 +384,8 @@ export type CompanyUserRequest = {
 
 // Optional: Full Directus Schema map (only collections you use)
 export type Schema = {
-  directus_users: CompanyRep;
-  company: Company; // collection key should match your collection name
-  booths: Booth;
-  forms: Form;
-  form_versions: FormVersion;
-  form_responses: FormResponse;
-  students: Student;
-  drinks: Drink;
-  orders: Order;
-  zones: Zone;
-  site_users: DirectusUser; // Assuming specific collection for app users if not directus_users, but usually directus_users.
   directus_users: DirectusUser[];
-  company: Company[]; // collection key should match your collection name
+  company: Company[];
   booths: Booth[];
   forms: Form[];
   form_versions: FormVersion[];
@@ -410,8 +399,6 @@ export type Schema = {
   career_event_page: CareerEventPage[];
   attendant_scans: AttendantScan[];
   zones_Booths: { id: number | string; zones_id: string | Zone; Booths_id: string | Booth }[];
-  site_users: DirectusUser[]; // Assuming specific collection for app users if not directus_users, but usually directus_users.
-  // If "shifters" are system users, they are in directus_users.
   academic_year: AcademicYear[];
   cv_book: CVBook[];
   career_event: CareerEvent[];

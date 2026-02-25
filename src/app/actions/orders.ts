@@ -74,7 +74,7 @@ export async function pickUpOrderAction(orderId: string) {
         updateData.shifter = userId;
     }
 
-    await client.request(updateItem("orders", orderId, updateData));
+    await client.request(updateItem("orders" as any, orderId, updateData));
 
     revalidatePath("/dashboard/shifter");
     try {
@@ -102,7 +102,7 @@ export async function finishOrderAction(orderId: string) {
     const client = getAdminDirectusClient();
     if (!client) return { success: false, error: "Server configuration error" };
 
-    await client.request(updateItem("orders", orderId, {
+    await client.request(updateItem("orders" as any, orderId, {
         status: "finished",
     }));
 
@@ -154,7 +154,7 @@ export async function deleteOrderAction(orderId: string) {
     if (!client) return { success: false, error: "Server configuration error" };
 
     try {
-        await client.request(deleteItem("orders", orderId));
+        await client.request(deleteItem("orders" as any, orderId));
         revalidatePath("/dashboard/shifter");
         return { success: true };
     } catch (error) {

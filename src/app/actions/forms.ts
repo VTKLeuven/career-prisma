@@ -400,8 +400,9 @@ export async function submitFormResponseAction(data: {
     const serverClient = await getServerDirectusClient();
     const { readItem } = await import("@directus/sdk");
 
+    const formVersionsColl = "form_versions" as const;
     const formVersion = await serverClient.request(
-      readItem("form_versions", data.form_version_id, {
+      readItem(formVersionsColl as any, data.form_version_id, {
         fields: ["*", { form_id: ["*"] } as any],
       })
     ) as unknown as FormVersion;
@@ -446,7 +447,7 @@ export async function submitFormResponseAction(data: {
         // Count using server client - reuse the same client we used to fetch metadata
         const { readItems } = await import("@directus/sdk");
         const responses = await serverClient.request(
-          readItems("form_responses", {
+          readItems("form_responses" as any, {
             fields: ["id"],
             filter: { form_version_id: { _eq: data.form_version_id } },
             limit: -1, // Get all to count
@@ -570,7 +571,7 @@ export async function submitFormResponseAction(data: {
         ...(data.submitter_email || _submitter_email ? { submitter_email: (data.submitter_email || _submitter_email) as string } : {}),
       };
       response = await serverClient.request(
-        createItem("form_responses", responseData)
+        createItem("form_responses" as any, responseData)
       ) as unknown as FormResponse;
     } catch (error) {
       console.error('[submitFormResponseAction] Error creating form response:', error);
@@ -612,7 +613,7 @@ export async function submitFormResponseAction(data: {
         const formId = typeof formVersion.form_id === 'string' ? formVersion.form_id : formVersion.form_id.id;
         try {
           const form = await serverClient.request(
-            readItem("forms", formId, {
+            readItem("forms" as any, formId, {
               fields: ["name"],
             })
           ) as unknown as { name: string };
@@ -650,7 +651,7 @@ export async function submitFormResponseAction(data: {
         const formId = typeof formVersion.form_id === 'string' ? formVersion.form_id : formVersion.form_id.id;
         try {
           const form = await serverClient.request(
-            readItem("forms", formId, {
+            readItem("forms" as any, formId, {
               fields: ["name"],
             })
           ) as unknown as { name: string };
@@ -674,7 +675,7 @@ export async function submitFormResponseAction(data: {
 
           if (companyId) {
             const company = await serverClient.request(
-              readItem("company", companyId, { fields: ["name"] })
+              readItem("company" as any, companyId, { fields: ["name"] })
             ) as unknown as { name: string } | null;
             if (company?.name) {
               companyName = company.name;
@@ -1108,7 +1109,7 @@ export async function fetchPublicFormBySlugAction(slug: string) {
         if (versionIds.length === 0 && form.id) {
           const serverClient = await getServerDirectusClient();
           const versions = await serverClient.request(
-            readItems("form_versions", {
+            readItems("form_versions" as any, {
               fields: ["id"],
               filter: { form_id: { _eq: form.id } },
             })
@@ -1142,7 +1143,7 @@ export async function fetchPublicFormBySlugAction(slug: string) {
 
         const { readItems } = await import("@directus/sdk");
         const responses = await serverClient.request(
-          readItems("form_responses", {
+          readItems("form_responses" as any, {
             fields: ["id"],
             filter: { form_version_id: { _eq: activeVersion.id } },
             limit: -1, // Get all to count

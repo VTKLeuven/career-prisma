@@ -224,7 +224,7 @@ export async function fetchCompanyOptionsDebugAction(companyId: string): Promise
         for (const jn of toTry) {
           if (junctionDiscovery[jn] !== undefined) continue;
           try {
-            const r = await client.request((await import("@directus/sdk")).readItem(jn, ids[0], { fields: ["*"] })) as unknown;
+            const r = await client.request((await import("@directus/sdk")).readItem(jn as any, ids[0], { fields: ["*"] })) as unknown;
             junctionDiscovery[jn] = r;
           } catch (e) {
             junctionDiscovery[jn] = (e as Error).message;

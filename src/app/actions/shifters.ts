@@ -21,7 +21,7 @@ export async function listAllUsersAction(search?: string) {
             query.filter = { is_shifter: { _eq: true } };
         }
 
-        const students = await client.request(readItems('students', query)) as any[];
+        const students = await client.request(readItems('students' as any, query)) as any[];
 
         return students;
     } catch (error) {
@@ -35,7 +35,7 @@ export async function toggleShifterStatusAction(userId: string, isShifter: boole
         const client = await getAdminDirectusClient();
         if (!client) throw new Error("No admin client available");
 
-        await client.request(updateItem('students', userId, {
+        await client.request(updateItem('students' as any, userId, {
             is_shifter: isShifter,
         } as any));
 

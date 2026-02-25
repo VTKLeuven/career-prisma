@@ -29,7 +29,7 @@ export async function listOrders(opts?: {
         const client = getAdminDirectusClient() || directus; // Orders might be sensitive? Use Admin or Authed
 
         return client.request(
-            readItems("orders", {
+            readItems("orders" as any, {
                 fields: ["*", "booth.*" as any, "booth.company.*" as any, "booth.zone.*" as any, "shifter.*" as any],
                 filter,
                 sort: ["-date_created"] as any, // Newest first
@@ -45,12 +45,12 @@ export async function createOrder(data: Partial<Order>) {
     // Use admin client to bypass public permission restrictions
     // This allows booth visitors (unauthenticated users) to place orders via the QR code
     const client = getAdminDirectusClient() || directus;
-    return client.request(createItem("orders", data)) as Promise<Order>;
+    return client.request(createItem("orders" as any, data)) as Promise<Order>;
 }
 
 export async function updateOrder(id: string, data: Partial<Order>) {
     const client = await getAuthedDirectusOrThrow();
-    return client.request(updateItem("orders", id, data)) as Promise<Order>;
+    return client.request(updateItem("orders" as any, id, data)) as Promise<Order>;
 }
 
 export async function getActiveOrderForBooth(boothId: string) {
@@ -58,7 +58,7 @@ export async function getActiveOrderForBooth(boothId: string) {
     const client = getAdminDirectusClient() || directus;
     const boothIdInt = parseInt(boothId, 10);
     const orders = await client.request(
-        readItems("orders", {
+        readItems("orders" as any, {
             filter: {
                 booth: { _eq: boothIdInt },
                 status: { _in: ["pending", "preparing"] }

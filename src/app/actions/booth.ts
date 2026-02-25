@@ -48,7 +48,7 @@ export async function cancelOrderAction(boothId: string, orderId: string) {
         const client = getAdminDirectusClient();
         if (!client) return { success: false, error: "Server configuration error" };
 
-        const order = await client.request(readItem("orders", orderId)) as any;
+        const order = await client.request(readItem("orders" as any, orderId)) as any;
         if (!order) return { success: false, error: "Order not found" };
 
         const orderBoothId = typeof order.booth === "object" ? order.booth?.id : order.booth;
@@ -60,7 +60,7 @@ export async function cancelOrderAction(boothId: string, orderId: string) {
             return { success: false, error: "Only pending orders can be cancelled" };
         }
 
-        await client.request(deleteItem("orders", orderId));
+        await client.request(deleteItem("orders" as any, orderId));
         revalidatePath(`/booth/${boothId}`);
         return { success: true };
     } catch (error) {

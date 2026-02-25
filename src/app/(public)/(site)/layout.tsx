@@ -11,7 +11,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User } from 'lucide-react'
 import { ChevronDown, LogOut, User, Bell } from 'lucide-react'
 import { useRouter, usePathname } from 'next/navigation'
 import { fetchEventsAction } from "@/app/actions/events";

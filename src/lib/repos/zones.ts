@@ -21,7 +21,7 @@ export async function listZones() {
         }
 
         const zones = await client.request(
-            readItems("zones", {
+            readItems("zones" as any, {
                 fields: [
                     "*",
                     "booths.*" as any,
@@ -64,7 +64,7 @@ export async function createZone(data: Partial<Zone>) {
         // Separate booths to isolate permission errors
         const { booths, ...zoneData } = data;
 
-        const zone = await client.request(createItem("zones", zoneData)) as Zone;
+        const zone = await client.request(createItem("zones" as any, zoneData)) as Zone;
 
         if (booths && Array.isArray(booths) && booths.length > 0) {
             // Strategy: Direct Junction Table Creation
@@ -124,7 +124,7 @@ export async function updateZone(id: string, data: Partial<Zone>) {
     const { booths, ...zoneData } = data;
 
     // 1. Update Core Zone Data
-    const updatedZone = await client.request(updateItem("zones", id, zoneData)) as Zone;
+    const updatedZone = await client.request(updateItem("zones" as any, id, zoneData)) as Zone;
 
     // 2. Sync Booths (if provided)
     if (booths && Array.isArray(booths)) {
@@ -177,5 +177,5 @@ export async function deleteZone(id: string) {
 
     if (!client) throw new Error("Unauthorized");
 
-    return client.request(deleteItem("zones", id));
+    return client.request(deleteItem("zones" as any, id));
 }

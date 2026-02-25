@@ -22,7 +22,7 @@ export async function listCompanies(opts?: {
     if (!client) return null;
 
     return client.request(
-      readItems("company", {
+      readItems("company" as any, {
         fields: [
           "*",
           "representatives.*",
@@ -70,7 +70,7 @@ export async function getCompanyById(id: string, usePublic = false, retries = 2,
       if (!client) return null;
 
       return await client.request(
-        readItem("company", id, {
+        readItem("company" as any, id, {
           fields: [
             "*",
             "page_image",
@@ -128,14 +128,14 @@ export async function createCompany(payload: Partial<Company>) {
   const directus = await getDirectusWithToken();
   if (!directus) return null;
 
-  return directus.request(createItem("company", payload));
+  return directus.request(createItem("company" as any, payload));
 }
 
 export async function updateCompany(id: string, payload: Partial<Company>) {
   const directus = await getDirectusWithToken();
   if (!directus) return null;
 
-  return directus.request(updateItem("company", id, payload));
+  return directus.request(updateItem("company" as any, id, payload));
 }
 
 /**
@@ -190,7 +190,7 @@ export async function getCompaniesForEvent(eventId: string, usePublic = false) {
         ];
 
     const companies = await client.request(
-      readItems("company", {
+      readItems("company" as any, {
         fields,
         limit: -1,
       })

@@ -44,7 +44,7 @@ export async function POST(
 
     // Get form version details
     const formVersion = await client.request(
-      readItem("form_versions", formVersionId, {
+      readItem("form_versions" as any, formVersionId, {
         fields: ["*", { form_id: ["id", "name", "slug"] }, "metadata"],
       })
     ) as any;
@@ -71,7 +71,7 @@ export async function POST(
     // Get company details for placeholders
     const companyIds = [...new Set(recipients.map((r: any) => r.companyId))];
     const companies = await client.request(
-      readItems("company", {
+      readItems("company" as any, {
         fields: ["id", "name"],
         filter: {
           id: { _in: companyIds },
@@ -85,7 +85,7 @@ export async function POST(
     // Get representative details
     const repIds = recipients.map((r: any) => r.repId);
     const representatives = await client.request(
-      readItems("directus_users", {
+      readItems("directus_users" as any, {
         fields: ["id", "first_name", "last_name", "email"] as any,
         filter: {
           id: { _in: repIds },

@@ -18,7 +18,7 @@ export async function listForms(opts?: {
     const { search, limit = 25, page = 1, sort = "-created_at" } = opts ?? {};
 
     const result = await client.request(
-      readItems("forms", {
+      readItems("forms" as any, {
         fields: ["*", { form_versions: ["*"] } as any],
         limit,
         page,
@@ -46,7 +46,7 @@ export async function getFormById(id: string) {
     }
 
     return client.request(
-      readItem("forms", id, {
+      readItem("forms" as any, id, {
         fields: ["*", { form_versions: ["*"] } as any],
       })
     ) as unknown as Form;
@@ -68,7 +68,7 @@ export async function getFormBySlug(slug: string) {
     }
 
     const forms = await client.request(
-      readItems("forms", {
+      readItems("forms" as any, {
         fields: ["*", { form_versions: ["*"] } as any],
         filter: { slug: { _eq: slug } },
         limit: 1,
@@ -86,7 +86,7 @@ export async function getPublicFormBySlug(slug: string) {
   try {
     // Always use public client for public form access
     const forms = await directus.request(
-      readItems("forms", {
+      readItems("forms" as any, {
         fields: ["*", { form_versions: ["*"] } as any],
         filter: { slug: { _eq: slug } },
         limit: 1,
@@ -106,12 +106,12 @@ export async function createForm(data: Partial<Form> & { metadata?: unknown }) {
     // Remove metadata from form creation - it goes on form_version instead
     const { metadata, ...formData } = data;
     const created = await client.request(
-      createItem("forms", formData)
+      createItem("forms" as any, formData)
     ) as unknown as Form;
 
     // Refetch to get all fields
     const result = await client.request(
-      readItem("forms", created.id, {
+      readItem("forms" as any, created.id, {
         fields: ["*", { form_versions: ["*"] } as any],
       })
     ) as unknown as Form;
@@ -127,12 +127,12 @@ export async function updateForm(id: string, data: Partial<Form>) {
   try {
     const client = await getAuthedDirectusOrThrow();
     await client.request(
-      updateItem("forms", id, data)
+      updateItem("forms" as any, id, data)
     );
 
     // Refetch to get updated data with all fields
     const updated = await client.request(
-      readItem("forms", id, {
+      readItem("forms" as any, id, {
         fields: ["*", { form_versions: ["*"] } as any],
       })
     ) as unknown as Form;
@@ -156,7 +156,7 @@ export async function deleteForm(id: string) {
     if (versionIds.length > 0) {
       // Get all responses for all versions
       const allResponses = await client.request(
-        readItems("form_responses", {
+        readItems("form_responses" as any, {
           fields: ["id"],
           filter: { form_version_id: { _in: versionIds } },
           limit: -1, // Get all responses
@@ -165,17 +165,17 @@ export async function deleteForm(id: string) {
 
       // Delete each response
       for (const response of allResponses) {
-        await client.request(deleteItem("form_responses", response.id));
+        await client.request(deleteItem("form_responses" as any, response.id));
       }
     }
 
     // Delete all versions
     for (const versionId of versionIds) {
-      await client.request(deleteItem("form_versions", versionId));
+      await client.request(deleteItem("form_versions" as any, versionId));
     }
 
     // Finally, delete the form itself
-    await client.request(deleteItem("forms", id));
+    await client.request(deleteItem("forms" as any, id));
     return true;
   } catch (error) {
     console.error("Error deleting form:", error);
@@ -189,7 +189,7 @@ export async function listFormVersions(formId: string) {
   try {
     const client = await getAuthedDirectusOrThrow();
     return client.request(
-      readItems("form_versions", {
+      readItems("form_versions" as any, {
         fields: ["*"],
         filter: { form_id: { _eq: formId } },
         sort: "-version_number",
@@ -207,7 +207,7 @@ export async function listFormVersionsForServer(formId: string): Promise<FormVer
     const { getServerDirectusClient } = await import("@/lib/directus");
     const client = await getServerDirectusClient();
     return client.request(
-      readItems("form_versions", {
+      readItems("form_versions" as any, {
         fields: ["*"],
         filter: { form_id: { _eq: formId } },
         sort: "-version_number",
@@ -231,7 +231,7 @@ export async function getFormVersionById(id: string) {
     }
 
     return client.request(
-      readItem("form_versions", id, {
+      readItem("form_versions" as any, id, {
         fields: ["*", { form_id: ["*"] } as any],
       })
     ) as unknown as FormVersion;
@@ -257,14 +257,14 @@ export async function createFormVersion(data: {
       for (const version of existingVersions) {
         if (version.is_active) {
           await client.request(
-            updateItem("form_versions", version.id, { is_active: false })
+            updateItem("form_versions" as any, version.id, { is_active: false })
           );
         }
       }
     }
 
     return client.request(
-      createItem("form_versions", data)
+      createItem("form_versions" as any, data)
     ) as unknown as FormVersion;
   } catch (error) {
     console.error("Error creating form version:", error);
@@ -286,14 +286,14 @@ export async function updateFormVersion(id: string, data: Partial<FormVersion>) 
       for (const v of existingVersions) {
         if (v.id !== id && v.is_active) {
           await client.request(
-            updateItem("form_versions", v.id, { is_active: false })
+            updateItem("form_versions" as any, v.id, { is_active: false })
           );
         }
       }
     }
 
     const result = await client.request(
-      updateItem("form_versions", id, data)
+      updateItem("form_versions" as any, id, data)
     ) as unknown as FormVersion;
     return result;
   } catch (error) {
@@ -308,7 +308,7 @@ export async function deleteFormVersion(id: string) {
 
     // Get all responses for this version
     const responses = await client.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["id"],
         filter: { form_version_id: { _eq: id } },
         limit: -1, // Get all responses
@@ -317,11 +317,11 @@ export async function deleteFormVersion(id: string) {
 
     // Delete all responses for this version
     for (const response of responses) {
-      await client.request(deleteItem("form_responses", response.id));
+      await client.request(deleteItem("form_responses" as any, response.id));
     }
 
     // Delete the version itself
-    await client.request(deleteItem("form_versions", id));
+    await client.request(deleteItem("form_versions" as any, id));
     return true;
   } catch (error) {
     console.error("Error deleting form version:", error);
@@ -333,7 +333,7 @@ export async function getActiveFormVersion(formId: string) {
   try {
     const client = await getAuthedDirectusOrThrow();
     const versions = await client.request(
-      readItems("form_versions", {
+      readItems("form_versions" as any, {
         fields: ["*"],
         filter: {
           form_id: { _eq: formId },
@@ -356,7 +356,7 @@ export async function getActiveFormVersionForServer(formId: string): Promise<For
     const { getServerDirectusClient } = await import("@/lib/directus");
     const client = await getServerDirectusClient();
     const versions = await client.request(
-      readItems("form_versions", {
+      readItems("form_versions" as any, {
         fields: ["*"],
         filter: { form_id: { _eq: formId }, is_active: { _eq: true } },
         limit: 1,
@@ -380,7 +380,7 @@ export async function listFormResponses(formVersionId: string, opts?: {
     const { limit = 25, page = 1 } = opts ?? {};
 
     const result = await client.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["*", { user_id: ["name", "email"], form_version_id: { form_id: ["name"] }, company_id: ["name", "id"], student_id: ["full_name", "first_name", "last_name", "email"] } as any],
         filter: { form_version_id: { _eq: formVersionId } },
         limit,
@@ -400,7 +400,7 @@ export async function getFormResponsesTotalCount(formVersionId: string) {
   try {
     const client = await getAuthedDirectusOrThrow();
     const responses = await client.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["id"],
         filter: { form_version_id: { _eq: formVersionId } },
         limit: -1, // Get all to count
@@ -418,7 +418,7 @@ export async function getFirstFormResponse(formVersionId: string) {
   try {
     const client = await getAuthedDirectusOrThrow();
     const responses = await client.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["submitted_at"],
         filter: { form_version_id: { _eq: formVersionId } },
         limit: 1,
@@ -437,7 +437,7 @@ export async function getLatestFormResponse(formVersionId: string) {
   try {
     const client = await getAuthedDirectusOrThrow();
     const responses = await client.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["submitted_at"],
         filter: { form_version_id: { _eq: formVersionId } },
         limit: 1,
@@ -464,7 +464,7 @@ export async function getStudentLatestFormResponseForForm(
     const client = await getServerDirectusClient();
     // Fetch responses for these versions and match by data._student_id (no student_id column)
     const responses = await client.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["id", "form_version_id", "data"],
         filter: { form_version_id: { _in: versionIds } },
         limit: 1000,
@@ -499,7 +499,7 @@ export async function listFormResponsesForAllVersions(formId: string, opts?: {
     }
 
     const result = await client.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["*", { user_id: ["name", "email"], form_version_id: { form_id: ["name"], version_number: ["*"] }, company_id: ["name", "id"], student_id: ["full_name", "first_name", "last_name", "email"] } as any],
         filter: { form_version_id: { _in: versionIds } },
         limit,
@@ -528,7 +528,7 @@ export async function getFormResponsesTotalCountForAllVersions(formId: string) {
     }
 
     const responses = await client.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["id"],
         filter: { form_version_id: { _in: versionIds } },
         limit: -1, // Get all to count
@@ -555,7 +555,7 @@ export async function getFirstFormResponseForAllVersions(formId: string) {
     }
 
     const responses = await client.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["submitted_at"],
         filter: { form_version_id: { _in: versionIds } },
         limit: 1,
@@ -583,7 +583,7 @@ export async function getLatestFormResponseForAllVersions(formId: string) {
     }
 
     const responses = await client.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["submitted_at"],
         filter: { form_version_id: { _in: versionIds } },
         limit: 1,
@@ -602,7 +602,7 @@ export async function getFormResponseById(id: string) {
   try {
     const client = await getAuthedDirectusOrThrow();
     return client.request(
-      readItem("form_responses", id, {
+      readItem("form_responses" as any, id, {
         fields: ["*", { user_id: ["*"], form_version_id: ["*"] } as any],
       })
     ) as unknown as FormResponse;
@@ -629,7 +629,7 @@ export async function createFormResponse(data: {
     }
 
     return client.request(
-      createItem("form_responses", data)
+      createItem("form_responses" as any, data)
     ) as unknown as FormResponse;
   } catch (error) {
     console.error("Error creating form response:", error);
@@ -649,7 +649,7 @@ export async function updateFormResponse(
   try {
     const client = await getAuthedDirectusOrThrow();
     return client.request(
-      updateItem("form_responses", id, data)
+      updateItem("form_responses" as any, id, data)
     ) as unknown as FormResponse;
   } catch (error) {
     console.error("Error updating form response:", error);
@@ -660,7 +660,7 @@ export async function updateFormResponse(
 export async function deleteFormResponse(id: string) {
   try {
     const client = await getAuthedDirectusOrThrow();
-    await client.request(deleteItem("form_responses", id));
+    await client.request(deleteItem("form_responses" as any, id));
     return true;
   } catch (error) {
     console.error("Error deleting form response:", error);
@@ -683,7 +683,7 @@ export async function countFormResponses(formId: string) {
     // Count responses for all versions of this form
     const { readItems } = await import("@directus/sdk");
     const responses = await client.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["id"],
         filter: { form_version_id: { _in: versionIds } },
         limit: -1, // Get all to count
@@ -717,7 +717,7 @@ export async function countFormVersionResponses(formVersionId: string, usePublic
     // Count responses for a specific form version
     const { readItems } = await import("@directus/sdk");
     const responses = await client.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["id"],
         filter: { form_version_id: { _eq: formVersionId } },
         limit: -1, // Get all to count
@@ -743,7 +743,7 @@ export async function initializeAttendantUuids(formId?: string) {
 
     // Get all event registration forms
     const forms = await client.request(
-      readItems("forms", {
+      readItems("forms" as any, {
         fields: ["id", { form_versions: ["id", "metadata"] } as any],
       })
     ) as unknown as Array<{
@@ -784,7 +784,7 @@ export async function initializeAttendantUuids(formId?: string) {
 
     // Get all responses for these versions that don't have attendant_uuid
     const responses = await client.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["id", "attendant_uuid", "form_version_id"],
         filter: {
           form_version_id: { _in: Array.from(eventRegistrationVersionIds) },
@@ -817,7 +817,7 @@ export async function initializeAttendantUuids(formId?: string) {
       try {
         const uuid = crypto.randomUUID();
         await client.request(
-          updateItem("form_responses", response.id, {
+          updateItem("form_responses" as any, response.id, {
             attendant_uuid: uuid,
           })
         );
@@ -860,7 +860,7 @@ export async function getCompanyFormsForEvent(
 
       // Get all forms with active versions
       const forms = await client.request(
-        readItems("forms", {
+        readItems("forms" as any, {
           fields: ["*", { form_versions: ["*"] } as any],
           filter: {
             is_active: { _eq: true },
@@ -950,7 +950,7 @@ export async function getAllCompanyFormsForEvent(eventId: string) {
   try {
     const client = await getAuthedDirectusOrThrow();
     const forms = await client.request(
-      readItems("forms", {
+      readItems("forms" as any, {
         fields: ["*", "form_versions.*"],
         filter: { is_active: { _eq: true } },
       })
@@ -1003,7 +1003,7 @@ export async function getCompanyIdsMatchingFormFieldOption(
     const client = await getServerDirectusClient();
 
     const responses = await client.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["id", "company_id", "data"],
         filter: {
           _and: [
@@ -1057,7 +1057,7 @@ export async function getCompanyFormBySlugAndEvent(eventId: string, slug: string
 
     // Get form by slug
     const forms = await client.request(
-      readItems("forms", {
+      readItems("forms" as any, {
         fields: ["*", { form_versions: ["*"] } as any],
         filter: {
           slug: { _eq: slug },
@@ -1113,7 +1113,7 @@ export async function checkCompanyFormCompletion(companyId: string, formVersionI
 
     const { readItems } = await import("@directus/sdk");
     const responses = await serverClient.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["form_version_id", "company_id"],
         filter: {
           _and: [
@@ -1145,7 +1145,7 @@ export async function checkCompanyFormCompletionBatch(
     const { getServerDirectusClient } = await import("@/lib/directus");
     const serverClient = await getServerDirectusClient();
     const responses = await serverClient.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["form_version_id", "company_id"],
         filter: {
           _and: [
@@ -1179,7 +1179,7 @@ export async function checkCompanyFormCompletionByFormIds(companyId: string, for
 
     // First, get all form version IDs for these forms
     const formVersions = await serverClient.request(
-      readItems("form_versions", {
+      readItems("form_versions" as any, {
         fields: ["id", "form_id"],
         filter: {
           form_id: { _in: formIds },
@@ -1194,7 +1194,7 @@ export async function checkCompanyFormCompletionByFormIds(companyId: string, for
 
     // Check for responses across all versions of these forms
     const responses = await serverClient.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["form_version_id", "company_id"],
         filter: {
           _and: [
@@ -1236,7 +1236,7 @@ export async function checkCompanyFormCompletionByFormIdsBatch(
     const { getServerDirectusClient } = await import("@/lib/directus");
     const serverClient = await getServerDirectusClient();
     const formVersions = await serverClient.request(
-      readItems("form_versions", {
+      readItems("form_versions" as any, {
         fields: ["id", "form_id"],
         filter: { form_id: { _in: formIds } },
         limit: -1,
@@ -1246,7 +1246,7 @@ export async function checkCompanyFormCompletionByFormIdsBatch(
     const formVersionIds = formVersions.map((fv) => fv.id);
     const formVersionToFormId = new Map(formVersions.map((fv) => [fv.id, fv.form_id]));
     const responses = await serverClient.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["form_version_id", "company_id"],
         filter: {
           _and: [
@@ -1279,7 +1279,7 @@ export async function getLatestCompanyFormResponse(formVersionId: string, compan
     // Get the most recent response for this specific form version and company
     // Sort by submitted_at descending to ensure we get the latest submission
     const responses = await serverClient.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["*"],
         filter: {
           _and: [
@@ -1308,7 +1308,7 @@ export async function getLatestCompanyFormResponseForForm(formId: string, compan
     // Get the most recent response across ALL versions of this form for this company
     // Sort by submitted_at descending to ensure we get the latest submission regardless of version
     const responses = await serverClient.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["*"],
         filter: {
           _and: [

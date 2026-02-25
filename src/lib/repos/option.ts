@@ -29,7 +29,7 @@ export async function listCareerEventOptions(opts?: {
     // Directus will automatically include junction table data when using wildcards
     const result = await client.request(
       readItems("career_event_option", {
-        fields: ["*", "*.*", "*.*.*", "sub_options.*", "sub_options.career_sub_option_id.*"],
+        fields: ["*", "*.*", "*.*.*", "sub_options.*", "sub_options.career_sub_option_id.*"] as any,
         limit,
       })
     ) as unknown as CareerEventOption[] | null;
@@ -95,7 +95,7 @@ export async function getCareerSubOptionsByIds(ids: (string | number)[]): Promis
     const result = await client.request(
       readItems("career_sub_option", {
         fields: ["*"],
-        filter: { id: { _in: ids } },
+        filter: { id: { _in: ids.map(String) } } as any,
         limit: ids.length,
       })
     ) as unknown as CareerSubOption[] | { data: CareerSubOption[] } | null;
@@ -116,8 +116,8 @@ export async function getCareerSubOptionsByIds(ids: (string | number)[]): Promis
         for (const fkField of fkFields) {
           try {
             const junctionResult = await client.request(
-              readItems(junctionName, {
-                fields: [fkField, `${fkField}.*`],
+              readItems(junctionName as any, {
+                fields: [fkField, `${fkField}.*`] as any,
                 filter: { id: { _in: ids } },
                 limit: ids.length,
               })

@@ -63,11 +63,11 @@ export async function listEventPages(opts?: {
           "companies.company_id.options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option_id.*",
           "floorplan.*", // include floorplan relation
           "company_guide.*", // include company guide file
-        ],
+        ] as any,
         limit,
         page,
         ...(search ? { search } : {}),
-        deep: { companies: { limit: 10000 } }, // Override Directus QUERY_LIMIT_DEFAULT (100)
+        deep: { companies: { limit: 10000 } } as any, // Override Directus QUERY_LIMIT_DEFAULT (100)
       })
     ) as unknown as CareerEventPage[];
 
@@ -126,7 +126,7 @@ export async function getEventPageBySlug(slug: string): Promise<CareerEventPage 
       readItems("career_event_page", {
         fields: [
           "*",
-          "*.*",
+          "*.*" as any,
           "event.*",
           "timetable.timetable_id.*",
           "companies.company_id.*",
@@ -142,7 +142,7 @@ export async function getEventPageBySlug(slug: string): Promise<CareerEventPage 
           },
         },
         limit: 1,
-        deep: { companies: { limit: 10000 } }, // Override Directus QUERY_LIMIT_DEFAULT (100) (no default limit)
+        deep: { companies: { limit: 10000 } } as any, // Override Directus QUERY_LIMIT_DEFAULT (100) (no default limit)
       })
     ) as unknown as CareerEventPage[];
 

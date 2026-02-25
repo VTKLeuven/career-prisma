@@ -135,8 +135,8 @@ export default function RegisterPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {UNIVERSITIES.map((uni) => (
-                        <SelectItem key={uni.value} value={uni.value}>
-                          {uni.label}
+                        <SelectItem key={uni} value={uni}>
+                          {uni}
                         </SelectItem>
                       ))}
                     </SelectContent>

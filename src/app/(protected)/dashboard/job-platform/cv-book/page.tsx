@@ -696,8 +696,6 @@ export default function CVBookPage() {
               </div>
               
               <Card className="flex flex-col flex-1 min-h-0">
-
-              <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
@@ -745,7 +743,7 @@ export default function CVBookPage() {
                   {selectedStudent.cvFileUrl && (
                     <div className="mt-4 flex-1 min-h-0 flex flex-col">
                       <CVDocumentViewer
-                        url={selectedStudent.cvFileUrl}
+                        fileUrl={selectedStudent.cvFileUrl}
                         title={`CV for ${selectedStudent.firstName} ${selectedStudent.lastName}`}
                         className="flex-1 min-h-[70vh]"
                       />

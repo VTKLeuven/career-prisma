@@ -36,7 +36,7 @@ export async function POST(
 
     // Get all companies with their representatives
     const companies = await client.request(
-      readItems("company", {
+      readItems("company" as any, {
         fields: [
           "id",
           "name",

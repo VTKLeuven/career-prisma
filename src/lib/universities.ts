@@ -13,4 +13,4 @@ export const UNIVERSITIES = [
   "Other",
 ] as const;
 
-export type University = typeof UNIVERSITIES[number]["value"];
+export type University = (typeof UNIVERSITIES)[number];

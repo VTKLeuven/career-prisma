@@ -27,7 +27,7 @@ export async function GET(
 
     // Find the form response by attendant_uuid
     const responses = await client.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: [
           "id",
           "data",
