@@ -253,7 +253,7 @@ export default function AdminFloorplanPage() {
     URL.revokeObjectURL(url)
   }
 
-  const parseCsvLine = (line: string): string[] => {
+  const parseCsvLine = (line: string, delimiter: string): string[] => {
     const result: string[] = []
     let current = ""
     let inQuotes = false
@@ -266,7 +266,7 @@ export default function AdminFloorplanPage() {
         } else {
           inQuotes = !inQuotes
         }
-      } else if ((c === "," && !inQuotes) || c === "\n") {
+      } else if ((c === delimiter && !inQuotes) || c === "\n") {
         result.push(current.trim())
         current = ""
         if (c === "\n") break
@@ -276,6 +276,17 @@ export default function AdminFloorplanPage() {
     }
     result.push(current.trim())
     return result
+  }
+
+  const detectCsvDelimiter = (lines: string[]): string => {
+    const delimiters = [",", ";", "\t"]
+    for (const delim of delimiters) {
+      const header = parseCsvLine(lines[0], delim).map(h => h.toLowerCase().replace(/\s+/g, "_"))
+      const hasCompany = header.some(h => h === "company_name" || h === "company")
+      const hasBooth = header.some(h => h === "booth_number" || h === "booth")
+      if (header.length >= 2 && hasCompany && hasBooth) return delim
+    }
+    return ","
   }
 
   const handleLoadCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -294,7 +305,8 @@ export default function AdminFloorplanPage() {
         return
       }
 
-      const header = parseCsvLine(lines[0]).map(h => h.toLowerCase().replace(/\s+/g, "_"))
+      const delimiter = detectCsvDelimiter(lines)
+      const header = parseCsvLine(lines[0], delimiter).map(h => h.toLowerCase().replace(/\s+/g, "_"))
       const companyIdx = header.findIndex(h => h === "company_name" || h === "company")
       const boothIdx = header.findIndex(h => h === "booth_number" || h === "booth")
       if (companyIdx < 0 || boothIdx < 0) {
@@ -319,7 +331,7 @@ export default function AdminFloorplanPage() {
       const companyBoothCount = new Map<string, number>()
 
       for (let i = 1; i < lines.length; i++) {
-        const cols = parseCsvLine(lines[i])
+        const cols = parseCsvLine(lines[i], delimiter)
         const companyNameRaw = (cols[companyIdx] ?? "").trim()
         const boothNumRaw = (cols[boothIdx] ?? "").trim()
         if (!boothNumRaw) continue
