@@ -9,7 +9,7 @@ import { fetchAllCompanyFormsForEventAction, fetchCompanyIdsMatchingFormFieldOpt
 import type { CareerEventPage, Booth, Company } from '@/lib/schema'
 import type { FormField } from '@/lib/schema'
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, X, Filter } from "lucide-react"
+import { ArrowLeft, X, Filter, Download, Upload } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -44,6 +44,9 @@ export default function AdminFloorplanPage() {
   const [updating, setUpdating] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [loadingCsv, setLoadingCsv] = useState(false)
+  const [loadCsvError, setLoadCsvError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
 
   // Form response filter for highlighting booths (supports multiple filters)
@@ -233,6 +236,158 @@ export default function AdminFloorplanPage() {
     }
   }
 
+  const handleDownloadCsv = () => {
+    if (booths.length === 0) return
+    const rows: string[][] = [["company_name", "booth_number"]]
+    for (const booth of booths.sort((a, b) => (a.booth_number ?? 0) - (b.booth_number ?? 0))) {
+      const companyName = booth.company?.name ?? ""
+      rows.push([companyName, String(booth.booth_number)])
+    }
+    const csv = rows.map(r => r.map(c => (c.includes(",") || c.includes('"') ? `"${c.replace(/"/g, '""')}"` : c)).join(",")).join("\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `booth-assignments-${page?.event?.name?.replace(/\s+/g, "-") ?? "floorplan"}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const parseCsvLine = (line: string): string[] => {
+    const result: string[] = []
+    let current = ""
+    let inQuotes = false
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i]
+      if (c === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"'
+          i++
+        } else {
+          inQuotes = !inQuotes
+        }
+      } else if ((c === "," && !inQuotes) || c === "\n") {
+        result.push(current.trim())
+        current = ""
+        if (c === "\n") break
+      } else {
+        current += c
+      }
+    }
+    result.push(current.trim())
+    return result
+  }
+
+  const handleLoadCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file || !page?.floorplan?.id) return
+
+    setLoadingCsv(true)
+    setLoadCsvError(null)
+
+    try {
+      const text = await file.text()
+      const lines = text.split(/\r?\n/).filter(Boolean)
+      if (lines.length < 2) {
+        setLoadCsvError("CSV must have a header row and at least one data row")
+        return
+      }
+
+      const header = parseCsvLine(lines[0]).map(h => h.toLowerCase().replace(/\s+/g, "_"))
+      const companyIdx = header.findIndex(h => h === "company_name" || h === "company")
+      const boothIdx = header.findIndex(h => h === "booth_number" || h === "booth")
+      if (companyIdx < 0 || boothIdx < 0) {
+        setLoadCsvError("CSV must have columns 'company_name' and 'booth_number' (or 'company' and 'booth')")
+        return
+      }
+
+      const boothByNumber = new Map<number, Booth>()
+      for (const b of booths) {
+        const num = b.booth_number ?? 0
+        if (num > 0) boothByNumber.set(num, b)
+      }
+
+      const companyByName = new Map<string, Company>()
+      for (const c of companies) {
+        const name = (c.name ?? "").trim().toLowerCase()
+        if (name) companyByName.set(name, c)
+      }
+
+      const rows: { companyName: string; boothNumber: number }[] = []
+      const seenBooths = new Set<number>()
+      const companyBoothCount = new Map<string, number>()
+
+      for (let i = 1; i < lines.length; i++) {
+        const cols = parseCsvLine(lines[i])
+        const companyNameRaw = (cols[companyIdx] ?? "").trim()
+        const boothNumRaw = (cols[boothIdx] ?? "").trim()
+        if (!boothNumRaw) continue
+
+        const boothNum = parseInt(boothNumRaw, 10)
+        if (isNaN(boothNum) || boothNum < 1) {
+          setLoadCsvError(`Row ${i + 1}: invalid booth number "${boothNumRaw}"`)
+          return
+        }
+        if (seenBooths.has(boothNum)) {
+          setLoadCsvError(`Row ${i + 1}: booth ${boothNum} appears more than once`)
+          return
+        }
+        seenBooths.add(boothNum)
+
+        if (!boothByNumber.has(boothNum)) {
+          setLoadCsvError(`Row ${i + 1}: booth ${boothNum} does not exist in this floorplan`)
+          return
+        }
+
+        if (companyNameRaw) {
+          const companyKey = companyNameRaw.toLowerCase()
+          const company = companyByName.get(companyKey)
+          if (!company) {
+            setLoadCsvError(`Row ${i + 1}: company "${companyNameRaw}" not found in event`)
+            return
+          }
+          const count = (companyBoothCount.get(company.id) ?? 0) + 1
+          companyBoothCount.set(company.id, count)
+          const hasExtraBooth = getCompanySubOptionAnyStatus(company, "Extra Booth") !== null
+          const maxBooths = hasExtraBooth ? 2 : 1
+          if (count > maxBooths) {
+            setLoadCsvError(`Row ${i + 1}: company "${companyNameRaw}" exceeds max booths (${maxBooths})`)
+            return
+          }
+        }
+
+        rows.push({ companyName: companyNameRaw, boothNumber: boothNum })
+      }
+
+      for (const row of rows) {
+        const booth = boothByNumber.get(row.boothNumber)
+        if (!booth) continue
+        const companyId = row.companyName
+          ? companyByName.get(row.companyName.toLowerCase())?.id ?? null
+          : null
+        const res = await fetch("/api/admin/update-booth-company", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ boothId: booth.id, companyId }),
+        })
+        if (!res.ok) {
+          const err = await res.json()
+          throw new Error(err.error || "Failed to update booth")
+        }
+      }
+
+      const { getBoothsForFloorplan } = await import("@/lib/repos/floorplan")
+      const updatedBooths = await getBoothsForFloorplan(page.floorplan.id)
+      setBooths(updatedBooths)
+      setLoadCsvError(null)
+    } catch (err) {
+      setLoadCsvError(err instanceof Error ? err.message : "Failed to load CSV")
+    } finally {
+      setLoadingCsv(false)
+    }
+  }
+
   // Count how many booths each company is assigned to
   const assignedBoothCountByCompany = new Map<string, number>()
   for (const b of booths) {
@@ -287,16 +442,54 @@ export default function AdminFloorplanPage() {
           </div>
         </div>
 
-        {/* Right: Delete button */}
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={() => setShowDeleteDialog(true)}
-          className="whitespace-nowrap"
-        >
-          Delete Floorplan
-        </Button>
+        {/* Right: CSV + Delete */}
+        <div className="flex items-center gap-2">
+          {booths.length > 0 && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadCsv}
+                className="whitespace-nowrap"
+              >
+                <Download className="h-4 w-4 mr-1.5" />
+                Download CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loadingCsv}
+                className="whitespace-nowrap"
+              >
+                <Upload className="h-4 w-4 mr-1.5" />
+                {loadingCsv ? "Loading..." : "Load companies"}
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={handleLoadCsv}
+              />
+            </>
+          )}
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setShowDeleteDialog(true)}
+            className="whitespace-nowrap"
+          >
+            Delete Floorplan
+          </Button>
+        </div>
       </div>
+
+      {loadCsvError && (
+        <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+          {loadCsvError}
+        </div>
+      )}
 
       {/* Form response filter - highlight booths by form field option (multiple filters) */}
       <div className="p-4 bg-white/95 backdrop-blur-md border rounded-lg shadow-sm">
