@@ -945,6 +945,105 @@ export async function getCompanyFormsForEvent(
   return [];
 }
 
+/** Get ALL company forms for an event (for admin floorplan filtering). No company option filter. */
+export async function getAllCompanyFormsForEvent(eventId: string) {
+  try {
+    const client = await getAuthedDirectusOrThrow();
+    const forms = await client.request(
+      readItems("forms", {
+        fields: ["*", "form_versions.*"],
+        filter: { is_active: { _eq: true } },
+      })
+    ) as unknown as Form[];
+
+    const companyForms: Array<{
+      id: string;
+      name: string;
+      slug: string;
+      activeVersion: { id: string; version_number: number; schema: FormSchema };
+    }> = [];
+
+    for (const form of forms) {
+      const versions = form.form_versions || [];
+      const activeVersion = versions.find((v) => v.is_active);
+      if (!activeVersion) continue;
+
+      const metadata = (activeVersion as FormVersion & { metadata?: FormMetadata })?.metadata;
+      if (!metadata?.is_company_form) continue;
+      if (String(metadata.event_id) !== String(eventId)) continue;
+
+      companyForms.push({
+        id: form.id,
+        name: form.name,
+        slug: form.slug,
+        activeVersion: {
+          id: activeVersion.id,
+          version_number: activeVersion.version_number,
+          schema: activeVersion.schema,
+        },
+      });
+    }
+
+    return companyForms;
+  } catch (error) {
+    console.error("[getAllCompanyFormsForEvent] Error:", error);
+    return [];
+  }
+}
+
+/** Get company IDs that have a form response where the given field matches the option value.
+ * Form response data is keyed by field.name, not field.id. */
+export async function getCompanyIdsMatchingFormFieldOption(
+  formVersionId: string,
+  fieldName: string,
+  optionValue: string
+): Promise<string[]> {
+  try {
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const client = await getServerDirectusClient();
+
+    const responses = await client.request(
+      readItems("form_responses", {
+        fields: ["id", "company_id", "data"],
+        filter: {
+          _and: [
+            { form_version_id: { _eq: formVersionId } },
+            { company_id: { _nnull: true } },
+          ],
+        },
+        limit: -1,
+        sort: "-submitted_at",
+      })
+    ) as unknown as Array<{ id: string; company_id: string | { id: string }; data: Record<string, unknown> }>;
+
+    // Keep only latest response per company (responses sorted by -submitted_at)
+    const latestByCompany = new Map<string, Record<string, unknown>>();
+    for (const r of responses) {
+      const companyId = typeof r.company_id === "string" ? r.company_id : r.company_id?.id;
+      if (!companyId || latestByCompany.has(companyId)) continue;
+      latestByCompany.set(companyId, r.data ?? {});
+    }
+
+    const companyIds: string[] = [];
+    for (const [companyId, data] of latestByCompany) {
+      const fieldValue = data[fieldName];
+      const matches =
+        fieldValue === optionValue ||
+        (Array.isArray(fieldValue) && fieldValue.includes(optionValue)) ||
+        (fieldValue != null && String(fieldValue) === optionValue);
+
+      if (matches) {
+        companyIds.push(companyId);
+      }
+    }
+
+    return companyIds;
+  } catch (error) {
+    console.error("[getCompanyIdsMatchingFormFieldOption] Error:", error);
+    return [];
+  }
+}
+
 export async function getCompanyFormBySlugAndEvent(eventId: string, slug: string) {
   try {
     // Try authenticated first, fall back to public client for public form access

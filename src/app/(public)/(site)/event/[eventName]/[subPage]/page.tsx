@@ -90,6 +90,7 @@ export default function SubPage() {
             booths={booths}
             triggerFlicker={triggerFlicker}
             eventName={page?.event?.name || ''}
+            onBoothClick={setPopupBooth}
           />
           <Floorplan
             page={page}
@@ -145,6 +146,7 @@ function Header({
   triggerFlicker,
   eventName,
   isCompanyGuide = false,
+  onBoothClick,
 }: {
   categories: Master[]
   selectedCategories: string[]
@@ -153,6 +155,7 @@ function Header({
   triggerFlicker: (companyId: string) => void
   eventName: string
   isCompanyGuide?: boolean
+  onBoothClick?: (booth: Booth) => void
 }) {
   const toggleCategory = (short_name: string) => {
     if (selectedCategories.includes(short_name)) {
@@ -166,13 +169,14 @@ function Header({
   const [searchTerm, setSearchTerm] = useState("")
   const [isFocused, setIsFocused] = useState(false)
 
-  const matchingCompanies = isFocused && !isCompanyGuide
+  const showSearchDropdown = !isCompanyGuide && (isFocused || searchTerm.trim().length > 0)
+  const matchingCompanies = showSearchDropdown
     ? booths.filter(b => b.company)
-      .filter(b =>
-        searchTerm
-          ? b.company!.name.toLowerCase().includes(searchTerm.toLowerCase())
-          : true
-      )
+      .filter(b => {
+        const name = (b.company!.name ?? "").toLowerCase()
+        const term = searchTerm.trim().toLowerCase()
+        return term ? name.includes(term) : true
+      })
       .sort((a, b) => (a.booth_number || 0) - (b.booth_number || 0))
     : []
 
@@ -260,22 +264,28 @@ function Header({
                     placeholder="Search company..."
                     className="w-full rounded-full border border-gray-300 px-3 py-1.5 text-xs"
                   />
-                  {matchingCompanies.length > 0 && (
+                  {showSearchDropdown && (
                     <ul className="absolute top-full left-0 w-full mt-1 max-h-60 overflow-auto rounded-lg border bg-white shadow-lg z-50">
-                      {matchingCompanies.map(b => (
-                        <li
-                          key={b.company!.id}
-                          className="px-4 py-2 hover:bg-vtk-blue/10 cursor-pointer flex justify-between"
-                          onClick={() => {
-                            triggerFlicker(b.company!.id)
-                            setSearchTerm("")
-                            setIsFocused(false)
-                          }}
-                        >
-                          <span>{b.company!.name}</span>
-                          <span className="text-gray-500">{String(b.booth_number)}</span>
-                        </li>
-                      ))}
+                      {matchingCompanies.length > 0 ? (
+                        matchingCompanies.map(b => (
+                          <li
+                            key={b.id}
+                            className="px-4 py-2 hover:bg-vtk-blue/10 cursor-pointer flex justify-between"
+                            onMouseDown={(e) => {
+                              e.preventDefault()
+                              triggerFlicker(b.company!.id)
+                              onBoothClick?.(b)
+                              setSearchTerm("")
+                              setIsFocused(false)
+                            }}
+                          >
+                            <span>{b.company!.name}</span>
+                            <span className="text-gray-500">{String(b.booth_number)}</span>
+                          </li>
+                        ))
+                      ) : (
+                        <li className="px-4 py-3 text-sm text-neutral-500">No companies found</li>
+                      )}
                     </ul>
                   )}
                 </div>
@@ -314,22 +324,27 @@ function Header({
                   placeholder="Search company..."
                   className="w-full rounded-full border border-gray-300 px-4 py-2 text-sm"
                 />
-                {matchingCompanies.length > 0 && (
+                {showSearchDropdown && (
                   <ul className="absolute top-full left-0 w-full mt-1 max-h-60 overflow-auto rounded-lg border bg-white shadow-lg z-50">
-                    {matchingCompanies.map(b => (
-                      <li
-                        key={b.company!.id}
-                        className="px-4 py-2 hover:bg-vtk-blue/10 cursor-pointer flex justify-between"
-                        onClick={() => {
-                          triggerFlicker(b.company!.id)
-                          setSearchTerm("")
-                          setIsFocused(false)
-                        }}
-                      >
-                        <span>{b.company!.name}</span>
-                        <span className="text-gray-500">{String(b.booth_number)}</span>
-                      </li>
-                    ))}
+                    {matchingCompanies.length > 0 ? (
+                      matchingCompanies.map(b => (
+                        <li
+                          key={b.id}
+                          className="px-4 py-2 hover:bg-vtk-blue/10 cursor-pointer flex justify-between"
+                          onClick={() => {
+                            triggerFlicker(b.company!.id)
+                            onBoothClick?.(b)
+                            setSearchTerm("")
+                            setIsFocused(false)
+                          }}
+                        >
+                          <span>{b.company!.name}</span>
+                          <span className="text-gray-500">{String(b.booth_number)}</span>
+                        </li>
+                      ))
+                    ) : (
+                      <li className="px-4 py-3 text-sm text-neutral-500">No companies found</li>
+                    )}
                   </ul>
                 )}
               </div>

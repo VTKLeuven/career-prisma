@@ -964,6 +964,30 @@ export async function fetchCompanyFormsForEventAction(
   }
 }
 
+export async function fetchAllCompanyFormsForEventAction(eventId: string) {
+  try {
+    const { getAllCompanyFormsForEvent } = await import("@/lib/repos/forms");
+    return await getAllCompanyFormsForEvent(eventId);
+  } catch (error) {
+    console.error("[fetchAllCompanyFormsForEventAction] Error:", error);
+    return [];
+  }
+}
+
+export async function fetchCompanyIdsMatchingFormFieldOptionAction(
+  formVersionId: string,
+  fieldName: string,
+  optionValue: string
+) {
+  try {
+    const { getCompanyIdsMatchingFormFieldOption } = await import("@/lib/repos/forms");
+    return await getCompanyIdsMatchingFormFieldOption(formVersionId, fieldName, optionValue);
+  } catch (error) {
+    console.error("[fetchCompanyIdsMatchingFormFieldOptionAction] Error:", error);
+    return [];
+  }
+}
+
 export async function fetchCompanyFormBySlugAndEventAction(eventId: string, slug: string) {
   try {
     const { getCompanyFormBySlugAndEvent } = await import("@/lib/repos/forms");
