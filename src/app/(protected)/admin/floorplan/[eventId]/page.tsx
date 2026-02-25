@@ -1,16 +1,16 @@
 'use client'
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
-import NextImage from "next/image"
-import { fetchEventPagesAction } from "@/app/actions/events"
 import { fetchFloorplanAction } from "@/app/actions/features"
 import { fetchCompaniesForEventAction } from "@/app/actions/companies"
+import { fetchAllCompanyFormsForEventAction, fetchCompanyIdsMatchingFormFieldOptionAction } from "@/app/actions/forms"
 import type { CareerEventPage, Booth, Company } from '@/lib/schema'
-import { getDirectusImageUrl } from "@/components/Images"
+import type { FormField } from '@/lib/schema'
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, X } from "lucide-react"
+import { ArrowLeft, X, Filter } from "lucide-react"
+import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -27,6 +27,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 export default function AdminFloorplanPage() {
   const params = useParams()
@@ -44,6 +45,15 @@ export default function AdminFloorplanPage() {
   const [deleting, setDeleting] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const svgRef = useRef<SVGSVGElement>(null)
+
+  // Form response filter for highlighting booths (supports multiple filters)
+  type EventForm = { id: string; name: string; slug: string; activeVersion: { id: string; version_number: number; schema: { fields: FormField[] } } }
+  type FormFilter = { formId: string; formVersionId: string; fieldName: string; optionValue: string }
+  const [eventForms, setEventForms] = useState<EventForm[]>([])
+  const [formsLoading, setFormsLoading] = useState(false)
+  const [filters, setFilters] = useState<FormFilter[]>([])
+  const [matchedCompanyIds, setMatchedCompanyIds] = useState<Set<string>>(new Set())
+  const [filterLoading, setFilterLoading] = useState(false)
 
   useEffect(() => {
     const loadData = async () => {
@@ -91,6 +101,64 @@ export default function AdminFloorplanPage() {
 
     loadData()
   }, [eventId])
+
+  // Load company forms for this event
+  useEffect(() => {
+    if (!eventId) return
+    setFormsLoading(true)
+    fetchAllCompanyFormsForEventAction(eventId)
+      .then(setEventForms)
+      .catch(console.error)
+      .finally(() => setFormsLoading(false))
+  }, [eventId])
+
+  // Load matched company IDs when filters change (union of all complete filters)
+  useEffect(() => {
+    const complete = filters.filter(f => f.formVersionId && f.fieldName && f.optionValue)
+    if (complete.length === 0) {
+      setMatchedCompanyIds(new Set())
+      return
+    }
+    setFilterLoading(true)
+    Promise.all(
+      complete.map(f =>
+        fetchCompanyIdsMatchingFormFieldOptionAction(f.formVersionId, f.fieldName, f.optionValue)
+      )
+    )
+      .then(results => {
+        const union = new Set<string>()
+        for (const ids of results) ids.forEach(id => union.add(id))
+        setMatchedCompanyIds(union)
+      })
+      .catch(console.error)
+      .finally(() => setFilterLoading(false))
+  }, [filters])
+
+  const addFilter = () => setFilters([...filters, { formId: "", formVersionId: "", fieldName: "", optionValue: "" }])
+  const removeFilter = (idx: number) => setFilters(filters.filter((_, i) => i !== idx))
+  const updateFilter = (idx: number, updates: Partial<FormFilter>) => {
+    const next = [...filters]
+    next[idx] = { ...next[idx], ...updates }
+    if (updates.formId !== undefined) {
+      const form = eventForms.find(f => f.id === updates.formId)
+      next[idx].formVersionId = form?.activeVersion?.id ?? ""
+      next[idx].fieldName = ""
+      next[idx].optionValue = ""
+    }
+    if (updates.fieldName !== undefined) next[idx].optionValue = ""
+    setFilters(next)
+  }
+
+  const getOptionFieldsForForm = (formId: string) => {
+    const form = eventForms.find(f => f.id === formId)
+    if (!form?.activeVersion?.schema?.fields) return []
+    return form.activeVersion.schema.fields.filter(
+      (f): f is FormField & { options: string[] } =>
+        (f.type === "select" || f.type === "radio" || f.type === "checkbox") &&
+        Array.isArray(f.options) &&
+        f.options.length > 0
+    )
+  }
 
   const handleBoothClick = (booth: Booth) => {
     setSelectedBooth(booth)
@@ -230,6 +298,105 @@ export default function AdminFloorplanPage() {
         </Button>
       </div>
 
+      {/* Form response filter - highlight booths by form field option (multiple filters) */}
+      <div className="p-4 bg-white/95 backdrop-blur-md border rounded-lg shadow-sm">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-neutral-600" />
+            <h3 className="font-semibold text-sm text-neutral-800">Highlight by form response</h3>
+          </div>
+          <Button variant="outline" size="sm" onClick={addFilter} disabled={formsLoading}>
+            Add filter
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          Add one or more filters. For each filter, select a form, a field with options, and an option value. Booths of companies that match any filter will be highlighted in green.
+        </p>
+        <div className="space-y-3">
+          {filters.length === 0 ? (
+            <p className="text-sm text-muted-foreground italic">No filters. Click &quot;Add filter&quot; to highlight booths by form responses.</p>
+          ) : (
+            filters.map((filter, idx) => {
+              const optionFields = getOptionFieldsForForm(filter.formId)
+              const selectedField = optionFields.find(f => f.name === filter.fieldName)
+              return (
+                <div key={idx} className="flex flex-wrap items-end gap-3 p-3 rounded-md bg-neutral-50 border">
+                  <div className="space-y-2 min-w-[160px]">
+                    <Label className="text-xs">Form</Label>
+                    <Select
+                      value={filter.formId || "__none__"}
+                      onValueChange={(v) => updateFilter(idx, { formId: v === "__none__" ? "" : v })}
+                      disabled={formsLoading}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select form..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">—</SelectItem>
+                        {eventForms.map((f) => (
+                          <Tooltip key={f.id}>
+                            <TooltipTrigger asChild>
+                              <SelectItem value={f.id}>{f.name}</SelectItem>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Slug: {f.slug}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 min-w-[160px]">
+                    <Label className="text-xs">Field</Label>
+                    <Select
+                      value={filter.fieldName || "__none__"}
+                      onValueChange={(v) => updateFilter(idx, { fieldName: v === "__none__" ? "" : v })}
+                      disabled={!filter.formId || optionFields.length === 0}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={optionFields.length === 0 ? "No option fields" : "Select field..."} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">—</SelectItem>
+                        {optionFields.map((f) => (
+                          <SelectItem key={f.name} value={f.name}>{f.label || f.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 min-w-[160px]">
+                    <Label className="text-xs">Option value</Label>
+                    <Select
+                      value={filter.optionValue || "__none__"}
+                      onValueChange={(v) => updateFilter(idx, { optionValue: v === "__none__" ? "" : v })}
+                      disabled={!filter.fieldName}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select option..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">—</SelectItem>
+                        {(selectedField?.options ?? []).map((opt) => (
+                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={() => removeFilter(idx)} className="shrink-0 text-muted-foreground hover:text-destructive">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )
+            })
+          )}
+        </div>
+        {filters.some(f => f.formVersionId && f.fieldName && f.optionValue) && (
+          <p className="text-xs text-muted-foreground mt-2">
+            {filterLoading ? "Loading..." : `${matchedCompanyIds.size} companies match (any filter)`}
+          </p>
+        )}
+      </div>
+
       {/* Floorplan */}
       <div className="flex justify-center w-full px-2 sm:px-4 pb-4">
         <div className="w-full max-w-full min-w-0">
@@ -267,6 +434,7 @@ export default function AdminFloorplanPage() {
 
                 const isSelected = selectedBooth?.id === booth.id
                 const hasCompany = !!booth.company
+                const isFormFilterMatch = matchedCompanyIds.size > 0 && !!booth.company?.id && matchedCompanyIds.has(booth.company.id)
 
                 // Convert booth percentage coordinates to absolute coordinates
                 const origVbParts = originalViewBox.split(/\s+/).map(Number)
@@ -300,8 +468,10 @@ export default function AdminFloorplanPage() {
                     })()
                   : null
 
-                const fill = isSelected ? "rgba(0,51,102,0.4)" : hasCompany ? "rgba(0,51,102,0.15)" : "rgba(255,0,0,0.08)"
-                const stroke = isSelected ? "#003366" : hasCompany ? "#003366" : "#ff0000"
+                const fill = isFormFilterMatch
+                  ? (isSelected ? "rgba(34,197,94,0.5)" : "rgba(34,197,94,0.25)")
+                  : isSelected ? "rgba(0,51,102,0.4)" : hasCompany ? "rgba(0,51,102,0.15)" : "rgba(255,0,0,0.08)"
+                const stroke = isFormFilterMatch ? "#16a34a" : isSelected ? "#003366" : hasCompany ? "#003366" : "#ff0000"
 
                 return boothShape ? (
                   <path
