@@ -9,7 +9,7 @@ import Link from "next/link";
 import { validateExistingPageImage } from "@/lib/utils/image-validation";
 import { Calendar } from "lucide-react";
 import { fetchCompanyBySlugWithSubOptionsAction } from "@/app/actions/companies";
-import { slugifyCompanyName } from "@/lib/utils/slugify";
+import { slugifyCompanyName, slugifyEventName } from "@/lib/utils/slugify";
 import { fetchEventsAction } from "@/app/actions/events";
 import { Button } from "@/components/ui/button";
 import {
@@ -354,7 +354,7 @@ export default function CompanyPage() {
                   <h2 className="text-lg sm:text-xl font-semibold text-neutral-900 mb-4 sm:mb-6">Attending at</h2>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                     {events.slice(0, 3).map((event) => {
-                      const href = `/event/${(event.name || "").toLowerCase().replace(/\s+/g, "-")}`;
+                      const href = `/event/${slugifyEventName(event.name || "")}`;
                       return (
                         <Link
                           key={event.id}

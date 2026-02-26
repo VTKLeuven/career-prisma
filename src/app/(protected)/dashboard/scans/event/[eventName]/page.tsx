@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/table";
 import { fetchEventsAction } from "@/app/actions/events";
 import type { CareerEvent } from "@/lib/schema";
+import { slugifyEventName } from "@/lib/utils/slugify";
 
 type AttendantScan = {
   id: string;
@@ -72,17 +73,11 @@ export default function EventScansPage() {
         const events = await fetchEventsAction();
         if (!isMounted) return;
 
-        // Try exact match first
-        let matchingEvent = events?.find(
-          (e: CareerEvent) => e.name === eventName
+        // Match by slug (handles accents: "Café Career" matches "cafe-career")
+        const normalizedEventName = slugifyEventName(eventName);
+        const matchingEvent = events?.find(
+          (e: CareerEvent) => slugifyEventName(e.name) === normalizedEventName
         );
-        
-        // If no exact match, try case-insensitive match
-        if (!matchingEvent) {
-          matchingEvent = events?.find(
-            (e: CareerEvent) => e.name?.toLowerCase() === eventName.toLowerCase()
-          );
-        }
 
         if (matchingEvent) {
           setEventId(matchingEvent.id);
