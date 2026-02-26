@@ -5,11 +5,11 @@ import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { fetchFloorplanAction } from "@/app/actions/features"
 import { fetchCompaniesForEventAction } from "@/app/actions/companies"
-import { fetchAllCompanyFormsForEventAction, fetchCompanyIdsMatchingFormFieldOptionAction } from "@/app/actions/forms"
+import { fetchAllCompanyFormsForEventAction, fetchCompanyIdsMatchingFormFieldOptionAction, fetchCompanyFormFieldValuesAction } from "@/app/actions/forms"
 import type { CareerEventPage, Booth, Company } from '@/lib/schema'
 import type { FormField } from '@/lib/schema'
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, X, Filter, Download, Upload } from "lucide-react"
+import { ArrowLeft, X, Filter, Download, Upload, Type } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -57,6 +57,12 @@ export default function AdminFloorplanPage() {
   const [filters, setFilters] = useState<FormFilter[]>([])
   const [matchedCompanyIds, setMatchedCompanyIds] = useState<Set<string>>(new Set())
   const [filterLoading, setFilterLoading] = useState(false)
+
+  // Display form response values on booths (instead of booth number)
+  type DisplayEntry = { formId: string; formVersionId: string; fieldName: string }
+  const [displayEntries, setDisplayEntries] = useState<DisplayEntry[]>([])
+  const [displayValuesByCompany, setDisplayValuesByCompany] = useState<Record<string, string>>({})
+  const [displayLoading, setDisplayLoading] = useState(false)
 
   useEffect(() => {
     const loadData = async () => {
@@ -161,6 +167,54 @@ export default function AdminFloorplanPage() {
         Array.isArray(f.options) &&
         f.options.length > 0
     )
+  }
+
+  const getDisplayFieldsForForm = (formId: string) => {
+    const form = eventForms.find(f => f.id === formId)
+    if (!form?.activeVersion?.schema?.fields) return []
+    return form.activeVersion.schema.fields.filter(f => f.type !== "file")
+  }
+
+  // Load display values when display entries change
+  useEffect(() => {
+    const complete = displayEntries.filter(e => e.formVersionId && e.fieldName)
+    if (complete.length === 0) {
+      setDisplayValuesByCompany({})
+      return
+    }
+    setDisplayLoading(true)
+    Promise.all(
+      complete.map(e => fetchCompanyFormFieldValuesAction(e.formVersionId, e.fieldName))
+    )
+      .then(results => {
+        const merged: Record<string, string[]> = {}
+        for (const res of results) {
+          for (const [companyId, value] of Object.entries(res)) {
+            if (!merged[companyId]) merged[companyId] = []
+            merged[companyId].push(value)
+          }
+        }
+        const out: Record<string, string> = {}
+        for (const [companyId, values] of Object.entries(merged)) {
+          out[companyId] = values.filter(Boolean).join(" | ")
+        }
+        setDisplayValuesByCompany(out)
+      })
+      .catch(console.error)
+      .finally(() => setDisplayLoading(false))
+  }, [displayEntries])
+
+  const addDisplayEntry = () => setDisplayEntries([...displayEntries, { formId: "", formVersionId: "", fieldName: "" }])
+  const removeDisplayEntry = (idx: number) => setDisplayEntries(displayEntries.filter((_, i) => i !== idx))
+  const updateDisplayEntry = (idx: number, updates: Partial<DisplayEntry>) => {
+    const next = [...displayEntries]
+    next[idx] = { ...next[idx], ...updates }
+    if (updates.formId !== undefined) {
+      const form = eventForms.find(f => f.id === updates.formId)
+      next[idx].formVersionId = form?.activeVersion?.id ?? ""
+      next[idx].fieldName = ""
+    }
+    setDisplayEntries(next)
   }
 
   const handleBoothClick = (booth: Booth) => {
@@ -602,6 +656,86 @@ export default function AdminFloorplanPage() {
         )}
       </div>
 
+      {/* Display form response on booths (instead of booth number) */}
+      <div className="p-4 bg-white/95 backdrop-blur-md border rounded-lg shadow-sm">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <Type className="h-4 w-4 text-neutral-600" />
+            <h3 className="font-semibold text-sm text-neutral-800">Display on booths</h3>
+          </div>
+          <Button variant="outline" size="sm" onClick={addDisplayEntry} disabled={formsLoading}>
+            Add form/field
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          Show form response values on each booth instead of the booth number. Add one or more form/field combinations.
+        </p>
+        <div className="space-y-3">
+          {displayEntries.length === 0 ? (
+            <p className="text-sm text-muted-foreground italic">No display entries. Click &quot;Add form/field&quot; to show form responses on booths.</p>
+          ) : (
+            displayEntries.map((entry, idx) => {
+              const displayFields = getDisplayFieldsForForm(entry.formId)
+              return (
+                <div key={idx} className="flex flex-wrap items-end gap-3 p-3 rounded-md bg-neutral-50 border">
+                  <div className="space-y-2 min-w-[160px]">
+                    <Label className="text-xs">Form</Label>
+                    <Select
+                      value={entry.formId || "__none__"}
+                      onValueChange={(v) => updateDisplayEntry(idx, { formId: v === "__none__" ? "" : v })}
+                      disabled={formsLoading}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select form..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">—</SelectItem>
+                        {eventForms.map((f) => (
+                          <Tooltip key={f.id}>
+                            <TooltipTrigger asChild>
+                              <SelectItem value={f.id}>{f.name}</SelectItem>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Slug: {f.slug}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 min-w-[160px]">
+                    <Label className="text-xs">Field</Label>
+                    <Select
+                      value={entry.fieldName || "__none__"}
+                      onValueChange={(v) => updateDisplayEntry(idx, { fieldName: v === "__none__" ? "" : v })}
+                      disabled={!entry.formId || displayFields.length === 0}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={displayFields.length === 0 ? "No fields" : "Select field..."} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">—</SelectItem>
+                        {displayFields.map((f) => (
+                          <SelectItem key={f.name} value={f.name}>{f.label || f.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={() => removeDisplayEntry(idx)} className="shrink-0 text-muted-foreground hover:text-destructive">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )
+            })
+          )}
+        </div>
+        {displayEntries.some(e => e.formVersionId && e.fieldName) && (
+          <p className="text-xs text-muted-foreground mt-2">
+            {displayLoading ? "Loading..." : "Form response values shown on booths"}
+          </p>
+        )}
+      </div>
+
       {/* Floorplan */}
       <div className="flex justify-center w-full px-2 sm:px-4 pb-4">
         <div className="w-full max-w-full min-w-0">
@@ -678,29 +812,66 @@ export default function AdminFloorplanPage() {
                   : isSelected ? "rgba(0,51,102,0.4)" : hasCompany ? "rgba(0,51,102,0.15)" : "rgba(255,0,0,0.08)"
                 const stroke = isFormFilterMatch ? "#16a34a" : isSelected ? "#003366" : hasCompany ? "#003366" : "#ff0000"
 
-                return boothShape ? (
-                  <path
-                    key={booth.id}
-                    d={boothShape}
-                    fill={fill}
-                    stroke={stroke}
-                    strokeWidth={isSelected ? 2 : 1}
-                    style={{ cursor: "pointer" }}
-                    onClick={() => handleBoothClick(booth)}
-                  />
-                ) : (
-                  <rect
-                    key={booth.id}
-                    x={boothX}
-                    y={boothY}
-                    width={boothWidth}
-                    height={boothHeight}
-                    fill={fill}
-                    stroke={stroke}
-                    strokeWidth={isSelected ? 2 : 1}
-                    style={{ cursor: "pointer" }}
-                    onClick={() => handleBoothClick(booth)}
-                  />
+                const hasDisplayEntries = displayEntries.some(e => e.formVersionId && e.fieldName)
+                const boothLabel = hasDisplayEntries && booth.company?.id
+                  ? (displayValuesByCompany[booth.company.id] || null)
+                  : null
+                const showLabel = hasDisplayEntries && boothLabel
+                const fontSize = Math.max(8, Math.min(boothWidth, boothHeight) * 0.4)
+                const truncatedLabel = boothLabel && boothLabel.length > 18 ? boothLabel.slice(0, 16) + "…" : boothLabel
+
+                return (
+                  <g key={booth.id}>
+                    {showLabel && boothLabel && boothLabel.length > 18 && (
+                      <title>{boothLabel}</title>
+                    )}
+                    {boothShape ? (
+                      <path
+                        d={boothShape}
+                        fill={fill}
+                        stroke={stroke}
+                        strokeWidth={isSelected ? 2 : 1}
+                        style={{ cursor: "pointer" }}
+                        onClick={() => handleBoothClick(booth)}
+                      />
+                    ) : (
+                      <rect
+                        x={boothX}
+                        y={boothY}
+                        width={boothWidth}
+                        height={boothHeight}
+                        fill={fill}
+                        stroke={stroke}
+                        strokeWidth={isSelected ? 2 : 1}
+                        style={{ cursor: "pointer" }}
+                        onClick={() => handleBoothClick(booth)}
+                      />
+                    )}
+                    {showLabel && truncatedLabel && (
+                      <>
+                        <rect
+                          x={boothCx - (boothWidth * 0.45)}
+                          y={boothCy - (boothHeight * 0.4)}
+                          width={boothWidth * 0.9}
+                          height={boothHeight * 0.8}
+                          fill="white"
+                          style={{ pointerEvents: "none" }}
+                        />
+                        <text
+                          x={boothCx}
+                          y={boothCy}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fontSize={fontSize}
+                          fill="#1a1a1a"
+                          fontWeight={500}
+                          style={{ pointerEvents: "none", userSelect: "none" }}
+                        >
+                          {truncatedLabel}
+                        </text>
+                      </>
+                    )}
+                  </g>
                 )
               })}
             </svg>
