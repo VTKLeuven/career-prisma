@@ -16,7 +16,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { useParams } from "next/navigation"
 import { fetchEventPageBySlugAction, fetchEventsAction } from "@/app/actions/events"
 import { getDirectusImageUrl } from "@/components/Images";
-import { slugifyCompanyName } from "@/lib/utils/slugify";
+import { slugifyCompanyName, slugifyEventName } from "@/lib/utils/slugify";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
 import { CareerEventPage, Company, CareerEvent, HeaderButtonType } from '@/lib/schema'
 import dynamic from "next/dynamic"
@@ -110,7 +110,7 @@ export default function EventPageClient({
         let fetchPromise = fetchPromiseRef.current.get(eventName)
         if (!fetchPromise) {
           // Use API route for better caching and CDN support
-          fetchPromise = fetch(`/api/events/${eventName}`, { cache: 'no-store' })
+          fetchPromise = fetch(`/api/events/${encodeURIComponent(eventName)}`, { cache: 'no-store' })
             .then(res => res.ok ? res.json() : null)
             .catch(() => {
               // Fallback to direct server action if API fails
@@ -805,7 +805,7 @@ function Header({ page }: { page?: CareerEventPage }) {
               <>
                 {shouldShowHeaderButton(page, "floorplan") && (
                   <Link
-                    href={`/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}/floorplan`}
+                    href={`/event/${slugifyEventName(page.event.name)}/floorplan`}
                     className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
                   >
                     Floorplan
@@ -815,7 +815,7 @@ function Header({ page }: { page?: CareerEventPage }) {
                   <CompanyGuideButton 
                     companyGuide={page.company_guide} 
                     isMobile={false}
-                    eventName={page.event.name.toLowerCase().replace(/\s+/g, "-")}
+                    eventName={slugifyEventName(page.event.name)}
                   />
                 )}
                 {shouldShowHeaderButton(page, "cv_upload") && (
@@ -828,7 +828,7 @@ function Header({ page }: { page?: CareerEventPage }) {
                 )}
                 {shouldShowHeaderButton(page, "matching_software") && (
                   <Link
-                    href={`/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}/matching-software`}
+                    href={`/event/${slugifyEventName(page.event.name)}/matching-software`}
                     className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
                   >
                     Matching Software
@@ -847,7 +847,7 @@ function Header({ page }: { page?: CareerEventPage }) {
               <>
                 {shouldShowHeaderButton(page, "floorplan") && (
                   <Link
-                    href={`/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}/floorplan`}
+                    href={`/event/${slugifyEventName(page.event.name)}/floorplan`}
                     className="rounded-full px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 whitespace-nowrap shrink-0"
                   >
                     Floorplan
@@ -857,7 +857,7 @@ function Header({ page }: { page?: CareerEventPage }) {
                   <CompanyGuideButton 
                     companyGuide={page.company_guide} 
                     isMobile={true}
-                    eventName={page.event.name.toLowerCase().replace(/\s+/g, "-")}
+                    eventName={slugifyEventName(page.event.name)}
                   />
                 )}
                 {shouldShowHeaderButton(page, "cv_upload") && (
@@ -870,7 +870,7 @@ function Header({ page }: { page?: CareerEventPage }) {
                 )}
                 {shouldShowHeaderButton(page, "matching_software") && (
                   <Link
-                    href={`/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}/matching-software`}
+                    href={`/event/${slugifyEventName(page.event.name)}/matching-software`}
                     className="rounded-full px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 whitespace-nowrap shrink-0"
                   >
                     Matching Software
@@ -1219,7 +1219,7 @@ function Hero({
                       variant="ghost"
                       className="rounded-full bg-vtk-blue-dark text-white hover:brightness-95 cursor-pointer text-sm sm:text-base"
                     >
-                      <Link href={`/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}/floorplan`}>
+                      <Link href={`/event/${slugifyEventName(page.event.name)}/floorplan`}>
                         Floorplan
                       </Link>
                     </Button>
@@ -1373,7 +1373,7 @@ function CompanyGuideButton({ companyGuide, isMobile, eventName }: {
   if (!fileId) return null
 
   // Use the event route for download
-  const eventSlug = eventName.toLowerCase().replace(/\s+/g, "-")
+  const eventSlug = slugifyEventName(eventName)
   const downloadUrl = `/api/event/${eventSlug}/company-guide/download`
 
   return (

@@ -4,6 +4,7 @@
 "use server";
 import { listEvents } from "@/lib/repos/event";
 import { listEventPages, getEventPageBySlug } from "@/lib/repos/event";
+import { slugifyEventName } from "@/lib/utils/slugify";
 import { getActiveMatchingSoftwareForEvent } from "@/lib/repos/matching-software";
 import DOMPurify from 'isomorphic-dompurify';
 import type { Company, CareerEvent, CareerEventOption } from "@/lib/schema";
@@ -16,7 +17,7 @@ import { updateItem, readItems } from "@directus/sdk";
 export async function fetchEventsAction() {
     const events = await listEvents({ limit: 50, sort: "date" }) ?? [];
     events.map(el => {
-        el.href = `/event/${el.name.toLowerCase().replace(/\s+/g, "-")}`;
+        el.href = `/event/${slugifyEventName(el.name)}`;
         el.start_hour = el.start_hour.slice(0, -3)
         el.end_hour = el.end_hour.slice(0, -3)
 
@@ -150,7 +151,7 @@ export async function fetchEventPagesAction(lim = 50) {
     }
 
     // ✅ Build href
-    page.event.href = `/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}`;
+    page.event.href = `/event/${slugifyEventName(page.event.name)}`;
   });
 
   return pages;
@@ -194,7 +195,7 @@ export async function fetchEventPageBySlugAction(slug: string) {
   }
 
   // ✅ Build href
-  page.event.href = `/event/${page.event.name.toLowerCase().replace(/\s+/g, "-")}`;
+  page.event.href = `/event/${slugifyEventName(page.event.name)}`;
 
   // Check if matching software is active for this event (for header button visibility)
   const hasActiveMatchingSoftware = !!(await getActiveMatchingSoftwareForEvent(page.event.id));
