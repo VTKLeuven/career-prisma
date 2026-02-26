@@ -1,11 +1,23 @@
 "use client";
 
+import Link from "next/link";
 import type { Booth } from "@/lib/schema";
 import { Button } from "@/components/ui/button";
 import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
 import { useState } from "react";
+import { ArrowLeft } from "lucide-react";
 
-export default function PrintClient({ booths, baseUrl }: { booths: Booth[], baseUrl: string }) {
+export default function PrintClient({
+    booths,
+    baseUrl,
+    eventPageName,
+    floorplanName,
+}: {
+    booths: Booth[];
+    baseUrl: string;
+    eventPageName?: string;
+    floorplanName?: string;
+}) {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const generatePDF = async () => {
@@ -149,10 +161,26 @@ export default function PrintClient({ booths, baseUrl }: { booths: Booth[], base
   return (
     <div className="p-8">
       <div className="mb-8 flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Print Booth QR Codes</h1>
-        <Button onClick={generatePDF} disabled={isGenerating}>
-          {isGenerating ? "Generating..." : "Download PDF"}
-        </Button>
+        <div>
+          <h1 className="text-2xl font-bold">Print Booth QR Codes</h1>
+          {eventPageName && (
+            <p className="text-sm text-muted-foreground mt-1">
+              {eventPageName}
+              {floorplanName ? ` – ${floorplanName}` : ""}
+            </p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/admin/zones">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Zones & Booths
+            </Link>
+          </Button>
+          <Button onClick={generatePDF} disabled={isGenerating}>
+            {isGenerating ? "Generating..." : "Download PDF"}
+          </Button>
+        </div>
       </div>
 
       <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md mb-8">

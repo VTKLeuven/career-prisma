@@ -99,6 +99,24 @@ export async function listEventPages(opts?: {
   }
 }
 
+export async function getEventPageById(id: string): Promise<CareerEventPage | null> {
+  try {
+    const client = (await getServerDirectusClient()) ?? directus;
+    const pages = await client.request(
+      readItems("career_event_page", {
+        fields: ["*", "event.*" as any, "floorplan.*" as any],
+        filter: { id: { _eq: id as any } },
+        limit: 1,
+      })
+    ) as unknown as CareerEventPage[];
+
+    return pages.length > 0 ? pages[0] : null;
+  } catch (error) {
+    console.error("Error fetching event page by ID:", error);
+    return null;
+  }
+}
+
 export async function getEventPageBySlug(slug: string): Promise<CareerEventPage | null> {
   try {
     // Step 1: Fetch all events to find the one matching the slug

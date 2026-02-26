@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
     Table,
@@ -19,17 +19,69 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { createZoneAction, deleteZoneAction, updateZoneAction } from "@/app/actions/zones";
-import type { Zone, Booth } from "@/lib/schema";
+import type { Zone, Booth, CareerEventPage } from "@/lib/schema";
 import { useRouter } from "next/navigation";
 import { Trash2, Edit, Plus, Printer, X, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
-export default function ZonesClient({ initialZones, booths, baseUrl }: { initialZones: Zone[], booths: Booth[], baseUrl: string }) {
+function getFloorplanId(page: CareerEventPage): string | null {
+    const fp = page.floorplan;
+    if (!fp) return null;
+    return typeof fp === "object" && fp?.id ? fp.id : (typeof fp === "string" ? fp : null);
+}
+
+export default function ZonesClient({
+    initialZones,
+    booths,
+    baseUrl,
+    careerEventPages,
+}: {
+    initialZones: Zone[];
+    booths: Booth[];
+    baseUrl: string;
+    careerEventPages: CareerEventPage[];
+}) {
+    const [selectedEventPageId, setSelectedEventPageId] = useState<string>("");
     const [zones, setZones] = useState(initialZones);
     const [isOpen, setIsOpen] = useState(false);
     const [editingZone, setEditingZone] = useState<Zone | null>(null);
     const router = useRouter();
+
+    const selectedEventPage = careerEventPages.find((p) => p.id === selectedEventPageId) ?? null;
+    const floorplanId = selectedEventPage ? getFloorplanId(selectedEventPage) : null;
+
+    const { filteredBooths, filteredZones } = useMemo(() => {
+        if (!floorplanId) {
+            return { filteredBooths: [] as Booth[], filteredZones: [] as Zone[] };
+        }
+        const fpId = floorplanId;
+        const boothIdsForFloorplan = new Set(
+            booths
+                .filter((b) => {
+                    const fp = b.Floorplan;
+                    const fpIdResolved = typeof fp === "object" && fp && "id" in fp ? (fp as { id: string }).id : fp;
+                    return fpIdResolved === fpId;
+                })
+                .map((b) => b.id)
+        );
+        const filteredBooths = booths.filter((b) => boothIdsForFloorplan.has(b.id));
+        const filteredZones = initialZones.filter((zone) => {
+            const zoneBooths = Array.isArray(zone.booths) ? zone.booths : [];
+            return zoneBooths.some((b: unknown) => {
+                const bid = typeof b === "object" && b && "id" in b ? (b as { id: string }).id : b;
+                return typeof bid === "string" && boothIdsForFloorplan.has(bid);
+            });
+        });
+        return { filteredBooths, filteredZones };
+    }, [floorplanId, booths, initialZones]);
 
     const [formData, setFormData] = useState<{
         name: string;
@@ -96,7 +148,7 @@ export default function ZonesClient({ initialZones, booths, baseUrl }: { initial
         const to = parseInt(rangeTo);
         if (isNaN(from) || isNaN(to) || from > to) return;
 
-        const boothIdsInRange = booths
+        const boothIdsInRange = filteredBooths
             .filter(b => b.booth_number >= from && b.booth_number <= to)
             .map(b => b.id);
 
@@ -112,7 +164,7 @@ export default function ZonesClient({ initialZones, booths, baseUrl }: { initial
     const removeRange = (index: number) => {
         const range = ranges[index];
         const boothIdsInRange = new Set(
-            booths
+            filteredBooths
                 .filter(b => b.booth_number >= range.from && b.booth_number <= range.to)
                 .map(b => b.id)
         );
@@ -120,7 +172,7 @@ export default function ZonesClient({ initialZones, booths, baseUrl }: { initial
         const otherRanges = ranges.filter((_, i) => i !== index);
         const boothIdsInOtherRanges = new Set(
             otherRanges.flatMap(r =>
-                booths.filter(b => b.booth_number >= r.from && b.booth_number <= r.to).map(b => b.id)
+                filteredBooths.filter(b => b.booth_number >= r.from && b.booth_number <= r.to).map(b => b.id)
             )
         );
 
@@ -140,7 +192,7 @@ export default function ZonesClient({ initialZones, booths, baseUrl }: { initial
         };
 
         const header = "Company,Booth URL";
-        const rows = booths
+        const rows = filteredBooths
             .filter(b => b.company?.name)
             .map(b => `${escapeCsv(b.company!.name)},${baseUrl}/booth/${b.id}`);
 
@@ -154,6 +206,35 @@ export default function ZonesClient({ initialZones, booths, baseUrl }: { initial
 
     return (
         <div className="space-y-4">
+            <div className="flex flex-col gap-4 rounded-lg border p-4 bg-muted/30">
+                <Label>Career Event Page</Label>
+                <Select value={selectedEventPageId} onValueChange={setSelectedEventPageId}>
+                    <SelectTrigger className="max-w-md">
+                        <SelectValue placeholder="Select a career event page to manage zones & booths..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {careerEventPages.map((page) => (
+                            <SelectItem key={page.id} value={page.id}>
+                                {(page.event as { name?: string })?.name ?? "Event"} – {(page.floorplan as { name?: string })?.name ?? "Floorplan"}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                {careerEventPages.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                        Create an event page and assign a floorplan to it first.
+                    </p>
+                )}
+            </div>
+
+            {!selectedEventPage && (
+                <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
+                    Select a career event page above to assign booths to zones, print QR codes, or export CSV.
+                </div>
+            )}
+
+            {selectedEventPage && (
+        <>
             <Dialog open={isOpen} onOpenChange={(open) => {
                 setIsOpen(open);
                 if (!open) setEditingZone(null);
@@ -169,7 +250,7 @@ export default function ZonesClient({ initialZones, booths, baseUrl }: { initial
                         <Plus className="mr-2 h-4 w-4" /> Add Zone
                     </Button>
                 </DialogTrigger>
-                <Button variant="outline" onClick={() => router.push('/admin/zones/print')}>
+                <Button variant="outline" onClick={() => router.push(`/admin/zones/print?eventPageId=${selectedEventPageId}`)}>
                     <Printer className="mr-2 h-4 w-4" /> Print QR Codes
                 </Button>
                 <Button variant="outline" onClick={exportCSV}>
@@ -249,7 +330,7 @@ export default function ZonesClient({ initialZones, booths, baseUrl }: { initial
 
                             <div className="flex items-center justify-between">
                                 <p className="text-sm text-muted-foreground">
-                                    {formData.booths.length} of {booths.length} booths selected
+                                    {formData.booths.length} of {filteredBooths.length} booths selected
                                 </p>
                                 <div className="flex gap-2">
                                     <Button
@@ -257,7 +338,7 @@ export default function ZonesClient({ initialZones, booths, baseUrl }: { initial
                                         variant="outline"
                                         size="sm"
                                         onClick={() => {
-                                            setFormData(prev => ({ ...prev, booths: booths.map(b => b.id) }));
+                                            setFormData(prev => ({ ...prev, booths: filteredBooths.map(b => b.id) }));
                                         }}
                                     >
                                         Select All
@@ -277,7 +358,7 @@ export default function ZonesClient({ initialZones, booths, baseUrl }: { initial
                             </div>
 
                             <div className="border rounded-md p-4 h-60 overflow-y-auto grid grid-cols-2 gap-2">
-                                {booths.map(booth => {
+                                {filteredBooths.map(booth => {
                                     const companyName = booth.company?.name || "Unassigned";
                                     const floorPlanName = booth.Floorplan?.name || "Unknown Floorplan";
                                     return (
@@ -315,7 +396,7 @@ export default function ZonesClient({ initialZones, booths, baseUrl }: { initial
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {initialZones.map((zone) => {
+                        {filteredZones.map((zone) => {
                             const boothCount = Array.isArray(zone.booths) ? zone.booths.length : 0;
                             return (
                                 <TableRow key={zone.id}>
@@ -337,6 +418,8 @@ export default function ZonesClient({ initialZones, booths, baseUrl }: { initial
                     </TableBody>
                 </Table>
             </div>
+        </>
+            )}
         </div>
     );
 }
