@@ -4,11 +4,13 @@ import { cookies } from "next/headers";
 
 const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
 const REFRESH_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_refresh`;
+const REMEMBER_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_remember`;
 
 export async function POST(req: NextRequest) {
   try {
     const cookieStore = await cookies();
     const refreshToken = cookieStore.get(REFRESH_COOKIE)?.value;
+    const rememberCookie = cookieStore.get(REMEMBER_COOKIE)?.value;
     
     if (!refreshToken) {
       return NextResponse.json({ error: "No refresh token" }, { status: 401 });
@@ -50,6 +52,15 @@ export async function POST(req: NextRequest) {
         maxAge: 0,
         expires: new Date(0),
       });
+
+      response.cookies.set(REMEMBER_COOKIE, "", {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: isSecure,
+        path: "/",
+        maxAge: 0,
+        expires: new Date(0),
+      });
       
       return response;
     }
@@ -73,9 +84,16 @@ export async function POST(req: NextRequest) {
     
     const accessExpires = new Date(Date.now() + accessMaxAge * 1000);
 
-    // Refresh token expiration - default to 14 days
-    const refreshMaxAge = 60 * 60 * 24 * 14; // 14 days
+    // Respect "remember me" for cookie lifetimes (access tokens themselves still expire server-side).
+    const isRememberMe = rememberCookie === "1";
+    const refreshMaxAge = isRememberMe
+      ? 60 * 60 * 24 * 90 // 90 days
+      : 60 * 60 * 24 * 14; // 14 days
     const refreshExpires = new Date(Date.now() + refreshMaxAge * 1000);
+    const finalAccessMaxAge = isRememberMe
+      ? 60 * 60 * 24 * 7 // 7 days
+      : accessMaxAge;
+    const accessExpiresFinal = new Date(Date.now() + finalAccessMaxAge * 1000);
 
     // Set new cookies
     const response = NextResponse.json({ success: true });
@@ -85,12 +103,23 @@ export async function POST(req: NextRequest) {
       sameSite: "lax",
       secure: isSecure,
       path: "/",
-      maxAge: accessMaxAge,
-      expires: accessExpires,
+      maxAge: finalAccessMaxAge,
+      expires: accessExpiresFinal,
     });
 
     if (newRefreshToken) {
       response.cookies.set(REFRESH_COOKIE, newRefreshToken, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: isSecure,
+        path: "/",
+        maxAge: refreshMaxAge,
+        expires: refreshExpires,
+      });
+    }
+
+    if (rememberCookie === "1" || rememberCookie === "0") {
+      response.cookies.set(REMEMBER_COOKIE, rememberCookie, {
         httpOnly: true,
         sameSite: "lax",
         secure: isSecure,

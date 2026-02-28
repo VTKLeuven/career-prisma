@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
     let user = await getUserFromCookies();
     const REFRESH_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_refresh`;
     const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
+    const REMEMBER_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_remember`;
     let cookiesToSet: { name: string; value: string; options: any }[] = [];
     
     // If user check failed but we have a refresh token, try to refresh
@@ -18,6 +19,7 @@ export async function GET(request: NextRequest) {
       const { cookies: cookiesApi } = await import("next/headers");
       const cookieStore = await cookiesApi();
       const refreshToken = cookieStore.get(REFRESH_COOKIE)?.value;
+      const rememberCookie = cookieStore.get(REMEMBER_COOKIE)?.value;
       
       if (refreshToken) {
         // Try to refresh the token
@@ -48,10 +50,12 @@ export async function GET(request: NextRequest) {
                 ? Math.max(1, Math.floor(expires))
                 : 60 * 60;
               
-              const accessExpires = new Date(Date.now() + accessMaxAge * 1000);
+              const isRememberMe = rememberCookie === "1";
+              const finalAccessMaxAge = isRememberMe ? 60 * 60 * 24 * 7 : accessMaxAge;
+              const accessExpires = new Date(Date.now() + finalAccessMaxAge * 1000);
               
-              // Refresh token expiration - default to 14 days
-              const refreshMaxAge = 60 * 60 * 24 * 14; // 14 days
+              // Refresh token cookie lifetime (remember-me aware)
+              const refreshMaxAge = isRememberMe ? 60 * 60 * 24 * 90 : 60 * 60 * 24 * 14;
               const refreshExpires = new Date(Date.now() + refreshMaxAge * 1000);
               
               // Store cookies to set
@@ -63,7 +67,7 @@ export async function GET(request: NextRequest) {
                   sameSite: "lax" as const,
                   secure: isSecure,
                   path: "/",
-                  maxAge: accessMaxAge,
+                  maxAge: finalAccessMaxAge,
                   expires: accessExpires,
                 }
               });
@@ -72,6 +76,21 @@ export async function GET(request: NextRequest) {
                 cookiesToSet.push({
                   name: REFRESH_COOKIE,
                   value: newRefreshToken,
+                  options: {
+                    httpOnly: true,
+                    sameSite: "lax" as const,
+                    secure: isSecure,
+                    path: "/",
+                    maxAge: refreshMaxAge,
+                    expires: refreshExpires,
+                  }
+                });
+              }
+
+              if (rememberCookie === "1" || rememberCookie === "0") {
+                cookiesToSet.push({
+                  name: REMEMBER_COOKIE,
+                  value: rememberCookie,
                   options: {
                     httpOnly: true,
                     sameSite: "lax" as const,
@@ -105,6 +124,19 @@ export async function GET(request: NextRequest) {
             });
             cookiesToSet.push({
               name: REFRESH_COOKIE,
+              value: "",
+              options: {
+                httpOnly: true,
+                sameSite: "lax" as const,
+                secure: isSecure,
+                path: "/",
+                maxAge: 0,
+                expires: new Date(0),
+              }
+            });
+
+            cookiesToSet.push({
+              name: REMEMBER_COOKIE,
               value: "",
               options: {
                 httpOnly: true,

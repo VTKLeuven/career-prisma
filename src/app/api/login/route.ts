@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
 const REFRESH_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_refresh`;
+const REMEMBER_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_remember`;
 
 // Allowlist of Directus role IDs that may log in
 const ALLOWED_ROLE_IDS = new Set<string>([
@@ -128,6 +129,15 @@ export async function POST(req: Request) {
 
     res.cookies.set(ACCESS_COOKIE, access_token, accessCookieOptions);
     res.cookies.set(REFRESH_COOKIE, refresh_token, refreshCookieOptions);
+    // Persist "remember me" choice for refresh logic (works even if refresh token isn't a JWT).
+    res.cookies.set(REMEMBER_COOKIE, shouldRemember ? "1" : "0", {
+      httpOnly: true,
+      sameSite: "lax" as const,
+      secure: isSecure,
+      path: "/",
+      maxAge: refreshMaxAge,
+      expires: refreshExpires,
+    });
 
     return res;
   } catch (error) {
