@@ -98,7 +98,7 @@ async function listFromCollection(
   filter: Record<string, unknown>
 ) {
   return client.request(
-    readItems(collection, {
+    readItems(collection as any, {
       fields: ["*", "year.*", "event.*", "prerequisite_form.id", "prerequisite_form.name", "prerequisite_form.slug"],
       ...(Object.keys(filter).length > 0 ? { filter } : {}),
       sort: ["-id"],
@@ -153,7 +153,7 @@ export async function getActiveMatchingSoftwareForEvent(eventId: string): Promis
     for (const collection of MATCHING_SOFTWARE_COLLECTIONS) {
       try {
         const items = (await client.request(
-          readItems(collection, {
+          readItems(collection as any, {
             fields: ["*", "year.*", "event.*", "prerequisite_form.id", "prerequisite_form.name", "prerequisite_form.slug"],
             filter: { event: { _eq: eventId }, active: { _eq: true } },
             limit: 1,
@@ -180,7 +180,7 @@ export async function getFirstActiveMatchingSoftware(): Promise<MatchingSoftware
     for (const collection of MATCHING_SOFTWARE_COLLECTIONS) {
       try {
         const items = (await client.request(
-          readItems(collection, {
+          readItems(collection as any, {
             fields: ["*", "year.*", "event.*", "prerequisite_form.id", "prerequisite_form.name", "prerequisite_form.slug"],
             filter: { active: { _eq: true } },
             limit: 1,
@@ -217,7 +217,7 @@ export async function getCompanyMatchingResponseCompletedIds(
     for (const collection of COMPANY_MATCHING_RESPONSE_COLLECTIONS) {
       try {
         const items = (await client.request(
-          readItems(collection, { fields, filter, limit: -1 })
+          readItems(collection as any, { fields, filter, limit: -1 })
         )) as unknown as CompanyMatchingResponse[];
         for (const item of items) {
           const companyId = typeof item.company === "string" ? item.company : (item.company as { id: string })?.id;
@@ -249,7 +249,7 @@ export async function getCompanyMatchingResponse(
     for (const collection of COMPANY_MATCHING_RESPONSE_COLLECTIONS) {
       try {
         const items = await client.request(
-          readItems(collection, { fields, filter, limit: 1, sort: ["-id"] })
+          readItems(collection as any, { fields, filter, limit: 1, sort: ["-id"] })
         ) as unknown as CompanyMatchingResponse[];
         if (items.length > 0) return items[0];
       } catch {
@@ -286,7 +286,7 @@ export async function createOrUpdateCompanyMatchingResponse(data: {
     try {
       if (existing) {
         const updated = (await client.request(
-          updateItem(collection, existing.id, payload)
+          updateItem(collection as any, existing.id, payload)
         )) as unknown as CompanyMatchingResponse;
         return updated;
       }
@@ -298,7 +298,7 @@ export async function createOrUpdateCompanyMatchingResponse(data: {
   if (!existing) {
     for (const collection of COMPANY_MATCHING_RESPONSE_COLLECTIONS) {
       try {
-        const result = (await client.request(createItem(collection, payload))) as unknown as CompanyMatchingResponse;
+        const result = (await client.request(createItem(collection as any, payload))) as unknown as CompanyMatchingResponse;
         return result;
       } catch {
         // Try next collection for create
@@ -326,7 +326,7 @@ export async function createMatchingSoftware(data: {
   let lastError: unknown;
   for (const collection of MATCHING_SOFTWARE_COLLECTIONS) {
     try {
-      const result = (await client.request(createItem(collection, payload))) as unknown as MatchingSoftware;
+      const result = (await client.request(createItem(collection as any, payload))) as unknown as MatchingSoftware;
       return result;
     } catch (e) {
       lastError = e;
@@ -351,7 +351,7 @@ export async function updateMatchingSoftware(
   for (const collection of MATCHING_SOFTWARE_COLLECTIONS) {
     try {
       const result = (await client.request(
-        updateItem(collection, id, payload)
+        updateItem(collection as any, id, payload)
       )) as unknown as MatchingSoftware;
       return result;
     } catch (e) {
@@ -382,7 +382,7 @@ export async function getStudentMatchingResponse(
         try {
           const filter = { student: { _eq: studentVal }, matching_software: { _eq: matchingSoftwareId } };
           const items = await client.request(
-            readItems(collection, { fields, filter, limit: 1, sort: ["-id"] })
+            readItems(collection as any, { fields, filter, limit: 1, sort: ["-id"] })
           ) as unknown as StudentMatchingResponse[];
           console.log("[getStudentMatchingResponse] collection:", collection, "studentVal:", studentVal, "filter:", JSON.stringify(filter), "items.length:", items.length);
           if (items.length > 0) {
@@ -423,7 +423,7 @@ export async function createStudentMatchingResponse(data: {
   for (const collection of STUDENT_MATCHING_RESPONSE_COLLECTIONS) {
     try {
       console.log("[createStudentMatchingResponse] Trying collection:", collection, "payload student:", payload.student, "matching_software:", payload.matching_software);
-      const result = (await client.request(createItem(collection, payload))) as unknown as StudentMatchingResponse;
+      const result = (await client.request(createItem(collection as any, payload))) as unknown as StudentMatchingResponse;
       console.log("[createStudentMatchingResponse] Created in", collection, "result id:", result?.id);
 
       try {
@@ -487,7 +487,7 @@ async function getCompanyMatchingResponsesForMatchingSoftware(
   for (const collection of COMPANY_MATCHING_RESPONSE_COLLECTIONS) {
     try {
       const items = (await client.request(
-        readItems(collection, {
+        readItems(collection as any, {
           fields,
           filter: { matching_software: { _eq: matchingSoftwareId } },
           limit: -1,
@@ -627,7 +627,7 @@ export async function getMatchedCompaniesForResponse(
       for (const companyField of companyFieldVariants) {
         try {
           const items = (await client.request(
-            readItems(junction, {
+            readItems(junction as any, {
               fields: [companyField],
               filter: { [respField]: { _eq: responseId } },
               limit: -1,
@@ -661,7 +661,7 @@ export async function getCompaniesByIds(
   const client = await getServerDirectusClient();
   try {
     const items = (await client.request(
-      readItems("company", {
+      readItems("company" as any, {
         fields: [
           "id",
           "name",
@@ -697,9 +697,9 @@ async function updateStudentMatchingResponseCompanies(responseId: string, compan
   for (const junction of JUNCTION_COLLECTIONS) {
     for (const { response: respField, company: companyField } of JUNCTION_FIELD_VARIANTS) {
       try {
-        await client.request(deleteItems(junction, { filter: { [respField]: { _eq: responseId } } }));
+        await client.request(deleteItems(junction as any, { filter: { [respField]: { _eq: responseId } } }));
         for (const companyId of companyIds) {
-          await client.request(createItem(junction, { [respField]: responseId, [companyField]: companyId }));
+          await client.request(createItem(junction as any, { [respField]: responseId, [companyField]: companyId }));
         }
         console.log("[Matching] updateStudentMatchingResponseCompanies: success via", junction, "fields:", respField, companyField, "| count:", companyIds.length);
         return;

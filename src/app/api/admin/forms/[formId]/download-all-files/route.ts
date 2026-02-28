@@ -154,7 +154,7 @@ export async function GET(
 
     // Fetch all versions for this form
     const versions = (await client.request(
-      readItems("form_versions", {
+      readItems("form_versions" as any, {
         fields: ["id", "schema"],
         filter: { form_id: { _eq: formId } },
         sort: "-version_number",
@@ -172,7 +172,7 @@ export async function GET(
 
     // Fetch all responses for all versions
     const responses = (await client.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["id", "data", "form_version_id"],
         filter: { form_version_id: { _in: versionIds } },
         limit: -1,
@@ -249,7 +249,7 @@ export async function GET(
 
     // Get form slug for download filename
     const form = await client.request(
-      readItems("forms", {
+      readItems("forms" as any, {
         fields: ["slug"],
         filter: { id: { _eq: formId } },
         limit: 1,

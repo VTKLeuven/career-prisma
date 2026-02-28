@@ -1,5 +1,4 @@
-// lib/universities.ts
-// List of Dutch and Belgian universities
+// lib/universities.ts - List of universities for registration
 
 export const UNIVERSITIES = [
   // Belgium
@@ -14,5 +13,4 @@ export const UNIVERSITIES = [
   "Other",
 ] as const;
 
-export type University = typeof UNIVERSITIES[number];
-
+export type University = (typeof UNIVERSITIES)[number];

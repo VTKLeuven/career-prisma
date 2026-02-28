@@ -138,5 +138,3 @@ export function CVDocumentViewer({ fileUrl, className = '', title }: CVDocumentV
     </div>
   )
 }
-
-

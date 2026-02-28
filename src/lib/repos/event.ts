@@ -20,17 +20,17 @@ export async function listEvents(opts?: {
         fields: [
           "*",
           // Try both possible junction table structures for many-to-many
-          "options.career_event_option_id.*",
-          "options.career_event_option_id.id",
-          "options.career_event_option_id.name",
-          "options.career_event_option_id.description",
-          "options.career_event_option_id.price",
-          "options.career_event_option_id.events.*",
-          "options.career_event_option_id.event.*",
+          "options.career_event_option_id.*" as any,
+          "options.career_event_option_id.id" as any,
+          "options.career_event_option_id.name" as any,
+          "options.career_event_option_id.description" as any,
+          "options.career_event_option_id.price" as any,
+          "options.career_event_option_id.events.*" as any,
+          "options.career_event_option_id.event.*" as any,
         ],
         limit,
         page,
-        sort,
+        sort: sort as any,
         ...(search
           ? { search } // Directus full-text search (if enabled)
           : {}),
@@ -64,11 +64,11 @@ export async function listEventPages(opts?: {
           "companies.company_id.options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option_id.*",
           "floorplan.*", // include floorplan relation
           "company_guide.*", // include company guide file
-        ],
+        ] as any,
         limit,
         page,
         ...(search ? { search } : {}),
-        deep: { companies: { limit: 10000 } }, // Override Directus QUERY_LIMIT_DEFAULT (100)
+        deep: { companies: { limit: 10000 } } as any, // Override Directus QUERY_LIMIT_DEFAULT (100)
       })
     ) as unknown as CareerEventPage[];
 
@@ -100,6 +100,24 @@ export async function listEventPages(opts?: {
   }
 }
 
+export async function getEventPageById(id: string): Promise<CareerEventPage | null> {
+  try {
+    const client = (await getServerDirectusClient()) ?? directus;
+    const pages = await client.request(
+      readItems("career_event_page", {
+        fields: ["*", "event.*" as any, "floorplan.*" as any],
+        filter: { id: { _eq: id as any } },
+        limit: 1,
+      })
+    ) as unknown as CareerEventPage[];
+
+    return pages.length > 0 ? pages[0] : null;
+  } catch (error) {
+    console.error("Error fetching event page by ID:", error);
+    return null;
+  }
+}
+
 export async function getEventPageBySlug(slug: string): Promise<CareerEventPage | null> {
   try {
     // Step 1: Fetch all events to find the one matching the slug
@@ -127,7 +145,7 @@ export async function getEventPageBySlug(slug: string): Promise<CareerEventPage 
       readItems("career_event_page", {
         fields: [
           "*",
-          "*.*",
+          "*.*" as any,
           "event.*",
           "timetable.timetable_id.*",
           "companies.company_id.*",
@@ -139,11 +157,11 @@ export async function getEventPageBySlug(slug: string): Promise<CareerEventPage 
         ],
         filter: {
           event: {
-            _eq: matchingEvent.id,
+            _eq: matchingEvent.id as any,
           },
         },
         limit: 1,
-        deep: { companies: { limit: 10000 } }, // Override Directus QUERY_LIMIT_DEFAULT (100) (no default limit)
+        deep: { companies: { limit: 10000 } } as any, // Override Directus QUERY_LIMIT_DEFAULT (100) (no default limit)
       })
     ) as unknown as CareerEventPage[];
 

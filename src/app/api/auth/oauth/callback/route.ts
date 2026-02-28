@@ -88,21 +88,25 @@ export async function GET(request: NextRequest) {
       frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
-    
+
     // Note: Some OAuth providers (like LITUS) may not require client_secret
     // If your provider doesn't need it, the token exchange will fail and we'll handle it gracefully
 
     // Verify state (CSRF protection)
-    const stateVerification = await verifyOAuthState(state);
-    if (!stateVerification.valid) {
+    const isValidState = await verifyOAuthState(state);
+    if (!isValidState) {
       console.error("Invalid OAuth state");
       const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
       frontendCallbackUrl.searchParams.set("error", "invalid_state");
       frontendCallbackUrl.searchParams.set("error_description", "The authentication session expired. Please try logging in again.");
-      // Preserve redirectTo from the state verification even when state is invalid
-      frontendCallbackUrl.searchParams.set("redirect_to", stateVerification.redirectTo || "/");
+
+      const redirectTo = await getRedirectToFromCookie();
+      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
+
+    // Get redirect URL for successful login or subsequent errors
+    const redirectTo = await getRedirectToFromCookie();
 
     // Exchange authorization code for access token
     const tokenParams = new URLSearchParams({
@@ -127,7 +131,7 @@ export async function GET(request: NextRequest) {
       console.error("Token request error:", fetchError);
       const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
       frontendCallbackUrl.searchParams.set("error", "token_request_failed");
-      frontendCallbackUrl.searchParams.set("redirect_to", stateVerification.redirectTo || "/");
+      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
 
@@ -137,7 +141,7 @@ export async function GET(request: NextRequest) {
       const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
       frontendCallbackUrl.searchParams.set("error", "token_exchange_failed");
       frontendCallbackUrl.searchParams.set("error_description", `Status: ${tokenResponse.status}`);
-      frontendCallbackUrl.searchParams.set("redirect_to", stateVerification.redirectTo || "/");
+      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
 
@@ -148,7 +152,7 @@ export async function GET(request: NextRequest) {
       console.error("No access token in response:", tokenData);
       const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
       frontendCallbackUrl.searchParams.set("error", "no_access_token");
-      frontendCallbackUrl.searchParams.set("redirect_to", stateVerification.redirectTo || "/");
+      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
 
@@ -168,14 +172,14 @@ export async function GET(request: NextRequest) {
         console.warn("Failed to fetch user info:", userInfoResponse.status);
         const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
         frontendCallbackUrl.searchParams.set("error", "user_info_failed");
-        frontendCallbackUrl.searchParams.set("redirect_to", stateVerification.redirectTo || "/");
+        frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
         return NextResponse.redirect(frontendCallbackUrl.toString());
       }
     } catch (userInfoError) {
       console.warn("User info request error:", userInfoError);
       const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
       frontendCallbackUrl.searchParams.set("error", "user_info_error");
-      frontendCallbackUrl.searchParams.set("redirect_to", stateVerification.redirectTo || "/");
+      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
 
@@ -184,7 +188,7 @@ export async function GET(request: NextRequest) {
       console.error("Missing required OAuth fields:", userInfo);
       const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
       frontendCallbackUrl.searchParams.set("error", "missing_oauth_fields");
-      frontendCallbackUrl.searchParams.set("redirect_to", stateVerification.redirectTo || "/");
+      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
 
@@ -227,16 +231,16 @@ export async function GET(request: NextRequest) {
         console.error("Failed to create student");
         const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
         frontendCallbackUrl.searchParams.set("error", "student_creation_failed");
-        frontendCallbackUrl.searchParams.set("redirect_to", stateVerification.redirectTo || "/");
+        frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
         return NextResponse.redirect(frontendCallbackUrl.toString());
       }
     }
 
     // Set student session cookie (store student ID)
     const STUDENT_SESSION_COOKIE = "student_session";
-    
+
     // Calculate session expiration (match token expiration or default to 30 days)
-    const sessionMaxAge = tokenData.expires_in 
+    const sessionMaxAge = tokenData.expires_in
       ? Math.min(tokenData.expires_in, 30 * 24 * 60 * 60) // Max 30 days
       : 30 * 24 * 60 * 60; // Default 30 days
 
@@ -246,7 +250,7 @@ export async function GET(request: NextRequest) {
 
     // Redirect to frontend callback with user data
     const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
-    
+
     // Store user info and tokens in URL params (temporary, for debugging)
     const userInfoBase64 = Buffer.from(JSON.stringify(userInfo)).toString("base64url");
     const tokenInfoBase64 = Buffer.from(
@@ -261,10 +265,10 @@ export async function GET(request: NextRequest) {
     frontendCallbackUrl.searchParams.set("user_info", userInfoBase64);
     frontendCallbackUrl.searchParams.set("token_info", tokenInfoBase64);
     frontendCallbackUrl.searchParams.set("student_id", student.id);
-    frontendCallbackUrl.searchParams.set("redirect_to", stateVerification.redirectTo || "/");
+    frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
 
     const response = NextResponse.redirect(frontendCallbackUrl.toString());
-    
+
     // Set session cookie on the response
     response.cookies.set(STUDENT_SESSION_COOKIE, student.id, {
       httpOnly: true,
