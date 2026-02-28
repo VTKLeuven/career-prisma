@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchEventPagesAction } from "@/app/actions/events";
 import { getDirectusImageUrl } from "@/components/Images";
+import { slugifyEventName } from "@/lib/utils/slugify";
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,7 @@ export async function GET(
     const eventPage = events.find(
       (p) =>
         p.event?.name &&
-        p.event.name.toLowerCase().replace(/\s+/g, "-") === eventName
+        slugifyEventName(p.event.name) === slugifyEventName(eventName)
     );
 
     if (!eventPage || !eventPage.company_guide) {

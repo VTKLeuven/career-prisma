@@ -4,6 +4,7 @@
 import { readItems } from "@directus/sdk";
 import { directus, getServerDirectusClient } from "@/lib/directus";
 import type { CareerEvent, CareerEventPage } from "@/lib/schema";
+import { slugifyEventName } from "@/lib/utils/slugify";
 
 export async function listEvents(opts?: {
   search?: string;
@@ -127,10 +128,10 @@ export async function getEventPageBySlug(slug: string): Promise<CareerEventPage 
       })
     ) as unknown as Array<{ id: string; name: string }>;
 
-    // Find event where slugified name matches
-    const normalizedSlug = slug.toLowerCase().trim();
+    // Find event where slugified name matches (normalize accents for both)
+    const normalizedSlug = slugifyEventName(slug);
     const matchingEvent = events.find((event) => {
-      const eventSlug = event.name.toLowerCase().replace(/\s+/g, "-");
+      const eventSlug = slugifyEventName(event.name);
       return eventSlug === normalizedSlug;
     });
 

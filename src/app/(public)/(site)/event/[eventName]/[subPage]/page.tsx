@@ -8,7 +8,7 @@ import { fetchEventPagesAction } from "@/app/actions/events"
 import { fetchFloorplanAction, fetchMastersAction } from "@/app/actions/features"
 import type { CareerEventPage, Booth, Master, Company } from '@/lib/schema'
 import { getDirectusImageUrl } from "@/components/Images"
-import { slugifyCompanyName } from "@/lib/utils/slugify"
+import { slugifyCompanyName, slugifyEventName } from "@/lib/utils/slugify"
 import { hasCompanyPageAccess } from "@/lib/utils/company-access"
 import { usePageLayout } from '../../../layout'
 import { Button } from "@/components/ui/button"
@@ -47,7 +47,7 @@ export default function SubPage() {
       const found = events.find(
         (p) =>
           p.event?.name &&
-          p.event.name.toLowerCase().replace(/\s+/g, "-") === eventName
+          slugifyEventName(p.event.name) === slugifyEventName(eventName)
       )
       setPage(found ?? null)
 
@@ -237,7 +237,7 @@ function Header({
               <span className="text-xs font-semibold text-neutral-800">{isCompanyGuide ? 'Company page' : 'Floorplan'}</span>
               <div className="flex items-center gap-2">
                 <Link
-                  href={`/event/${eventName.toLowerCase().replace(/\s+/g, "-")}`}
+                  href={`/event/${slugifyEventName(eventName)}`}
                   className="rounded-full bg-vtk-blue px-2.5 py-1 text-xs font-medium text-white cursor-pointer whitespace-nowrap"
                 >
                   {eventName}
@@ -305,7 +305,7 @@ function Header({
                 Home
               </Link>
               <Link
-                href={`/event/${eventName.toLowerCase().replace(/\s+/g, "-")}`}
+                href={`/event/${slugifyEventName(eventName)}`}
                 className="text-sm font-semibold text-neutral-800 hover:text-vtk-blue cursor-pointer transition-colors"
               >
                 {eventName}
@@ -1468,7 +1468,7 @@ function MatchingSoftwarePage({ page, eventName }: { page: CareerEventPage | nul
       .finally(() => setLoading(false))
   }, [])
 
-  const eventSlug = (page?.event?.name || eventName).toLowerCase().replace(/\s+/g, "-")
+  const eventSlug = slugifyEventName(page?.event?.name || eventName)
   const eventId = (page?.event as { id?: string })?.id
 
   if (loading) {
@@ -1520,7 +1520,7 @@ function MatchingSoftwarePage({ page, eventName }: { page: CareerEventPage | nul
 }
 
 function ComingSoonPage({ title, description, eventName }: { title: string; description: string; eventName: string }) {
-  const eventSlug = eventName.toLowerCase().replace(/\s+/g, "-")
+  const eventSlug = slugifyEventName(eventName)
   
   return (
     <div className="min-h-screen bg-gradient-to-br from-vtk-blue/5 via-white to-vtk-yellow/5 flex items-center justify-center px-4 py-16">

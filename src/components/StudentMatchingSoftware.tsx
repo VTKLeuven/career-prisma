@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { slugifyCompanyName } from "@/lib/utils/slugify";
+import { slugifyCompanyName, slugifyEventName } from "@/lib/utils/slugify";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
 import { getDirectusImageUrl } from "@/components/Images";
 import { useRouter } from "next/navigation";
@@ -161,7 +161,7 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
           <CardContent className="py-12 text-center">
             <p className="text-muted-foreground">Matching software is not available for this event.</p>
             <Button asChild className="mt-4">
-              <Link href={`/event/${eventName.toLowerCase().replace(/\s+/g, "-")}`}>Back to event</Link>
+              <Link href={`/event/${slugifyEventName(eventName)}`}>Back to event</Link>
             </Button>
           </CardContent>
         </Card>
@@ -173,7 +173,7 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
     const form = matchingSoftware.prerequisite_form;
     const formSlug = typeof form === "object" && form && "slug" in form ? (form as { slug: string }).slug : "";
     if (formSlug) {
-      const returnUrl = `/event/${eventName.toLowerCase().replace(/\s+/g, "-")}/matching-software`;
+      const returnUrl = `/event/${slugifyEventName(eventName)}/matching-software`;
       router.replace(`/forms/${formSlug}?redirectTo=${encodeURIComponent(returnUrl)}`);
       return (
         <div className="container max-w-2xl mx-auto py-12 px-4 flex items-center justify-center min-h-[40vh]">
@@ -280,7 +280,7 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
               )}
             </div>
             <Button asChild variant="outline">
-              <Link href={`/event/${eventName.toLowerCase().replace(/\s+/g, "-")}`}>Back to event</Link>
+              <Link href={`/event/${slugifyEventName(eventName)}`}>Back to event</Link>
             </Button>
           </CardContent>
         </Card>

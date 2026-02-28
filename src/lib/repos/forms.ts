@@ -1044,6 +1044,53 @@ export async function getCompanyIdsMatchingFormFieldOption(
   }
 }
 
+/** Get form response field values for companies. Returns Map<companyId, displayValue>. */
+export async function getCompanyFormFieldValues(
+  formVersionId: string,
+  fieldName: string
+): Promise<Record<string, string>> {
+  try {
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const client = await getServerDirectusClient();
+
+    const responses = await client.request(
+      readItems("form_responses", {
+        fields: ["id", "company_id", "data"],
+        filter: {
+          _and: [
+            { form_version_id: { _eq: formVersionId } },
+            { company_id: { _nnull: true } },
+          ],
+        },
+        limit: -1,
+        sort: "-submitted_at",
+      })
+    ) as unknown as Array<{ id: string; company_id: string | { id: string }; data: Record<string, unknown> }>;
+
+    const latestByCompany = new Map<string, Record<string, unknown>>();
+    for (const r of responses) {
+      const companyId = typeof r.company_id === "string" ? r.company_id : r.company_id?.id;
+      if (!companyId || latestByCompany.has(companyId)) continue;
+      latestByCompany.set(companyId, r.data ?? {});
+    }
+
+    const result: Record<string, string> = {};
+    for (const [companyId, data] of latestByCompany) {
+      const fieldValue = data[fieldName];
+      if (fieldValue == null || fieldValue === "") continue;
+      const display =
+        Array.isArray(fieldValue)
+          ? (fieldValue as unknown[]).map(String).join(", ")
+          : String(fieldValue);
+      if (display) result[companyId] = display;
+    }
+    return result;
+  } catch (error) {
+    console.error("[getCompanyFormFieldValues] Error:", error);
+    return {};
+  }
+}
+
 export async function getCompanyFormBySlugAndEvent(eventId: string, slug: string) {
   try {
     // Try authenticated first, fall back to public client for public form access

@@ -989,6 +989,16 @@ export async function fetchCompanyIdsMatchingFormFieldOptionAction(
   }
 }
 
+export async function fetchCompanyFormFieldValuesAction(formVersionId: string, fieldName: string) {
+  try {
+    const { getCompanyFormFieldValues } = await import("@/lib/repos/forms");
+    return await getCompanyFormFieldValues(formVersionId, fieldName);
+  } catch (error) {
+    console.error("[fetchCompanyFormFieldValuesAction] Error:", error);
+    return {};
+  }
+}
+
 export async function fetchCompanyFormBySlugAndEventAction(eventId: string, slug: string) {
   try {
     const { getCompanyFormBySlugAndEvent } = await import("@/lib/repos/forms");
