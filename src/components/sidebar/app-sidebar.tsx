@@ -21,11 +21,12 @@ import {
   IconFileCv,
   IconSettings,
   IconColumns,
-  IconAlertTriangle,
+  IconGlassCocktail,
 } from "@tabler/icons-react";
 import Link from "next/link";
 import { useUser } from "@/providers/UserProvider";
 import { fetchPendingApprovalRequestsAction, fetchCompanyByIdAction } from "@/app/actions/companies";
+import { getCompanyOrderingTabInfo } from "@/app/actions/ordering";
 import { validateExistingPageImage } from "@/lib/utils/image-validation";
 import { getDirectusImageUrl } from "@/components/Images";
 import { fetchEventsAction } from "@/app/actions/events";
@@ -111,6 +112,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [pageImageInvalid, setPageImageInvalid] = React.useState<boolean>(false);
   const [companyEvents, setCompanyEvents] = React.useState<CareerEvent[]>([]);
   const [company, setCompany] = React.useState<Company | null>(null);
+  const [companyOrderingBoothId, setCompanyOrderingBoothId] = React.useState<string | null>(null);
 
   // Function to check page image validity
   const checkPageImage = React.useCallback(async () => {
@@ -154,7 +156,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     };
 
     window.addEventListener('company-updated', handleCompanyUpdate as EventListener);
-    
+
     return () => {
       window.removeEventListener('company-updated', handleCompanyUpdate as EventListener);
     };
@@ -182,26 +184,26 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       try {
         const requests = await fetchPendingApprovalRequestsAction();
         if (!alive) return;
-        
+
         setPendingCount(requests.length);
         consecutiveErrors = 0;
-        
+
         // Schedule next fetch with normal polling interval
         if (alive) {
           pollTimeout = setTimeout(fetchCount, POLLING_INTERVAL);
         }
       } catch (error) {
         if (!alive) return;
-        
+
         consecutiveErrors++;
         console.error(`Failed to fetch pending approvals count (attempt ${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, error);
-        
+
         // Stop polling after too many consecutive errors
         if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
           console.error(`Sidebar: Stopped polling after ${MAX_CONSECUTIVE_ERRORS} consecutive errors.`);
           return; // Don't schedule another fetch
         }
-        
+
         // Exponential backoff: wait longer between retries after errors
         const backoffDelay = POLLING_INTERVAL * ERROR_BACKOFF_MULTIPLIER * consecutiveErrors;
         if (alive) {
@@ -224,10 +226,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   React.useEffect(() => {
     if (!user?.company?.id) {
       setCompanyEvents([]);
+      setCompanyOrderingBoothId(null);
       return;
     }
 
     let alive = true;
+
+    getCompanyOrderingTabInfo(user.company.id).then(({ enabled, boothId }) => {
+      if (alive && enabled && boothId) setCompanyOrderingBoothId(boothId);
+      else if (alive) setCompanyOrderingBoothId(null);
+    });
 
     Promise.all([
       fetchCompanyByIdAction(user.company.id),
@@ -235,22 +243,22 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       fetch("/api/scans").then(res => res.ok ? res.json() : []).catch(() => []),
     ]).then(([companyData, allEvents, scans]) => {
       if (!alive) return;
-      
+
       setCompany(companyData as Company | null);
-      
+
       // Extract company events from purchased options (same logic as dashboard page)
       const companyOptions = (companyData as Company)?.options ?? [];
       const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
       const hasEvents = (v: unknown): v is { events: unknown } => isRecord(v) && 'events' in v;
       const hasEvent = (v: unknown): v is { event: unknown } => isRecord(v) && 'event' in v;
-      
+
       const companyEventIds = new Set<string>();
-      
+
       companyOptions.forEach((opt: unknown) => {
         if (!opt || !isRecord(opt)) return;
-        
+
         let optionWithEvents: Record<string, unknown> | null = null;
-        
+
         if ('career_event_option_id' in opt && opt.career_event_option_id) {
           const ceo = opt.career_event_option_id;
           if (isRecord(ceo)) {
@@ -266,9 +274,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           }
           return;
         }
-        
+
         if (!optionWithEvents) return;
-        
+
         if (hasEvents(optionWithEvents) && Array.isArray(optionWithEvents.events)) {
           optionWithEvents.events.forEach((eventOrJunction: unknown) => {
             if (isRecord(eventOrJunction)) {
@@ -301,7 +309,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           }
         });
       }
-      
+
       const filteredEvents = (allEvents ?? []).filter((e: CareerEvent) => companyEventIds.has(e.id));
       setCompanyEvents(filteredEvents);
     }).catch(console.error);
@@ -313,8 +321,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   // Add admin sections if user is admin
   const navItems = React.useMemo(() => {
-    const items: any[] = [...data.navMain];
-    
+    let items: any[] = [];
+
+    // Only show Company Dashboard (navMain) to Admins or Company Representatives
+    if (user?.admin || user?.company) {
+      items = [...data.navMain];
+    }
+
     // Update Events section with dynamic event scan links
     const eventsIndex = items.findIndex(item => item.title === "Events");
     if (eventsIndex !== -1 && companyEvents.length > 0) {
@@ -352,7 +365,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         ...items[settingsIndex],
         hasWarning: pageImageInvalid,
       };
-      
+
       // Add warning to Company Information sub-item
       if (items[settingsIndex].items) {
         const companyInfoIndex = items[settingsIndex].items.findIndex(
@@ -391,12 +404,44 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             url: "/admin/approvals",
             ...(pendingCount > 0 && { badge: pendingCount }),
           },
+          // Ordering System Admin
+          {
+            title: "Drinks & Snacks",
+            url: "/admin/drinks",
+          },
+          {
+            title: "Zones & Booths",
+            url: "/admin/zones",
+          },
+          {
+            title: "Shifters",
+            url: "/admin/shifters",
+          },
         ],
       });
     }
 
+    // Add Ordering section
+    const orderingItems: { title: string; url: string }[] = [];
+    if (user?.is_shifter || user?.admin) {
+      orderingItems.push({ title: "Shifter Dashboard", url: "/dashboard/shifter" });
+    }
+    // Company reps: Order Drinks at their booth (when admin setting is enabled)
+    if (user?.company && companyOrderingBoothId) {
+      orderingItems.push({ title: "Order Drinks", url: `/dashboard/order-drinks` });
+    }
+
+    if (orderingItems.length > 0) {
+      items.push({
+        title: "Ordering",
+        url: "#",
+        icon: IconGlassCocktail,
+        items: orderingItems,
+      });
+    }
+
     return items;
-  }, [user?.admin, pendingCount, pageImageInvalid, companyEvents]);
+  }, [user?.admin, user?.company, user?.is_shifter, pendingCount, pageImageInvalid, companyEvents, companyOrderingBoothId]);
 
   return (
     <Sidebar collapsible="icon" {...props}>

@@ -1,75 +1,59 @@
-// lib/oauth.ts
-import "server-only";
+// lib/oauth.ts - OAuth utilities for LITUS authentication
+
+import crypto from "crypto";
 import { cookies } from "next/headers";
-import { randomBytes } from "crypto";
 import { NextRequest } from "next/server";
 
-/**
- * Generate a secure random state string for OAuth
- */
+const OAUTH_STATE_COOKIE = "oauth_state";
+const OAUTH_REDIRECT_COOKIE = "oauth_redirect_to";
+const OAUTH_STATE_DURATION = 60 * 10; // 10 minutes
+
 export function generateState(): string {
-  return randomBytes(32).toString("base64url");
+  return crypto.randomBytes(32).toString("hex");
 }
 
-/**
- * Store OAuth state in cookie
- */
+interface StoreStateOptions {
+  domain?: string;
+  maxAge?: number;
+}
+
 export async function storeOAuthState(
   state: string,
-  redirectTo: string = "/",
-  opts?: { domain?: string; maxAge?: number }
-) {
+  redirectTo?: string,
+  options: StoreStateOptions = {}
+): Promise<void> {
   const cookieStore = await cookies();
-  const secure = process.env.NODE_ENV === "production";
-  const maxAge = opts?.maxAge ?? 1800; // 30 minutes
-  const domainOpt = opts?.domain ? { domain: opts.domain } : {};
-
-  cookieStore.set("oauth_state", state, {
+  const cookieOptions = {
     httpOnly: true,
-    secure,
-    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    maxAge: options.maxAge ?? OAUTH_STATE_DURATION,
     path: "/",
-    maxAge,
-    ...domainOpt,
-  });
+    domain: options.domain,
+  };
 
-  cookieStore.set("oauth_redirect_to", redirectTo, {
-    httpOnly: true,
-    secure,
-    sameSite: "lax",
-    path: "/",
-    maxAge,
-    ...domainOpt,
-  });
+  cookieStore.set(OAUTH_STATE_COOKIE, state, cookieOptions);
+  if (redirectTo) {
+    cookieStore.set(OAUTH_REDIRECT_COOKIE, redirectTo, cookieOptions);
+  }
 }
 
-/**
- * Verify and retrieve OAuth state from cookie
- */
-export async function verifyOAuthState(state: string): Promise<{
-  valid: boolean;
-  redirectTo?: string;
-}> {
+export async function verifyOAuthState(state: string): Promise<boolean> {
   const cookieStore = await cookies();
-  const storedState = cookieStore.get("oauth_state")?.value;
-  const redirectTo = cookieStore.get("oauth_redirect_to")?.value || "/";
+  const storedState = cookieStore.get(OAUTH_STATE_COOKIE)?.value;
 
   if (!storedState || storedState !== state) {
-    // Return redirectTo even when invalid so it can be preserved in error cases
-    return { valid: false, redirectTo };
+    return false;
   }
 
-  // Clear the state cookie after verification
-  cookieStore.delete("oauth_state");
-  cookieStore.delete("oauth_redirect_to");
-
-  return { valid: true, redirectTo };
+  cookieStore.delete(OAUTH_STATE_COOKIE);
+  cookieStore.delete(OAUTH_REDIRECT_COOKIE);
+  return true;
 }
 
 /**
- * Get the proper origin from request headers
- * Checks X-Forwarded-Host, Host, and X-Forwarded-Proto headers
- * Falls back to environment variables or request.nextUrl.origin
+ * Get the proper origin from request headers.
+ * Checks Forwarded/X-Forwarded-* headers and falls back to request.nextUrl.origin.
  */
 export function getRequestOrigin(request: NextRequest): string {
   const envUrlCandidates = [
@@ -106,12 +90,8 @@ export function getRequestOrigin(request: NextRequest): string {
   const forwardedProtoHeader = request.headers.get("x-forwarded-proto");
   const hostHeader = request.headers.get("host");
 
-  const parseForwarded = (
-    header: string | null
-  ): { host?: string; proto?: string } => {
+  const parseForwarded = (header: string | null): { host?: string; proto?: string } => {
     if (!header) return {};
-    // Basic parsing for: Forwarded: proto=https;host=example.com
-    // Also handles multiple entries separated by comma: keep first.
     const first = header.split(",")[0]?.trim() ?? "";
     const parts = first.split(";").map((p) => p.trim());
     const out: { host?: string; proto?: string } = {};
@@ -127,60 +107,50 @@ export function getRequestOrigin(request: NextRequest): string {
   };
 
   const forwardedParsed = parseForwarded(forwarded);
-  const forwardedHost =
-    forwardedHostHeader?.split(",")[0]?.trim() || forwardedParsed.host;
-  const forwardedProto =
-    forwardedProtoHeader?.split(",")[0]?.trim() || forwardedParsed.proto;
+  const forwardedHost = forwardedHostHeader?.split(",")[0]?.trim() || forwardedParsed.host;
+  const forwardedProto = forwardedProtoHeader?.split(",")[0]?.trim() || forwardedParsed.proto;
   const host = hostHeader?.split(",")[0]?.trim();
 
-  // Prefer forwarded host if available (most reliable in proxy setups)
   const finalHost = forwardedHost || host;
-  
-  // Determine protocol - forwarded-proto usually doesn't include colon
   let finalProto = forwardedProto || request.nextUrl.protocol.replace(":", "");
-  // Ensure protocol format is correct (http or https, no colon)
   finalProto = finalProto.replace(":", "").toLowerCase();
 
   if (finalHost) {
-    // Don't use 0.0.0.0 or localhost-like addresses
-    if (!finalHost.includes("0.0.0.0") && !finalHost.startsWith("127.0.0.1") && !finalHost.startsWith("localhost")) {
+    if (
+      !finalHost.includes("0.0.0.0") &&
+      !finalHost.startsWith("127.0.0.1") &&
+      !finalHost.startsWith("localhost")
+    ) {
       return `${finalProto}://${finalHost}`;
     }
   }
 
-  // Fallback to nextUrl.origin, but warn if it's 0.0.0.0
   const fallbackOrigin = request.nextUrl.origin;
   if (fallbackOrigin.includes("0.0.0.0")) {
     console.warn(
       "Warning: OAuth callback URL is using 0.0.0.0. " +
-      "Set FRONTEND_URL or OAUTH_CALLBACK_URL environment variable, " +
-      "or ensure your reverse proxy sets X-Forwarded-Host header."
+        "Set FRONTEND_URL or OAUTH_CALLBACK_URL environment variable, " +
+        "or ensure your reverse proxy sets X-Forwarded-Host header."
     );
   }
 
   return fallbackOrigin;
 }
 
-/**
- * Build OAuth authorization URL
- */
 export function buildAuthorizationUrl(
   authorizeUrl: string,
   clientId: string,
   redirectUri: string,
   state: string,
-  scopes: string[] = []
+  scopes: string[]
 ): string {
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
     state,
-    ...(scopes.length > 0 && { scope: scopes.join(" ") }),
+    scope: scopes.join(" "),
   });
 
   return `${authorizeUrl}?${params.toString()}`;
 }
-
-
-

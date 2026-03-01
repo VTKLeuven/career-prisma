@@ -149,7 +149,7 @@ export async function fetchCVBookFavouritesAction(
     if (!user?.id) return [];
 
     let companyId: string | undefined =
-      user.company && (typeof user.company === "string" ? user.company : user.company.id);
+      (user.company && (typeof user.company === "string" ? user.company : user.company.id)) ?? undefined;
     if (!companyId && clientCompanyId) {
       companyId = clientCompanyId;
     }

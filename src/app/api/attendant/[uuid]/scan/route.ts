@@ -51,7 +51,7 @@ export async function POST(
     
     // Find the form response by attendant_uuid
     const responses = await client.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["id"],
         filter: {
           attendant_uuid: { _eq: uuid },
@@ -77,7 +77,7 @@ export async function POST(
     try {
       const companies = (await client.request(
         readItems("company", {
-          fields: ["id", "representatives.id"],
+          fields: ["id", { representatives: ["id"] }],
           filter: { id: { _eq: companyId } },
           limit: 1,
         })

@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User } from 'lucide-react'
+import { ChevronDown, LogOut, User, Bell } from 'lucide-react'
 import { useRouter, usePathname } from 'next/navigation'
 import { fetchEventsAction } from "@/app/actions/events";
 import { CareerEvent } from '@/lib/schema'
@@ -27,28 +27,28 @@ const PageLayoutContext = createContext<{
   setHideLayoutHeader: (hide: boolean) => void
 }>({
   hasBanner: false,
-  setHasBanner: () => {},
+  setHasBanner: () => { },
   hideLayoutHeader: false,
-  setHideLayoutHeader: () => {},
+  setHideLayoutHeader: () => { },
 })
 
 export const usePageLayout = () => useContext(PageLayoutContext)
 
 export default function NoSidebarLayout({ children }: { children: React.ReactNode }) {
-    const [hasBanner, setHasBanner] = useState(false)
-    const [hideLayoutHeader, setHideLayoutHeader] = useState(false)
+  const [hasBanner, setHasBanner] = useState(false)
+  const [hideLayoutHeader, setHideLayoutHeader] = useState(false)
 
-    // simple shell without sidebar/header
-    // Apply padding only if page doesn't have a banner and layout header is shown
-    return (
-        <PageLayoutContext.Provider value={{ hasBanner, setHasBanner, hideLayoutHeader, setHideLayoutHeader }}>
-            <main className={`min-h-svh bg-vtk-bg text-neutral-900 ${hasBanner || hideLayoutHeader ? '' : 'pt-28 md:pt-32'}`}>
-                {!hideLayoutHeader && <Header />}
-                {children}
-                <Footer />
-            </main>
-        </PageLayoutContext.Provider>
-    )
+  // simple shell without sidebar/header
+  // Apply padding only if page doesn't have a banner and layout header is shown
+  return (
+    <PageLayoutContext.Provider value={{ hasBanner, setHasBanner, hideLayoutHeader, setHideLayoutHeader }}>
+      <main className={`min-h-svh bg-vtk-bg text-neutral-900 ${hasBanner || hideLayoutHeader ? '' : 'pt-28 md:pt-32'}`}>
+        {!hideLayoutHeader && <Header />}
+        {children}
+        <Footer />
+      </main>
+    </PageLayoutContext.Provider>
+  )
 }
 
 
@@ -57,7 +57,7 @@ function Header() {
   const [menuOpenedViaClick, setMenuOpenedViaClick] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [companyRep, setCompanyRep] = useState<{ authenticated: boolean; name: string } | null>(null)
-  const [student, setStudent] = useState<{ authenticated: boolean; firstName: string | null; lastName: string | null } | null>(null)
+  const [student, setStudent] = useState<{ authenticated: boolean; firstName: string | null; lastName: string | null; is_shifter?: boolean } | null>(null)
   const router = useRouter()
   const pathname = usePathname()
   const [EVENTS, setEvents] = useState<CareerEvent[]>([]);
@@ -79,7 +79,7 @@ function Header() {
   const checkAuthStatus = () => {
     // Use a unique timestamp to prevent any caching
     const timestamp = Date.now();
-    fetch(`/api/user/check?t=${timestamp}`, { 
+    fetch(`/api/user/check?t=${timestamp}`, {
       method: 'GET',
       cache: 'no-store',
       credentials: 'include',
@@ -101,7 +101,7 @@ function Header() {
         } else {
           setCompanyRep(null);
         }
-        
+
         // Only set student if authenticated is explicitly true
         if (data?.student?.authenticated === true) {
           setStudent(data.student);
@@ -136,11 +136,11 @@ function Header() {
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target as Node) &&
-          !(event.target as HTMLElement).closest('button[aria-expanded]')) {
+        !(event.target as HTMLElement).closest('button[aria-expanded]')) {
         setMobileMenuOpen(false)
       }
       if (eventsMenuRef.current && !eventsMenuRef.current.contains(event.target as Node) &&
-          !(event.target as HTMLElement).closest('button[aria-controls="mega-events"]')) {
+        !(event.target as HTMLElement).closest('button[aria-controls="mega-events"]')) {
         setOpenMenu(null)
         setMenuOpenedViaClick(false)
       }
@@ -168,11 +168,11 @@ function Header() {
       <div className="mx-auto max-w-7xl px-2 sm:px-4">
         <div className="flex items-center justify-between gap-2 sm:gap-3 rounded-xl sm:rounded-2xl border bg-white/85 px-2 sm:px-3 md:px-5 py-1.5 sm:py-2 md:py-3 shadow-[0_12px_40px_rgba(0,0,0,0.10)] ring-1 ring-black/5 backdrop-blur-md">
           <Link href="/" className="flex shrink-0 items-center gap-1 sm:gap-2 rounded-full px-1 sm:px-2">
-            <Image 
-              src="/career_blue.png" 
-              alt="VTK Career" 
-              width={120} 
-              height={40} 
+            <Image
+              src="/career_blue.png"
+              alt="VTK Career"
+              width={120}
+              height={40}
               className="h-6 sm:h-8 w-auto self-center"
               priority
             />
@@ -221,6 +221,12 @@ function Header() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    {student.is_shifter && (
+                      <DropdownMenuItem onClick={() => router.push("/dashboard/shifter")}>
+                        <Bell className="mr-2 h-4 w-4 text-orange-500" />
+                        Shifter Dashboard
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem
                       onClick={async () => {
                         await fetch("/api/students/logout", { method: "POST" });
@@ -391,7 +397,7 @@ function Header() {
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
-                      <Button 
+                      <Button
                         asChild
                         className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
                         onClick={() => setMobileMenuOpen(false)}

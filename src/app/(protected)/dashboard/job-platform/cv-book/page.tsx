@@ -301,11 +301,11 @@ export default function CVBookPage() {
   async function validatePDF(fileUrl: string, fileId: string): Promise<boolean> {
     try {
       // Check file type - use GET instead of HEAD to avoid CORS issues
-      const response = await fetch(fileUrl, { 
+      const response = await fetch(fileUrl, {
         method: 'GET',
         headers: { Range: 'bytes=0-4' }
       })
-      
+
       if (!response.ok) {
         return false
       }
@@ -320,10 +320,10 @@ export default function CVBookPage() {
       if (arrayBuffer.byteLength < 4) {
         return false
       }
-      
+
       const bytes = new Uint8Array(arrayBuffer)
       const pdfSignature = String.fromCharCode(...bytes.slice(0, 4))
-      
+
       // PDF files start with %PDF
       if (pdfSignature !== '%PDF') {
         return false
@@ -367,7 +367,7 @@ export default function CVBookPage() {
   const availableYears = activeCVBooks
     .map(book => typeof book.year === "object" ? book.year : null)
     .filter((year): year is AcademicYear => year !== null)
-    .filter((year, index, self) => 
+    .filter((year, index, self) =>
       index === self.findIndex(y => y.id === year.id)
     )
     .sort((a, b) => b.start_of_year.localeCompare(a.start_of_year))

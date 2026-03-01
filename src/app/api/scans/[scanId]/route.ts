@@ -41,7 +41,7 @@ async function scanBelongsToCompany(opts: {
   try {
     const companies = (await client!.request(
       readItems("company", {
-        fields: ["id", "representatives.id"],
+        fields: ["id", { representatives: ["id"] }],
         filter: { id: { _eq: companyId } },
         limit: 1,
       })
@@ -107,13 +107,9 @@ export async function GET(
         "liked",
         "comment",
         "feedback_updated_at",
-        "company_id",
-        "scanned_by.id",
-        "scanned_by.first_name",
-        "scanned_by.last_name",
-        "scanned_by.email",
-        "form_response_id.data",
-        "form_response_id.submitted_at",
+        { company_id: ["id"] },
+        { scanned_by: ["id", "first_name", "last_name", "email"] },
+        { form_response_id: ["data", "submitted_at"] },
       ],
       filter: { id: { _eq: scanId } },
       limit: 1,
@@ -214,7 +210,7 @@ export async function PATCH(
   // Ensure scan belongs to this company
   const existing = (await client.request(
     readItems("attendant_scans", {
-      fields: ["id", "company_id", "scanned_by.id"],
+      fields: ["id", { company_id: ["id"] }, { scanned_by: ["id"] }],
       filter: { id: { _eq: scanId } },
       limit: 1,
     })

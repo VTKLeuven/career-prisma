@@ -14,53 +14,48 @@ export async function GET(request: NextRequest) {
     let user = await getUserFromCookies();
     const REFRESH_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_refresh`;
     const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
-    const REMEMBER_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_remember`;
     let cookiesToSet: { name: string; value: string; options: any }[] = [];
-    
+
     // If user check failed but we have a refresh token, try to refresh
     if (!user) {
       const { cookies: cookiesApi } = await import("next/headers");
       const cookieStore = await cookiesApi();
       const refreshToken = cookieStore.get(REFRESH_COOKIE)?.value;
-      const rememberCookie = cookieStore.get(REMEMBER_COOKIE)?.value;
-      
+
       if (refreshToken) {
         // Try to refresh the token
         if (debug) console.log("[API /user/check] Access token invalid, attempting refresh...");
-        
         const rawBase = process.env.DIRECTUS_URL;
         if (rawBase) {
           const base = rawBase.replace(/\/+$/, "") + "/";
-          
+
           const refreshRes = await fetch(base + "auth/refresh", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ refresh_token: refreshToken }),
           });
-          
+
           if (refreshRes.ok) {
             const refreshData = await refreshRes.json();
             const { access_token, refresh_token: newRefreshToken, expires } = refreshData?.data ?? {};
-            
+
             if (access_token) {
               // Determine secure context
               const url = new URL(request.url);
               const xfProto = request.headers.get("x-forwarded-proto") || "";
               const isSecure = url.protocol === "https:" || xfProto.includes("https") || process.env.NODE_ENV === "production";
-              
+
               // Calculate expiration
               const accessMaxAge = Number.isFinite(expires) && typeof expires === "number"
                 ? Math.max(1, Math.floor(expires))
                 : 60 * 60;
-              
-              const isRememberMe = rememberCookie === "1";
-              const finalAccessMaxAge = isRememberMe ? 60 * 60 * 24 * 7 : accessMaxAge;
-              const accessExpires = new Date(Date.now() + finalAccessMaxAge * 1000);
-              
-              // Refresh token cookie lifetime (remember-me aware)
-              const refreshMaxAge = isRememberMe ? 60 * 60 * 24 * 90 : 60 * 60 * 24 * 14;
+
+              const accessExpires = new Date(Date.now() + accessMaxAge * 1000);
+
+              // Refresh token expiration - default to 14 days
+              const refreshMaxAge = 60 * 60 * 24 * 14; // 14 days
               const refreshExpires = new Date(Date.now() + refreshMaxAge * 1000);
-              
+
               // Store cookies to set
               cookiesToSet.push({
                 name: ACCESS_COOKIE,
@@ -70,11 +65,11 @@ export async function GET(request: NextRequest) {
                   sameSite: "lax" as const,
                   secure: isSecure,
                   path: "/",
-                  maxAge: finalAccessMaxAge,
+                  maxAge: accessMaxAge,
                   expires: accessExpires,
                 }
               });
-              
+
               if (newRefreshToken) {
                 cookiesToSet.push({
                   name: REFRESH_COOKIE,
@@ -90,21 +85,6 @@ export async function GET(request: NextRequest) {
                 });
               }
 
-              if (rememberCookie === "1" || rememberCookie === "0") {
-                cookiesToSet.push({
-                  name: REMEMBER_COOKIE,
-                  value: rememberCookie,
-                  options: {
-                    httpOnly: true,
-                    sameSite: "lax" as const,
-                    secure: isSecure,
-                    path: "/",
-                    maxAge: refreshMaxAge,
-                    expires: refreshExpires,
-                  }
-                });
-              }
-              
               // Retry getting user with new token
               user = await getUserFromCookies();
               if (debug) {
@@ -142,24 +122,11 @@ export async function GET(request: NextRequest) {
                 expires: new Date(0),
               }
             });
-
-            cookiesToSet.push({
-              name: REMEMBER_COOKIE,
-              value: "",
-              options: {
-                httpOnly: true,
-                sameSite: "lax" as const,
-                secure: isSecure,
-                path: "/",
-                maxAge: 0,
-                expires: new Date(0),
-              }
-            });
           }
         }
       }
     }
-    
+
     const student = await getStudentFromCookies();
     if (debug) {
       console.log(
@@ -189,6 +156,7 @@ export async function GET(request: NextRequest) {
       firstName: student.first_name || null,
       lastName: student.last_name || null,
       email: student.email,
+      is_shifter: student.is_shifter || false,
     } : null;
     if (debug) {
       console.log("[API /user/check] Returning:", {

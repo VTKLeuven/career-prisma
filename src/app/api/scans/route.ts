@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDirectusClient } from "@/lib/directus";
-import { readItems } from "@directus/sdk";
+import { readItems, readUsers } from "@directus/sdk";
 import { getUserFromRequestWithRefresh } from "@/lib/auth-server";
 
 export async function GET(request: NextRequest) {
@@ -64,34 +64,29 @@ export async function GET(request: NextRequest) {
     const eventName = searchParams.get("event");
     const eventId = searchParams.get("eventId");
 
-    // Avoid filtering on `company_id` here: in some environments it's an integer column while
-    // companies use UUIDs, which can cause Directus/DB errors (NaN cast).
-    // Also avoid `scanned_by.company` (often restricted).
-    //
-    // Instead: fetch the current company and its representatives (non-system collection),
-    // then filter scans by scanned_by in that representative set.
-    let repIds: string[] = [];
-    try {
-      const companies = (await client.request(
-        readItems("company", {
-          fields: ["id", "representatives.id"],
-          filter: { id: { _eq: companyId } },
-          limit: 1,
-        })
-      )) as unknown as Array<{ id: string; representatives?: Array<{ id?: string } | string> }>;
+    // Refactored to avoid nested permission issues:
+    // 1. Fetch all users belonging to this company
+    // 2. Fetch scans where scanned_by is in that list of users
 
-      const reps = companies?.[0]?.representatives ?? [];
-      repIds = reps
-        .map((r) => (typeof r === "string" ? r : (r?.id ?? "")))
-        .filter((id): id is string => typeof id === "string" && id.length > 0);
-    } catch (e) {
-      console.warn("Failed to load company representatives; falling back to user-only scans:", e);
+    // Step 1: Get company users
+    const companyUsers = await client.request(
+      readUsers({
+        filter: {
+          company: { _eq: companyId },
+        } as any,
+        fields: ["id"],
+        limit: -1,
+      })
+    ) as { id: string }[];
+
+    const companyUserIds = companyUsers.map(u => u.id);
+
+    if (companyUserIds.length === 0) {
+      return NextResponse.json([]);
     }
 
-    // Always include current user as fallback (at minimum they should see their own scans)
-    if (!repIds.includes(user.id)) repIds.push(user.id);
-
-    const scans = (await client.request(
+    // Step 2: Get scans for these users
+    const scans = await client.request(
       readItems("attendant_scans", {
         fields: [
           "id",
@@ -100,28 +95,32 @@ export async function GET(request: NextRequest) {
           "liked",
           "comment",
           "feedback_updated_at",
-          "scanned_by.first_name",
-          "scanned_by.last_name",
-          "scanned_by.email",
-          "form_response_id.data",
-          "form_response_id.submitted_at",
-          "form_response_id.form_version_id.form_id.name",
-          "form_response_id.form_version_id.form_id.id",
-          "form_response_id.form_version_id.metadata",
+          { scanned_by: ["first_name", "last_name", "email"] },
+          {
+            form_response_id: [
+              "data",
+              "submitted_at",
+              {
+                form_version_id: [
+                  "metadata",
+                  {
+                    form_id: ["name", "id"],
+                  },
+                ],
+              },
+            ],
+          },
         ],
         filter: {
-          scanned_by: { _in: repIds },
+          "scanned_by": { _in: companyUserIds },
         },
         sort: "-scanned_at",
-        limit: -1, // Get all scans
+        limit: -1,
       })
-    )) as unknown as Array<{
+    ) as unknown as Array<{
       id: string;
       attendant_uuid: string;
       scanned_at: string;
-      liked?: boolean;
-      comment?: string | null;
-      feedback_updated_at?: string | null;
       scanned_by: {
         first_name: string | null;
         last_name: string | null;
@@ -141,6 +140,9 @@ export async function GET(request: NextRequest) {
           };
         };
       };
+      liked?: boolean;
+      comment?: string | null;
+      feedback_updated_at?: string | null;
     }>;
 
     // Transform scans to include computed name field for compatibility
@@ -177,7 +179,7 @@ export async function GET(request: NextRequest) {
     return res;
   } catch (error) {
     console.error("Error fetching scans:", error);
-    
+
     // Provide more detailed error information
     let errorMessage = "Failed to fetch scans";
     if (error instanceof Error) {
@@ -189,7 +191,7 @@ export async function GET(request: NextRequest) {
         errorMessage = "Scans collection not found. Please contact support.";
       }
     }
-    
+
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }

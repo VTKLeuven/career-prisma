@@ -33,13 +33,13 @@ export async function listBooths(
           "company.category.master_id.*",
           "company.category.master_id.logo",
           "company.options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option_id.*",
-        ],
+        ] as any,
         limit,
         page,
-        sort,
+        sort: sort as any,
         filter: {
           Floorplan: {
-            _eq: floorplan.id, // only booths for this floorplan
+            _eq: floorplan.id as any, // only booths for this floorplan
           },
         },
         ...(search
@@ -71,7 +71,7 @@ export async function listMasters(
         fields: ["*"],
         limit,
         page,
-        sort,
+        sort: sort as any,
         ...(search
           ? { search } // optional full-text search
           : {}),
