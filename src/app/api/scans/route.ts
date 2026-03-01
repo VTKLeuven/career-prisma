@@ -1,17 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDirectusClient } from "@/lib/directus";
 import { readItems } from "@directus/sdk";
-import { getUserFromCookies } from "@/lib/auth-server";
+import { getUserFromRequestWithRefresh } from "@/lib/auth-server";
 
 export async function GET(request: NextRequest) {
   try {
     // Get the authenticated user (company rep)
-    const user = await getUserFromCookies();
-    if (!user || !user.company) {
-      return NextResponse.json(
+    const { user, cookiesToSet } = await getUserFromRequestWithRefresh(request);
+    if (!user) {
+      const res = NextResponse.json(
         { error: "Unauthorized. Please log in as a company representative." },
         { status: 401 }
       );
+      for (const cookie of cookiesToSet) {
+        res.cookies.set(cookie.name, cookie.value, cookie.options);
+      }
+      return res;
+    }
+    if (!user.company) {
+      const res = NextResponse.json(
+        { error: "Your account is signed in, but it is not linked to a company." },
+        { status: 403 }
+      );
+      for (const cookie of cookiesToSet) {
+        res.cookies.set(cookie.name, cookie.value, cookie.options);
+      }
+      return res;
     }
 
     // Extract company ID - handle both string and object cases
@@ -50,119 +64,84 @@ export async function GET(request: NextRequest) {
     const eventName = searchParams.get("event");
     const eventId = searchParams.get("eventId");
 
-    // Workaround for company_id type mismatch:
-    // If attendant_scans.company_id is an integer but companies use UUIDs,
-    // we filter by scanned_by.company relation instead
-    // Try using nested relation filter first (more efficient)
-    let scans;
+    // Avoid filtering on `company_id` here: in some environments it's an integer column while
+    // companies use UUIDs, which can cause Directus/DB errors (NaN cast).
+    // Also avoid `scanned_by.company` (often restricted).
+    //
+    // Instead: fetch the current company and its representatives (non-system collection),
+    // then filter scans by scanned_by in that representative set.
+    let repIds: string[] = [];
     try {
-      scans = await client.request(
-        readItems("attendant_scans", {
-          fields: [
-            "id",
-            "attendant_uuid",
-            "scanned_at",
-            "scanned_by.first_name",
-            "scanned_by.last_name",
-            "scanned_by.email",
-            "form_response_id.data",
-            "form_response_id.submitted_at",
-            "form_response_id.form_version_id.form_id.name",
-            "form_response_id.form_version_id.form_id.id",
-            "form_response_id.form_version_id.metadata",
-          ],
-          filter: {
-            "scanned_by.company": { _eq: companyId },
-          },
-          sort: "-scanned_at",
-          limit: -1, // Get all scans
+      const companies = (await client.request(
+        readItems("company", {
+          fields: ["id", "representatives.id"],
+          filter: { id: { _eq: companyId } },
+          limit: 1,
         })
-      ) as unknown as Array<{
-        id: string;
-        attendant_uuid: string;
-        scanned_at: string;
-        scanned_by: {
-          first_name: string | null;
-          last_name: string | null;
-          email: string;
-        };
-        form_response_id: {
-          data: Record<string, unknown>;
-          submitted_at: string;
-          form_version_id: {
-            form_id: {
-              id: string;
-              name: string;
-            };
-            metadata?: {
-              event_id?: string;
-              [key: string]: unknown;
-            };
-          };
-        };
-      }>;
-    } catch (filterError) {
-      // If nested relation filter doesn't work, fall back to fetching all and filtering in memory
-      console.warn("Nested relation filter failed, falling back to in-memory filtering:", filterError);
-      let allScans = await client.request(
-        readItems("attendant_scans", {
-          fields: [
-            "id",
-            "attendant_uuid",
-            "scanned_at",
-            "scanned_by.first_name",
-            "scanned_by.last_name",
-            "scanned_by.email",
-            "scanned_by.company",
-            "form_response_id.data",
-            "form_response_id.submitted_at",
-            "form_response_id.form_version_id.form_id.name",
-            "form_response_id.form_version_id.form_id.id",
-            "form_response_id.form_version_id.metadata",
-          ],
-          sort: "-scanned_at",
-          limit: -1, // Get all scans
-        })
-      ) as unknown as Array<{
-        id: string;
-        attendant_uuid: string;
-        scanned_at: string;
-        scanned_by: {
-          first_name: string | null;
-          last_name: string | null;
-          email: string;
-          company?: string | { id: string } | null;
-        };
-        form_response_id: {
-          data: Record<string, unknown>;
-          submitted_at: string;
-          form_version_id: {
-            form_id: {
-              id: string;
-              name: string;
-            };
-            metadata?: {
-              event_id?: string;
-              [key: string]: unknown;
-            };
-          };
-        };
-      }>;
+      )) as unknown as Array<{ id: string; representatives?: Array<{ id?: string } | string> }>;
 
-      // Filter scans by company in memory
-      scans = allScans.filter(scan => {
-        const userCompany = scan.scanned_by?.company;
-        if (!userCompany) return false;
-        
-        // Handle both string and object company formats
-        if (typeof userCompany === 'string') {
-          return userCompany === companyId;
-        } else if (typeof userCompany === 'object' && userCompany !== null && 'id' in userCompany) {
-          return userCompany.id === companyId;
-        }
-        return false;
-      });
+      const reps = companies?.[0]?.representatives ?? [];
+      repIds = reps
+        .map((r) => (typeof r === "string" ? r : (r?.id ?? "")))
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+    } catch (e) {
+      console.warn("Failed to load company representatives; falling back to user-only scans:", e);
     }
+
+    // Always include current user as fallback (at minimum they should see their own scans)
+    if (!repIds.includes(user.id)) repIds.push(user.id);
+
+    const scans = (await client.request(
+      readItems("attendant_scans", {
+        fields: [
+          "id",
+          "attendant_uuid",
+          "scanned_at",
+          "liked",
+          "comment",
+          "feedback_updated_at",
+          "scanned_by.first_name",
+          "scanned_by.last_name",
+          "scanned_by.email",
+          "form_response_id.data",
+          "form_response_id.submitted_at",
+          "form_response_id.form_version_id.form_id.name",
+          "form_response_id.form_version_id.form_id.id",
+          "form_response_id.form_version_id.metadata",
+        ],
+        filter: {
+          scanned_by: { _in: repIds },
+        },
+        sort: "-scanned_at",
+        limit: -1, // Get all scans
+      })
+    )) as unknown as Array<{
+      id: string;
+      attendant_uuid: string;
+      scanned_at: string;
+      liked?: boolean;
+      comment?: string | null;
+      feedback_updated_at?: string | null;
+      scanned_by: {
+        first_name: string | null;
+        last_name: string | null;
+        email: string;
+      };
+      form_response_id: {
+        data: Record<string, unknown>;
+        submitted_at: string;
+        form_version_id: {
+          form_id: {
+            id: string;
+            name: string;
+          };
+          metadata?: {
+            event_id?: string;
+            [key: string]: unknown;
+          };
+        };
+      };
+    }>;
 
     // Transform scans to include computed name field for compatibility
     // Remove company field from scanned_by as it's not needed in response
@@ -191,7 +170,11 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return NextResponse.json(filteredScans);
+    const res = NextResponse.json(filteredScans);
+    for (const cookie of cookiesToSet) {
+      res.cookies.set(cookie.name, cookie.value, cookie.options);
+    }
+    return res;
   } catch (error) {
     console.error("Error fetching scans:", error);
     

@@ -6,6 +6,9 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
+  const debug =
+    process.env.DEBUG_API_USER_CHECK === "1" ||
+    process.env.DEBUG_API_USER_CHECK === "true";
   try {
     // Explicitly check both - don't rely on truthy values
     let user = await getUserFromCookies();
@@ -23,7 +26,7 @@ export async function GET(request: NextRequest) {
       
       if (refreshToken) {
         // Try to refresh the token
-        console.log('[API /user/check] Access token invalid, attempting refresh...');
+        if (debug) console.log("[API /user/check] Access token invalid, attempting refresh...");
         
         const rawBase = process.env.DIRECTUS_URL;
         if (rawBase) {
@@ -104,10 +107,15 @@ export async function GET(request: NextRequest) {
               
               // Retry getting user with new token
               user = await getUserFromCookies();
-              console.log('[API /user/check] Token refresh successful, user:', user ? { id: user.id, email: user.email } : null);
+              if (debug) {
+                console.log(
+                  "[API /user/check] Token refresh successful, user:",
+                  user ? { id: user.id, email: user.email } : null,
+                );
+              }
             }
           } else {
-            console.log('[API /user/check] Token refresh failed:', refreshRes.status);
+            if (debug) console.log("[API /user/check] Token refresh failed:", refreshRes.status);
             // Clear invalid cookies
             const isSecure = request.url.startsWith("https:") || process.env.NODE_ENV === "production";
             cookiesToSet.push({
@@ -153,10 +161,16 @@ export async function GET(request: NextRequest) {
     }
     
     const student = await getStudentFromCookies();
-
-    // Debug logging (remove in production)
-    console.log('[API /user/check] getUserFromCookies returned:', user ? { id: user.id, email: user.email, hasCompany: !!user.company } : null);
-    console.log('[API /user/check] getStudentFromCookies returned:', student ? { id: student.id, email: student.email } : null);
+    if (debug) {
+      console.log(
+        "[API /user/check] getUserFromCookies returned:",
+        user ? { id: user.id, email: user.email, hasCompany: !!user.company } : null,
+      );
+      console.log(
+        "[API /user/check] getStudentFromCookies returned:",
+        student ? { id: student.id, email: student.email } : null,
+      );
+    }
 
     // Validate and return user type information
     // Only return companyRep if user is actually defined and has required fields
@@ -176,8 +190,16 @@ export async function GET(request: NextRequest) {
       lastName: student.last_name || null,
       email: student.email,
     } : null;
-
-    console.log('[API /user/check] Returning:', { companyRep: companyRepData ? { authenticated: true, name: companyRepData.name } : null, student: studentData ? { authenticated: true, firstName: studentData.firstName } : null });
+    if (debug) {
+      console.log("[API /user/check] Returning:", {
+        companyRep: companyRepData
+          ? { authenticated: true, name: companyRepData.name }
+          : null,
+        student: studentData
+          ? { authenticated: true, firstName: studentData.firstName }
+          : null,
+      });
+    }
 
     const response = NextResponse.json({
       companyRep: companyRepData,

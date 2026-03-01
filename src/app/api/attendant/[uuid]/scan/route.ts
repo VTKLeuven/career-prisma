@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDirectusClient } from "@/lib/directus";
 import { readItems, createItem } from "@directus/sdk";
-import { getUserFromCookies } from "@/lib/auth-server";
+import { getUserFromRequestWithRefresh } from "@/lib/auth-server";
 
 export async function POST(
   request: NextRequest,
@@ -19,12 +19,26 @@ export async function POST(
     }
 
     // Get the authenticated user (company rep)
-    const user = await getUserFromCookies();
-    if (!user || !user.company) {
-      return NextResponse.json(
+    const { user, cookiesToSet } = await getUserFromRequestWithRefresh(request);
+    if (!user) {
+      const res = NextResponse.json(
         { error: "Unauthorized. Please log in as a company representative." },
         { status: 401 }
       );
+      for (const cookie of cookiesToSet) {
+        res.cookies.set(cookie.name, cookie.value, cookie.options);
+      }
+      return res;
+    }
+    if (!user.company) {
+      const res = NextResponse.json(
+        { error: "Your account is signed in, but it is not linked to a company." },
+        { status: 403 }
+      );
+      for (const cookie of cookiesToSet) {
+        res.cookies.set(cookie.name, cookie.value, cookie.options);
+      }
+      return res;
     }
 
     const client = getAdminDirectusClient();
@@ -56,26 +70,52 @@ export async function POST(
     const responseId = responses[0].id;
     const companyId = typeof user.company === 'string' ? user.company : user.company.id;
 
-    // Check if this scan already exists
-    // Workaround: Filter by scanned_by user instead of company_id to avoid type mismatch
-    const existingScans = await client.request(
+    // Check if this scan already exists for ANY representative in this company.
+    // We avoid filtering by company_id because in some environments it is an integer column
+    // while companies use UUIDs (can cause NaN cast errors).
+    let repIds: string[] = [user.id];
+    try {
+      const companies = (await client.request(
+        readItems("company", {
+          fields: ["id", "representatives.id"],
+          filter: { id: { _eq: companyId } },
+          limit: 1,
+        })
+      )) as unknown as Array<{ id: string; representatives?: Array<{ id?: string } | string> }>;
+
+      const reps = companies?.[0]?.representatives ?? [];
+      const ids = reps
+        .map((r) => (typeof r === "string" ? r : (r?.id ?? "")))
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+      repIds = Array.from(new Set([...ids, user.id]));
+    } catch (e) {
+      console.warn("Failed to load company representatives; falling back to user-only scans:", e);
+    }
+
+    const existingScans = (await client.request(
       readItems("attendant_scans", {
         fields: ["id"],
         filter: {
           attendant_uuid: { _eq: uuid },
-          scanned_by: { _eq: user.id },
+          scanned_by: { _in: repIds },
         },
+        sort: "-scanned_at",
         limit: 1,
       })
-    ) as unknown as Array<{ id: string }>;
+    )) as unknown as Array<{ id: string }>;
 
     // If scan already exists, return success without creating duplicate
     if (existingScans.length > 0) {
-      return NextResponse.json({
+      const res = NextResponse.json({
         success: true,
         message: "Attendant already scanned",
         scanId: existingScans[0].id,
       });
+      for (const cookie of cookiesToSet) {
+        res.cookies.set(cookie.name, cookie.value, cookie.options);
+      }
+      return res;
     }
 
     // Create a new scan record
@@ -93,11 +133,15 @@ export async function POST(
         })
       );
 
-      return NextResponse.json({
+      const res = NextResponse.json({
         success: true,
         message: "Attendant scanned successfully",
         scanId: (scan as { id: string }).id,
       });
+      for (const cookie of cookiesToSet) {
+        res.cookies.set(cookie.name, cookie.value, cookie.options);
+      }
+      return res;
     } catch (createError: any) {
       // If creation fails due to company_id type mismatch, try without company_id
       // (assuming it might be auto-populated from scanned_by user's company)
@@ -113,11 +157,15 @@ export async function POST(
             })
           );
 
-          return NextResponse.json({
+          const res = NextResponse.json({
             success: true,
             message: "Attendant scanned successfully",
             scanId: (scan as { id: string }).id,
           });
+          for (const cookie of cookiesToSet) {
+            res.cookies.set(cookie.name, cookie.value, cookie.options);
+          }
+          return res;
         } catch (fallbackError) {
           console.error("Failed to create scan even without company_id:", fallbackError);
           throw createError; // Throw original error

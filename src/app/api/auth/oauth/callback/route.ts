@@ -49,7 +49,12 @@ export async function GET(request: NextRequest) {
     const clientSecret = process.env.LITUS_SECRET || process.env.OAUTH_CLIENT_SECRET;
     const origin = getRequestOrigin(request);
     const callbackUrl = process.env.OAUTH_CALLBACK_URL || `${origin}/api/auth/oauth/callback`;
-    const frontendUrl = process.env.FRONTEND_URL || origin;
+    const frontendUrl =
+      process.env.NEXT_PUBLIC_FORM_DOMAIN ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.FRONTEND_URL ||
+      origin;
 
     // Handle OAuth errors
     if (error) {
@@ -278,7 +283,12 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("OAuth callback error:", error);
     const origin = getRequestOrigin(request);
-    const frontendUrl = process.env.FRONTEND_URL || origin;
+    const frontendUrl =
+      process.env.NEXT_PUBLIC_FORM_DOMAIN ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.FRONTEND_URL ||
+      origin;
     const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
     frontendCallbackUrl.searchParams.set("error", "callback_error");
     frontendCallbackUrl.searchParams.set(

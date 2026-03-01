@@ -72,34 +72,68 @@ export async function verifyOAuthState(state: string): Promise<{
  * Falls back to environment variables or request.nextUrl.origin
  */
 export function getRequestOrigin(request: NextRequest): string {
-  // First, check if there's an explicit FRONTEND_URL or OAUTH_CALLBACK_URL set
-  const frontendUrl = process.env.FRONTEND_URL;
-  if (frontendUrl) {
+  const envUrlCandidates = [
+    process.env.NEXT_PUBLIC_FORM_DOMAIN,
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.NEXTAUTH_URL,
+    // Legacy / server-only override (kept for backwards compatibility)
+    process.env.FRONTEND_URL,
+  ].filter(Boolean) as string[];
+
+  for (const candidate of envUrlCandidates) {
     try {
-      const url = new URL(frontendUrl);
+      const url = new URL(candidate);
       return url.origin;
     } catch {
-      // Invalid URL, continue to header-based detection
+      // Ignore invalid URL and continue.
     }
   }
 
-  // Check NEXT_PUBLIC_FORM_DOMAIN as a fallback (server URL)
-  const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN;
-  if (formDomain) {
+  // Some platforms expose the hostname without protocol (e.g. VERCEL_URL)
+  const vercelUrl = process.env.VERCEL_URL;
+  if (vercelUrl) {
     try {
-      const url = new URL(formDomain);
+      const url = new URL(`https://${vercelUrl.replace(/^https?:\/\//, "")}`);
       return url.origin;
     } catch {
-      // Invalid URL, continue to header-based detection
+      // Ignore invalid URL and continue.
     }
   }
 
-  // Check for forwarded headers (common in reverse proxy setups)
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  const forwardedProto = request.headers.get("x-forwarded-proto");
-  const host = request.headers.get("host");
+  const forwarded = request.headers.get("forwarded");
+  const forwardedHostHeader = request.headers.get("x-forwarded-host");
+  const forwardedProtoHeader = request.headers.get("x-forwarded-proto");
+  const hostHeader = request.headers.get("host");
 
-  // Prefer X-Forwarded-Host if available (most reliable in proxy setups)
+  const parseForwarded = (
+    header: string | null
+  ): { host?: string; proto?: string } => {
+    if (!header) return {};
+    // Basic parsing for: Forwarded: proto=https;host=example.com
+    // Also handles multiple entries separated by comma: keep first.
+    const first = header.split(",")[0]?.trim() ?? "";
+    const parts = first.split(";").map((p) => p.trim());
+    const out: { host?: string; proto?: string } = {};
+    for (const p of parts) {
+      const [kRaw, vRaw] = p.split("=", 2);
+      const k = (kRaw ?? "").trim().toLowerCase();
+      const v = (vRaw ?? "").trim().replace(/^"|"$/g, "");
+      if (!k || !v) continue;
+      if (k === "host") out.host = v;
+      if (k === "proto") out.proto = v;
+    }
+    return out;
+  };
+
+  const forwardedParsed = parseForwarded(forwarded);
+  const forwardedHost =
+    forwardedHostHeader?.split(",")[0]?.trim() || forwardedParsed.host;
+  const forwardedProto =
+    forwardedProtoHeader?.split(",")[0]?.trim() || forwardedParsed.proto;
+  const host = hostHeader?.split(",")[0]?.trim();
+
+  // Prefer forwarded host if available (most reliable in proxy setups)
   const finalHost = forwardedHost || host;
   
   // Determine protocol - forwarded-proto usually doesn't include colon

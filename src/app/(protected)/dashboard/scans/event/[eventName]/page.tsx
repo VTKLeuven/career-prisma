@@ -24,6 +24,9 @@ type AttendantScan = {
   id: string;
   attendant_uuid: string;
   scanned_at: string;
+  liked?: boolean;
+  comment?: string | null;
+  feedback_updated_at?: string | null;
   scanned_by: {
     name: string;
     email: string;
@@ -180,6 +183,8 @@ export default function EventScansPage() {
     const headerRow = [
       'Scanned At', 
       'Scanned By', 
+      'Liked',
+      'Comment',
       'Registration Date',
       ...(hasStudentData ? ['Student Username', 'Student Email', 'Student Full Name', 'Student University', 'Student University Status'] : []),
       ...finalFieldNames
@@ -190,6 +195,9 @@ export default function EventScansPage() {
       const scannedBy = typeof scan.scanned_by === 'object' 
         ? scan.scanned_by.name || scan.scanned_by.email 
         : 'Unknown';
+
+      const liked = scan.liked ? "Yes" : "";
+      const comment = typeof scan.comment === "string" ? scan.comment : "";
 
       // Add student fields if applicable
       const studentFields = hasStudentData ? [
@@ -217,6 +225,8 @@ export default function EventScansPage() {
       return [
         formatDateTimeBE(scan.scanned_at),
         scannedBy,
+        liked,
+        comment,
         formatDateTimeBE(response.submitted_at),
         ...studentFields,
         ...values
@@ -298,6 +308,7 @@ export default function EventScansPage() {
                     )}
                     <TableHead>Scanned At</TableHead>
                     <TableHead>Scanned By</TableHead>
+                    <TableHead className="text-right">Feedback</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -328,6 +339,20 @@ export default function EventScansPage() {
                           {typeof scan.scanned_by === 'object' 
                             ? scan.scanned_by.name || scan.scanned_by.email 
                             : 'Unknown'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex flex-col items-end gap-1 text-sm">
+                            {scan.liked ? (
+                              <span className="font-medium">Liked</span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                            {typeof scan.comment === "string" && scan.comment.trim() ? (
+                              <span className="text-muted-foreground max-w-[260px] truncate">
+                                {scan.comment}
+                              </span>
+                            ) : null}
+                          </div>
                         </TableCell>
                       </TableRow>
                     );

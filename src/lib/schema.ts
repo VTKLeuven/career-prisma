@@ -13,6 +13,20 @@ export type DirectusUser = {
   status?: string;
 } | null;
 
+export type AttendantScan = {
+  id: string;
+  attendant_uuid: string;
+  form_response_id: string | FormResponse;
+  company_id?: string | Company; // optional because your API sometimes omits it
+  scanned_by: string | CompanyRep;
+  scanned_at: string;
+
+  // New fields for rep feedback
+  liked?: boolean;
+  comment?: string | null;
+  feedback_updated_at?: string | null;
+};
+
 export type CompanyRep = {
   id: string;
   first_name: string | null;
@@ -320,6 +334,7 @@ export type CVBookFavourite = {
 
 // Optional: Full Directus Schema map (only collections you use)
 export type Schema = {
+  attendant_scans: AttendantScan;
   directus_users: CompanyRep;
   company: Company; // collection key should match your collection name
   booths: Booth;
@@ -327,4 +342,5 @@ export type Schema = {
   form_versions: FormVersion;
   form_responses: FormResponse;
   students: Student;
+
 };
