@@ -81,7 +81,7 @@ export default function LoginPage() {
               <div className="grid gap-6">
                 <div className="grid gap-3">
                   <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" placeholder="m@example.com" required onChange={(e) => setEmail(e.target.value)} />
+                  <Input id="email" type="email" placeholder="m@example.com" required value={email} onChange={(e) => setEmail(e.target.value)} />
                 </div>
                 <div className="grid gap-3">
                   <div className="flex items-center">
@@ -94,11 +94,12 @@ export default function LoginPage() {
                       Forgot your password?
                     </button>
                   </div>
-                  <Input id="password" type="password" required onChange={(e) => setPassword(e.target.value)} />
+                  <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
                 </div>
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="rememberMe"
+                    type="button"
                     checked={rememberMe}
                     onCheckedChange={(checked) => {
                       setRememberMe(checked === true);
@@ -107,7 +108,6 @@ export default function LoginPage() {
                   <Label
                     htmlFor="rememberMe"
                     className="text-sm font-normal cursor-pointer"
-                    onClick={() => setRememberMe(!rememberMe)}
                   >
                     Remember me
                   </Label>

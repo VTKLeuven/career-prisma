@@ -23,3 +23,15 @@ export function slugifyEventName(name?: string | null): string {
   return slugifyCompanyName(name);
 }
 
+/** Normalize string for case+accent-insensitive matching (e.g. "Café" matches "cafe") */
+export function normalizeForMatching(str?: string | null): string {
+  return (str ?? "")
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036F]/g, "");
+}
+
+/** UTF-8 BOM for CSV - ensures Excel displays special characters correctly */
+export const CSV_UTF8_BOM = "\uFEFF";
+

@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/table";
 import { fetchEventsAction } from "@/app/actions/events";
 import type { CareerEvent } from "@/lib/schema";
-import { slugifyEventName } from "@/lib/utils/slugify";
+import { slugifyEventName, CSV_UTF8_BOM } from "@/lib/utils/slugify";
 
 type AttendantScan = {
   id: string;
@@ -238,7 +238,7 @@ export default function EventScansPage() {
       return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
 
-    const csv = [headerRow, ...dataRows]
+    const csv = CSV_UTF8_BOM + [headerRow, ...dataRows]
       .map(row => row.map(escapeCsv).join(","))
       .join("\r\n");
 
@@ -246,7 +246,7 @@ export default function EventScansPage() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${eventName.replace(/[^a-z0-9]/gi, '-')}-scans-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `${slugifyEventName(eventName)}-scans-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
   };

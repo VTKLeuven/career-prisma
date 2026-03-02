@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { getCompanySubOptionAnyStatus } from "@/lib/utils/company-access"
+import { normalizeForMatching, slugifyEventName, CSV_UTF8_BOM } from "@/lib/utils/slugify"
 import {
   Dialog,
   DialogContent,
@@ -297,12 +298,12 @@ export default function AdminFloorplanPage() {
       const companyName = booth.company?.name ?? ""
       rows.push([companyName, String(booth.booth_number)])
     }
-    const csv = rows.map(r => r.map(c => (c.includes(",") || c.includes('"') ? `"${c.replace(/"/g, '""')}"` : c)).join(",")).join("\n")
+    const csv = CSV_UTF8_BOM + rows.map(r => r.map(c => (c.includes(",") || c.includes('"') ? `"${c.replace(/"/g, '""')}"` : c)).join(",")).join("\n")
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `booth-assignments-${page?.event?.name?.replace(/\s+/g, "-") ?? "floorplan"}.csv`
+    a.download = `booth-assignments-${slugifyEventName(page?.event?.name) || "floorplan"}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -360,7 +361,7 @@ export default function AdminFloorplanPage() {
       }
 
       const delimiter = detectCsvDelimiter(lines)
-      const header = parseCsvLine(lines[0], delimiter).map(h => h.toLowerCase().replace(/\s+/g, "_"))
+      const header = parseCsvLine(lines[0], delimiter).map(h => normalizeForMatching(h).replace(/\s+/g, "_"))
       const companyIdx = header.findIndex(h => h === "company_name" || h === "company")
       const boothIdx = header.findIndex(h => h === "booth_number" || h === "booth")
       if (companyIdx < 0 || boothIdx < 0) {
@@ -376,8 +377,8 @@ export default function AdminFloorplanPage() {
 
       const companyByName = new Map<string, Company>()
       for (const c of companies) {
-        const name = (c.name ?? "").trim().toLowerCase()
-        if (name) companyByName.set(name, c)
+        const key = normalizeForMatching(c.name)
+        if (key) companyByName.set(key, c)
       }
 
       const rows: { companyName: string; boothNumber: number }[] = []
@@ -407,7 +408,7 @@ export default function AdminFloorplanPage() {
         }
 
         if (companyNameRaw) {
-          const companyKey = companyNameRaw.toLowerCase()
+          const companyKey = normalizeForMatching(companyNameRaw)
           const company = companyByName.get(companyKey)
           if (!company) {
             setLoadCsvError(`Row ${i + 1}: company "${companyNameRaw}" not found in event`)
@@ -430,7 +431,7 @@ export default function AdminFloorplanPage() {
         const booth = boothByNumber.get(row.boothNumber)
         if (!booth) continue
         const companyId = row.companyName
-          ? companyByName.get(row.companyName.toLowerCase())?.id ?? null
+          ? companyByName.get(normalizeForMatching(row.companyName))?.id ?? null
           : null
         const res = await fetch("/api/admin/update-booth-company", {
           method: "POST",

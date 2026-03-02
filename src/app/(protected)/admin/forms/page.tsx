@@ -59,6 +59,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { formatDateBE, formatDateTimeBE, utcToLocalDateTimeLocal, localDateTimeLocalToUtc } from "@/lib/date-utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fetchEventsAction, fetchOptionsForEventAction } from "@/app/actions/events";
+import { slugifyEventName } from "@/lib/utils/slugify";
 import Link from "next/link";
 
 type FormRow = {
@@ -502,11 +503,11 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
     }
   };
 
-  // Auto-generate slug from name
+  // Auto-generate slug from name (handles accents: "Café Form" → "cafe-form")
   const handleNameChange = (value: string) => {
     setName(value);
-    if (!slug || slug === name.toLowerCase().replace(/\s+/g, "-")) {
-      setSlug(value.toLowerCase().replace(/\s+/g, "-"));
+    if (!slug || slug === slugifyEventName(name)) {
+      setSlug(slugifyEventName(value));
     }
   };
 

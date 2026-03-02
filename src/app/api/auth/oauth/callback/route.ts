@@ -42,6 +42,9 @@ export async function GET(request: NextRequest) {
     const error = searchParams.get("error");
     const errorDescription = searchParams.get("error_description");
 
+    // Read redirect_to BEFORE verifyOAuthState - it deletes the cookie
+    const redirectTo = await getRedirectToFromCookie();
+
     // Get OAuth configuration (matching Docker config naming)
     const tokenUrl = process.env.LITUS_OAUTH_TOKEN || process.env.OAUTH_TOKEN_URL;
     const userInfoUrl = process.env.LITUS_OAUTH_RESOURCE_OWNER_DETAILS || process.env.OAUTH_USER_INFO_URL;
@@ -64,7 +67,6 @@ export async function GET(request: NextRequest) {
       if (errorDescription) {
         frontendCallbackUrl.searchParams.set("error_description", errorDescription);
       }
-      const redirectTo = await getRedirectToFromCookie();
       frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
@@ -74,7 +76,6 @@ export async function GET(request: NextRequest) {
       const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
       frontendCallbackUrl.searchParams.set("error", "missing_parameters");
       frontendCallbackUrl.searchParams.set("error_description", "Missing code or state parameter");
-      const redirectTo = await getRedirectToFromCookie();
       frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
@@ -89,7 +90,6 @@ export async function GET(request: NextRequest) {
       });
       const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
       frontendCallbackUrl.searchParams.set("error", "configuration_error");
-      const redirectTo = await getRedirectToFromCookie();
       frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
@@ -104,14 +104,9 @@ export async function GET(request: NextRequest) {
       const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
       frontendCallbackUrl.searchParams.set("error", "invalid_state");
       frontendCallbackUrl.searchParams.set("error_description", "The authentication session expired. Please try logging in again.");
-
-      const redirectTo = await getRedirectToFromCookie();
       frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
       return NextResponse.redirect(frontendCallbackUrl.toString());
     }
-
-    // Get redirect URL for successful login or subsequent errors
-    const redirectTo = await getRedirectToFromCookie();
 
     // Exchange authorization code for access token
     const tokenParams = new URLSearchParams({

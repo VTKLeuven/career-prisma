@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, QrCode, Search, Download } from "lucide-react";
 import { formatDateTimeBE } from "@/lib/date-utils";
+import { CSV_UTF8_BOM } from "@/lib/utils/slugify";
 import { useUser } from "@/providers/UserProvider";
 import {
   Dialog,
@@ -242,7 +243,7 @@ export default function AllScansPage() {
       return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
 
-    const csv = [headerRow, ...dataRows]
+    const csv = CSV_UTF8_BOM + [headerRow, ...dataRows]
       .map(row => row.map(escapeCsv).join(","))
       .join("\r\n");
 
