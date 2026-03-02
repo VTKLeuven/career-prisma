@@ -5,11 +5,21 @@ const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
 const REFRESH_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_refresh`;
 const REMEMBER_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_remember`;
 
-// Allowlist of Directus role IDs that may log in
-const ALLOWED_ROLE_IDS = new Set<string>([
+// Historically we used a hard allowlist of Directus role UUIDs.
+// Those UUIDs can change when roles are re-created in Directus, which would lock everyone out.
+// We still keep a default allowlist for backwards compatibility, but primary authorization
+// should be based on "is admin" or "is linked to a company".
+const DEFAULT_ALLOWED_ROLE_IDS = new Set<string>([
   "7b128ef4-f530-47d2-8f4c-ef82518eb313",
   "d5475bf4-a77f-48de-b06c-fac199b0f631",
 ]);
+
+function parseCommaListEnv(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 export async function POST(req: Request) {
   try {
@@ -21,7 +31,7 @@ export async function POST(req: Request) {
     // Ensure rememberMe is a boolean
     const shouldRemember = Boolean(rememberMe);
 
-    const rawBase = process.env.DIRECTUS_URL;
+    const rawBase = process.env.DIRECTUS_URL || process.env.NEXT_PUBLIC_DIRECTUS_URL;
     if (!rawBase) {
       return NextResponse.json({ error: "DIRECTUS_URL is not configured." }, { status: 500 });
     }
@@ -52,10 +62,10 @@ export async function POST(req: Request) {
     }
 
     // 2) Fetch current user (include role)
-    const meRes = await fetch(
-      base + "users/me?fields=id,first_name,last_name,email,role.id,role.name",
-      { headers: { Authorization: `Bearer ${access_token}` } }
-    );
+    // We include `company` and `role.admin_access` so we can authorize robustly.
+    const meRes = await fetch(base + "users/me?fields=id,first_name,last_name,email,company,role.id,role.name,role.admin_access", {
+      headers: { Authorization: `Bearer ${access_token}` },
+    });
 
     if (!meRes.ok) {
       const err = await safeJson(meRes);
@@ -69,7 +79,21 @@ export async function POST(req: Request) {
     const me = meData?.data;
 
     const roleId: string | undefined = me?.role?.id;
-    if (!roleId || !ALLOWED_ROLE_IDS.has(roleId)) {
+    const roleAdminAccess: boolean = me?.role?.admin_access === true;
+    const roleName: string | undefined = me?.role?.name;
+    const isAdmin = roleAdminAccess || roleName === "Administrator";
+    const hasCompany = Boolean(me?.company);
+
+    // Extend the legacy allowlist with optional env configuration.
+    // Format: AUTH_ALLOWED_ROLE_IDS="uuid1,uuid2"
+    const envAllowedRoleIds = new Set(parseCommaListEnv(process.env.AUTH_ALLOWED_ROLE_IDS));
+    const allowedRoleIds = new Set<string>([
+      ...DEFAULT_ALLOWED_ROLE_IDS,
+      ...envAllowedRoleIds,
+    ]);
+
+    const isAllowed = isAdmin || hasCompany || (roleId ? allowedRoleIds.has(roleId) : false);
+    if (!isAllowed) {
       // 403 for “you are authenticated but not authorized”
       return NextResponse.json(
         { error: "User doesn't have the required access policies to access this application." },
