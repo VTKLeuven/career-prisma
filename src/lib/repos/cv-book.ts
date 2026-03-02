@@ -19,11 +19,11 @@ export async function listAcademicYears(opts?: {
     const { search, limit = 100, page = 1, sort = "-start_of_year" } = opts ?? {};
 
     return client.request(
-      readItems("Academic_Year", {
+      readItems("academic_year", {
         fields: ["*"],
         limit,
         page,
-        sort,
+        sort: sort as any,
         ...(search ? { search } : {}),
       })
     ) as unknown as AcademicYear[];
@@ -37,7 +37,7 @@ export async function getAcademicYearById(id: string) {
   try {
     const client = await getAuthedDirectusOrThrow();
     return client.request(
-      readItem("Academic_Year", id, {
+      readItem("academic_year", id, {
         fields: ["*"],
       })
     ) as unknown as AcademicYear;
@@ -68,17 +68,14 @@ export async function listCVBooks(opts?: {
     }
 
     return client.request(
-      readItems("CV_Book", {
+      readItems("cv_book", {
         fields: [
           "*",
-          "year.*",
-          "form.id",
-          "form.name",
-          "form.slug",
+          { year: ["*"], form: ["id", "name", "slug"] } as any
         ],
         limit,
         page,
-        sort,
+        sort: sort as any,
         ...(search ? { search } : {}),
         ...(Object.keys(filterObj).length > 0 ? { filter: filterObj } : {}),
       })
@@ -105,13 +102,10 @@ export async function getCVBookByYear(yearId: string) {
   try {
     const client = await getAuthedDirectusOrThrow();
     const cvBooks = await client.request(
-      readItems("CV_Book", {
+      readItems("cv_book", {
         fields: [
           "*",
-          "year.*",
-          "form.id",
-          "form.name",
-          "form.slug",
+          { year: ["*"], form: ["id", "name", "slug"] } as any
         ],
         filter: {
           year: { _eq: yearId },
@@ -120,7 +114,7 @@ export async function getCVBookByYear(yearId: string) {
         limit: 1,
       })
     ) as unknown as CVBook[];
-    
+
     return cvBooks.length > 0 ? cvBooks[0] : null;
   } catch (error) {
     console.error("[getCVBookByYear] Error getting CV book by year:", error);
@@ -151,7 +145,7 @@ export type StudentCVGroup = {
 export async function getCVBookStudentData(cvBook: CVBook): Promise<StudentCVGroup[]> {
   try {
     const formId = typeof cvBook.form === "string" ? cvBook.form : cvBook.form.id;
-    
+
     console.log("[getCVBookStudentData] CV Book:", {
       id: cvBook.id,
       formId,
@@ -170,29 +164,29 @@ export async function getCVBookStudentData(cvBook: CVBook): Promise<StudentCVGro
         cv: cvBook.student_cv_field_backup,
       },
     });
-    
+
     // Fetch all form responses for all versions of the form
     const responses = await listFormResponsesForAllVersions(formId, { limit: -1 });
-    
+
     console.log("[getCVBookStudentData] Fetched responses:", responses.length);
-    
+
     if (responses.length === 0) {
       console.warn("[getCVBookStudentData] No form responses found for form:", formId);
       return [];
     }
-    
+
     // Extract email from all responses first, then group by email and keep only the most recent one per email
     const responsesWithEmail: Array<{ response: FormResponse; email: string }> = [];
     for (const response of responses) {
       const data = response.data || {};
-      const email = (data[cvBook.student_email_field] || 
-                    (cvBook.student_email_field_backup ? data[cvBook.student_email_field_backup] : null)) as string;
-      
+      const email = (data[cvBook.student_email_field] ||
+        (cvBook.student_email_field_backup ? data[cvBook.student_email_field_backup] : null)) as string;
+
       if (email) {
         responsesWithEmail.push({ response, email });
       }
     }
-    
+
     // Group by email and keep only the most recent one per email
     const responsesByEmail = new Map<string, FormResponse>();
     for (const { response, email } of responsesWithEmail) {
@@ -201,10 +195,10 @@ export async function getCVBookStudentData(cvBook: CVBook): Promise<StudentCVGro
         responsesByEmail.set(email, response);
       }
     }
-    
+
     const uniqueResponses = Array.from(responsesByEmail.values());
     console.log(`[getCVBookStudentData] Filtered to ${uniqueResponses.length} unique students (by email) from ${responses.length} responses`);
-    
+
     // Log first response structure for debugging
     if (uniqueResponses.length > 0) {
       console.log("[getCVBookStudentData] First response structure:", {
@@ -213,15 +207,15 @@ export async function getCVBookStudentData(cvBook: CVBook): Promise<StudentCVGro
         sampleData: uniqueResponses[0].data,
       });
     }
-    
+
     // Extract student data from responses
     const studentData: StudentCVData[] = [];
     let skippedCount = 0;
     const skipReasons: Record<string, number> = {};
-    
+
     for (const response of uniqueResponses) {
       const data = response.data || {};
-      
+
       // Extract fields using CV Book mappings (with backup fallback)
       let firstName = (data[cvBook.student_first_name_field] || 
                         (cvBook.student_first_name_field_backup ? data[cvBook.student_first_name_field_backup] : null)) as string;
@@ -233,13 +227,13 @@ export async function getCVBookStudentData(cvBook: CVBook): Promise<StudentCVGro
                     (cvBook.student_study_field_backup ? data[cvBook.student_study_field_backup] : null)) as string;
       const cvFileId = (data[cvBook.student_cv_field] || 
                        (cvBook.student_cv_field_backup ? data[cvBook.student_cv_field_backup] : null)) as string | null;
-      const linkedinRaw = (cvBook.student_linkedin_field ? (data[cvBook.student_linkedin_field] || 
+      const linkedinRaw = (cvBook.student_linkedin_field ? (data[cvBook.student_linkedin_field] ||
                        (cvBook.student_linkedin_field_backup ? data[cvBook.student_linkedin_field_backup] : null)) : null) as string | null;
       const linkedinUrl = linkedinRaw && typeof linkedinRaw === "string" && linkedinRaw.trim() &&
         /^https?:\/\/(www\.)?linkedin\.com\/in\/[\w-]+\/?(\?.*)?$/i.test(linkedinRaw.trim())
         ? linkedinRaw.trim()
         : null;
-      
+
       // If firstName/lastName are missing, try to extract from _student_full_name
       if (!firstName || !lastName) {
         const fullName = (data['_student_full_name'] as string) || null;
@@ -256,7 +250,7 @@ export async function getCVBookStudentData(cvBook: CVBook): Promise<StudentCVGro
           }
         }
       }
-      
+
       // Debug: log what we found
       if (responses.indexOf(response) < 3) { // Log first 3 for debugging
         console.log(`[getCVBookStudentData] Response ${response.id}:`, {
@@ -268,7 +262,7 @@ export async function getCVBookStudentData(cvBook: CVBook): Promise<StudentCVGro
           availableFields: Object.keys(data),
         });
       }
-      
+
       // Skip if required fields are missing
       if (!firstName) {
         skipReasons['missing_firstName'] = (skipReasons['missing_firstName'] || 0) + 1;
@@ -295,14 +289,14 @@ export async function getCVBookStudentData(cvBook: CVBook): Promise<StudentCVGro
         skippedCount++;
         continue;
       }
-      
+
       // Get CV file URL - use API route to avoid CORS issues
       let cvFileUrl: string | null = null;
       if (cvFileId) {
         // Use API route to proxy the file with authentication
         cvFileUrl = `/api/cv-file/${cvFileId}`;
       }
-      
+
       studentData.push({
         id: response.id,
         firstName,
@@ -314,10 +308,10 @@ export async function getCVBookStudentData(cvBook: CVBook): Promise<StudentCVGro
         linkedinUrl,
       });
     }
-    
+
     console.log(`[getCVBookStudentData] Extracted ${studentData.length} students from ${responses.length} responses`);
     console.log(`[getCVBookStudentData] Skipped ${skippedCount} responses:`, skipReasons);
-    
+
     if (studentData.length === 0) {
       console.warn("[getCVBookStudentData] No valid student data extracted. Check field mappings!");
       // Log available fields from first response for debugging
@@ -326,7 +320,7 @@ export async function getCVBookStudentData(cvBook: CVBook): Promise<StudentCVGro
         console.log("[getCVBookStudentData] First response data sample:", JSON.stringify(responses[0].data, null, 2).substring(0, 500));
       }
     }
-    
+
     // Group by study
     const grouped = new Map<string, StudentCVData[]>();
     for (const student of studentData) {
@@ -335,7 +329,7 @@ export async function getCVBookStudentData(cvBook: CVBook): Promise<StudentCVGro
       }
       grouped.get(student.study)!.push(student);
     }
-    
+
     // Convert to array and sort studies alphabetically
     const groups: StudentCVGroup[] = Array.from(grouped.entries())
       .map(([study, students]) => ({
@@ -347,9 +341,9 @@ export async function getCVBookStudentData(cvBook: CVBook): Promise<StudentCVGro
         }),
       }))
       .sort((a, b) => a.study.localeCompare(b.study));
-    
+
     console.log(`[getCVBookStudentData] Returning ${groups.length} study groups`);
-    
+
     return groups;
   } catch (error) {
     console.error("[getCVBookStudentData] Error getting student CV data:", error);
@@ -361,13 +355,10 @@ export async function getCVBookById(id: string) {
   try {
     const client = await getAuthedDirectusOrThrow();
     return client.request(
-      readItem("CV_Book", id, {
+      readItem("cv_book", id, {
         fields: [
           "*",
-          "year.*",
-          "form.id",
-          "form.name",
-          "form.slug",
+          { year: ["*"], form: ["id", "name", "slug"] } as any
         ],
       })
     ) as unknown as CVBook;
@@ -398,7 +389,7 @@ export async function createCVBook(data: {
     const client = await getAuthedDirectusOrThrow();
     console.log("[createCVBook] Creating CV book with data:", data);
     const result = await client.request(
-      createItem("CV_Book", {
+      createItem("cv_book", {
         ...data,
         active: data.active ?? false, // Default to false if not provided
       })
@@ -415,7 +406,7 @@ export async function updateCVBook(id: string, data: Partial<CVBook>) {
   try {
     const client = await getAuthedDirectusOrThrow();
     return client.request(
-      updateItem("CV_Book", id, data)
+      updateItem("cv_book", id, data)
     ) as unknown as CVBook;
   } catch (error) {
     console.error("[updateCVBook] Error updating CV book:", error);
@@ -426,7 +417,7 @@ export async function updateCVBook(id: string, data: Partial<CVBook>) {
 export async function deleteCVBook(id: string) {
   try {
     const client = await getAuthedDirectusOrThrow();
-    await client.request(deleteItem("CV_Book", id));
+    await client.request(deleteItem("cv_book", id));
     return true;
   } catch (error) {
     console.error("[deleteCVBook] Error deleting CV book:", error);

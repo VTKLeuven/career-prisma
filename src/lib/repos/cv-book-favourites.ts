@@ -19,7 +19,7 @@ export async function listFavourites(
     if (!client) return [];
 
     const allItems = (await client.request(
-      readItems(COLLECTION, {
+      readItems(COLLECTION as any, {
         fields: ["*"],
         limit: 500,
       })
@@ -67,7 +67,7 @@ export async function addFavourite(
     }
 
     await client.request(
-      createItem(COLLECTION, {
+      createItem(COLLECTION as any, {
         company: companyId,
         form_response: formResponseId,
         cv_book: cvBookId,
@@ -99,7 +99,7 @@ export async function removeFavourite(
     }
 
     await client.request(
-      deleteItems(COLLECTION, {
+      deleteItems(COLLECTION as any, {
         filter: {
           _and: [
             { company: { _eq: companyId } },

@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { getUserFromCookies } from "@/lib/auth-server";
+import { getStudentFromCookies } from "@/lib/auth-student";
 import { UserProvider } from "@/providers/UserProvider";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
@@ -23,7 +24,22 @@ export const metadata: Metadata = {
 };
 
 export default async function WithSidebarLayout({ children }: { children: React.ReactNode }) {
-  const user = await getUserFromCookies();
+  let user = await getUserFromCookies();
+
+  if (!user) {
+    const student = await getStudentFromCookies();
+    if (student) {
+      user = {
+        id: student.id,
+        name: `${student.first_name} ${student.last_name}`,
+        email: student.email,
+        admin: false,
+        company: null,
+        is_shifter: student.is_shifter,
+        role: "Student",
+      } as any;
+    }
+  }
 
   if (!user) {
     return (

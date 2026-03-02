@@ -77,10 +77,17 @@ export function NavUser() {
               Notifications
             </DropdownMenuItem>
 
+            {(user?.is_shifter || user?.admin) && (
+              <DropdownMenuItem onClick={() => router.push("/dashboard/shifter")}>
+                <Bell className="text-orange-500" />
+                Shifter Dashboard
+              </DropdownMenuItem>
+            )}
+
             <DropdownMenuItem onClick={async (e) => {
-                  e.preventDefault();
-        await fetch("/api/logout", { method: "POST" });
-        router.refresh(); // re-run server components so cookies are gone
+              e.preventDefault();
+              await fetch("/api/logout", { method: "POST" });
+              router.refresh(); // re-run server components so cookies are gone
             }}>
               <LogOut />
               Log out

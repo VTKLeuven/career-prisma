@@ -19,5 +19,7 @@ export function slugifyCompanyName(name?: string | null): string {
 }
 
 /** Alias for event names - same normalization as company names */
-export const slugifyEventName = slugifyCompanyName;
+export function slugifyEventName(name?: string | null): string {
+  return slugifyCompanyName(name);
+}
 

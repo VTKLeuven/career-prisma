@@ -275,12 +275,8 @@ function HomepageHeader() {
     // Listen for focus event (user might have logged in in another tab)
     window.addEventListener('focus', checkAuthStatus);
 
-    // Check periodically (every 30 seconds) to catch login state changes
-    const interval = setInterval(checkAuthStatus, 30000);
-
     return () => {
       window.removeEventListener('focus', checkAuthStatus);
-      clearInterval(interval);
     };
   }, []);
 
@@ -762,12 +758,8 @@ function Header({ page }: { page?: CareerEventPage }) {
     // Listen for focus event (user might have logged in in another tab)
     window.addEventListener('focus', checkAuthStatus);
 
-    // Check periodically (every 30 seconds) to catch login state changes
-    const interval = setInterval(checkAuthStatus, 30000);
-
     return () => {
       window.removeEventListener('focus', checkAuthStatus);
-      clearInterval(interval);
     };
   }, [])
 
