@@ -9,8 +9,9 @@ export type DirectusUser = {
   tel?: string | null;
   role?: string | DirectusRole | null;
   admin: boolean;
-  company: Company;
+  company?: Company | null;
   status?: string;
+  is_shifter?: boolean;
 } | null;
 
 export type CompanyRep = {
@@ -25,7 +26,20 @@ export type CompanyRep = {
   company: Company;
   status: string;
   avatar?: string;
-} | null;
+};
+
+export type AttendantScan = {
+  id: string;
+  attendant_uuid: string;
+  form_response_id: string | FormResponse;
+  company_id?: string | Company; // optional because your API sometimes omits it
+  scanned_by: string | CompanyRep | DirectusUser;
+  scanned_at: string;
+
+  liked?: boolean;
+  comment?: string | null;
+  feedback_updated_at?: string | null;
+};
 
 export type Student = {
   id: string;
@@ -46,6 +60,7 @@ export type Student = {
   verification_token_created?: string; // When verification token was created
   date_created?: string;
   date_updated?: string;
+  is_shifter?: boolean;
 };
 
 export type Company = {
@@ -67,9 +82,9 @@ export type Company = {
   address_country?: string | null;
   address: string;
   status?: string;
-  representatives?: CompanyRep[]
-  category?: Master[] | { master_id: string; }[]
-  options?: CareerEventOption[]
+  representatives?: CompanyRep[];
+  category?: Master[] | { master_id: string }[];
+  options?: CareerEventOption[];
 };
 
 export type CareerEvent = {
@@ -191,6 +206,7 @@ export type Booth = {
   coords: { x_pct: number; y_pct: number; width_pct: number; height_pct: number };
   Floorplan: Floorplan;
   company?: Company;
+  zone?: Zone | string;
 }
 
 export type Master = {
@@ -318,13 +334,81 @@ export type CVBookFavourite = {
   date_created?: string;
 }
 
+export type Drink = {
+  id: string;
+  name: string;
+  type: 'drink' | 'snack';
+  visible_from?: string; // Time string "HH:mm" or ISO
+  visible_until?: string;
+  is_active: boolean;
+  image?: string; // Directus file ID
+  icon?: string; // Iconify string
+}
+
+export type Zone = {
+  id: string;
+  name: string;
+  booths: string[] | Booth[]; // M2M
+}
+
+export type Order = {
+  id: string;
+  booth: string | Booth;
+  company: string | Company; // Denormalized for easier querying? Or computed. Directus usually links relations.
+  items: OrderItem[]; // JSON field
+  status: 'pending' | 'preparing' | 'finished';
+  shifter?: string | DirectusUser;
+  date_created: string;
+  date_updated: string;
+  zone?: string | Zone; // Snapshot of zone at time of order? or relational.
+}
+
+export type OrderItem = {
+  drink_id: string;
+  name: string;
+  quantity: number;
+}
+
+export type CompanyUserRequest = {
+  id: string;
+  email: string;
+  role?: string | DirectusRole; // ID or Role object
+  status: string;
+  date_created: string;
+  company?: string | Company;
+  salesperson?: string | DirectusUser;
+  first_name?: string | null;
+  last_name?: string | null;
+  tel?: string | null;
+  title?: string | null;
+  invite_token_hash?: string;
+  invite_token_created?: string;
+}
+
 // Optional: Full Directus Schema map (only collections you use)
 export type Schema = {
-  directus_users: CompanyRep;
-  company: Company; // collection key should match your collection name
-  booths: Booth;
-  forms: Form;
-  form_versions: FormVersion;
-  form_responses: FormResponse;
-  students: Student;
+  directus_users: DirectusUser[];
+  company: Company[];
+  booths: Booth[];
+  forms: Form[];
+  form_versions: FormVersion[];
+  form_responses: FormResponse[];
+  students: Student[];
+  drinks: Drink[];
+  orders: Order[];
+  zones: Zone[];
+  floorplans: Floorplan[];
+  career_event_option: CareerEventOption[];
+  career_event_page: CareerEventPage[];
+  attendant_scans: AttendantScan[];
+  zones_Booths: { id: number | string; zones_id: string | Zone; Booths_id: string | Booth }[];
+  academic_year: AcademicYear[];
+  cv_book: CVBook[];
+  career_event: CareerEvent[];
+  career_sub_option: CareerSubOption[];
+  master: Master[];
+  Booths: Booth[];
+  Floorplan: Floorplan[];
+  company_user_requests: CompanyUserRequest[];
+  ordering_settings: { id?: string; company_ordering_enabled?: boolean }[];
 };

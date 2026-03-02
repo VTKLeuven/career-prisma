@@ -33,6 +33,9 @@ type AttendantScan = {
   id: string;
   attendant_uuid: string;
   scanned_at: string;
+  liked?: boolean;
+  comment?: string | null;
+  feedback_updated_at?: string | null;
   scanned_by: {
     name: string;
     email: string;
@@ -61,6 +64,7 @@ export default function AllScansPage() {
   const [scanUrl, setScanUrl] = useState("");
   const [scanDialogOpen, setScanDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scanSuccess, setScanSuccess] = useState<string | null>(null);
   const [events, setEvents] = useState<CareerEvent[]>([]);
 
   // Load events to map event_id to event names
@@ -116,6 +120,7 @@ export default function AllScansPage() {
     const uuid = urlMatch[1];
     setScanning(true);
     setError(null);
+    setScanSuccess(null);
 
     try {
       const response = await fetch(`/api/attendant/${uuid}/scan`, {
@@ -127,10 +132,13 @@ export default function AllScansPage() {
         throw new Error(data.error || "Failed to scan attendant");
       }
 
-      // Success - reload scans and close dialog
+      const data = (await response.json().catch(() => ({}))) as { scanId?: string };
+
+      // Success - close dialog and refresh list
       setScanUrl("");
       setScanDialogOpen(false);
       await loadScans();
+      setScanSuccess("Scanned.");
     } catch (err) {
       console.error("Error scanning:", err);
       setError(err instanceof Error ? err.message : "Failed to scan attendant");
@@ -171,6 +179,8 @@ export default function AllScansPage() {
       'Event', 
       'Scanned At', 
       'Scanned By', 
+      'Liked',
+      'Comment',
       'Registration Date',
       ...(hasStudentData ? ['Student Username', 'Student Email', 'Student Full Name', 'Student University', 'Student University Status'] : []),
       ...fieldNames
@@ -197,6 +207,9 @@ export default function AllScansPage() {
         ? scan.scanned_by.name || scan.scanned_by.email 
         : 'Unknown';
 
+      const liked = scan.liked ? "Yes" : "";
+      const comment = typeof scan.comment === "string" ? scan.comment : "";
+
       // Add student fields if applicable
       const studentFields = hasStudentData ? [
         (typeof response.data._student_username === 'string' ? response.data._student_username : '') || '',
@@ -217,6 +230,8 @@ export default function AllScansPage() {
         eventName,
         formatDateTimeBE(scan.scanned_at),
         scannedBy,
+        liked,
+        comment,
         formatDateTimeBE(response.submitted_at),
         ...studentFields,
         ...values
@@ -332,6 +347,12 @@ export default function AllScansPage() {
         </div>
       </div>
 
+      {scanSuccess && (
+        <div className="text-sm text-green-700 bg-green-50 border border-green-200 p-3 rounded">
+          {scanSuccess}
+        </div>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>All Scanned Attendants</CardTitle>
@@ -379,6 +400,7 @@ export default function AllScansPage() {
                     <TableHead>Event</TableHead>
                     <TableHead>Scanned At</TableHead>
                     <TableHead>Scanned By</TableHead>
+                    <TableHead className="text-right">Feedback</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -423,6 +445,20 @@ export default function AllScansPage() {
                           {typeof scan.scanned_by === 'object' 
                             ? scan.scanned_by.name || scan.scanned_by.email 
                             : 'Unknown'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex flex-col items-end gap-1 text-sm">
+                            {scan.liked ? (
+                              <span className="font-medium">Like</span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                            {typeof scan.comment === "string" && scan.comment.trim() ? (
+                              <span className="text-muted-foreground max-w-[260px] truncate">
+                                {scan.comment}
+                              </span>
+                            ) : null}
+                          </div>
                         </TableCell>
                       </TableRow>
                     );

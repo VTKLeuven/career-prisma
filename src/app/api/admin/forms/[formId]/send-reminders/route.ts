@@ -44,8 +44,8 @@ export async function POST(
 
     // Get form version details
     const formVersion = await client.request(
-      readItem("form_versions", formVersionId, {
-        fields: ["*", "form_id.id", "form_id.name", "form_id.slug", "metadata"],
+      readItem("form_versions" as any, formVersionId, {
+        fields: ["*", { form_id: ["id", "name", "slug"] }, "metadata"],
       })
     ) as any;
 
@@ -71,7 +71,7 @@ export async function POST(
     // Get company details for placeholders
     const companyIds = [...new Set(recipients.map((r: any) => r.companyId))];
     const companies = await client.request(
-      readItems("company", {
+      readItems("company" as any, {
         fields: ["id", "name"],
         filter: {
           id: { _in: companyIds },
@@ -85,8 +85,8 @@ export async function POST(
     // Get representative details
     const repIds = recipients.map((r: any) => r.repId);
     const representatives = await client.request(
-      readItems("users", {
-        fields: ["id", "first_name", "last_name", "email"],
+      readItems("directus_users" as any, {
+        fields: ["id", "first_name", "last_name", "email"] as any,
         filter: {
           id: { _in: repIds },
         },
@@ -113,16 +113,16 @@ export async function POST(
 
       try {
         const repName = [rep.first_name, rep.last_name].filter(Boolean).join(" ") || "there";
-        
+
         // Replace placeholders in subject and content
         let emailSubject = subject
           .replace(/{name}/g, repName)
           .replace(/{company}/g, companyName)
           .replace(/{form_name}/g, form.name);
-        
+
         // Create clickable link HTML for form_link placeholder
         const formLinkHtml = `<a href="${formUrl}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: 500;">Complete Form</a><br><br><p style="word-break: break-all; color: #2563eb;">${formUrl}</p>`;
-        
+
         let emailContent = content
           .replace(/{name}/g, repName)
           .replace(/{company}/g, companyName)

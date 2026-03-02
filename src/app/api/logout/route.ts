@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 const ACCESS_COOKIE  = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
 const REFRESH_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_refresh`;
+const REMEMBER_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_remember`;
 
 export async function POST(req: Request) {
   // Match the cookie flags to how you set them on login
@@ -23,6 +24,7 @@ export async function POST(req: Request) {
 
   res.cookies.set(ACCESS_COOKIE, "", deleteOpts);
   res.cookies.set(REFRESH_COOKIE, "", deleteOpts);
+  res.cookies.set(REMEMBER_COOKIE, "", deleteOpts);
 
   return res;
 }

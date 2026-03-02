@@ -37,8 +37,8 @@ export async function POST(req: Request) {
       }
 
       const currentBooth = await client.request(
-        readItems("Booths", {
-          fields: ["*", "Floorplan.id"],
+        readItems("booths" as any, {
+          fields: ["*", { Floorplan: ["id"] }],
           filter: {
             id: {
               _eq: boothId,
@@ -55,13 +55,13 @@ export async function POST(req: Request) {
         );
       }
 
-      const floorplanId = typeof currentBooth[0].Floorplan === "string" 
-        ? currentBooth[0].Floorplan 
+      const floorplanId = typeof currentBooth[0].Floorplan === "string"
+        ? currentBooth[0].Floorplan
         : currentBooth[0].Floorplan.id;
 
       // Get all booths for the same floorplan
       const floorplanBooths = await getBoothsForFloorplan(floorplanId);
-      
+
       // Check if company is already assigned to another booth
       const existingBooth = floorplanBooths.find(b => b.company?.id === companyId && b.id !== boothId);
       if (existingBooth) {
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("Error updating booth company:", error);
     return NextResponse.json(
-      { 
+      {
         error: error instanceof Error ? error.message : "Internal server error"
       },
       { status: 500 }

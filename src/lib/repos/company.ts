@@ -15,17 +15,14 @@ export async function listCompanies(opts?: {
   useServerClient?: boolean;  // Use server token (for public page fetches when no user)
 }) {
   try {
-    const { usePublic = false, useServerClient = false, search, limit = 25, page = 1, sort = "name" } = opts ?? {};
+    const { usePublic = false, search, limit = 25, page = 1, sort = "name" } = opts ?? {};
     
-    const client = useServerClient
-      ? await getServerDirectusClient()
-      : usePublic
-        ? directus
-        : await getDirectusWithToken();
+    // Use public client if requested, otherwise try authenticated
+    const client = usePublic ? directus : await getDirectusWithToken();
     if (!client) return null;
 
     return client.request(
-      readItems("company", {
+      readItems("company" as any, {
         fields: [
           "*",
           "representatives.*",
@@ -49,7 +46,7 @@ export async function listCompanies(opts?: {
         ],
         limit,
         page,
-        sort,
+        sort: sort as any,
         ...(search
           ? { search } // Directus full-text search (if enabled)
           : {}),
@@ -71,9 +68,9 @@ export async function getCompanyById(id: string, usePublic = false, retries = 2,
           ? directus
           : await getDirectusWithToken();
       if (!client) return null;
-      
+
       return await client.request(
-        readItem("company", id, {
+        readItem("company" as any, id, {
           fields: [
             "*",
             "page_image",
@@ -96,28 +93,28 @@ export async function getCompanyById(id: string, usePublic = false, retries = 2,
       ) as unknown as Company;
     } catch (error: any) {
       // Handle FORBIDDEN errors gracefully - don't retry these
-      if (error?.errors?.[0]?.extensions?.code === "FORBIDDEN" || 
-          error?.message?.includes("FORBIDDEN") ||
-          error?.message?.includes("permission")) {
+      if (error?.errors?.[0]?.extensions?.code === "FORBIDDEN" ||
+        error?.message?.includes("FORBIDDEN") ||
+        error?.message?.includes("permission")) {
         if (process.env.NODE_ENV === "development") {
           console.warn(`[getCompanyById] Permission denied for company ${id}:`, error.message || "You don't have permission to access this.");
         }
         return null;
       }
-      
+
       // For network errors, retry with exponential backoff
-      const isNetworkError = error?.message?.includes("fetch failed") || 
-                            error?.message?.includes("network") ||
-                            error?.message?.includes("ECONNREFUSED") ||
-                            error?.message?.includes("ETIMEDOUT");
-      
+      const isNetworkError = error?.message?.includes("fetch failed") ||
+        error?.message?.includes("network") ||
+        error?.message?.includes("ECONNREFUSED") ||
+        error?.message?.includes("ETIMEDOUT");
+
       if (isNetworkError && attempt < retries) {
         const delay = Math.min(1000 * Math.pow(2, attempt), 5000); // Max 5 seconds
         console.warn(`[getCompanyById] Network error (attempt ${attempt + 1}/${retries + 1}), retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
-      
+
       // For other errors or final retry, log and return null
       console.error(`[getCompanyById] Error fetching company ${id}:`, error);
       return null;
@@ -131,14 +128,14 @@ export async function createCompany(payload: Partial<Company>) {
   const directus = await getDirectusWithToken();
   if (!directus) return null;
 
-  return directus.request(createItem("company", payload));
+  return directus.request(createItem("company" as any, payload));
 }
 
 export async function updateCompany(id: string, payload: Partial<Company>) {
   const directus = await getDirectusWithToken();
   if (!directus) return null;
 
-  return directus.request(updateItem("company", id, payload));
+  return directus.request(updateItem("company" as any, id, payload));
 }
 
 /**
@@ -152,7 +149,7 @@ export async function getCompaniesForEvent(eventId: string, usePublic = false) {
 
     // For public access (company form page), we don't need salesperson field
     // Only fetch it for admin views (usePublic = false)
-    const fields = usePublic 
+    const fields = usePublic
       ? [
           "id",
           "name",
@@ -193,7 +190,7 @@ export async function getCompaniesForEvent(eventId: string, usePublic = false) {
         ];
 
     const companies = await client.request(
-      readItems("company", {
+      readItems("company" as any, {
         fields,
         limit: -1,
       })
@@ -204,7 +201,7 @@ export async function getCompaniesForEvent(eventId: string, usePublic = false) {
     // Filter companies that have options linked to this event
     const registeredCompanies = companies.filter((company) => {
       const options = company.options || [];
-      
+
       return options.some((opt) => {
         // Handle junction table format
         let optionWithEvents: any = null;
@@ -213,9 +210,9 @@ export async function getCompaniesForEvent(eventId: string, usePublic = false) {
         } else {
           optionWithEvents = opt;
         }
-        
+
         if (!optionWithEvents) return false;
-        
+
         // Check events array
         if (optionWithEvents.events && Array.isArray(optionWithEvents.events)) {
           return optionWithEvents.events.some((eventRef: any) => {
@@ -226,14 +223,14 @@ export async function getCompaniesForEvent(eventId: string, usePublic = false) {
             return String(eventIdToCheck) === String(eventId);
           });
         }
-        
+
         // Check single event (backward compatibility)
         if (optionWithEvents.event) {
           const event = optionWithEvents.event;
           const eventIdToCheck = typeof event === 'string' ? event : event?.id;
           return String(eventIdToCheck) === String(eventId);
         }
-        
+
         return false;
       });
     });

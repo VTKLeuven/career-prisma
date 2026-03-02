@@ -95,38 +95,38 @@ export default function RegisterPage() {
               <div className="grid gap-6">
                 <div className="grid gap-3">
                   <Label htmlFor="firstName">First Name</Label>
-                  <Input 
-                    id="firstName" 
-                    type="text" 
-                    placeholder="John" 
-                    required 
+                  <Input
+                    id="firstName"
+                    type="text"
+                    placeholder="John"
+                    required
                     value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)} 
+                    onChange={(e) => setFirstName(e.target.value)}
                   />
                 </div>
                 <div className="grid gap-3">
                   <Label htmlFor="lastName">Last Name</Label>
-                  <Input 
-                    id="lastName" 
-                    type="text" 
-                    placeholder="Doe" 
-                    required 
+                  <Input
+                    id="lastName"
+                    type="text"
+                    placeholder="Doe"
+                    required
                     value={lastName}
-                    onChange={(e) => setLastName(e.target.value)} 
+                    onChange={(e) => setLastName(e.target.value)}
                   />
                 </div>
                 <div className="grid gap-3">
                   <Label htmlFor="email">Email</Label>
-                  <Input 
-                    id="email" 
-                    type="email" 
-                    placeholder="john.doe@example.com" 
-                    required 
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="john.doe@example.com"
+                    required
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)} 
+                    onChange={(e) => setEmail(e.target.value)}
                   />
                 </div>
-              
+
                 <div className="grid gap-3">
                   <Label htmlFor="university">University</Label>
                   <Select value={university} onValueChange={setUniversity} required>
@@ -167,7 +167,7 @@ export default function RegisterPage() {
                   <div className="p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg">
                     <p className="text-sm font-medium mb-2">Registration successful!</p>
                     <p className="text-sm">
-                      We've sent a verification email to <strong>{registeredEmail}</strong>. 
+                      We've sent a verification email to <strong>{registeredEmail}</strong>.
                       Please check your inbox and click the link to verify your email and set your password.
                     </p>
                   </div>
