@@ -16,6 +16,7 @@ import NextImage from "next/image";
 import { Textarea } from "@/components/ui/textarea";
 import { validatePageImageDimensions, validateExistingPageImage } from "@/lib/utils/image-validation";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
+import { slugifyCompanyName } from "@/lib/utils/slugify";
 
 // --- Helpers ---
 function isFileLike(value: unknown): value is File {
@@ -545,13 +546,7 @@ export default function CompanyForm() {
           {company && (
             <Link
               href={hasCompanyPageAccess(company)
-                ? `/company/${(company.name ?? "")
-                    .toLowerCase()
-                    .trim()
-                    .replace(/\s+/g, "-")
-                    .replace(/[^a-z0-9-]/g, "")
-                    .replace(/-+/g, "-")
-                    .replace(/^-|-$/g, "")}`
+                ? `/company/${slugifyCompanyName(company.name)}`
                 : "/dashboard/settings/information/request-page"
               }
             >

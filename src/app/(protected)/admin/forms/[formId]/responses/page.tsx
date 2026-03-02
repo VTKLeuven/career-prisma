@@ -39,6 +39,7 @@ import {
 import { ArrowLeft, Download, Eye, Trash2, Pencil, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2, Mail, ArrowUpDown, ArrowUp, ArrowDown, Check, X, FileArchive } from "lucide-react";
 import type { FormVersion, FormResponse, FormField } from "@/lib/schema";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
+import { CSV_UTF8_BOM } from "@/lib/utils/slugify";
 import { FormFieldRenderer } from "@/components/FormFieldRenderer";
 import { getDirectusImageUrl } from "@/components/Images";
 import NextImage from "next/image";
@@ -705,7 +706,7 @@ export default function FormResponsesPage() {
       return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
 
-    const csv = [headerRow, ...dataRows]
+    const csv = CSV_UTF8_BOM + [headerRow, ...dataRows]
       .map(row => row.map(escapeCsv).join(","))
       .join("\r\n");
 
@@ -913,7 +914,7 @@ export default function FormResponsesPage() {
       return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
 
-    const csv = [headerRow, ...dataRows]
+    const csv = CSV_UTF8_BOM + [headerRow, ...dataRows]
       .map(row => row.map(escapeCsv).join(","))
       .join("\r\n");
 
