@@ -7,15 +7,16 @@ services:
       dockerfile: Dockerfile
       args:
         # Docker Compose automatically reads .env file for variable substitution
-        # Make sure DIRECTUS_URL and NEXT_PUBLIC_DIRECTUS_URL are in your .env file
         DIRECTUS_URL: ${DIRECTUS_URL}
         NEXT_PUBLIC_DIRECTUS_URL: ${NEXT_PUBLIC_DIRECTUS_URL:-${DIRECTUS_URL}}
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN}
+        SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN}
     ports:
       - "3002:3000"
     environment:
       - NODE_ENV=production
-      # Runtime environment variables from .env (loaded via env_file)
       - NEXT_PUBLIC_DIRECTUS_URL=${NEXT_PUBLIC_DIRECTUS_URL:-${DIRECTUS_URL}}
+      - NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}
     restart: unless-stopped
     env_file:
       - .env

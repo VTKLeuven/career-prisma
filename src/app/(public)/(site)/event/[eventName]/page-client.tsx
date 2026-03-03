@@ -1523,7 +1523,10 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
                     <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 hover:shadow-lg transition-shadow duration-300">
                       <h3 className="font-semibold text-neutral-900">{item.title}</h3>
                       {item.description && (
-                        <p className="text-neutral-700 mt-1 text-sm" dangerouslySetInnerHTML={{ __html: item.description }} />
+                        <div
+                          className="text-neutral-700 mt-1 text-sm"
+                          dangerouslySetInnerHTML={{ __html: item.description }}
+                        />
                       )}
                     </div>
                   </div>

@@ -44,11 +44,15 @@ ENV NEXT_TELEMETRY_DISABLED 1
 
 # Accept build args for environment variables needed during build
 # NEXT_PUBLIC_* variables are baked into the client bundle at build time
-# These come from docker-compose build args, which read from .env.local
+# These come from docker-compose build args, which read from .env
 ARG DIRECTUS_URL
 ARG NEXT_PUBLIC_DIRECTUS_URL
+ARG NEXT_PUBLIC_SENTRY_DSN
+ARG SENTRY_AUTH_TOKEN
 ENV DIRECTUS_URL=$DIRECTUS_URL
 ENV NEXT_PUBLIC_DIRECTUS_URL=$NEXT_PUBLIC_DIRECTUS_URL
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
+ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
 
 RUN npm run build
 
