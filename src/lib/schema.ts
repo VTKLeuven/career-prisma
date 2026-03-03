@@ -323,6 +323,8 @@ export type CVBook = {
   student_cv_field_backup?: string;
   student_linkedin_field_backup?: string;
   active: boolean;
+  /** When true, companies can see approved CVs. Admin screens first, then sets this. */
+  screening_complete?: boolean;
 }
 
 /** Company favourite for a student CV in a CV Book. */
@@ -404,6 +406,7 @@ export type Schema = {
   zones_Booths: { id: number | string; zones_id: string | Zone; Booths_id: string | Booth }[];
   academic_year: AcademicYear[];
   cv_book: CVBook[];
+  CV_Book: CVBook[];
   career_event: CareerEvent[];
   career_sub_option: CareerSubOption[];
   master: Master[];
