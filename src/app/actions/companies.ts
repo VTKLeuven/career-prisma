@@ -288,11 +288,21 @@ function extractSubOptionIdsFromCompany(company: Company | null): (string | numb
   return Array.from(ids);
 }
 
-export async function fetchCompanyBySlugAction(slug: string): Promise<Company | null> {
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function fetchCompanyBySlugAction(slugOrId: string): Promise<Company | null> {
+  const trimmed = slugOrId.trim();
+  // If param looks like a UUID or numeric ID, fetch by ID directly (more reliable for matching software links)
+  if (UUID_REGEX.test(trimmed) || /^\d+$/.test(trimmed)) {
+    const company = await fetchCompanyByIdAction(trimmed, false, true);
+    if (company) return company;
+    return null;
+  }
+
   // Decode URL-encoded chars (e.g. %2B -> +, %20 -> space) then normalize for matching
-  let decodedSlug = slug;
+  let decodedSlug = slugOrId;
   try {
-    decodedSlug = decodeURIComponent(slug);
+    decodedSlug = decodeURIComponent(slugOrId);
   } catch {
     // Keep original if malformed encoding
   }
@@ -301,36 +311,15 @@ export async function fetchCompanyBySlugAction(slug: string): Promise<Company | 
   // Fetch enough companies to find by slug (use server client when no user - public role may lack permission)
   const companies = (await listCompanies({ limit: 10000, sort: "name", useServerClient: true })) ?? [];
 
-  // Debug logging
-  if (process.env.NODE_ENV === "development") {
-    console.log("fetchCompanyBySlugAction - Looking for slug:", slug, "normalized:", normalizedSlug);
-    console.log("fetchCompanyBySlugAction - Available companies:", companies.map(c => ({
-      id: c.id,
-      name: c.name,
-      slug: slugifyName(c.name)
-    })));
-  }
-
   const match = companies.find((c: Company) => {
     const companySlug = slugifyName(c.name);
     return companySlug === normalizedSlug;
   });
 
-  if (!match) {
-    if (process.env.NODE_ENV === "development") {
-      console.log("fetchCompanyBySlugAction - No match found for slug:", slug);
-    }
-    return null;
-  }
+  if (!match) return null;
 
   // Fetch full company details with all relations (use server client for nested options - public role may lack permission)
-  const fullCompany = await fetchCompanyByIdAction(match.id, false, true);
-
-  if (process.env.NODE_ENV === "development") {
-    console.log("fetchCompanyBySlugAction - Found company:", fullCompany?.name);
-  }
-
-  return fullCompany;
+  return fetchCompanyByIdAction(match.id, false, true);
 }
 
 /** Fetch company by slug + suboptions for access check (resolves IDs from options) */

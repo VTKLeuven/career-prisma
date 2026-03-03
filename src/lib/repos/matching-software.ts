@@ -8,20 +8,21 @@ import { countGeneralInfoOverlap, type GeneralInfoAnswers } from "@/lib/matching
 
 const RIASEC_TYPES: RIASECType[] = ["R", "I", "A", "S", "E", "C"];
 
-/** RIASEC → OCIA mapping: Clan=S+A, Adhocracy=A+E, Market=R+E, Hierarchy=C+I */
+/** RIASEC → OCIA mapping: Clan=S+A, Adhocracy=A+E, Market=R+E, Hierarchy=C+I. 6/4 scales 6 RIASEC dims to 4 OCIA dims. */
 function riasecToOcia(riasec: Record<RIASECType, number>): Record<OCIAType, number> {
   return {
-    Clan: (riasec.S ?? 0) + (riasec.A ?? 0),
-    Adhocracy: (riasec.A ?? 0) + (riasec.E ?? 0),
-    Market: (riasec.R ?? 0) + (riasec.E ?? 0),
-    Hierarchy: (riasec.C ?? 0) + (riasec.I ?? 0),
+    Clan: ((riasec.S ?? 0) + (riasec.A ?? 0)) / 2 * 6 / 4,
+    Adhocracy: ((riasec.A ?? 0) + (riasec.E ?? 0)) / 2 * 6 / 4,
+    Market: ((riasec.R ?? 0) + (riasec.E ?? 0)) / 2 * 6 / 4,
+    Hierarchy: ((riasec.C ?? 0) + (riasec.I ?? 0)) / 2 * 6 / 4,
   };
 }
 
-/** Sum of absolute differences between OCIA profiles (lower = more similar) */
+/** Sum of absolute differences between OCIA profiles (lower = more similar). Both inputs are 0–100; returns 0–1. */
 function ociaSimilarityScore(studentOcia: Record<OCIAType, number>, companyOcia: Record<OCIAType, number>): number {
   const types: OCIAType[] = ["Clan", "Adhocracy", "Market", "Hierarchy"];
-  return types.reduce((sum, t) => sum + Math.abs((studentOcia[t] ?? 0) - (companyOcia[t] ?? 0)), 0);
+  const raw = types.reduce((sum, t) => sum + Math.abs((studentOcia[t] ?? 0) - (companyOcia[t] ?? 0)), 0) / types.length;
+  return raw / 100; // normalize to 0–1 so comparable with generalInfoOverlap
 }
 
 const STUDY_FIELD_KEYS = ["study_field", "study", "master", "program"];
@@ -261,6 +262,42 @@ export async function getCompanyMatchingResponse(
     console.error("[getCompanyMatchingResponse] Error:", error);
     return null;
   }
+}
+
+/** Get general_info_answers for multiple companies. Returns map of companyId -> GeneralInfoAnswers. */
+export async function getCompanyGeneralInfoForCompanies(
+  matchingSoftwareId: string,
+  companyIds: string[]
+): Promise<Record<string, GeneralInfoAnswers>> {
+  if (companyIds.length === 0) return {};
+  const client = await getServerDirectusClient();
+  const fields = ["company", "general_info_answers"];
+  const filter = {
+    matching_software: { _eq: matchingSoftwareId },
+    company: { _in: companyIds },
+  };
+  for (const collection of COMPANY_MATCHING_RESPONSE_COLLECTIONS) {
+    try {
+      const items = (await client.request(
+        readItems(collection as any, { fields, filter, limit: -1 })
+      )) as unknown as Array<{ company: string | { id: string }; general_info_answers?: GeneralInfoAnswers }>;
+      const result: Record<string, GeneralInfoAnswers> = {};
+      for (const item of items) {
+        const companyId = typeof item.company === "string" ? item.company : item.company?.id;
+        if (companyId) {
+          result[companyId] = item.general_info_answers ?? {
+            work_preference: [],
+            company_type: [],
+            work_options: [],
+          };
+        }
+      }
+      return result;
+    } catch {
+      // Try next collection
+    }
+  }
+  return {};
 }
 
 /** Create or update company's OCIA matching response. */
@@ -529,7 +566,7 @@ async function getCompanyMatchingResponsesForMatchingSoftware(
 
 const TARGET_MATCH_COUNT = 30;
 
-const GENERAL_INFO_WEIGHT = 10; // Each overlapping general-info option reduces score by this much (lower score = better match)
+const GENERAL_INFO_WEIGHT = 3; // Each overlapping general-info option reduces score by this much (lower score = better match)
 
 /**
  * Compute company matches for a student and store in student_matching_response.companies.
@@ -578,7 +615,7 @@ export async function computeAndStoreCompanyMatches(
   const withScores = eligible.map((cr) => {
     const ociaScore = ociaSimilarityScore(studentOcia, cr.ocia);
     const generalInfoOverlap = countGeneralInfoOverlap(studentGi, cr.generalInfo);
-    const combinedScore = ociaScore - generalInfoOverlap * GENERAL_INFO_WEIGHT;
+    const combinedScore = (ociaScore - generalInfoOverlap * GENERAL_INFO_WEIGHT) / (GENERAL_INFO_WEIGHT + 1);
     return {
       companyId: cr.companyId,
       score: combinedScore,
@@ -591,14 +628,14 @@ export async function computeAndStoreCompanyMatches(
   let bestScore = withScores[0]?.score ?? 0;
   let matches: string[] = [];
 
-  while (matches.length < TARGET_MATCH_COUNT && margin <= 200) {
+  while (matches.length < TARGET_MATCH_COUNT && margin <= 2) {
     const threshold = bestScore + margin;
     matches = withScores.filter((m) => m.score <= threshold).map((m) => m.companyId);
     if (matches.length >= TARGET_MATCH_COUNT) {
       matches = matches.slice(0, TARGET_MATCH_COUNT);
       break;
     }
-    margin += 5;
+    margin += 0.05; // scores are 0–1 scale
   }
 
   if (matches.length > TARGET_MATCH_COUNT) {
@@ -612,7 +649,72 @@ export async function computeAndStoreCompanyMatches(
   return matches;
 }
 
+/** Compute match scores for display (same formula as computeAndStoreCompanyMatches). Lower = better. */
+export async function getMatchScoresForResponse(
+  riasec: Record<RIASECType, number>,
+  studentGeneralInfo: GeneralInfoAnswers | null | undefined,
+  matchingSoftwareId: string,
+  companyIds: string[]
+): Promise<Record<string, number>> {
+  if (companyIds.length === 0) return {};
+  const studentOcia = riasecToOcia(riasec);
+  const studentGi: GeneralInfoAnswers = studentGeneralInfo ?? {
+    work_preference: [],
+    company_preference: [],
+    options_preference: [],
+  };
+  const companyResponses = await getCompanyMatchingResponsesForMatchingSoftware(matchingSoftwareId);
+  const byId = new Map(companyResponses.map((cr) => [cr.companyId, cr]));
+  const result: Record<string, number> = {};
+  for (const companyId of companyIds) {
+    const cr = byId.get(companyId);
+    if (!cr) continue;
+    const ociaScore = ociaSimilarityScore(studentOcia, cr.ocia);
+    const generalInfoOverlap = countGeneralInfoOverlap(studentGi, cr.generalInfo);
+    const combinedScore = (ociaScore - generalInfoOverlap * GENERAL_INFO_WEIGHT) / (GENERAL_INFO_WEIGHT + 1);
+    result[companyId] = Math.round(combinedScore * 100) / 100;
+  }
+  return result;
+}
+
 const JUNCTION_COLLECTIONS = ["student_matching_response_company", "Student_Matching_Response_Company"] as const;
+
+const MATCHES_RECOMPUTE_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+/** Get when matches were last computed (from junction date_created). Returns null if unknown or no matches. */
+export async function getMatchesLastComputedAt(responseId: string): Promise<Date | null> {
+  const client = await getServerDirectusClient();
+  const respFieldVariants = ["student_matching_response_id", "student_matching_response"] as const;
+
+  for (const junction of JUNCTION_COLLECTIONS) {
+    for (const respField of respFieldVariants) {
+      try {
+        const items = (await client.request(
+          readItems(junction as any, {
+            fields: ["date_created"],
+            filter: { [respField]: { _eq: responseId } },
+            limit: 1,
+            sort: ["-date_created"],
+          })
+        )) as unknown as Array<{ date_created?: string }>;
+        if (items.length > 0 && items[0].date_created) {
+          const d = new Date(items[0].date_created);
+          if (!isNaN(d.getTime())) return d;
+        }
+      } catch {
+        // Junction may not have date_created; try next
+      }
+    }
+  }
+  return null;
+}
+
+/** Returns true if matches should be recomputed (stale or never computed). */
+export async function shouldRecomputeMatches(responseId: string): Promise<boolean> {
+  const lastAt = await getMatchesLastComputedAt(responseId);
+  if (!lastAt) return true;
+  return Date.now() - lastAt.getTime() > MATCHES_RECOMPUTE_INTERVAL_MS;
+}
 
 /** Fetch matched companies for a student response by reading the junction table directly. */
 export async function getMatchedCompaniesForResponse(

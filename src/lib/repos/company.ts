@@ -15,10 +15,14 @@ export async function listCompanies(opts?: {
   useServerClient?: boolean;  // Use server token (for public page fetches when no user)
 }) {
   try {
-    const { usePublic = false, search, limit = 25, page = 1, sort = "name" } = opts ?? {};
+    const { usePublic = false, useServerClient = false, search, limit = 25, page = 1, sort = "name" } = opts ?? {};
     
-    // Use public client if requested, otherwise try authenticated
-    const client = usePublic ? directus : await getDirectusWithToken();
+    // useServerClient: for public page fetches when no user (slug lookup)
+    const client = useServerClient
+      ? await getServerDirectusClient()
+      : usePublic
+        ? directus
+        : await getDirectusWithToken();
     if (!client) return null;
 
     return client.request(
