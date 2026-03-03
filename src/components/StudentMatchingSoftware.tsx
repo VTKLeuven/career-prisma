@@ -27,6 +27,7 @@ import {
   recomputeCompanyMatchesForCurrentUserAction,
   fetchMatchedCompaniesForResponseAction,
   fetchCompanyGeneralInfoAction,
+  fetchMatchScoresAction,
 } from "@/app/actions/matching-software";
 import type { RIASECType } from "@/lib/schema";
 
@@ -94,6 +95,7 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
   const [error, setError] = useState<string | null>(null);
   const [matchedCompanies, setMatchedCompanies] = useState<Array<{ id: string; name?: string; logo?: string; page_on_platform?: boolean; status?: string }>>([]);
   const [overlapByCompanyId, setOverlapByCompanyId] = useState<Record<string, string[]>>({});
+  const [scoreByCompanyId, setScoreByCompanyId] = useState<Record<string, number>>({});
 
   useEffect(() => {
     async function load() {
@@ -140,15 +142,25 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
           const companies = await fetchMatchedCompaniesForResponseAction(resp.id);
           setMatchedCompanies(companies);
           if (companies.length > 0) {
-            const companyGeneralInfo = await fetchCompanyGeneralInfoAction(ms.id, companies.map((c) => c.id));
+            const [companyGeneralInfo, scores] = await Promise.all([
+              fetchCompanyGeneralInfoAction(ms.id, companies.map((c) => c.id)),
+              fetchMatchScoresAction(
+                resp.riasec as Record<RIASECType, number>,
+                studentGi,
+                ms.id,
+                companies.map((c) => c.id)
+              ),
+            ]);
             const overlaps: Record<string, string[]> = {};
             for (const c of companies) {
               const companyGi = companyGeneralInfo[c.id];
               overlaps[c.id] = companyGi ? getGeneralInfoOverlapLabels(studentGi, companyGi) : [];
             }
             setOverlapByCompanyId(overlaps);
+            setScoreByCompanyId(scores);
           } else {
             setOverlapByCompanyId({});
+            setScoreByCompanyId({});
           }
         }
       } catch (e) {
@@ -226,7 +238,7 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
     const dominant = sorted[0];
 
     return (
-      <div className="container max-w-2xl mx-auto py-12 px-4">
+      <div className="container max-w-5xl mx-auto py-12 px-4">
         <Card>
           <CardHeader>
             <CardTitle className="text-2xl">Your Matching Results</CardTitle>
@@ -247,13 +259,15 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
             <div>
               <h3 className="text-xl font-semibold mb-4">Matched companies</h3>
               {matchedCompanies.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {matchedCompanies.map((c) => {
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+                  {[...matchedCompanies]
+                    .sort((a, b) => (scoreByCompanyId[a.id] ?? Infinity) - (scoreByCompanyId[b.id] ?? Infinity))
+                    .map((c) => {
                     const hasPage = hasCompanyPageAccess(c);
                     const logoUrl = c.logo ? getDirectusImageUrl(c.logo) : null;
                     const overlapKeywords = overlapByCompanyId[c.id] ?? [];
                     const cardContent = (
-                      <div className="group flex h-[280px] flex-col items-center rounded-xl border border-border/60 bg-card p-4 text-center transition-colors hover:border-vtk-blue/30 hover:bg-muted/30">
+                      <div className="group flex h-full min-h-[280px] flex-col items-center rounded-xl border border-border/60 bg-card p-5 text-center transition-colors hover:border-vtk-blue/30 hover:bg-muted/30">
                         <div className="flex h-14 shrink-0 items-center justify-center">
                           {logoUrl ? (
                             <Image
@@ -268,9 +282,9 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
                             <span className="text-xs text-muted-foreground">No logo</span>
                           )}
                         </div>
-                        <h4 className="mt-2 line-clamp-2 font-semibold text-foreground leading-tight">{c.name ?? "Unknown company"}</h4>
+                        <h4 className="mt-3 h-12 break-words font-semibold text-foreground leading-tight line-clamp-2" title={c.name ?? undefined}>{c.name ?? "Unknown company"}</h4>
                         {overlapKeywords.length > 0 ? (
-                          <div className="mt-3 flex-1">
+                          <div className="mt-3 h-20 shrink-0">
                             <p className="mb-1.5 text-xs font-medium text-muted-foreground">Why you matched</p>
                             <div className="flex flex-wrap justify-center gap-1.5">
                               {overlapKeywords.map((kw) => (
@@ -281,7 +295,7 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
                             </div>
                           </div>
                         ) : (
-                          <div className="mt-3 flex-1">
+                          <div className="mt-3 h-20 shrink-0">
                             <p className="text-xs text-muted-foreground">Based on your RIASEC profile and study field</p>
                           </div>
                         )}
@@ -291,9 +305,9 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
                       </div>
                     );
                     return (
-                      <div key={c.id}>
+                      <div key={c.id} className="min-h-[280px]">
                         {hasPage ? (
-                          <Link href={`/company/${slugifyCompanyName(c.name) || c.id}`} className="block">
+                          <Link href={`/company/${slugifyCompanyName(c.name) || c.id}`} className="block h-full">
                             {cardContent}
                           </Link>
                         ) : (
@@ -339,15 +353,25 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
         const companies = await fetchMatchedCompaniesForResponseAction(finalResp.id);
         setMatchedCompanies(companies);
         if (companies.length > 0) {
-          const companyGeneralInfo = await fetchCompanyGeneralInfoAction(matchingSoftware.id, companies.map((c) => c.id));
+          const [companyGeneralInfo, scores] = await Promise.all([
+            fetchCompanyGeneralInfoAction(matchingSoftware.id, companies.map((c) => c.id)),
+            fetchMatchScoresAction(
+              finalResp.riasec as Record<RIASECType, number>,
+              studentGi,
+              matchingSoftware.id,
+              companies.map((c) => c.id)
+            ),
+          ]);
           const overlaps: Record<string, string[]> = {};
           for (const c of companies) {
             const companyGi = companyGeneralInfo[c.id];
             overlaps[c.id] = companyGi ? getGeneralInfoOverlapLabels(studentGi, companyGi) : [];
           }
           setOverlapByCompanyId(overlaps);
+          setScoreByCompanyId(scores);
         } else {
           setOverlapByCompanyId({});
+          setScoreByCompanyId({});
         }
       }
     } catch (err) {

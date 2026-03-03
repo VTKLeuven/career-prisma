@@ -16,6 +16,7 @@ import {
   computeAndStoreCompanyMatches,
   getCompaniesByIds,
   getMatchedCompaniesForResponse,
+  getMatchScoresForResponse,
   shouldRecomputeMatches,
 } from "@/lib/repos/matching-software";
 import type { MatchingSoftware, RIASECType } from "@/lib/schema";
@@ -137,6 +138,16 @@ export async function fetchCompanyGeneralInfoAction(
   companyIds: string[]
 ) {
   return getCompanyGeneralInfoForCompanies(matchingSoftwareId, companyIds);
+}
+
+/** Fetch match scores for display (lower = better match). */
+export async function fetchMatchScoresAction(
+  riasec: Record<import("@/lib/schema").RIASECType, number>,
+  studentGeneralInfo: import("@/lib/matching-general-info").GeneralInfoAnswers | null | undefined,
+  matchingSoftwareId: string,
+  companyIds: string[]
+) {
+  return getMatchScoresForResponse(riasec, studentGeneralInfo, matchingSoftwareId, companyIds);
 }
 
 /** Re-run company matching for the current user's response. Only recomputes if last run was >24h ago. */
