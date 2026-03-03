@@ -41,11 +41,14 @@ const nextConfig: NextConfig = {
       config.externals = config.externals || [];
       // Don't externalize pdf-into-svg - we want to bundle it
     }
+    // Fix Windows standalone build: node:inspector produces invalid filenames (colons) on NTFS
+    config.resolve = config.resolve || {};
+    config.resolve.alias = { ...config.resolve.alias, "node:inspector": "inspector" };
     return config;
   },
-  // Add empty turbopack config to silence the warning
-  // The webpack config is still needed for server-side bundling
-  turbopack: {},
+  turbopack: {
+    resolveAlias: { "node:inspector": "inspector" },
+  },
 };
 
 export default withSentryConfig(nextConfig, {

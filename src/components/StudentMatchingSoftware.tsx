@@ -16,6 +16,7 @@ import {
   GENERAL_INFO_WORK_PREFERENCE_OPTIONS,
   GENERAL_INFO_COMPANY_TYPE_OPTIONS,
   GENERAL_INFO_WORK_OPTIONS,
+  getGeneralInfoOverlapLabels,
   type GeneralInfoAnswers,
 } from "@/lib/matching-general-info";
 import {
@@ -25,6 +26,7 @@ import {
   checkStudentPrerequisiteAction,
   recomputeCompanyMatchesForCurrentUserAction,
   fetchMatchedCompaniesForResponseAction,
+  fetchCompanyGeneralInfoAction,
 } from "@/app/actions/matching-software";
 import type { RIASECType } from "@/lib/schema";
 
@@ -91,6 +93,7 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [matchedCompanies, setMatchedCompanies] = useState<Array<{ id: string; name?: string; logo?: string; page_on_platform?: boolean; status?: string }>>([]);
+  const [overlapByCompanyId, setOverlapByCompanyId] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     async function load() {
@@ -105,7 +108,7 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
         }
 
         let resp = await getStudentMatchingResponseForCurrentUserAction(ms.id);
-        if (resp && (!resp.companies || (Array.isArray(resp.companies) && resp.companies.length === 0))) {
+        if (resp) {
           try {
             const refreshed = await recomputeCompanyMatchesForCurrentUserAction(ms.id);
             if (refreshed) resp = refreshed;
@@ -127,14 +130,26 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
         }
 
         if (resp) {
-          setAnswers(resp.riasec_answers || {});
-          setGeneralInfo((resp as { general_info_answers?: GeneralInfoAnswers }).general_info_answers ?? {
+          const studentGi = (resp as { general_info_answers?: GeneralInfoAnswers }).general_info_answers ?? {
             work_preference: [],
             company_preference: [],
             options_preference: [],
-          });
+          };
+          setAnswers(resp.riasec_answers || {});
+          setGeneralInfo(studentGi);
           const companies = await fetchMatchedCompaniesForResponseAction(resp.id);
           setMatchedCompanies(companies);
+          if (companies.length > 0) {
+            const companyGeneralInfo = await fetchCompanyGeneralInfoAction(ms.id, companies.map((c) => c.id));
+            const overlaps: Record<string, string[]> = {};
+            for (const c of companies) {
+              const companyGi = companyGeneralInfo[c.id];
+              overlaps[c.id] = companyGi ? getGeneralInfoOverlapLabels(studentGi, companyGi) : [];
+            }
+            setOverlapByCompanyId(overlaps);
+          } else {
+            setOverlapByCompanyId({});
+          }
         }
       } catch (e) {
         console.error(e);
@@ -232,38 +247,53 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
             <div>
               <h3 className="text-xl font-semibold mb-4">Matched companies</h3>
               {matchedCompanies.length > 0 ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {matchedCompanies.map((c) => {
                     const hasPage = hasCompanyPageAccess(c);
                     const logoUrl = c.logo ? getDirectusImageUrl(c.logo) : null;
+                    const overlapKeywords = overlapByCompanyId[c.id] ?? [];
                     const cardContent = (
-                      <div className="rounded-lg bg-muted/50 p-4 text-center shadow-sm ring-1 ring-border/50 hover:shadow-md transition-shadow flex flex-col items-center justify-center min-h-[120px]">
-                        {logoUrl ? (
-                          <div className="h-14 w-full flex items-center justify-center mb-2">
+                      <div className="group flex h-[280px] flex-col items-center rounded-xl border border-border/60 bg-card p-4 text-center transition-colors hover:border-vtk-blue/30 hover:bg-muted/30">
+                        <div className="flex h-14 shrink-0 items-center justify-center">
+                          {logoUrl ? (
                             <Image
                               src={logoUrl}
-                              alt={c.name ?? "Company logo"}
+                              alt=""
                               width={80}
                               height={56}
-                              className="object-contain"
+                              className="max-h-14 object-contain"
                               unoptimized
                             />
+                          ) : (
+                            <span className="text-xs text-muted-foreground">No logo</span>
+                          )}
+                        </div>
+                        <h4 className="mt-2 line-clamp-2 font-semibold text-foreground leading-tight">{c.name ?? "Unknown company"}</h4>
+                        {overlapKeywords.length > 0 ? (
+                          <div className="mt-3 flex-1">
+                            <p className="mb-1.5 text-xs font-medium text-muted-foreground">Why you matched</p>
+                            <div className="flex flex-wrap justify-center gap-1.5">
+                              {overlapKeywords.map((kw) => (
+                                <span key={kw} className="inline-block rounded-md bg-vtk-blue/10 px-2 py-0.5 text-xs text-vtk-blue">
+                                  {kw}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         ) : (
-                          <div className="h-14 flex items-center justify-center mb-2 text-muted-foreground text-sm">
-                            No logo
+                          <div className="mt-3 flex-1">
+                            <p className="text-xs text-muted-foreground">Based on your RIASEC profile and study field</p>
                           </div>
                         )}
-                        <span className="font-medium text-sm line-clamp-2">{c.name ?? "Unknown company"}</span>
                         {hasPage && (
-                          <span className="text-xs text-primary mt-1">View page →</span>
+                          <span className="mt-auto shrink-0 pt-3 text-xs text-vtk-blue group-hover:underline">View company page →</span>
                         )}
                       </div>
                     );
                     return (
                       <div key={c.id}>
                         {hasPage ? (
-                          <Link href={`/company/${slugifyCompanyName(c.name)}`} className="block cursor-pointer">
+                          <Link href={`/company/${slugifyCompanyName(c.name) || c.id}`} className="block">
                             {cardContent}
                           </Link>
                         ) : (
@@ -300,8 +330,25 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
       const finalResp = resp ?? (await getStudentMatchingResponseForCurrentUserAction(matchingSoftware.id));
       if (finalResp) {
         setExistingResponse(finalResp);
+        const studentGi = (finalResp as { general_info_answers?: GeneralInfoAnswers }).general_info_answers ?? {
+          work_preference: [],
+          company_preference: [],
+          options_preference: [],
+        };
+        setGeneralInfo(studentGi);
         const companies = await fetchMatchedCompaniesForResponseAction(finalResp.id);
         setMatchedCompanies(companies);
+        if (companies.length > 0) {
+          const companyGeneralInfo = await fetchCompanyGeneralInfoAction(matchingSoftware.id, companies.map((c) => c.id));
+          const overlaps: Record<string, string[]> = {};
+          for (const c of companies) {
+            const companyGi = companyGeneralInfo[c.id];
+            overlaps[c.id] = companyGi ? getGeneralInfoOverlapLabels(studentGi, companyGi) : [];
+          }
+          setOverlapByCompanyId(overlaps);
+        } else {
+          setOverlapByCompanyId({});
+        }
       }
     } catch (err) {
       console.error(err);
