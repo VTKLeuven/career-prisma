@@ -285,7 +285,7 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
                         <h4 className="mt-3 h-12 break-words font-semibold text-foreground leading-tight line-clamp-2" title={c.name ?? undefined}>{c.name ?? "Unknown company"}</h4>
                         {overlapKeywords.length > 0 ? (
                           <div className="mt-3 h-20 shrink-0">
-                            <p className="mb-1.5 text-xs font-medium text-muted-foreground">Why you matched</p>
+                            <p className="mb-1.5 text-xs font-medium text-muted-foreground">Company traits</p>
                             <div className="flex flex-wrap justify-center gap-1.5">
                               {overlapKeywords.map((kw) => (
                                 <span key={kw} className="inline-block rounded-md bg-vtk-blue/10 px-2 py-0.5 text-xs text-vtk-blue">
@@ -296,7 +296,7 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
                           </div>
                         ) : (
                           <div className="mt-3 h-20 shrink-0">
-                            <p className="text-xs text-muted-foreground">Based on your RIASEC profile and study field</p>
+                            <p className="text-xs text-muted-foreground">Profile and study field match</p>
                           </div>
                         )}
                         {hasPage && (
