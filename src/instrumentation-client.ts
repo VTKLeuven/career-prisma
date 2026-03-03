@@ -1,18 +1,50 @@
 import * as Sentry from "@sentry/nextjs";
 
 const enableReplay = process.env.NEXT_PUBLIC_SENTRY_ENABLE_REPLAY === "true";
+const ignoredErrorPatterns: Array<string | RegExp> = [/Error invoking postMessage: Java object is gone/i];
+
+function eventContainsIgnoredError(event: Sentry.Event, hint?: Sentry.EventHint): boolean {
+  const hintMessage =
+    hint?.originalException instanceof Error
+      ? hint.originalException.message
+      : typeof hint?.originalException === "string"
+        ? hint.originalException
+        : undefined;
+
+  const topMessage = event.message ?? hintMessage;
+  if (topMessage && ignoredErrorPatterns.some((p) => (typeof p === "string" ? topMessage.includes(p) : p.test(topMessage)))) {
+    return true;
+  }
+
+  const values = event.exception?.values ?? [];
+  for (const v of values) {
+    const value = v.value ?? "";
+    if (ignoredErrorPatterns.some((p) => (typeof p === "string" ? value.includes(p) : p.test(value)))) {
+      return true;
+    }
+  }
+  return false;
+}
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
   sendDefaultPii: true,
   tracesSampleRate: process.env.NODE_ENV === "development" ? 1.0 : 0.1,
+  ignoreErrors: ignoredErrorPatterns,
+  beforeSend(event, hint) {
+    // Instagram/Android in-app WebViews can throw this when their native bridge is torn down mid-navigation.
+    // It's not actionable in our app code, and it can drown out real issues.
+    if (eventContainsIgnoredError(event, hint)) return null;
+    return event;
+  },
   integrations: (defaultIntegrations) => {
     // Mitigation for production crashes like: `TypeError: elm.events.push is not a function`
     // These typically originate from browser API instrumentation / replay event capturing.
     const filtered = defaultIntegrations.filter((integration) => {
       // The name strings are how Sentry identifies integrations at runtime.
-      if (integration.name === "Replay") return false;
-      if (process.env.NODE_ENV === "production" && integration.name === "BrowserApiErrors") {
+      const name = (integration.name ?? "").toLowerCase();
+      if (name === "replay" || name.includes("replay")) return false;
+      if (process.env.NODE_ENV === "production" && name.includes("browserapierrors")) {
         return false;
       }
       return true;
