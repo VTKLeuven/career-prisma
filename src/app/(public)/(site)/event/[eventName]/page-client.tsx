@@ -1258,17 +1258,95 @@ function Hero({
 
 function CompanyPopup({ companies }: { companies: Company[] }) {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
+  const scrollPositionRef = useRef<number>(0)
+
+  // Companies with logos (grid order) for arrow navigation
+  const companiesWithLogos = companies.filter((c) => c.logo && getDirectusImageUrl(c.logo))
+
+  // Restore scroll position when returning to grid
+  useEffect(() => {
+    if (!selectedCompany && scrollPositionRef.current > 0) {
+      const scrollEl = document.querySelector<HTMLElement>("[data-popup-scroll]")
+      if (scrollEl) {
+        scrollEl.scrollTop = scrollPositionRef.current
+        scrollPositionRef.current = 0
+      }
+    }
+  }, [selectedCompany])
+
+  // Arrow key navigation when viewing a company
+  useEffect(() => {
+    if (!selectedCompany || companiesWithLogos.length <= 1) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault()
+        const idx = companiesWithLogos.findIndex((c) => c === selectedCompany)
+        if (idx < 0) return
+        const nextIdx = idx <= 0 ? companiesWithLogos.length - 1 : idx - 1
+        setSelectedCompany(companiesWithLogos[nextIdx])
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault()
+        const idx = companiesWithLogos.findIndex((c) => c === selectedCompany)
+        if (idx < 0) return
+        const nextIdx = idx >= companiesWithLogos.length - 1 ? 0 : idx + 1
+        setSelectedCompany(companiesWithLogos[nextIdx])
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [selectedCompany, companiesWithLogos])
+
+  const handleSelectCompany = (company: Company, fromElement?: HTMLElement) => {
+    const scrollEl = fromElement?.closest<HTMLElement>("[data-popup-scroll]")
+    if (scrollEl) scrollPositionRef.current = scrollEl.scrollTop
+    setSelectedCompany(company)
+  }
+
+  const handleBack = () => {
+    setSelectedCompany(null)
+  }
 
   if (selectedCompany) {
     const slug = slugifyCompanyName(selectedCompany.name);
+    const idx = companiesWithLogos.findIndex((c) => c === selectedCompany)
+    const hasMultiple = companiesWithLogos.length > 1
 
     return (
       <div
-        className="flex flex-col items-center justify-center gap-4 text-center px-6 py-4"
-        // Block events from reaching the backdrop/overlay:
+        className="relative flex flex-col items-center justify-center gap-4 text-center px-6 py-4 min-h-[200px]"
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
       >
+        <button
+          type="button"
+          className="absolute top-2 right-2 text-neutral-500 hover:text-neutral-800 p-1"
+          onClick={handleBack}
+          aria-label="Back to company list"
+        >
+          ✕
+        </button>
+
+        {hasMultiple && (
+          <>
+            <button
+              type="button"
+              className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full p-3 text-vtk-blue hover:bg-vtk-blue/10 text-2xl"
+              onClick={() => setSelectedCompany(companiesWithLogos[idx <= 0 ? companiesWithLogos.length - 1 : idx - 1])}
+              aria-label="Previous company"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-3 text-vtk-blue hover:bg-vtk-blue/10 text-2xl"
+              onClick={() => setSelectedCompany(companiesWithLogos[idx >= companiesWithLogos.length - 1 ? 0 : idx + 1])}
+              aria-label="Next company"
+            >
+              →
+            </button>
+          </>
+        )}
+
         <div className="flex items-center justify-center gap-2">
           <h2 className="text-2xl font-semibold text-vtk-blue">{selectedCompany.name}</h2>
         </div>
@@ -1280,18 +1358,10 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
           />
         )}
 
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            className="text-vtk-blue text-lg font-bold"
-            onClick={() => setSelectedCompany(null)}
-          >
-            ← Back
-          </button>
-
+        <div className="mt-4 flex items-center gap-3 flex-wrap justify-center">
           {hasCompanyPageAccess(selectedCompany) && (
             <Link
               href={`/company/${slug}`}
-              // (Optional) also stop bubbling on the link itself:
               onClick={(e) => e.stopPropagation()}
               className="inline-flex rounded-full bg-vtk-blue text-white px-4 py-2 text-sm font-medium hover:bg-vtk-blueDark"
             >
@@ -1326,7 +1396,7 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
               key={i}
               className="group cursor-pointer flex justify-center"
               whileHover={{ y: -1, scale: 1.02 }}
-              onClick={() => setSelectedCompany(company)}
+              onClick={(e) => handleSelectCompany(company, e.currentTarget as HTMLElement)}
             >
               <div className="rounded-lg bg-white/90 p-2.5 shadow-[0_4px_12px_rgba(11,77,140,0.06)] ring-1 ring-black/5 hover:shadow-md transition-shadow">
                 <div className="size-14 flex items-center justify-center">
@@ -1404,6 +1474,7 @@ function Popup({
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.2 }}
         className="rounded-2xl bg-white text-neutral-900 px-6 py-5 shadow-2xl max-w-4xl w-full mx-auto max-h-[85vh] overflow-y-auto scrollbar-hide"
+        data-popup-scroll
         onClick={(e) => e.stopPropagation()}
       >
         <button

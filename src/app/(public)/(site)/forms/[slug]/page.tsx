@@ -19,7 +19,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2, Download } from "lucide-react";
 import type { FormField, FormSchema } from "@/lib/schema";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 import { getDirectusImageUrl } from "@/components/Images";
@@ -486,6 +486,37 @@ function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(word => word.length > 0).length;
 }
 
+// Component to display file with preview and download link
+function FileDisplay({ fileId }: { fileId: string }) {
+  const [isImage, setIsImage] = useState<boolean | null>(null);
+  const downloadUrl = `/api/files/${fileId}`;
+
+  return (
+    <div className="flex flex-col gap-2">
+      {isImage !== false && (
+        <div className="relative w-24 h-24 rounded-lg border bg-muted overflow-hidden flex items-center justify-center">
+          <img
+            src={downloadUrl}
+            alt="File preview"
+            className="max-w-full max-h-full object-contain"
+            onLoad={() => setIsImage(true)}
+            onError={() => setIsImage(false)}
+          />
+        </div>
+      )}
+      <a
+        href={downloadUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary hover:underline flex items-center gap-1 w-fit"
+      >
+        <Download className="h-3 w-3 shrink-0" />
+        <span>View/Download</span>
+      </a>
+    </div>
+  );
+}
+
 function FormFieldRenderer({
   field,
   value,
@@ -850,18 +881,23 @@ function FormFieldRenderer({
             Maximum file size: {maxFileSizeMB}MB{isMultiple ? ' (multiple files allowed)' : ''}
           </p>
           {value ? (
-            <div className="text-sm text-muted-foreground">
+            <div className="text-sm space-y-2">
               {isMultiple && Array.isArray(value) ? (
-                <div className="space-y-1">
-                  <p>✓ {value.length} file(s) uploaded:</p>
-                  <ul className="list-disc list-inside ml-2">
+                <div className="space-y-2">
+                  <p className="text-muted-foreground font-medium">✓ {value.length} file(s) uploaded:</p>
+                  <ul className="space-y-1">
                     {value.map((id, idx) => (
-                      <li key={idx}>File {idx + 1}: {id}</li>
+                      <li key={idx} className="flex items-center gap-2">
+                        <FileDisplay fileId={typeof id === "string" ? id : String(id)} />
+                      </li>
                     ))}
                   </ul>
                 </div>
               ) : (
-                <p>✓ File uploaded: {typeof value === 'string' ? value : 'File selected'}</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground font-medium">✓ File uploaded:</span>
+                  <FileDisplay fileId={typeof value === "string" ? value : String(value)} />
+                </div>
               )}
             </div>
           ) : null}
