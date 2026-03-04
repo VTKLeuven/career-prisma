@@ -436,7 +436,17 @@ function Header() {
   const eventsMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-      fetchEventsAction().then(setEvents);
+      let cancelled = false
+      fetchEventsAction()
+        .then((events) => {
+          if (!cancelled) setEvents(events)
+        })
+        .catch(() => {
+          // Ignore: non-critical header data
+        })
+      return () => {
+        cancelled = true
+      }
   }, []);
 
   const checkAuthStatus = () => {

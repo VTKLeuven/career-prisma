@@ -5,8 +5,7 @@ import { useParams, usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import NextImage from "next/image"
 import * as Sentry from "@sentry/nextjs"
-import { fetchEventPagesAction } from "@/app/actions/events"
-import { fetchFloorplanAction, fetchMastersAction } from "@/app/actions/features"
+import { fetchFloorplanAction } from "@/app/actions/features"
 import type { CareerEventPage, Booth, Master, Company } from '@/lib/schema'
 import { getDirectusImageUrl } from "@/components/Images"
 import { slugifyCompanyName, slugifyEventName } from "@/lib/utils/slugify"
@@ -46,18 +45,25 @@ export default function SubPage() {
     async function load() {
       try {
         setLoadError(null)
-        const events = await fetchEventPagesAction()
-
         if (!eventName) return
-        const found = events.find(
-          (p) =>
-            p.event?.name &&
-            slugifyEventName(p.event.name) === slugifyEventName(eventName)
-        )
-        if (!cancelled) setPage(found ?? null)
 
-        const categories = await fetchMastersAction()
-        if (!cancelled) setAllCategories(categories)
+        // Avoid calling server actions directly from the client here.
+        // Next.js server actions are invoked via POST requests tied to the current route, which can surface as
+        // "TypeError: network error" in the browser on navigation. Using stable GET API routes reduces this risk.
+        const eventSlug = slugifyEventName(eventName)
+
+        const [pageRes, mastersRes] = await Promise.all([
+          fetch(`/api/events/${encodeURIComponent(eventSlug)}`, { cache: "no-store" }),
+          fetch(`/api/masters`, { cache: "no-store" }),
+        ])
+
+        const found: CareerEventPage | null = pageRes.ok ? await pageRes.json() : null
+        const categories: Master[] = mastersRes.ok ? await mastersRes.json() : []
+
+        if (!cancelled) {
+          setPage(found ?? null)
+          setAllCategories(Array.isArray(categories) ? categories : [])
+        }
       } catch (err) {
         if (cancelled) return
         setLoadError("We couldn't load this event right now. Please refresh and try again.")

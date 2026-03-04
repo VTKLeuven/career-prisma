@@ -99,14 +99,28 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
   const eventsMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-      // Use API route for better caching
-      fetch('/api/homepage')
-        .then(res => res.json())
-        .then((data) => setEvents(data.events ?? []))
-        .catch(() => {
-          // Fallback to direct action
-          fetchEventsAction().then(setEvents);
-        });
+      const ac = new AbortController()
+
+      const load = async () => {
+        try {
+          // Use API route for better caching
+          const res = await fetch('/api/homepage', { signal: ac.signal })
+          const data = (await res.json()) as { events?: CareerEvent[] }
+          if (!ac.signal.aborted) setEvents(data.events ?? [])
+        } catch {
+          if (ac.signal.aborted) return
+          // Fallback to direct action (must be caught too; navigation aborts can throw)
+          try {
+            const events = await fetchEventsAction()
+            if (!ac.signal.aborted) setEvents(events)
+          } catch {
+            // Ignore: non-critical header data
+          }
+        }
+      }
+
+      load()
+      return () => ac.abort()
   }, []);
 
   const checkAuthStatus = () => {
@@ -639,6 +653,7 @@ function Hero() {
 function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
     const [EVENTS, setEvents] = useState<CareerEvent[]>([]);
     const [loading, setLoading] = useState(true);
+    const prefetchedImagesRef = useRef<Set<string>>(new Set());
 
     useEffect(() => {
         let alive = true;
@@ -688,22 +703,20 @@ function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
                             transition={{ type: 'spring', stiffness: 260, damping: 18 }}
                             className={`group relative block ${isPast ? 'opacity-60 grayscale' : ''}`}
                             onMouseEnter={() => {
-                              // Prefetch image on hover for faster navigation
-                              // Using prefetch (not preload) to avoid console warnings
-                              if (imageUrl && typeof window !== 'undefined') {
-                                // Debounce to avoid too many requests
-                                setTimeout(() => {
-                                  // Check if link already exists
-                                  const existing = document.querySelector(`link[href="${imageUrl}"]`)
-                                  if (!existing) {
-                                    const link = document.createElement('link')
-                                    link.rel = 'prefetch'
-                                    link.as = 'image'
-                                    link.href = imageUrl
-                                    document.head.appendChild(link)
-                                  }
-                                }, 300) // Slightly longer delay to reduce warnings
-                              }
+                              // Prefetch image on hover for faster navigation.
+                              // Avoid touching <head>: Next/React head management can break if we append nodes manually.
+                              if (!imageUrl || typeof window === 'undefined') return;
+
+                              // Debounce to avoid too many requests
+                              setTimeout(() => {
+                                if (prefetchedImagesRef.current.has(imageUrl)) return;
+                                prefetchedImagesRef.current.add(imageUrl);
+
+                                // Warm the browser cache without mutating the DOM tree.
+                                const img = new window.Image();
+                                img.decoding = 'async';
+                                img.src = imageUrl;
+                              }, 300);
                             }}
                         >
                             <Link
