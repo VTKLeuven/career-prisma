@@ -238,6 +238,11 @@ function CVBooksTable() {
                 >
                   View CV Book
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => router.push(`/admin/cv-book/screening?cvBookId=${book.id}`)}
+                >
+                  Screen CVs
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setEditingBook(book)}>
                   <Pencil className="mr-2 h-4 w-4" />
                   Edit details
