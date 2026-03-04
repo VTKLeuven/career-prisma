@@ -1056,6 +1056,20 @@ export async function checkCompanyFormCompletionByFormIdsAction(companyId: strin
   }
 }
 
+/** Batch check form completion with compulsory support. For compulsory forms, company must complete this version or newer. */
+export async function checkCompanyFormCompletionBatchWithCompulsoryAction(
+  companyIds: string[],
+  forms: Array<{ formId: string; formVersionId: string; versionNumber?: number; isCompulsory?: boolean }>
+): Promise<Map<string, Set<string>>> {
+  try {
+    const { checkCompanyFormCompletionBatchWithCompulsory } = await import("@/lib/repos/forms");
+    return await checkCompanyFormCompletionBatchWithCompulsory(companyIds, forms);
+  } catch (error) {
+    console.error("[checkCompanyFormCompletionBatchWithCompulsoryAction] Error:", error);
+    return new Map();
+  }
+}
+
 export async function fetchPublicFormBySlugAction(slug: string) {
   try {
     // Use dedicated public form fetcher that always uses public client

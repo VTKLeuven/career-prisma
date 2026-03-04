@@ -13,7 +13,7 @@ import type { CareerEvent, Company } from "@/lib/schema";
 import { useUser } from "@/providers/UserProvider";
 import Link from "next/link";
 import { getUpcomingEventsWithFallback, type EventWithStatus } from '@/lib/utils/events';
-import { fetchCompanyFormsForEventAction, checkCompanyFormCompletionByFormIdsAction } from '@/app/actions/forms';
+import { fetchCompanyFormsForEventAction, checkCompanyFormCompletionBatchWithCompulsoryAction } from '@/app/actions/forms';
 import { getMatchingSoftwareForEventAction } from '@/app/actions/matching-software';
 import { FileText, CheckCircle2 } from 'lucide-react';
 import { formatDateTimeBE } from '@/lib/date-utils';
@@ -268,11 +268,16 @@ function ManageEventCard({ event, company }: { event: CareerEvent; company: Comp
       .then(async (fetchedForms) => {
         setForms(fetchedForms);
         
-        // Check which forms are completed (across all versions, not just active version)
+        // Check which forms are completed (compulsory = exact version, non-compulsory = any version)
         if (company?.id && fetchedForms.length > 0) {
-          const formIds = fetchedForms.map((f) => f.id);
-          const completedFormIds = await checkCompanyFormCompletionByFormIdsAction(company.id, formIds);
-          setCompletedFormIds(completedFormIds);
+          const formsForCheck = fetchedForms.map((f) => ({
+            formId: f.id,
+            formVersionId: f.activeVersion.id,
+            versionNumber: f.activeVersion.version_number,
+            isCompulsory: (f.metadata as { is_compulsory?: boolean })?.is_compulsory === true,
+          }));
+          const completedMap = await checkCompanyFormCompletionBatchWithCompulsoryAction([company.id], formsForCheck);
+          setCompletedFormIds(completedMap.get(company.id) ?? new Set());
         } else {
           setCompletedFormIds(new Set());
         }
@@ -330,7 +335,7 @@ function ManageEventCard({ event, company }: { event: CareerEvent; company: Comp
                 {forms.map((form) => {
                   const isCompleted = completedFormIds.has(form.id);
                   const formUrl = `/forms/company/${event.id}/${form.slug}`;
-                  const metadata = (form.activeVersion as any)?.metadata;
+                  const metadata = (form as { metadata?: { deadline?: string } }).metadata;
                   const hasDeadline = !!metadata?.deadline;
                   const deadline = metadata?.deadline ? new Date(metadata.deadline) : null;
                   const isDeadlinePassed = deadline ? deadline < new Date() : false;

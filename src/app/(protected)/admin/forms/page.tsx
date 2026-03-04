@@ -982,6 +982,9 @@ function EditFormDialog({
   const [sendCompanyFormEmail, setSendCompanyFormEmail] = useState(
     form.metadata?.send_company_form_email === true
   );
+  const [isCompulsory, setIsCompulsory] = useState(
+    form.metadata?.is_compulsory === true
+  );
   const [companyFormEmailSubject, setCompanyFormEmailSubject] = useState(
     (form.metadata?.company_form_email_subject as string) || "Form Submission Confirmation"
   );
@@ -1139,6 +1142,7 @@ function EditFormDialog({
       setSelectedCompanyFormEventId((form.metadata?.event_id as string) || '');
       setSelectedOptionIds((form.metadata?.option_ids as string[]) || []);
       setSendCompanyFormEmail(form.metadata?.send_company_form_email === true);
+      setIsCompulsory(form.metadata?.is_compulsory === true);
       setCompanyFormEmailSubject((form.metadata?.company_form_email_subject as string) || 'Form Submission Confirmation');
       setCompanyFormEmailContent((form.metadata?.company_form_email_content as string) || 'Thank you for your submission!');
       setEventEmailSubject((form.metadata?.event_email_subject as string) || '');
@@ -1223,6 +1227,7 @@ function EditFormDialog({
             ...(selectedCompanyFormEventId && selectedCompanyFormEventId !== "none" ? { event_id: selectedCompanyFormEventId } : {}),
             ...(selectedOptionIds.length > 0 ? { option_ids: selectedOptionIds } : {}),
             send_company_form_email: sendCompanyFormEmail,
+            ...(isCompulsory ? { is_compulsory: true } : {}),
             ...(sendCompanyFormEmail ? {
               company_form_email_subject: companyFormEmailSubject || 'Form Submission Confirmation',
               company_form_email_content: companyFormEmailContent || 'Thank you for your submission!',
@@ -1251,7 +1256,7 @@ function EditFormDialog({
         } else {
           // If unchecked, remove company form flag but keep other metadata
           if (metadata) {
-            const { is_company_form, option_ids, send_company_form_email, company_form_email_subject, company_form_email_content, ...restMetadata } = metadata;
+            const { is_company_form, option_ids, send_company_form_email, company_form_email_subject, company_form_email_content, is_compulsory, ...restMetadata } = metadata;
             metadata = Object.keys(restMetadata).length > 0 ? restMetadata : undefined;
           }
         }
@@ -1545,6 +1550,20 @@ function EditFormDialog({
                     </p>
                   </div>
                 )}
+
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="edit-is-compulsory"
+                    checked={isCompulsory}
+                    onCheckedChange={(checked) => setIsCompulsory(checked === true)}
+                  />
+                  <Label htmlFor="edit-is-compulsory" className="font-normal cursor-pointer">
+                    This version is mandatory
+                  </Label>
+                </div>
+                <p className="text-xs text-muted-foreground -mt-2">
+                  When mandatory, companies must complete this version or a newer one. Earlier versions do not count. Incomplete mandatory forms will show in the company dashboard and admin completion overview.
+                </p>
 
                 <div className="flex items-center space-x-2">
                   <Checkbox

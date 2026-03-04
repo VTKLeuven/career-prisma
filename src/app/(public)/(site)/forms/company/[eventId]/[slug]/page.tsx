@@ -38,6 +38,7 @@ type CompanyForm = {
     deadline?: string;
     max_entries?: number;
     is_company_form?: boolean;
+    is_compulsory?: boolean;
     event_id?: string;
     option_ids?: string[];
     send_company_form_email?: boolean;
@@ -320,8 +321,8 @@ export default function CompanyFormPage() {
             setSubmitterEmail(response.submitter_email);
           }
           
-          // Start in read-only mode when a response already exists
-          setIsEditing(false);
+          // When compulsory, open editor immediately; otherwise start in read-only mode
+          setIsEditing(form.metadata?.is_compulsory === true);
           console.log("[CompanyFormPage] loadExistingResponse - Completed successfully, form data set");
         } else {
           console.log("[CompanyFormPage] loadExistingResponse - No existing response found");
