@@ -439,10 +439,11 @@ export async function getCVBookStudentData(
 
     let finalStudentData = withStudyOverride;
     if (!opts?.forScreening) {
-      // Company view: filter to approved only
+      // Company view: only show CVs that went through screening and are not rejected
+      // (have screening record + approved or pending; new unscreened CVs stay hidden)
       finalStudentData = withStudyOverride.filter((s) => {
         if (!s.screeningRecord) return false;
-        return s.screeningStatus === "approved";
+        return s.screeningStatus !== "rejected";
       });
     }
 

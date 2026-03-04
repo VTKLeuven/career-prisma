@@ -240,6 +240,20 @@ export async function markCVBookScreeningCompleteAction(
   cvBookId: string,
   complete: boolean
 ): Promise<{ success: boolean; error?: string }> {
+  if (complete) {
+    // When marking ready: create approved screening records for all CVs that don't have one.
+    // This ensures existing CVs are visible; new CVs added later (without screening) stay hidden.
+    const book = await getCVBookById(cvBookId);
+    if (book) {
+      const groups = await getCVBookStudentData(book, { forScreening: true });
+      const students = groups.flatMap((g) => g.students);
+      for (const s of students) {
+        if (!s.screeningRecord || s.screeningStatus === "pending") {
+          await approveCV(cvBookId, s.id, s.study);
+        }
+      }
+    }
+  }
   return markCVBookScreeningComplete(cvBookId, complete);
 }
 
