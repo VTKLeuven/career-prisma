@@ -973,21 +973,34 @@ export default function CompanyFormPage() {
   );
 }
 
-// Component to display file info with download link (matches admin panel style)
+// Component to display file info with preview and download link
 function FileDisplay({ fileId, index }: { fileId: string; index?: number }) {
-  // Use the same API route as admin panel for consistency
+  const [isImage, setIsImage] = useState<boolean | null>(null);
   const downloadUrl = `/api/files/${fileId}`;
 
   return (
-    <a
-      href={downloadUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-primary hover:underline flex items-center gap-1"
-    >
-      <Download className="h-3 w-3" />
-      <span>View/Download File</span>
-    </a>
+    <div className="flex flex-col gap-2">
+      {isImage !== false && (
+        <div className="relative w-24 h-24 rounded-lg border bg-muted overflow-hidden flex items-center justify-center">
+          <img
+            src={downloadUrl}
+            alt="File preview"
+            className="max-w-full max-h-full object-contain"
+            onLoad={() => setIsImage(true)}
+            onError={() => setIsImage(false)}
+          />
+        </div>
+      )}
+      <a
+        href={downloadUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary hover:underline flex items-center gap-1 w-fit"
+      >
+        <Download className="h-3 w-3 shrink-0" />
+        <span>View/Download File</span>
+      </a>
+    </div>
   );
 }
 
