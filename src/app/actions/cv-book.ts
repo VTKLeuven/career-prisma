@@ -11,8 +11,16 @@ import {
   getAcademicYearById,
   getActiveCVBooks,
   getCVBookByYear,
+  getCVBookByYearForScreening,
   getCVBookStudentData,
 } from "@/lib/repos/cv-book";
+import {
+  approveCV,
+  rejectCV,
+  updateStudyOverride,
+  markCVBookScreeningComplete,
+  getScreeningMap,
+} from "@/lib/repos/cv-book-screening";
 import {
   listFavourites,
   addFavourite,
@@ -129,11 +137,29 @@ export async function fetchCVBookByYearAction(yearId: string): Promise<CVBook | 
   }
 }
 
+export async function fetchCVBookByYearForScreeningAction(yearId: string): Promise<CVBook | null> {
+  try {
+    return await getCVBookByYearForScreening(yearId);
+  } catch (error) {
+    console.error("[fetchCVBookByYearForScreeningAction] Error:", error);
+    return null;
+  }
+}
+
 export async function fetchCVBookStudentDataAction(cvBook: CVBook): Promise<import("@/lib/repos/cv-book").StudentCVGroup[]> {
   try {
     return await getCVBookStudentData(cvBook);
   } catch (error) {
     console.error("[fetchCVBookStudentDataAction] Error:", error);
+    return [];
+  }
+}
+
+export async function fetchCVBookStudentDataForScreeningAction(cvBook: CVBook): Promise<import("@/lib/repos/cv-book").StudentCVGroup[]> {
+  try {
+    return await getCVBookStudentData(cvBook, { forScreening: true });
+  } catch (error) {
+    console.error("[fetchCVBookStudentDataForScreeningAction] Error:", error);
     return [];
   }
 }
@@ -187,6 +213,69 @@ export async function toggleCVBookFavouriteAction(
       success: false,
       error: error instanceof Error ? error.message : "Failed to toggle favourite",
     };
+  }
+}
+
+export async function approveCVAction(
+  cvBookId: string,
+  formResponseId: string,
+  studyOverride?: string | null
+): Promise<{ success: boolean; error?: string }> {
+  return approveCV(cvBookId, formResponseId, studyOverride);
+}
+
+export async function rejectCVAction(cvBookId: string, formResponseId: string): Promise<{ success: boolean; error?: string }> {
+  return rejectCV(cvBookId, formResponseId);
+}
+
+export async function updateStudyOverrideAction(
+  cvBookId: string,
+  formResponseId: string,
+  studyOverride: string
+): Promise<{ success: boolean; error?: string }> {
+  return updateStudyOverride(cvBookId, formResponseId, studyOverride);
+}
+
+export async function markCVBookScreeningCompleteAction(
+  cvBookId: string,
+  complete: boolean
+): Promise<{ success: boolean; error?: string }> {
+  return markCVBookScreeningComplete(cvBookId, complete);
+}
+
+/** Get study options from the form's study field (for screening dropdown) */
+export async function fetchStudyOptionsForCVBookAction(cvBook: CVBook): Promise<string[]> {
+  try {
+    const formId = typeof cvBook.form === "string" ? cvBook.form : cvBook.form.id;
+    const formFields = await getFormFieldsAcrossAllVersions(formId);
+    const studyFieldName = cvBook.student_study_field;
+    const studyField = formFields.find((f) => f.name === studyFieldName);
+    const options = studyField?.options;
+    if (Array.isArray(options) && options.length > 0) {
+      return options;
+    }
+    // Fallback: try backup field
+    const backupName = cvBook.student_study_field_backup;
+    if (backupName) {
+      const backupField = formFields.find((f) => f.name === backupName);
+      if (Array.isArray(backupField?.options) && backupField.options.length > 0) {
+        return backupField.options;
+      }
+    }
+    return [];
+  } catch (error) {
+    console.error("[fetchStudyOptionsForCVBookAction] Error:", error);
+    return [];
+  }
+}
+
+export async function fetchScreeningMapAction(cvBookId: string) {
+  try {
+    const map = await getScreeningMap(cvBookId);
+    return Object.fromEntries(map);
+  } catch (error) {
+    console.error("[fetchScreeningMapAction] Error:", error);
+    return {};
   }
 }
 
