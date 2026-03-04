@@ -10,11 +10,14 @@ import {
   createStudentMatchingResponse,
   getCompanyMatchingResponse,
   getCompanyMatchingResponseCompletedIds,
+  getCompanyGeneralInfoForCompanies,
   createOrUpdateCompanyMatchingResponse,
   getStudentFormResponseForForm,
   computeAndStoreCompanyMatches,
   getCompaniesByIds,
   getMatchedCompaniesForResponse,
+  getMatchScoresForResponse,
+  shouldRecomputeMatches,
 } from "@/lib/repos/matching-software";
 import type { MatchingSoftware, RIASECType } from "@/lib/schema";
 
@@ -129,13 +132,33 @@ export async function fetchMatchedCompaniesForResponseAction(responseId: string)
   return getMatchedCompaniesForResponse(responseId);
 }
 
-/** Re-run company matching for the current user's response. Call when companies is empty (e.g. no companies had filled yet at submit time). */
+/** Fetch company general info for matched companies. Returns map of companyId -> GeneralInfoAnswers. */
+export async function fetchCompanyGeneralInfoAction(
+  matchingSoftwareId: string,
+  companyIds: string[]
+) {
+  return getCompanyGeneralInfoForCompanies(matchingSoftwareId, companyIds);
+}
+
+/** Fetch match scores for display (lower = better match). */
+export async function fetchMatchScoresAction(
+  riasec: Record<import("@/lib/schema").RIASECType, number>,
+  studentGeneralInfo: import("@/lib/matching-general-info").GeneralInfoAnswers | null | undefined,
+  matchingSoftwareId: string,
+  companyIds: string[]
+) {
+  return getMatchScoresForResponse(riasec, studentGeneralInfo, matchingSoftwareId, companyIds);
+}
+
+/** Re-run company matching for the current user's response. Only recomputes if last run was >24h ago. */
 export async function recomputeCompanyMatchesForCurrentUserAction(matchingSoftwareId: string) {
   const { getStudentFromCookies } = await import("@/lib/auth-student");
   const student = await getStudentFromCookies();
   if (!student?.id) return null;
   const resp = await getStudentMatchingResponse(student.id, matchingSoftwareId);
   if (!resp?.id || !resp.riasec) return null;
+  const needsRecompute = await shouldRecomputeMatches(resp.id);
+  if (!needsRecompute) return resp;
   const generalInfo = (resp as { general_info_answers?: import("@/lib/matching-general-info").GeneralInfoAnswers }).general_info_answers;
   await computeAndStoreCompanyMatches(
     resp.id,
