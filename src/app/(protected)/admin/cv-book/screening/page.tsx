@@ -202,12 +202,6 @@ export default function CVBookScreeningPage() {
 
   async function handleMarkComplete() {
     if (!selectedCVBook?.id) return;
-    const approvedCount = flatStudents.filter((s) => s.screeningStatus === "approved").length;
-    const total = studentGroups.flatMap((g) => g.students).length;
-    if (approvedCount === 0) {
-      setMarkCompleteError("Approve at least one CV before marking the CV Book ready for companies.");
-      return;
-    }
     setMarkingComplete(true);
     const result = await markCVBookScreeningCompleteAction(selectedCVBook.id, true);
     setMarkingComplete(false);
@@ -277,11 +271,6 @@ export default function CVBookScreeningPage() {
                       <>
                         <Button
                           onClick={() => {
-                            const approved = flatStudents.filter((s) => s.screeningStatus === "approved").length;
-                            if (approved === 0) {
-                              setMarkCompleteError("Approve at least one CV before marking the CV Book ready for companies.");
-                              return;
-                            }
                             setMarkCompleteError(null);
                             setMarkCompleteDialogOpen(true);
                           }}
@@ -296,8 +285,9 @@ export default function CVBookScreeningPage() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Mark ready for companies?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                {flatStudents.filter((s) => s.screeningStatus === "approved").length} of{" "}
+                                {flatStudents.filter((s) => s.screeningStatus !== "rejected").length} of{" "}
                                 {studentGroups.flatMap((g) => g.students).length} CVs will be visible to companies.
+                                Rejected CVs stay hidden. New CVs added later will not show until screened.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
