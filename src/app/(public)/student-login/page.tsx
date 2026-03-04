@@ -5,13 +5,21 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation"
 import NextImage from "next/image";
 import Link from "next/link";
 import { getDirectusImageUrl } from "@/components/Images";
 
 export default function StudentLoginPage() {
+  return (
+    <Suspense>
+      <StudentLoginContent />
+    </Suspense>
+  );
+}
+
+function StudentLoginContent() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
@@ -221,7 +229,6 @@ export default function StudentLoginPage() {
                       <Label
                         htmlFor="rememberMe"
                         className="text-sm font-normal cursor-pointer"
-                        onClick={() => setRememberMe(!rememberMe)}
                       >
                         Remember me
                       </Label>
