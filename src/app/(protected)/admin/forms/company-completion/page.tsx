@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useState, useEffect } from "react";
 import { fetchEventsAction } from "@/app/actions/events";
-import { fetchCompanyFormsForEventAction, checkCompanyFormCompletionByFormIdsBatchAction } from "@/app/actions/forms";
+import { fetchCompanyFormsForEventAction, checkCompanyFormCompletionBatchWithCompulsoryAction } from "@/app/actions/forms";
 import { fetchCompaniesForEventAction } from "@/app/actions/companies";
 import { getMatchingSoftwareForEventAction, getCompanyMatchingResponseCompletedIdsAction } from "@/app/actions/matching-software";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -35,6 +35,7 @@ type FormStatusItem = {
   formSlug: string;
   formVersionId: string;
   completed: boolean;
+  isCompulsory?: boolean;
   isMatchingSoftware?: boolean;
   matchingSoftwareLink?: string;
 };
@@ -189,6 +190,7 @@ export default function CompanyFormCompletionPage() {
         company: { id: string; name: string; status?: string };
         salesperson: SalespersonInfo;
         optionNames: string[];
+        optionKey: string;
         forms: Awaited<ReturnType<typeof fetchCompanyFormsForEventAction>>;
       }> = [];
       const seenOptionKeys = new Set<string>();
@@ -220,24 +222,48 @@ export default function CompanyFormCompletionPage() {
           },
           salesperson: getSalespersonInfo(company),
           optionNames: getOptionNamesForEvent(company),
+          optionKey: key,
           forms,
         });
       }
 
-      // Collect all form IDs and company IDs for batch checks (any version = complete)
-      const allFormIds = new Set<string>();
       const companyIds = companyDataList.map((d) => d.company.id);
-      for (const { forms } of companyDataList) {
-        forms.forEach((f) => allFormIds.add(f.id));
+
+      // Group companies by option set (same options = same forms), then batch check per group
+      const optionKeyToCompanies = new Map<string, typeof companyDataList>();
+      for (const d of companyDataList) {
+        const list = optionKeyToCompanies.get(d.optionKey) ?? [];
+        list.push(d);
+        optionKeyToCompanies.set(d.optionKey, list);
       }
 
-      // Batch check: has company completed ANY version of each form?
-      const [completedFormIdsMap, matchingSoftwareCompletedIds] = await Promise.all([
-        checkCompanyFormCompletionByFormIdsBatchAction(companyIds, Array.from(allFormIds)),
+      const completedFormIdsMap = new Map<string, Set<string>>();
+      companyIds.forEach((id) => completedFormIdsMap.set(id, new Set()));
+
+      const batchPromises = Array.from(optionKeyToCompanies.entries()).map(async ([, list]) => {
+        const first = list[0];
+        if (!first || first.forms.length === 0) return;
+        const formsForCheck = first.forms.map((f) => ({
+          formId: f.id,
+          formVersionId: f.activeVersion.id,
+          versionNumber: f.activeVersion.version_number,
+          isCompulsory: (f.metadata as { is_compulsory?: boolean })?.is_compulsory === true,
+        }));
+        const companyIdsInGroup = list.map((d) => d.company.id);
+        const batch = await checkCompanyFormCompletionBatchWithCompulsoryAction(companyIdsInGroup, formsForCheck);
+        for (const [cid, formIds] of batch) {
+          completedFormIdsMap.set(cid, formIds);
+        }
+      });
+
+      const allPromises = [
+        ...batchPromises,
         matchingSoftware
           ? getCompanyMatchingResponseCompletedIdsAction(matchingSoftware.id, companyIds)
           : Promise.resolve(new Set<string>()),
-      ]);
+      ];
+      const results = await Promise.all(allPromises);
+      const matchingSoftwareCompletedIds = (results[results.length - 1] as Set<string>) ?? new Set<string>();
 
       const statuses: CompanyFormStatus[] = companyDataList.map(({ company, salesperson, optionNames, forms }) => {
         const completedFormIds = completedFormIdsMap.get(company.id) ?? new Set<string>();
@@ -246,7 +272,8 @@ export default function CompanyFormCompletionPage() {
           formName: form.name,
           formSlug: form.slug,
           formVersionId: form.activeVersion.id,
-          completed: completedFormIds.has(form.id), // Any version counts as complete
+          completed: completedFormIds.has(form.id),
+          isCompulsory: (form.metadata as { is_compulsory?: boolean })?.is_compulsory === true,
         }));
         if (matchingSoftware) {
           formStatuses.push({
@@ -477,6 +504,9 @@ export default function CompanyFormCompletionPage() {
                                     target="_blank"
                                   >
                                     {form.formName}
+                                    {form.isCompulsory && !form.completed && (
+                                      <span className="ml-1 text-xs font-medium text-amber-600">(Mandatory)</span>
+                                    )}
                                   </Link>
                                 )}
                               </div>

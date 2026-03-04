@@ -245,6 +245,7 @@ export type FormMetadata = {
   company_form_email_content?: string; // Email content for company form confirmation
   send_company_form_email?: boolean; // Whether to send confirmation email for company forms
   requires_login?: boolean; // If true, only logged-in students can submit this form
+  is_compulsory?: boolean; // If true, companies must fill in this version or newer; earlier versions do not count
   [key: string]: unknown; // Allow other metadata fields
 };
 

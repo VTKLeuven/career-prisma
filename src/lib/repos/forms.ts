@@ -1316,6 +1316,69 @@ export async function checkCompanyFormCompletionByFormIdsBatch(
   }
 }
 
+/** Batch check form completion with compulsory support.
+ * For compulsory forms: company must have completed this version OR any newer version (version_number >= compulsory).
+ * Earlier (lower) versions do not count.
+ * For non-compulsory forms: any version counts as complete.
+ * Returns Map<companyId, Set<formId>> */
+export async function checkCompanyFormCompletionBatchWithCompulsory(
+  companyIds: string[],
+  forms: Array<{ formId: string; formVersionId: string; versionNumber?: number; isCompulsory?: boolean }>
+): Promise<Map<string, Set<string>>> {
+  const result = new Map<string, Set<string>>();
+  companyIds.forEach((id) => result.set(id, new Set()));
+  if (companyIds.length === 0 || forms.length === 0) return result;
+
+  const compulsoryForms = forms.filter((f) => f.isCompulsory && f.versionNumber != null);
+  const nonCompulsoryForms = forms.filter((f) => !f.isCompulsory);
+
+  try {
+    // For compulsory forms: this version OR any newer version (version_number >= compulsory) counts
+    if (compulsoryForms.length > 0) {
+      const { getServerDirectusClient } = await import("@/lib/directus");
+      const serverClient = await getServerDirectusClient();
+      for (const form of compulsoryForms) {
+        const formVersions = await serverClient.request(
+          readItems("form_versions" as any, {
+            fields: ["id"],
+            filter: {
+              _and: [
+                { form_id: { _eq: form.formId } },
+                { version_number: { _gte: form.versionNumber! } },
+              ],
+            },
+            limit: -1,
+          })
+        ) as unknown as Array<{ id: string }>;
+        const versionIds = formVersions.map((v) => v.id);
+        if (versionIds.length === 0) continue;
+        const batch = await checkCompanyFormCompletionBatch(companyIds, versionIds);
+        for (const [companyId, completedVersionIds] of batch) {
+          const set = result.get(companyId);
+          if (set && completedVersionIds.size > 0) set.add(form.formId);
+        }
+      }
+    }
+
+    // For non-compulsory forms: any version counts
+    if (nonCompulsoryForms.length > 0) {
+      const nonCompulsoryFormIds = nonCompulsoryForms.map((f) => f.formId);
+      const nonCompulsoryBatch = await checkCompanyFormCompletionByFormIdsBatch(companyIds, nonCompulsoryFormIds);
+      for (const [companyId, formIds] of nonCompulsoryBatch) {
+        const set = result.get(companyId);
+        if (set) {
+          for (const fid of formIds) set.add(fid);
+        }
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.error("[checkCompanyFormCompletionBatchWithCompulsory] Error:", error);
+    return result;
+  }
+}
+
 export async function getLatestCompanyFormResponse(formVersionId: string, companyId: string) {
   try {
     // Use server client to ensure we can always read company-linked responses
