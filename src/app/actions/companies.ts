@@ -358,11 +358,12 @@ export async function fetchCompanyBySlugWithSubOptionsAction(slug: string): Prom
 export async function createCompanyAction(companyPayload: Partial<Company>, repPayload?: Partial<CompanyRep>) {
 
   if (repPayload && (repPayload.email || repPayload.first_name || repPayload.last_name)) {
-    const newRep = await createRep(repPayload);
-
-    if (!newRep || !newRep.id) {
-      console.error("[createCompanyAction] Failed to create representative:", repPayload.email);
-      throw new Error("Failed to create representative");
+    let newRep: any;
+    try {
+      newRep = await createRep(repPayload);
+    } catch (err) {
+      console.error("[createCompanyAction] Failed to create representative:", repPayload.email, err);
+      throw err instanceof Error ? err : new Error("Failed to create representative");
     }
 
     console.log(`[createCompanyAction] Representative created successfully: ${newRep.id} (${repPayload.email})`);
@@ -447,10 +448,11 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
 
 export async function createCompanyRepAction(companyId: string, repPayload: Partial<CompanyRep>) {
   if (!repPayload) return null;
-  const newRep = await createRep(repPayload);
-
-  if (!newRep || !newRep.id) {
-    console.error("Failed to create representative");
+  let newRep: any;
+  try {
+    newRep = await createRep(repPayload);
+  } catch (err) {
+    console.error("[createCompanyRepAction] Failed to create representative:", repPayload.email, err);
     return null;
   }
 
@@ -618,10 +620,12 @@ export async function requestRepAction(repPayload: Partial<CompanyRep>) {
   // If user doesn't exist, create it (fallback for cases where approval happened but user wasn't created)
   if (!userId) {
     console.log(`[requestRepAction] Creating user for ${repPayload.email}`);
-    const newRep = await createRep(repPayload);
-
-    if (!newRep || !newRep.id) {
-      throw new Error("Failed to create user");
+    let newRep: any;
+    try {
+      newRep = await createRep(repPayload);
+    } catch (err) {
+      console.error("[requestRepAction] Failed to create representative:", repPayload.email, err);
+      throw err instanceof Error ? err : new Error("Failed to create user");
     }
 
     userId = newRep.id;
@@ -1253,22 +1257,24 @@ export async function createUserFromApprovedRequest(request: any): Promise<void>
           company: company,
         };
 
-        const newRep = await createRep(repPayload);
-        if (newRep && newRep.id) {
-          userId = newRep.id;
-          console.log(`[createUserFromApprovedRequest] User created successfully: ${userId}`);
-
-          // Update rep details (name, etc.)
-          await updateRep(newRep.id, {
-            first_name: request.first_name || undefined,
-            last_name: request.last_name || undefined,
-            tel: request.tel || undefined,
-            title: request.title || undefined,
-          });
-        } else {
-          console.error(`[createUserFromApprovedRequest] Failed to create user for ${request.email}`);
+        let newRep: any;
+        try {
+          newRep = await createRep(repPayload);
+        } catch (err) {
+          console.error(`[createUserFromApprovedRequest] Failed to create user for ${request.email}:`, err);
           return; // Failed to create user
         }
+
+        userId = newRep.id;
+        console.log(`[createUserFromApprovedRequest] User created successfully: ${userId}`);
+
+        // Update rep details (name, etc.)
+        await updateRep(newRep.id, {
+          first_name: request.first_name || undefined,
+          last_name: request.last_name || undefined,
+          tel: request.tel || undefined,
+          title: request.title || undefined,
+        });
       }
     } else {
       console.error(`[createUserFromApprovedRequest] Failed to check if user exists:`, checkUserRes.status);

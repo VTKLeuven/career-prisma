@@ -173,10 +173,21 @@ export default function StudentLoginPage() {
                       Login with your email and password
                     </p>
                   </div>
-                  <form className={"flex flex-col gap-4"} onSubmit={onSubmit}>
+                  <form className={"flex flex-col gap-4"} onSubmit={onSubmit} autoComplete="on">
                     <div className="grid gap-3">
                       <Label htmlFor="email">Email</Label>
-                      <Input id="email" type="email" placeholder="m@example.com" required onChange={(e) => setEmail(e.target.value)} />
+                      <Input
+                        id="email"
+                        name="email"
+                        type="email"
+                        placeholder="m@example.com"
+                        required
+                        autoComplete="email"
+                        inputMode="email"
+                        autoCapitalize="none"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                      />
                     </div>
                     <div className="grid gap-3">
                       <div className="flex items-center justify-between">
@@ -189,7 +200,15 @@ export default function StudentLoginPage() {
                           Forgot password?
                         </button>
                       </div>
-                      <Input id="password" type="password" required onChange={(e) => setPassword(e.target.value)} />
+                      <Input
+                        id="password"
+                        name="password"
+                        type="password"
+                        required
+                        autoComplete="current-password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                      />
                     </div>
                     <div className="flex items-center space-x-2">
                       <Checkbox
@@ -268,9 +287,13 @@ export default function StudentLoginPage() {
                 <Label htmlFor="forgot-password-email">Email</Label>
                 <Input
                   id="forgot-password-email"
+                  name="email"
                   type="email"
                   placeholder="m@example.com"
                   value={forgotPasswordEmail}
+                  autoComplete="email"
+                  inputMode="email"
+                  autoCapitalize="none"
                   onChange={(e) => setForgotPasswordEmail(e.target.value)}
                   required
                 />
