@@ -1,5 +1,36 @@
 # Directus Setup for Forms
 
+## master-degrees field type
+
+The **Master Degrees** form field type loads options from Directus collections. It requires:
+
+### master collection
+- Must exist with at least `id` and `name` fields.
+- Used as the default source of options (master names).
+
+### faculty collection (optional, for "Add faculties" mode)
+When the form builder enables "Add faculties", options are built from the faculty collection:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| id | UUID | Primary key |
+| name | String | Faculty name (e.g. "Engineering Science", "Bio Engineering", "Other") |
+| masters | M2M relation | Junction to master (e.g. `faculty_master` with `master_id`) |
+
+**Directus setup:**
+1. Create collection `faculty` (or `Faculty`) with fields `id`, `name`
+2. Create M2M relation: faculty ↔ master. Name the relation field `masters` (or `faculty_master`)
+3. The junction should have `master_id` pointing to master
+
+**Option labels (output format):**
+- Faculty with masters: `Fac. {faculty.name} - {master.name}` (e.g. "Fac. Engineering Science - Architectural Engineering")
+- Faculty with no masters: `Fac. {faculty.name}` (e.g. "Fac. Science")
+- Faculty named "Other": `Other` (no "Fac." prefix)
+
+The code tries these field patterns: `masters.master_id`, `faculty_master.master_id`, `faculty_masters.master_id`, `masters`, `master`
+
+---
+
 ## form_responses collection – archived field
 
 For student forms, when a student submits a new response, their previous responses are automatically archived. Only the most recent response per student is shown in the UI and counts.

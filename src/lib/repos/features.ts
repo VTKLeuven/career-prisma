@@ -1,6 +1,6 @@
 // lib/repos/features.ts
 import { getServerDirectusClient } from "@/lib/directus"
-import type { Floorplan, Booth, Master } from "@/lib/schema"
+import type { Floorplan, Booth, Master, Faculty } from "@/lib/schema"
 import { readItems } from "@directus/sdk"
 
 export async function listBooths(
@@ -79,6 +79,51 @@ export async function listMasters(
     ) as unknown as Master[]
   } catch (error) {
     console.error("Failed to fetch masters:", error)
+    return null
+  }
+}
+
+export async function listFaculties(
+  opts?: {
+    limit?: number
+    sort?: string
+  }
+): Promise<Faculty[] | null> {
+  try {
+    const client = await getServerDirectusClient()
+    if (!client) return null
+
+    const { limit = 300, sort = "name" } = opts ?? {}
+    // Try common Directus M2M patterns: faculty.masters or faculty.faculty_master
+    const fieldSets = [
+      ["id", "name", "masters.master_id.id", "masters.master_id.name"],
+      ["id", "name", "faculty_master.master_id.id", "faculty_master.master_id.name"],
+      ["id", "name", "faculty_masters.master_id.id", "faculty_masters.master_id.name"],
+      ["id", "name", "masters.id", "masters.name"],
+      ["id", "name", "master.id", "master.name"],
+    ]
+    const collections = ["faculty", "Faculty"]
+    for (const coll of collections) {
+      for (const fields of fieldSets) {
+        try {
+          const result = await client.request(
+            readItems(coll as any, {
+              fields: fields as any,
+              limit,
+              sort: sort as any,
+            })
+          )
+          if (Array.isArray(result) && result.length >= 0) {
+            return result as unknown as Faculty[]
+          }
+        } catch {
+          continue
+        }
+      }
+    }
+    return null
+  } catch (error) {
+    console.error("Failed to fetch faculties:", error)
     return null
   }
 }

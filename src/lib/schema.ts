@@ -218,6 +218,13 @@ export type Master = {
   modules?: string; // HTML content
 }
 
+/** Faculty with optional masters relation (from Directus faculty collection) */
+export type Faculty = {
+  id: string;
+  name: string;
+  masters?: Array<{ master_id: Master | null } | Master>;
+}
+
 export type Form = {
   id: string;
   name: string;
@@ -267,7 +274,7 @@ export type FormField = {
   id: string;
   name: string;
   label: string;
-  type: 'text' | 'textarea' | 'email' | 'number' | 'select' | 'checkbox' | 'radio' | 'file' | 'date' | 'date-range' | 'time' | 'linkedin';
+  type: 'text' | 'textarea' | 'email' | 'number' | 'select' | 'checkbox' | 'radio' | 'file' | 'date' | 'date-range' | 'time' | 'linkedin' | 'master-degrees';
   required?: boolean;
   placeholder?: string;
   options?: string[]; // for select, radio, checkbox
@@ -283,6 +290,10 @@ export type FormField = {
   multiple?: boolean; // For file fields - allow multiple file uploads
   image?: string; // Directus file ID for field image (useful for material-related forms)
   description?: string; // Description text to show with the field
+  /** For master-degrees: allow selecting multiple masters (checkbox mode) */
+  masterDegreesMultiple?: boolean;
+  /** For master-degrees: show options grouped by faculty (fac. {faculty} - {master}) */
+  masterDegreesIncludeFaculties?: boolean;
 }
 
 export type FormResponse = {
@@ -413,6 +424,7 @@ export type Schema = {
   career_event: CareerEvent[];
   career_sub_option: CareerSubOption[];
   master: Master[];
+  faculty: Faculty[];
   Booths: Booth[];
   Floorplan: Floorplan[];
   company_user_requests: CompanyUserRequest[];

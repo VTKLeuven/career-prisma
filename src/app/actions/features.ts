@@ -1,6 +1,6 @@
 // app/actions/floorplan.ts
 "use server";
-import { listBooths, listMasters } from "@/lib/repos/features";
+import { listBooths, listMasters, listFaculties } from "@/lib/repos/features";
 import { CareerEventPage, Booth, Master } from "@/lib/schema";
 import DOMPurify from "isomorphic-dompurify"
 
@@ -55,4 +55,9 @@ export async function fetchFloorplanAction(page: CareerEventPage) {
 export async function fetchMastersAction() {
     const masters = await listMasters({ limit: 50, sort: "name" }) ?? [];
     return masters
+}
+
+export async function fetchFacultiesAction() {
+  const faculties = await listFaculties({ limit: 100, sort: "name" }) ?? [];
+  return faculties;
 }

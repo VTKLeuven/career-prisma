@@ -172,11 +172,12 @@ export default function FormResponsesPage() {
     loadFormData();
   }, [loadFormData]);
 
-  // Collect all unique fields from all versions (include options for checkbox/select/radio)
+  // Collect all unique fields from all versions (prefer newest version so master-degrees wins over old checkbox)
   useEffect(() => {
     if (versions.length > 0 && responses.length > 0) {
       const fieldMap = new Map<string, FormField>();
-      versions.forEach(version => {
+      const sortedVersions = [...versions].sort((a, b) => (b.version_number ?? 0) - (a.version_number ?? 0));
+      sortedVersions.forEach(version => {
         if (version.schema?.fields) {
           version.schema.fields.forEach((field: FormField) => {
             if (!fieldMap.has(field.name)) {
@@ -196,9 +197,10 @@ export default function FormResponsesPage() {
 
       setAllVersionsFields(fieldsWithData);
     } else if (versions.length > 0) {
-      // If no responses yet, show all fields
+      // If no responses yet, show all fields (newest version first so master-degrees wins)
       const fieldMap = new Map<string, FormField>();
-      versions.forEach(version => {
+      const sortedVersions = [...versions].sort((a, b) => (b.version_number ?? 0) - (a.version_number ?? 0));
+      sortedVersions.forEach(version => {
         if (version.schema?.fields) {
           version.schema.fields.forEach((field: FormField) => {
             if (!fieldMap.has(field.name)) {
@@ -2041,10 +2043,13 @@ export default function FormResponsesPage() {
                   return v.id === versionId;
                 })
               : selectedVersion;
+            // Use allVersionsFields so we show master-degrees (not old checkbox) when viewing responses
             const schemaFields = responseVersion?.schema?.fields ?? [];
-            const fields: FormField[] = schemaFields.length > 0
-              ? schemaFields
-              : allVersionsFields.map(f => ({ ...f, type: f.type as FormField["type"] }));
+            const fields: FormField[] = allVersionsFields.length > 0
+              ? allVersionsFields.map(f => ({ ...f, type: f.type as FormField["type"] }))
+              : schemaFields.length > 0
+                ? schemaFields
+                : [];
             const filteredFields = fields.filter(field => {
               if (responseVersion?.metadata?.is_event_registration && field.name === "email" && field.type === "email") return false;
               return true;
@@ -2253,6 +2258,24 @@ export default function FormResponsesPage() {
 function formatFieldValue(value: unknown, fieldType: string): React.ReactNode {
   if (value === null || value === undefined) {
     return <span className="text-muted-foreground italic">-</span>;
+  }
+
+  if (fieldType === "master-degrees") {
+    const items = Array.isArray(value) ? value : (value != null && value !== "" ? [value] : []);
+    if (items.length === 0) return <span className="text-muted-foreground italic">-</span>;
+    return (
+      <div className="flex flex-col gap-1">
+        {items.map((v, idx) => (
+          <div
+            key={idx}
+            className="flex items-center gap-2 rounded px-2 py-1 bg-muted text-muted-foreground"
+          >
+            <Check className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="text-sm">{String(v)}</span>
+          </div>
+        ))}
+      </div>
+    );
   }
 
   if (Array.isArray(value)) {
