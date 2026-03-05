@@ -70,14 +70,15 @@ export default function ZonesClient({
                     const fpIdResolved = typeof fp === "object" && fp && "id" in fp ? (fp as { id: string }).id : fp;
                     return fpIdResolved === fpId;
                 })
-                .map((b) => b.id)
+                .map((b) => String(b.id))
         );
-        const filteredBooths = booths.filter((b) => boothIdsForFloorplan.has(b.id));
+        const filteredBooths = booths.filter((b) => boothIdsForFloorplan.has(String(b.id)));
         const filteredZones = initialZones.filter((zone) => {
             const zoneBooths = Array.isArray(zone.booths) ? zone.booths : [];
+            if (zoneBooths.length === 0) return true;
             return zoneBooths.some((b: unknown) => {
-                const bid = typeof b === "object" && b && "id" in b ? (b as { id: string }).id : b;
-                return typeof bid === "string" && boothIdsForFloorplan.has(bid);
+                const bid = typeof b === "object" && b && "id" in b ? (b as { id: any }).id : b;
+                return boothIdsForFloorplan.has(String(bid));
             });
         });
         return { filteredBooths, filteredZones };
@@ -115,7 +116,7 @@ export default function ZonesClient({
         setEditingZone(zone);
         // map booth objects to IDs
         const boothIds = Array.isArray(zone.booths)
-            ? zone.booths.map((b: any) => typeof b === 'string' ? b : b.id)
+            ? zone.booths.map((b: any) => typeof b === 'object' && b && 'id' in b ? String(b.id) : String(b))
             : [];
 
         setFormData({
@@ -150,7 +151,7 @@ export default function ZonesClient({
 
         const boothIdsInRange = filteredBooths
             .filter(b => b.booth_number >= from && b.booth_number <= to)
-            .map(b => b.id);
+            .map(b => String(b.id));
 
         setFormData(prev => {
             const merged = new Set([...prev.booths, ...boothIdsInRange]);
@@ -166,13 +167,13 @@ export default function ZonesClient({
         const boothIdsInRange = new Set(
             filteredBooths
                 .filter(b => b.booth_number >= range.from && b.booth_number <= range.to)
-                .map(b => b.id)
+                .map(b => String(b.id))
         );
 
         const otherRanges = ranges.filter((_, i) => i !== index);
         const boothIdsInOtherRanges = new Set(
             otherRanges.flatMap(r =>
-                filteredBooths.filter(b => b.booth_number >= r.from && b.booth_number <= r.to).map(b => b.id)
+                filteredBooths.filter(b => b.booth_number >= r.from && b.booth_number <= r.to).map(b => String(b.id))
             )
         );
 
@@ -234,191 +235,193 @@ export default function ZonesClient({
             )}
 
             {selectedEventPage && (
-        <>
-            <Dialog open={isOpen} onOpenChange={(open) => {
-                setIsOpen(open);
-                if (!open) setEditingZone(null);
-            }}>
-                <DialogTrigger asChild>
-                    <Button onClick={() => {
-                        setEditingZone(null);
-                        setFormData({ name: "", booths: [] });
-                        setRanges([]);
-                        setRangeFrom("");
-                        setRangeTo("");
-                    }}>
-                        <Plus className="mr-2 h-4 w-4" /> Add Zone
-                    </Button>
-                </DialogTrigger>
-                <Button variant="outline" onClick={() => router.push(`/admin/zones/print?eventPageId=${selectedEventPageId}`)}>
-                    <Printer className="mr-2 h-4 w-4" /> Print QR Codes
-                </Button>
-                <Button variant="outline" onClick={exportCSV}>
-                    <Download className="mr-2 h-4 w-4" /> Export CSV
-                </Button>
-                <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle>{editingZone ? "Edit Zone" : "Create Zone"}</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        <div className="grid w-full gap-2">
-                            <Label htmlFor="name">Zone Name</Label>
-                            <Input
-                                id="name"
-                                value={formData.name}
-                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                required
-                            />
-                        </div>
-
-                        <div className="space-y-3">
-                            <Label>Assign Booths</Label>
-
-                            <div className="space-y-2 rounded-md border p-3 bg-muted/30">
-                                <p className="text-sm font-medium">Quick add by range</p>
-                                <div className="flex items-end gap-2">
-                                    <div className="grid gap-1">
-                                        <Label htmlFor="range-from" className="text-xs">From booth</Label>
+                <div className="space-y-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Dialog open={isOpen} onOpenChange={(open) => {
+                            setIsOpen(open);
+                            if (!open) setEditingZone(null);
+                        }}>
+                            <DialogTrigger asChild>
+                                <Button onClick={() => {
+                                    setEditingZone(null);
+                                    setFormData({ name: "", booths: [] });
+                                    setRanges([]);
+                                    setRangeFrom("");
+                                    setRangeTo("");
+                                }}>
+                                    <Plus className="mr-2 h-4 w-4" /> Add Zone
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+                                <DialogHeader>
+                                    <DialogTitle>{editingZone ? "Edit Zone" : "Create Zone"}</DialogTitle>
+                                </DialogHeader>
+                                <form onSubmit={handleSubmit} className="space-y-4">
+                                    <div className="grid w-full gap-2">
+                                        <Label htmlFor="name">Zone Name</Label>
                                         <Input
-                                            id="range-from"
-                                            type="number"
-                                            min={1}
-                                            placeholder="e.g. 1"
-                                            value={rangeFrom}
-                                            onChange={(e) => setRangeFrom(e.target.value)}
-                                            className="w-24"
+                                            id="name"
+                                            value={formData.name}
+                                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                            required
                                         />
                                     </div>
-                                    <div className="grid gap-1">
-                                        <Label htmlFor="range-to" className="text-xs">To booth</Label>
-                                        <Input
-                                            id="range-to"
-                                            type="number"
-                                            min={1}
-                                            placeholder="e.g. 20"
-                                            value={rangeTo}
-                                            onChange={(e) => setRangeTo(e.target.value)}
-                                            className="w-24"
-                                        />
-                                    </div>
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        onClick={addRange}
-                                        disabled={!rangeFrom || !rangeTo || parseInt(rangeFrom) > parseInt(rangeTo)}
-                                    >
-                                        <Plus className="mr-1 h-3 w-3" /> Add Range
-                                    </Button>
-                                </div>
-                                {ranges.length > 0 && (
-                                    <div className="flex flex-wrap gap-1.5 pt-1">
-                                        {ranges.map((range, i) => (
-                                            <Badge key={i} variant="secondary" className="gap-1 pr-1">
-                                                Booth {range.from}–{range.to}
-                                                <button
+
+                                    <div className="space-y-3">
+                                        <Label>Assign Booths</Label>
+
+                                        <div className="space-y-2 rounded-md border p-3 bg-muted/30">
+                                            <p className="text-sm font-medium">Quick add by range</p>
+                                            <div className="flex items-end gap-2">
+                                                <div className="grid gap-1">
+                                                    <Label htmlFor="range-from" className="text-xs">From booth</Label>
+                                                    <Input
+                                                        id="range-from"
+                                                        type="number"
+                                                        min={1}
+                                                        placeholder="e.g. 1"
+                                                        value={rangeFrom}
+                                                        onChange={(e) => setRangeFrom(e.target.value)}
+                                                        className="w-24"
+                                                    />
+                                                </div>
+                                                <div className="grid gap-1">
+                                                    <Label htmlFor="range-to" className="text-xs">To booth</Label>
+                                                    <Input
+                                                        id="range-to"
+                                                        type="number"
+                                                        min={1}
+                                                        placeholder="e.g. 20"
+                                                        value={rangeTo}
+                                                        onChange={(e) => setRangeTo(e.target.value)}
+                                                        className="w-24"
+                                                    />
+                                                </div>
+                                                <Button
                                                     type="button"
-                                                    onClick={() => removeRange(i)}
-                                                    className="ml-0.5 rounded-full hover:bg-muted p-0.5"
+                                                    variant="secondary"
+                                                    onClick={addRange}
+                                                    disabled={!rangeFrom || !rangeTo || parseInt(rangeFrom) > parseInt(rangeTo)}
                                                 >
-                                                    <X className="h-3 w-3" />
-                                                </button>
-                                            </Badge>
-                                        ))}
+                                                    <Plus className="mr-1 h-3 w-3" /> Add Range
+                                                </Button>
+                                            </div>
+                                            {ranges.length > 0 && (
+                                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                                    {ranges.map((range, i) => (
+                                                        <Badge key={i} variant="secondary" className="gap-1 pr-1">
+                                                            Booth {range.from}–{range.to}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeRange(i)}
+                                                                className="ml-0.5 rounded-full hover:bg-muted p-0.5"
+                                                            >
+                                                                <X className="h-3 w-3" />
+                                                            </button>
+                                                        </Badge>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-sm text-muted-foreground">
+                                                {formData.booths.length} of {filteredBooths.length} booths selected
+                                            </p>
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        setFormData(prev => ({ ...prev, booths: filteredBooths.map(b => String(b.id)) }));
+                                                    }}
+                                                >
+                                                    Select All
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        setFormData(prev => ({ ...prev, booths: [] }));
+                                                        setRanges([]);
+                                                    }}
+                                                >
+                                                    Clear All
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        <div className="border rounded-md p-4 h-60 overflow-y-auto grid grid-cols-2 gap-2">
+                                            {filteredBooths.map(booth => {
+                                                const companyName = booth.company?.name || "Unassigned";
+                                                const floorPlanName = booth.Floorplan?.name || "Unknown Floorplan";
+                                                return (
+                                                    <div key={booth.id} className="flex items-center space-x-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            id={`booth-${booth.id}`}
+                                                            checked={formData.booths.includes(String(booth.id))}
+                                                            onChange={() => toggleBooth(String(booth.id))}
+                                                            className="h-4 w-4 rounded border-gray-300"
+                                                        />
+                                                        <label htmlFor={`booth-${booth.id}`} className="text-sm cursor-pointer">
+                                                            <span className="font-bold">{booth.booth_number}</span> - {companyName} <span className="text-xs text-muted-foreground">({floorPlanName})</span>
+                                                        </label>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
-                                )}
-                            </div>
 
-                            <div className="flex items-center justify-between">
-                                <p className="text-sm text-muted-foreground">
-                                    {formData.booths.length} of {filteredBooths.length} booths selected
-                                </p>
-                                <div className="flex gap-2">
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => {
-                                            setFormData(prev => ({ ...prev, booths: filteredBooths.map(b => b.id) }));
-                                        }}
-                                    >
-                                        Select All
+                                    <Button type="submit" className="w-full">
+                                        {editingZone ? "Update" : "Create"}
                                     </Button>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => {
-                                            setFormData(prev => ({ ...prev, booths: [] }));
-                                            setRanges([]);
-                                        }}
-                                    >
-                                        Clear All
-                                    </Button>
-                                </div>
-                            </div>
-
-                            <div className="border rounded-md p-4 h-60 overflow-y-auto grid grid-cols-2 gap-2">
-                                {filteredBooths.map(booth => {
-                                    const companyName = booth.company?.name || "Unassigned";
-                                    const floorPlanName = booth.Floorplan?.name || "Unknown Floorplan";
-                                    return (
-                                        <div key={booth.id} className="flex items-center space-x-2">
-                                            <input
-                                                type="checkbox"
-                                                id={`booth-${booth.id}`}
-                                                checked={formData.booths.includes(booth.id)}
-                                                onChange={() => toggleBooth(booth.id)}
-                                                className="h-4 w-4 rounded border-gray-300"
-                                            />
-                                            <label htmlFor={`booth-${booth.id}`} className="text-sm cursor-pointer">
-                                                <span className="font-bold">{booth.booth_number}</span> - {companyName} <span className="text-xs text-muted-foreground">({floorPlanName})</span>
-                                            </label>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        <Button type="submit" className="w-full">
-                            {editingZone ? "Update" : "Create"}
+                                </form>
+                            </DialogContent>
+                        </Dialog>
+                        <Button variant="outline" onClick={() => router.push(`/admin/zones/print?eventPageId=${selectedEventPageId}`)}>
+                            <Printer className="mr-2 h-4 w-4" /> Print QR Codes
                         </Button>
-                    </form>
-                </DialogContent>
-            </Dialog>
+                        <Button variant="outline" onClick={exportCSV}>
+                            <Download className="mr-2 h-4 w-4" /> Export CSV
+                        </Button>
+                    </div>
 
-            <div className="rounded-md border">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Name</TableHead>
-                            <TableHead>Booths</TableHead>
-                            <TableHead>Actions</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {filteredZones.map((zone) => {
-                            const boothCount = Array.isArray(zone.booths) ? zone.booths.length : 0;
-                            return (
-                                <TableRow key={zone.id}>
-                                    <TableCell className="font-medium">{zone.name}</TableCell>
-                                    <TableCell>{boothCount} Booths</TableCell>
-                                    <TableCell>
-                                        <div className="flex gap-2">
-                                            <Button variant="ghost" size="icon" onClick={() => openEdit(zone)}>
-                                                <Edit className="h-4 w-4" />
-                                            </Button>
-                                            <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDelete(zone.id)}>
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    </TableCell>
+                    <div className="rounded-md border">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Name</TableHead>
+                                    <TableHead>Booths</TableHead>
+                                    <TableHead>Actions</TableHead>
                                 </TableRow>
-                            )
-                        })}
-                    </TableBody>
-                </Table>
-            </div>
-        </>
+                            </TableHeader>
+                            <TableBody>
+                                {filteredZones.map((zone) => {
+                                    const boothCount = Array.isArray(zone.booths) ? zone.booths.length : 0;
+                                    return (
+                                        <TableRow key={zone.id}>
+                                            <TableCell className="font-medium">{zone.name}</TableCell>
+                                            <TableCell>{boothCount} Booths</TableCell>
+                                            <TableCell>
+                                                <div className="flex gap-2">
+                                                    <Button variant="ghost" size="icon" onClick={() => openEdit(zone)}>
+                                                        <Edit className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDelete(zone.id)}>
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    )
+                                })}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </div>
             )}
         </div>
     );
