@@ -9,7 +9,15 @@ export async function fetchFloorplanAction(page: CareerEventPage) {
 
   // Fetch SVG file
   const svgFileId = page.floorplan.svg_file;
-  const svgFileRes = await fetch(`${process.env.NEXT_PUBLIC_DIRECTUS_URL}assets/${svgFileId}`);
+  const rawBase = process.env.NEXT_PUBLIC_DIRECTUS_URL || process.env.DIRECTUS_URL;
+  if (!rawBase) {
+    throw new Error("Directus base URL not configured (NEXT_PUBLIC_DIRECTUS_URL or DIRECTUS_URL)");
+  }
+  const base = rawBase.replace(/\/?$/, "/"); // ensure trailing slash
+  const svgFileRes = await fetch(`${base}assets/${svgFileId}`, { cache: "no-store" });
+  if (!svgFileRes.ok) {
+    throw new Error(`Failed to fetch floorplan SVG (status ${svgFileRes.status})`);
+  }
   const svgText = await svgFileRes.text();
 
   // Fetch booths data

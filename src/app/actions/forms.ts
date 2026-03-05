@@ -420,7 +420,23 @@ export async function submitFormResponseAction(data: {
     const versionMetadata = (formVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata;
 
     // Check if form requires login (event registration forms always require login) and verify student is authenticated
-    const requiresLogin = versionMetadata?.requires_login || versionMetadata?.is_event_registration;
+    const toBoolFlag = (v: unknown): boolean => {
+      if (v === true) return true;
+      if (v === false) return false;
+      if (v === 1 || v === "1") return true;
+      if (v === 0 || v === "0") return false;
+      if (typeof v === "string") {
+        const s = v.trim().toLowerCase();
+        if (s === "true" || s === "yes" || s === "y") return true;
+        if (s === "false" || s === "no" || s === "n" || s === "") return false;
+      }
+      return false;
+    };
+
+    const isEventRegistration = toBoolFlag(versionMetadata?.is_event_registration);
+    const isCompanyForm = toBoolFlag(versionMetadata?.is_company_form);
+    const sendCompanyFormEmail = toBoolFlag(versionMetadata?.send_company_form_email);
+    const requiresLogin = toBoolFlag(versionMetadata?.requires_login) || isEventRegistration;
     if (requiresLogin) {
       try {
         const { getStudentFromCookies } = await import("@/lib/auth-student");
@@ -510,7 +526,7 @@ export async function submitFormResponseAction(data: {
 
     // Generate UUID for event registration forms
     let attendantUuid: string | undefined;
-    if (versionMetadata?.is_event_registration) {
+    if (isEventRegistration) {
       // Generate a UUID v4
       attendantUuid = crypto.randomUUID();
     }
@@ -536,7 +552,7 @@ export async function submitFormResponseAction(data: {
       if (student) {
         // For event registration forms, don't add name/surname/email/r-number to metadata
         // They will fill these in the form itself (except university which is a form field)
-        if (versionMetadata?.is_event_registration) {
+        if (isEventRegistration) {
           // Only add minimal student metadata for event registration forms
           // University and full_name come from account data for reference
           enhancedFormData._student_id = student.id;
@@ -602,7 +618,7 @@ export async function submitFormResponseAction(data: {
     let emailValue: string | undefined;
 
     // For company forms, prefer submitter_email
-    if (versionMetadata?.is_company_form && (data.submitter_email || _submitter_email)) {
+    if (isCompanyForm && (data.submitter_email || _submitter_email)) {
       emailValue = (data.submitter_email || _submitter_email) as string;
     } else {
       // Try exact match first
@@ -620,7 +636,7 @@ export async function submitFormResponseAction(data: {
     }
 
     // If this is an event registration form, send confirmation email
-    if (response && emailValue && versionMetadata?.is_event_registration) {
+    if (response && emailValue && isEventRegistration) {
       // Get form name - prefer from loaded relation, otherwise fetch it using server client
       let formName: string;
       if (typeof formVersion.form_id !== 'string' && formVersion.form_id?.name) {
@@ -648,11 +664,11 @@ export async function submitFormResponseAction(data: {
           firstname: (cleanFormData.firstname as string) || '',
           lastname: (cleanFormData.lastname as string) || '',
           formName: formName,
-          subject: (versionMetadata.event_email_subject as string) || `${formName} - Registration Confirmation`,
-          content: (versionMetadata.event_email_content as string) || 'Thank you for registering!',
-          eventDate: versionMetadata.event_date as string | undefined,
-          eventEndDate: versionMetadata.event_end_date as string | undefined,
-          eventLocation: versionMetadata.event_location as string | undefined,
+          subject: (versionMetadata?.event_email_subject as string | undefined) || `${formName} - Registration Confirmation`,
+          content: (versionMetadata?.event_email_content as string | undefined) || 'Thank you for registering!',
+          eventDate: versionMetadata?.event_date as string | undefined,
+          eventEndDate: versionMetadata?.event_end_date as string | undefined,
+          eventLocation: versionMetadata?.event_location as string | undefined,
         });
       } catch (emailError) {
         console.error("Error sending event confirmation email:", emailError);
@@ -661,7 +677,7 @@ export async function submitFormResponseAction(data: {
     }
 
     // If this is a company form, send confirmation email (if enabled)
-    if (response && emailValue && versionMetadata?.is_company_form && versionMetadata?.send_company_form_email) {
+    if (response && emailValue && isCompanyForm && sendCompanyFormEmail) {
       let formName: string;
       if (typeof formVersion.form_id !== 'string' && formVersion.form_id?.name) {
         formName = formVersion.form_id.name;
@@ -714,8 +730,8 @@ export async function submitFormResponseAction(data: {
           submitterFirstName: (data.submitter_first_name || _submitter_first_name || (user?.name ? user.name.split(/\s+/)[0] : '')) as string,
           submitterLastName: (data.submitter_last_name || _submitter_last_name || (user?.name ? user.name.split(/\s+/).slice(1).join(' ') : '')) as string,
           formName: formName,
-          subject: (versionMetadata.company_form_email_subject as string) || `${formName} - Submission Confirmation`,
-          content: (versionMetadata.company_form_email_content as string) || 'Thank you for your submission!',
+          subject: (versionMetadata?.company_form_email_subject as string | undefined) || `${formName} - Submission Confirmation`,
+          content: (versionMetadata?.company_form_email_content as string | undefined) || 'Thank you for your submission!',
           companyName,
         });
       } catch (emailError) {
@@ -1174,7 +1190,21 @@ export async function fetchPublicFormBySlugAction(slug: string) {
     let isAuthenticated = false;
     let studentEmail: string | undefined = undefined;
     let studentId: string | undefined = undefined;
-    if (versionMetadata?.requires_login || versionMetadata?.is_event_registration) {
+    const toBoolFlag = (v: unknown): boolean => {
+      if (v === true) return true;
+      if (v === false) return false;
+      if (v === 1 || v === "1") return true;
+      if (v === 0 || v === "0") return false;
+      if (typeof v === "string") {
+        const s = v.trim().toLowerCase();
+        if (s === "true" || s === "yes" || s === "y") return true;
+        if (s === "false" || s === "no" || s === "n" || s === "") return false;
+      }
+      return false;
+    };
+
+    const isEventRegistration = toBoolFlag(versionMetadata?.is_event_registration);
+    if (toBoolFlag(versionMetadata?.requires_login) || isEventRegistration) {
       requiresLogin = true;
       try {
         const { getStudentFromCookies } = await import("@/lib/auth-student");

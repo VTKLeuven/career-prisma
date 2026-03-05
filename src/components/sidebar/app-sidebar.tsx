@@ -224,7 +224,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   // Load company events for sidebar
   React.useEffect(() => {
-    if (!user?.company?.id) {
+    const companyId = user?.company?.id;
+    if (!companyId) {
       setCompanyEvents([]);
       setCompanyOrderingBoothId(null);
       return;
@@ -232,87 +233,100 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
     let alive = true;
 
-    getCompanyOrderingTabInfo(user.company.id).then(({ enabled, boothId }) => {
-      if (alive && enabled && boothId) setCompanyOrderingBoothId(boothId);
-      else if (alive) setCompanyOrderingBoothId(null);
-    });
+    (async () => {
+      try {
+        const [{ enabled, boothId }, companyData, allEvents, scans] = await Promise.all([
+          getCompanyOrderingTabInfo(companyId).catch((error) => {
+            console.error("Sidebar: failed to load ordering tab info:", error);
+            return { enabled: false, boothId: null as string | null };
+          }),
+          fetchCompanyByIdAction(companyId),
+          fetchEventsAction(),
+          fetch("/api/scans").then((res) => (res.ok ? res.json() : [])).catch(() => []),
+        ]);
 
-    Promise.all([
-      fetchCompanyByIdAction(user.company.id),
-      fetchEventsAction(),
-      fetch("/api/scans").then(res => res.ok ? res.json() : []).catch(() => []),
-    ]).then(([companyData, allEvents, scans]) => {
-      if (!alive) return;
+        if (!alive) return;
 
-      setCompany(companyData as Company | null);
+        if (enabled && boothId) setCompanyOrderingBoothId(boothId);
+        else setCompanyOrderingBoothId(null);
 
-      // Extract company events from purchased options (same logic as dashboard page)
-      const companyOptions = (companyData as Company)?.options ?? [];
-      const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
-      const hasEvents = (v: unknown): v is { events: unknown } => isRecord(v) && 'events' in v;
-      const hasEvent = (v: unknown): v is { event: unknown } => isRecord(v) && 'event' in v;
+        setCompany(companyData as Company | null);
 
-      const companyEventIds = new Set<string>();
+        // Extract company events from purchased options (same logic as dashboard page)
+        const companyOptions = (companyData as Company)?.options ?? [];
+        const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+        const hasEvents = (v: unknown): v is { events: unknown } => isRecord(v) && 'events' in v;
+        const hasEvent = (v: unknown): v is { event: unknown } => isRecord(v) && 'event' in v;
 
-      companyOptions.forEach((opt: unknown) => {
-        if (!opt || !isRecord(opt)) return;
+        const companyEventIds = new Set<string>();
 
-        let optionWithEvents: Record<string, unknown> | null = null;
+        companyOptions.forEach((opt: unknown) => {
+          if (!opt || !isRecord(opt)) return;
 
-        if ('career_event_option_id' in opt && opt.career_event_option_id) {
-          const ceo = opt.career_event_option_id;
-          if (isRecord(ceo)) {
-            optionWithEvents = ceo;
+          let optionWithEvents: Record<string, unknown> | null = null;
+
+          if ('career_event_option_id' in opt && opt.career_event_option_id) {
+            const ceo = opt.career_event_option_id;
+            if (isRecord(ceo)) {
+              optionWithEvents = ceo;
+            }
+          } else if (hasEvents(opt)) {
+            optionWithEvents = opt;
+          } else if (hasEvent(opt)) {
+            const eventRef = (opt as { event: unknown }).event;
+            if (isRecord(eventRef) && 'id' in eventRef) {
+              const eventId = (eventRef as { id: string }).id;
+              if (eventId) companyEventIds.add(eventId);
+            }
+            return;
           }
-        } else if (hasEvents(opt)) {
-          optionWithEvents = opt;
-        } else if (hasEvent(opt)) {
-          const eventRef = (opt as { event: unknown }).event;
-          if (isRecord(eventRef) && 'id' in eventRef) {
-            const eventId = (eventRef as { id: string }).id;
-            if (eventId) companyEventIds.add(eventId);
-          }
-          return;
-        }
 
-        if (!optionWithEvents) return;
+          if (!optionWithEvents) return;
 
-        if (hasEvents(optionWithEvents) && Array.isArray(optionWithEvents.events)) {
-          optionWithEvents.events.forEach((eventOrJunction: unknown) => {
-            if (isRecord(eventOrJunction)) {
-              if ('id' in eventOrJunction) {
-                companyEventIds.add((eventOrJunction as { id: string }).id);
-              } else {
-                // Check junction table fields
-                const possibleFields = ['career_event_id', 'career_event', 'event_id', 'event'];
-                for (const field of possibleFields) {
-                  if (field in eventOrJunction) {
-                    const ref = (eventOrJunction as Record<string, unknown>)[field];
-                    if (isRecord(ref) && 'id' in ref) {
-                      companyEventIds.add((ref as { id: string }).id);
-                      break;
+          if (hasEvents(optionWithEvents) && Array.isArray(optionWithEvents.events)) {
+            optionWithEvents.events.forEach((eventOrJunction: unknown) => {
+              if (isRecord(eventOrJunction)) {
+                if ('id' in eventOrJunction) {
+                  companyEventIds.add((eventOrJunction as { id: string }).id);
+                } else {
+                  // Check junction table fields
+                  const possibleFields = ['career_event_id', 'career_event', 'event_id', 'event'];
+                  for (const field of possibleFields) {
+                    if (field in eventOrJunction) {
+                      const ref = (eventOrJunction as Record<string, unknown>)[field];
+                      if (isRecord(ref) && 'id' in ref) {
+                        companyEventIds.add((ref as { id: string }).id);
+                        break;
+                      }
                     }
                   }
                 }
               }
+            });
+          }
+        });
+
+        // Also add events from scans (so events show up even if company hasn't purchased options)
+        if (Array.isArray(scans)) {
+          scans.forEach((scan: any) => {
+            const metadata = scan.form_response_id?.form_version_id?.metadata;
+            if (metadata && typeof metadata === 'object' && 'event_id' in metadata && metadata.event_id) {
+              companyEventIds.add(metadata.event_id as string);
             }
           });
         }
-      });
 
-      // Also add events from scans (so events show up even if company hasn't purchased options)
-      if (Array.isArray(scans)) {
-        scans.forEach((scan: any) => {
-          const metadata = scan.form_response_id?.form_version_id?.metadata;
-          if (metadata && typeof metadata === 'object' && 'event_id' in metadata && metadata.event_id) {
-            companyEventIds.add(metadata.event_id as string);
-          }
-        });
+        const filteredEvents = (allEvents ?? []).filter((e: CareerEvent) => companyEventIds.has(e.id));
+        setCompanyEvents(filteredEvents);
+      } catch (error) {
+        // Catch-all to avoid unhandled promise rejections on every page render.
+        console.error("Sidebar: failed to load company sidebar data:", error);
+        if (!alive) return;
+        setCompany(null);
+        setCompanyEvents([]);
+        setCompanyOrderingBoothId(null);
       }
-
-      const filteredEvents = (allEvents ?? []).filter((e: CareerEvent) => companyEventIds.has(e.id));
-      setCompanyEvents(filteredEvents);
-    }).catch(console.error);
+    })();
 
     return () => {
       alive = false;

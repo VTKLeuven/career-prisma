@@ -6,6 +6,7 @@ import Link from "next/link"
 import NextImage from "next/image"
 import { fetchEventPagesAction } from "@/app/actions/events"
 import { fetchFloorplanAction, fetchMastersAction } from "@/app/actions/features"
+import * as Sentry from "@sentry/nextjs"
 import { fetchFloorplanCategoryOptionsAction, fetchCompanyIdsMatchingFloorplanCategoryAction, fetchCompanyMasterDegreesFromFormAction, fetchCompanyFormFieldValuesFromFormAction } from "@/app/actions/forms"
 import type { CareerEventPage, Booth, Master, Company } from '@/lib/schema'
 import { getDirectusImageUrl } from "@/components/Images"
@@ -29,6 +30,7 @@ import { StudentMatchingSoftware } from "@/components/StudentMatchingSoftware"
 export default function SubPage() {
   const { setHideLayoutHeader } = usePageLayout()
   const [page, setPage] = useState<CareerEventPage | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [allCategories, setAllCategories] = useState<Master[]>([])
   const [formCategoryGroups, setFormCategoryGroups] = useState<Array<{ groupLabel: string; options: Array<{ value: string; label: string; logo?: string }> }>>([])
@@ -57,6 +59,7 @@ export default function SubPage() {
   }, [isFloorplanPage, isCompanyGuidePage, setHideLayoutHeader])
 
   useEffect(() => {
+    let cancelled = false
     async function load() {
       const events = await fetchEventPagesAction()
 
@@ -89,7 +92,10 @@ export default function SubPage() {
       setCompanyNameFormFields(nameFields)
     }
     load()
-  }, [eventName])
+    return () => {
+      cancelled = true
+    }
+  }, [eventName, pathname, subPage])
 
   useEffect(() => {
     const complete = companyNameFormFields.filter(f => f.formId && f.fieldName)
@@ -151,6 +157,13 @@ export default function SubPage() {
 
   return (
     <main className="min-h-svh bg-vtk-bg text-neutral-900">
+      {loadError && (
+        <div className="mx-auto max-w-3xl px-4 pt-28 md:pt-24 pb-4">
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {loadError}
+          </div>
+        </div>
+      )}
       {isFloorplanPage && page && (
         <>
           <Header
@@ -551,6 +564,7 @@ function Floorplan({
   }
   const [boothsLocal, setBoothsLocal] = useState<Booth[]>([])
   const [svgContent, setSvgContent] = useState<string>("")
+  const [floorplanError, setFloorplanError] = useState<string | null>(null)
   const [viewBox, setViewBox] = useState<string>("0 0 1000 600")
   const [originalViewBox, setOriginalViewBox] = useState<string>("0 0 1000 600")
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null)
@@ -572,29 +586,55 @@ function Floorplan({
   const rafIdRef = useRef<number | null>(null)
 
   useEffect(() => {
+    let cancelled = false
     const loadData = async () => {
       if (!page) return
-      const data = await fetchFloorplanAction(page)
-      if (!data) return
+      try {
+        setFloorplanError(null)
+        const data = await fetchFloorplanAction(page)
+        if (!data || cancelled) return
 
-      const boothsData = (data.booths || []).filter((b): b is Booth => b !== null)
-      setBoothsLocal(boothsData)
-      setBooths(boothsData)
-      setBackgroundImage((data as any).backgroundImage || null)
+        const boothsData = (data.booths || []).filter((b): b is Booth => b !== null)
+        if (!cancelled) {
+          setBoothsLocal(boothsData)
+          setBooths(boothsData)
+          setBackgroundImage((data as any).backgroundImage || null)
+        }
 
-      const rawSvg = data.svg || ""
-      const parser = new DOMParser()
-      const svgDoc = parser.parseFromString(rawSvg, "image/svg+xml")
-      const svgRoot = svgDoc.documentElement
-      const originalVb = svgRoot?.getAttribute("viewBox") || "0 0 1000 600"
-      setSvgContent(rawSvg)
-      setOriginalViewBox(originalVb)
-      
-      // Use original viewBox - keeps full floorplan visible and scrollable
-      setViewBox(originalVb)
+        const rawSvg = data.svg || ""
+        const parser = new DOMParser()
+        const svgDoc = parser.parseFromString(rawSvg, "image/svg+xml")
+        const svgRoot = svgDoc.documentElement
+        const originalVb = svgRoot?.getAttribute("viewBox") || "0 0 1000 600"
+        if (!cancelled) {
+          setSvgContent(rawSvg)
+          setOriginalViewBox(originalVb)
+          // Use original viewBox - keeps full floorplan visible and scrollable
+          setViewBox(originalVb)
+        }
+      } catch (err) {
+        if (cancelled) return
+        setFloorplanError("We couldn't load the floorplan. Please refresh and try again.")
+        setSvgContent("")
+        setBoothsLocal([])
+        setBooths([])
+        setBackgroundImage(null)
+        Sentry.captureException(err, {
+          tags: {
+            area: "floorplan",
+          },
+          extra: {
+            eventId: page?.event?.id ?? null,
+            eventName: page?.event?.name ?? null,
+          },
+        })
+      }
     }
 
     loadData()
+    return () => {
+      cancelled = true
+    }
   }, [page, setBooths])
 
   // Initialize refs with current state
@@ -778,6 +818,30 @@ function Floorplan({
     
     // Sync ref state to React state
     syncState()
+  }
+
+  if (floorplanError) {
+    return (
+      <>
+        <div className="pt-32 md:pt-[90px] flex justify-center items-center w-full min-h-[60vh] px-4">
+          <div className="max-w-xl w-full rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-800 text-center">
+            <p className="font-medium">{floorplanError}</p>
+            <div className="mt-3 flex items-center justify-center gap-3">
+              <Button
+                variant="outline"
+                className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/10"
+                onClick={() => window.location.reload()}
+              >
+                Refresh
+              </Button>
+              <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">
+                <Link href={`/event/${slugifyEventName(page.event.name)}`}>Back to event</Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </>
+    )
   }
 
   if (!svgContent) {

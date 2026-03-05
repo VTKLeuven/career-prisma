@@ -5,13 +5,21 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation"
 import NextImage from "next/image";
 import Link from "next/link";
 import { getDirectusImageUrl } from "@/components/Images";
 
 export default function StudentLoginPage() {
+  return (
+    <Suspense>
+      <StudentLoginContent />
+    </Suspense>
+  );
+}
+
+function StudentLoginContent() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
@@ -173,10 +181,21 @@ export default function StudentLoginPage() {
                       Login with your email and password
                     </p>
                   </div>
-                  <form className={"flex flex-col gap-4"} onSubmit={onSubmit}>
+                  <form className={"flex flex-col gap-4"} onSubmit={onSubmit} autoComplete="on">
                     <div className="grid gap-3">
                       <Label htmlFor="email">Email</Label>
-                      <Input id="email" type="email" placeholder="m@example.com" required onChange={(e) => setEmail(e.target.value)} />
+                      <Input
+                        id="email"
+                        name="email"
+                        type="email"
+                        placeholder="m@example.com"
+                        required
+                        autoComplete="email"
+                        inputMode="email"
+                        autoCapitalize="none"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                      />
                     </div>
                     <div className="grid gap-3">
                       <div className="flex items-center justify-between">
@@ -189,7 +208,15 @@ export default function StudentLoginPage() {
                           Forgot password?
                         </button>
                       </div>
-                      <Input id="password" type="password" required onChange={(e) => setPassword(e.target.value)} />
+                      <Input
+                        id="password"
+                        name="password"
+                        type="password"
+                        required
+                        autoComplete="current-password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                      />
                     </div>
                     <div className="flex items-center space-x-2">
                       <Checkbox
@@ -202,7 +229,6 @@ export default function StudentLoginPage() {
                       <Label
                         htmlFor="rememberMe"
                         className="text-sm font-normal cursor-pointer"
-                        onClick={() => setRememberMe(!rememberMe)}
                       >
                         Remember me
                       </Label>
@@ -268,9 +294,13 @@ export default function StudentLoginPage() {
                 <Label htmlFor="forgot-password-email">Email</Label>
                 <Input
                   id="forgot-password-email"
+                  name="email"
                   type="email"
                   placeholder="m@example.com"
                   value={forgotPasswordEmail}
+                  autoComplete="email"
+                  inputMode="email"
+                  autoCapitalize="none"
                   onChange={(e) => setForgotPasswordEmail(e.target.value)}
                   required
                 />

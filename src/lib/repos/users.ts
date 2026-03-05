@@ -75,28 +75,65 @@ export async function createRep(payload: Partial<CompanyRep>) {
     });
 
     if (!res.ok) {
-      const errorData = await res.json().catch(() => null);
-      const errorMessage = errorData?.errors?.[0]?.message || await res.text().catch(() => "Unknown error");
-      console.error(`[createRep] Failed to create user for ${email}:`, res.status, errorMessage);
-      return null;
+      const raw = await res.text().catch(() => "");
+      let errorMessage = raw || "Unknown error";
+      let errorCode: string | undefined;
+
+      try {
+        const parsed = raw ? JSON.parse(raw) : null;
+        const first = parsed?.errors?.[0];
+        if (first?.message) errorMessage = first.message;
+        if (first?.extensions?.code) errorCode = String(first.extensions.code);
+      } catch {
+        // ignore JSON parse errors; keep raw text
+      }
+
+      // If the email already exists, prefer reusing the existing user instead of failing.
+      // This commonly happens when adding a second representative with the same email.
+      if (errorCode === "RECORD_NOT_UNIQUE" || /unique/i.test(errorMessage)) {
+        try {
+          const existingRes = await fetch(
+            `${normalizedBase}users?filter[email][_eq]=${encodeURIComponent(email)}&fields=id,email,status,role`,
+            {
+              headers: {
+                "Authorization": `Bearer ${authToken}`,
+              },
+            }
+          );
+
+          if (existingRes.ok) {
+            const existingJson = await existingRes.json().catch(() => null);
+            const existing = existingJson?.data?.[0];
+            if (existing?.id) {
+              console.warn(`[createRep] User already exists for ${email}; reusing existing id=${existing.id}`);
+              return existing;
+            }
+          }
+        } catch (lookupErr) {
+          console.warn(`[createRep] Failed to lookup existing user for ${email}:`, lookupErr);
+        }
+      }
+
+      const details = `[createRep] Failed to create user for ${email} (${res.status}${errorCode ? `/${errorCode}` : ""}): ${errorMessage}`;
+      console.error(details);
+      throw new Error(details);
     }
 
-    const json = await res.json();
-    const user = json.data;
+    const json = await res.json().catch(() => null);
+    const user = json?.data;
 
     if (!user || !user.id) {
-      console.error(`[createRep] User creation response missing user data for ${email}`);
-      return null;
+      const details = `[createRep] User creation response missing user data for ${email}`;
+      console.error(details);
+      throw new Error(details);
     }
 
     console.log(`[createRep] Successfully created user ${user.id} for ${email}`);
     return user;
   } catch (err) {
     console.error(`[createRep] Exception creating user for ${email}:`, err);
-    if (err instanceof Error) {
-      console.error(`[createRep] Error stack:`, err.stack);
-    }
-    return null;
+    if (err instanceof Error) console.error(`[createRep] Error stack:`, err.stack);
+    throw err instanceof Error ? err : new Error("Failed to create representative");
   }
 }
 

@@ -1,7 +1,24 @@
 import * as Sentry from "@sentry/nextjs";
 
 const enableReplay = process.env.NEXT_PUBLIC_SENTRY_ENABLE_REPLAY === "true";
-const ignoredErrorPatterns: Array<string | RegExp> = [/Error invoking postMessage: Java object is gone/i];
+const ignoredErrorPatterns: Array<string | RegExp> = [
+  /Error invoking postMessage: Java object is gone/i,
+  // Browser extensions (e.g. password managers) injecting scripts can throw this on some browsers.
+  /Invalid call to runtime\.sendMessage\(\)\. Tab not found\./i,
+  /<get-frame-manager-configuration>/i,
+];
+
+function eventHasExtensionOriginStack(event: Sentry.Event): boolean {
+  const values = event.exception?.values ?? [];
+  for (const v of values) {
+    const frames = v.stacktrace?.frames ?? [];
+    for (const f of frames) {
+      const filename = f.filename ?? f.abs_path ?? "";
+      if (/^(chrome|moz|safari-web)-extension:\/\//i.test(filename)) return true;
+    }
+  }
+  return false;
+}
 
 function eventContainsIgnoredError(event: Sentry.Event, hint?: Sentry.EventHint): boolean {
   const hintMessage =
@@ -35,6 +52,7 @@ Sentry.init({
     // Instagram/Android in-app WebViews can throw this when their native bridge is torn down mid-navigation.
     // It's not actionable in our app code, and it can drown out real issues.
     if (eventContainsIgnoredError(event, hint)) return null;
+    if (eventHasExtensionOriginStack(event)) return null;
     return event;
   },
   integrations: (defaultIntegrations) => {

@@ -85,7 +85,10 @@ export default function RegisterPage() {
         </div>
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-xs">
-            <form className={"flex flex-col gap-6"} onSubmit={onSubmit}>
+            <form className={"flex flex-col gap-6"} onSubmit={onSubmit} autoComplete="on">
+              {/* Hidden inputs ensure non-native selects still exist as form fields for autofill/bridge scripts */}
+              <input type="hidden" name="university" value={university} readOnly />
+              <input type="hidden" name="university_status" value={universityStatus} readOnly />
               <div className="flex flex-col items-center gap-2 text-center">
                 <h1 className="text-2xl font-bold">Register as Student</h1>
                 <p className="text-muted-foreground text-sm text-balance">
@@ -97,9 +100,11 @@ export default function RegisterPage() {
                   <Label htmlFor="firstName">First Name</Label>
                   <Input
                     id="firstName"
+                    name="first_name"
                     type="text"
                     placeholder="John"
                     required
+                    autoComplete="given-name"
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
                   />
@@ -108,9 +113,11 @@ export default function RegisterPage() {
                   <Label htmlFor="lastName">Last Name</Label>
                   <Input
                     id="lastName"
+                    name="last_name"
                     type="text"
                     placeholder="Doe"
                     required
+                    autoComplete="family-name"
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
                   />
@@ -119,9 +126,13 @@ export default function RegisterPage() {
                   <Label htmlFor="email">Email</Label>
                   <Input
                     id="email"
+                    name="email"
                     type="email"
                     placeholder="john.doe@example.com"
                     required
+                    autoComplete="email"
+                    inputMode="email"
+                    autoCapitalize="none"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                   />

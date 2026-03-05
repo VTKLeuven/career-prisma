@@ -227,14 +227,28 @@ function HomepageHeader() {
   const eventsMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // Use API route for better caching
-    fetch('/api/homepage')
-      .then(res => res.json())
-      .then((data) => setEvents(data.events ?? []))
-      .catch(() => {
-        // Fallback to direct action
-        fetchEventsAction().then(setEvents);
-      });
+    const ac = new AbortController()
+
+    const load = async () => {
+      try {
+        // Use API route for better caching
+        const res = await fetch('/api/homepage', { signal: ac.signal })
+        const data = (await res.json()) as { events?: CareerEvent[] }
+        if (!ac.signal.aborted) setEvents(data.events ?? [])
+      } catch {
+        if (ac.signal.aborted) return
+        // Fallback to direct action (must be caught too; navigation aborts can throw)
+        try {
+          const events = await fetchEventsAction()
+          if (!ac.signal.aborted) setEvents(events)
+        } catch {
+          // Ignore: non-critical header data
+        }
+      }
+    }
+
+    load()
+    return () => ac.abort()
   }, []);
 
   const checkAuthStatus = () => {
