@@ -371,6 +371,92 @@ export async function getActiveFormVersionForServer(formId: string): Promise<For
 
 // ===================== FORM RESPONSES =====================
 
+/** Filter to exclude archived responses (for student form deduplication). */
+const NOT_ARCHIVED_FILTER = {
+  _or: [
+    { archived: { _null: true } },
+    { archived: { _eq: false } },
+  ],
+};
+
+/** Archive all previous form responses from this student for the given form. Call before creating a new response. */
+export async function archivePreviousStudentResponsesForForm(
+  studentId: string,
+  formId: string
+): Promise<void> {
+  try {
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const client = await getServerDirectusClient();
+    const versions = await listFormVersionsForServer(formId);
+    const versionIds = versions.map((v) => v.id);
+    if (versionIds.length === 0) return;
+
+    const responses = await client.request(
+      readItems("form_responses" as any, {
+        fields: ["id", "data"],
+        filter: { form_version_id: { _in: versionIds } },
+        limit: -1,
+      })
+    ) as unknown as Array<{ id: string; data?: Record<string, unknown> }>;
+
+    const { updateItem } = await import("@directus/sdk");
+    for (const r of responses) {
+      if ((r.data as Record<string, unknown>)?._student_id === studentId) {
+        await client.request(updateItem("form_responses" as any, r.id, { archived: true }));
+      }
+    }
+  } catch (error) {
+    console.error("[archivePreviousStudentResponsesForForm] Error:", error);
+    // Non-fatal: continue with submission
+  }
+}
+
+/** Archive duplicate student responses for a form, keeping only the most recent per student. Returns count archived. */
+export async function archiveDuplicateResponsesForForm(formId: string): Promise<{ archived: number }> {
+  try {
+    const client = await getAuthedDirectusOrThrow();
+    const versions = await listFormVersions(formId);
+    const versionIds = versions.map((v) => v.id);
+    if (versionIds.length === 0) return { archived: 0 };
+
+    const responses = await client.request(
+      readItems("form_responses" as any, {
+        fields: ["id", "data", "submitted_at"],
+        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
+        limit: -1,
+        sort: "-submitted_at",
+      })
+    ) as unknown as Array<{ id: string; data?: Record<string, unknown>; submitted_at: string }>;
+
+    // Group by student_id
+    const byStudent = new Map<string, typeof responses>();
+    for (const r of responses) {
+      const studentId = (r.data as Record<string, unknown>)?._student_id as string | undefined;
+      if (studentId) {
+        const list = byStudent.get(studentId) ?? [];
+        list.push(r);
+        byStudent.set(studentId, list);
+      }
+    }
+
+    const { updateItem } = await import("@directus/sdk");
+    let archived = 0;
+    for (const [, list] of byStudent) {
+      if (list.length <= 1) continue;
+      // Keep first (most recent by sort), archive the rest
+      const toArchive = list.slice(1);
+      for (const r of toArchive) {
+        await client.request(updateItem("form_responses" as any, r.id, { archived: true }));
+        archived++;
+      }
+    }
+    return { archived };
+  } catch (error) {
+    console.error("[archiveDuplicateResponsesForForm] Error:", error);
+    throw error;
+  }
+}
+
 export async function listFormResponses(formVersionId: string, opts?: {
   limit?: number;
   page?: number;
@@ -382,7 +468,7 @@ export async function listFormResponses(formVersionId: string, opts?: {
     const result = await client.request(
       readItems("form_responses" as any, {
         fields: ["*", { user_id: ["name", "email"], form_version_id: { form_id: ["name"] }, company_id: ["name", "id"], student_id: ["full_name", "first_name", "last_name", "email"] } as any],
-        filter: { form_version_id: { _eq: formVersionId } },
+        filter: { _and: [{ form_version_id: { _eq: formVersionId } }, NOT_ARCHIVED_FILTER] },
         limit,
         page,
         sort: "-submitted_at",
@@ -402,7 +488,7 @@ export async function getFormResponsesTotalCount(formVersionId: string) {
     const responses = await client.request(
       readItems("form_responses" as any, {
         fields: ["id"],
-        filter: { form_version_id: { _eq: formVersionId } },
+        filter: { _and: [{ form_version_id: { _eq: formVersionId } }, NOT_ARCHIVED_FILTER] },
         limit: -1, // Get all to count
       })
     ) as unknown as Array<{ id: string }>;
@@ -420,7 +506,7 @@ export async function getFirstFormResponse(formVersionId: string) {
     const responses = await client.request(
       readItems("form_responses" as any, {
         fields: ["submitted_at"],
-        filter: { form_version_id: { _eq: formVersionId } },
+        filter: { _and: [{ form_version_id: { _eq: formVersionId } }, NOT_ARCHIVED_FILTER] },
         limit: 1,
         sort: "submitted_at", // Oldest first
       })
@@ -439,7 +525,7 @@ export async function getLatestFormResponse(formVersionId: string) {
     const responses = await client.request(
       readItems("form_responses" as any, {
         fields: ["submitted_at"],
-        filter: { form_version_id: { _eq: formVersionId } },
+        filter: { _and: [{ form_version_id: { _eq: formVersionId } }, NOT_ARCHIVED_FILTER] },
         limit: 1,
         sort: "-submitted_at", // Newest first
       })
@@ -453,7 +539,8 @@ export async function getLatestFormResponse(formVersionId: string) {
 }
 
 /** Get a student's latest form response across any of the given form versions. Uses server client.
- * Matches by data._student_id (stored in form data JSON) since form_responses may not have a student_id column. */
+ * Matches by data._student_id (stored in form data JSON) since form_responses may not have a student_id column.
+ * Fetches all responses (limit: -1) so early submitters are not missed when the form has many responses. */
 export async function getStudentLatestFormResponseForForm(
   studentId: string,
   versionIds: string[]
@@ -462,12 +549,13 @@ export async function getStudentLatestFormResponseForForm(
   try {
     const { getServerDirectusClient } = await import("@/lib/directus");
     const client = await getServerDirectusClient();
-    // Fetch responses for these versions and match by data._student_id (no student_id column)
+    // Fetch all responses for these versions and match by data._student_id (no student_id column).
+    // Use limit: -1 so early submitters are included even when the form has 1000+ responses.
     const responses = await client.request(
       readItems("form_responses" as any, {
         fields: ["id", "form_version_id", "data"],
-        filter: { form_version_id: { _in: versionIds } },
-        limit: 1000,
+        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
+        limit: -1,
         sort: "-submitted_at",
       })
     ) as unknown as Array<{ id: string; form_version_id: string; data?: Record<string, unknown> }>;
@@ -501,7 +589,7 @@ export async function listFormResponsesForAllVersions(formId: string, opts?: {
     const result = await client.request(
       readItems("form_responses" as any, {
         fields: ["*", { user_id: ["name", "email"], form_version_id: { form_id: ["name"], version_number: ["*"] }, company_id: ["name", "id"], student_id: ["full_name", "first_name", "last_name", "email"] } as any],
-        filter: { form_version_id: { _in: versionIds } },
+        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
         limit,
         page,
         sort: "-submitted_at",
@@ -530,7 +618,7 @@ export async function getFormResponsesTotalCountForAllVersions(formId: string) {
     const responses = await client.request(
       readItems("form_responses" as any, {
         fields: ["id"],
-        filter: { form_version_id: { _in: versionIds } },
+        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
         limit: -1, // Get all to count
       })
     ) as unknown as Array<{ id: string }>;
@@ -557,7 +645,7 @@ export async function getFirstFormResponseForAllVersions(formId: string) {
     const responses = await client.request(
       readItems("form_responses" as any, {
         fields: ["submitted_at"],
-        filter: { form_version_id: { _in: versionIds } },
+        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
         limit: 1,
         sort: "submitted_at", // Oldest first
       })
@@ -585,7 +673,7 @@ export async function getLatestFormResponseForAllVersions(formId: string) {
     const responses = await client.request(
       readItems("form_responses" as any, {
         fields: ["submitted_at"],
-        filter: { form_version_id: { _in: versionIds } },
+        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
         limit: 1,
         sort: "-submitted_at", // Newest first
       })
@@ -685,7 +773,7 @@ export async function countFormResponses(formId: string) {
     const responses = await client.request(
       readItems("form_responses" as any, {
         fields: ["id"],
-        filter: { form_version_id: { _in: versionIds } },
+        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
         limit: -1, // Get all to count
       })
     ) as unknown as FormResponse[];
@@ -719,7 +807,7 @@ export async function countFormVersionResponses(formVersionId: string, usePublic
     const responses = await client.request(
       readItems("form_responses" as any, {
         fields: ["id"],
-        filter: { form_version_id: { _eq: formVersionId } },
+        filter: { _and: [{ form_version_id: { _eq: formVersionId } }, NOT_ARCHIVED_FILTER] },
         limit: -1, // Get all to count
       })
     ) as unknown as FormResponse[];

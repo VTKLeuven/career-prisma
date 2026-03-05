@@ -292,6 +292,8 @@ export type FormResponse = {
   student_id?: string | Student; // Student who submitted the form (for student forms)
   data: Record<string, unknown>;
   submitted_at: string;
+  /** When true, this response is archived (superseded by a newer submission from the same student). Hidden from lists and counts. */
+  archived?: boolean;
   attachments?: string[]; // Directus file IDs
   attendant_uuid?: string; // Unique UUID for event registration attendants
   company_id?: string | Company; // Company that submitted the form (for company forms)

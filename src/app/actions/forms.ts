@@ -383,6 +383,16 @@ export async function initializeAttendantUuidsAction(formId?: string) {
   }
 }
 
+export async function archiveDuplicateFormResponsesAction(formId: string) {
+  try {
+    const { archiveDuplicateResponsesForForm } = await import("@/lib/repos/forms");
+    return await archiveDuplicateResponsesForForm(formId);
+  } catch (error) {
+    console.error("Error archiving duplicate form responses:", error);
+    throw error;
+  }
+}
+
 export async function submitFormResponseAction(data: {
   form_version_id: string;
   user_id?: string;
@@ -446,10 +456,11 @@ export async function submitFormResponseAction(data: {
       try {
         // Count using server client - reuse the same client we used to fetch metadata
         const { readItems } = await import("@directus/sdk");
+        const NOT_ARCHIVED = { _or: [{ archived: { _null: true } }, { archived: { _eq: false } }] };
         const responses = await serverClient.request(
           readItems("form_responses" as any, {
             fields: ["id"],
-            filter: { form_version_id: { _eq: data.form_version_id } },
+            filter: { _and: [{ form_version_id: { _eq: data.form_version_id } }, NOT_ARCHIVED] },
             limit: -1, // Get all to count
           })
         ) as unknown as Array<{ id: string }>;
@@ -507,6 +518,13 @@ export async function submitFormResponseAction(data: {
     // Extract company/submitter info from data if present (for company forms)
     // Do this before the try block so formData is available for email extraction later
     const { _company_id, _submitter_first_name, _submitter_last_name, _submitter_email, ...formData } = data.data;
+
+    // For student forms: archive previous responses before creating the new one (keeps only one active per student)
+    if (student) {
+      const formId = typeof formVersion.form_id === "string" ? formVersion.form_id : (formVersion.form_id as { id: string }).id;
+      const { archivePreviousStudentResponsesForForm } = await import("@/lib/repos/forms");
+      await archivePreviousStudentResponsesForForm(student.id, formId);
+    }
 
     // Create form response using server client to ensure it works for both logged-in and non-logged-in users
     // The server client has elevated permissions needed for public form submissions
@@ -1166,10 +1184,11 @@ export async function fetchPublicFormBySlugAction(slug: string) {
         }
 
         const { readItems } = await import("@directus/sdk");
+        const NOT_ARCHIVED = { _or: [{ archived: { _null: true } }, { archived: { _eq: false } }] };
         const responses = await serverClient.request(
           readItems("form_responses" as any, {
             fields: ["id"],
-            filter: { form_version_id: { _eq: activeVersion.id } },
+            filter: { _and: [{ form_version_id: { _eq: activeVersion.id } }, NOT_ARCHIVED] },
             limit: -1, // Get all to count
           })
         ) as unknown as Array<{ id: string }>;

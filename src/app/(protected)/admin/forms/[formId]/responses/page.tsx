@@ -4,7 +4,7 @@ import * as React from "react";
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { fetchFormByIdAction, fetchFormVersionsAction, fetchFormResponsesAction, fetchFormResponsesTotalCountAction, fetchAllFormResponsesAction, fetchFirstFormResponseAction, fetchLatestFormResponseAction, deleteFormResponseAction, updateFormResponseAction, initializeAttendantUuidsAction, fetchFormResponsesForAllVersionsAction, fetchFormResponsesTotalCountForAllVersionsAction, fetchFirstFormResponseForAllVersionsAction, fetchLatestFormResponseForAllVersionsAction, fetchAllFormResponsesForAllVersionsAction } from "@/app/actions/forms";
+import { fetchFormByIdAction, fetchFormVersionsAction, fetchFormResponsesAction, fetchFormResponsesTotalCountAction, fetchAllFormResponsesAction, fetchFirstFormResponseAction, fetchLatestFormResponseAction, deleteFormResponseAction, updateFormResponseAction, initializeAttendantUuidsAction, archiveDuplicateFormResponsesAction, fetchFormResponsesForAllVersionsAction, fetchFormResponsesTotalCountForAllVersionsAction, fetchFirstFormResponseForAllVersionsAction, fetchLatestFormResponseForAllVersionsAction, fetchAllFormResponsesForAllVersionsAction } from "@/app/actions/forms";
 import { fetchCompaniesForEventAction } from "@/app/actions/companies";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,7 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Download, Eye, Trash2, Pencil, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2, Mail, ArrowUpDown, ArrowUp, ArrowDown, Check, X, FileArchive } from "lucide-react";
+import { ArrowLeft, Download, Eye, Trash2, Pencil, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2, Mail, ArrowUpDown, ArrowUp, ArrowDown, Check, X, FileArchive, Archive } from "lucide-react";
 import type { FormVersion, FormResponse, FormField } from "@/lib/schema";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 import { CSV_UTF8_BOM } from "@/lib/utils/slugify";
@@ -73,6 +73,7 @@ export default function FormResponsesPage() {
   const [firstResponseDate, setFirstResponseDate] = useState<string | null>(null);
   const [latestResponseDate, setLatestResponseDate] = useState<string | null>(null);
   const [initializingUuids, setInitializingUuids] = useState(false);
+  const [archivingDuplicates, setArchivingDuplicates] = useState(false);
   const [viewMode, setViewMode] = useState<"submissions" | "incomplete">("submissions");
   const [incompleteCompanies, setIncompleteCompanies] = useState<Array<{ id: string; name: string; salesperson: string; optionName: string }>>([]);
   const [loadingIncompleteCompanies, setLoadingIncompleteCompanies] = useState(false);
@@ -1104,6 +1105,24 @@ export default function FormResponsesPage() {
     handleInlineEditCancel();
   };
 
+  const handleArchiveDuplicates = async () => {
+    if (!form || !formId) return;
+    if (!confirm(`Archive duplicate responses for "${form.name}"? This will keep only the most recent response per student and archive older ones.`)) {
+      return;
+    }
+    setArchivingDuplicates(true);
+    try {
+      const result = await archiveDuplicateFormResponsesAction(formId);
+      alert(result.archived > 0 ? `Archived ${result.archived} duplicate response(s).` : "No duplicate responses found.");
+      await loadResponses(isAllVersions ? "" : selectedVersionId, currentPage, isAllVersions);
+    } catch (error) {
+      console.error("Error archiving duplicates:", error);
+      alert("Failed to archive duplicates. Please try again.");
+    } finally {
+      setArchivingDuplicates(false);
+    }
+  };
+
   const handleInitializeUuids = async () => {
     if (!form) return;
     
@@ -1215,6 +1234,26 @@ export default function FormResponsesPage() {
                   ))}
                 </SelectContent>
               </Select>
+              {viewMode === "submissions" && (
+                <Button
+                  variant="outline"
+                  onClick={handleArchiveDuplicates}
+                  disabled={archivingDuplicates || totalCount === 0}
+                  title="Archive duplicate responses, keeping only the most recent per student"
+                >
+                  {archivingDuplicates ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Archiving...
+                    </>
+                  ) : (
+                    <>
+                      <Archive className="h-4 w-4 mr-2" />
+                      Archive duplicates
+                    </>
+                  )}
+                </Button>
+              )}
               {!isAllVersions && selectedVersion?.metadata?.is_event_registration && (
                 <Button 
                   variant="outline" 
