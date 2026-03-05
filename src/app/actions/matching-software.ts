@@ -170,20 +170,13 @@ export async function recomputeCompanyMatchesForCurrentUserAction(matchingSoftwa
   return getStudentMatchingResponse(student.id, matchingSoftwareId);
 }
 
-/** Returns student's form response only if it's for the latest (active) version. If they filled an older version, returns null so they must update. */
+/** Returns student's form response if they have filled the prerequisite form. Any version of the form counts as complete. */
 export async function checkStudentPrerequisiteAction(
   studentId: string,
   formId: string
 ) {
-  const { getActiveFormVersionForServer } = await import("@/lib/repos/forms");
-  const [response, activeVersion] = await Promise.all([
-    getStudentFormResponseForForm(studentId, formId),
-    getActiveFormVersionForServer(formId),
-  ]);
-  if (!response || !activeVersion) return null;
-  // Prerequisite met only if their response is for the active version
-  if (response.form_version_id !== activeVersion.id) return null;
-  return response;
+  const response = await getStudentFormResponseForForm(studentId, formId);
+  return response ?? null;
 }
 
 // RIASEC calculation - 12 questions, each maps A or B to a type

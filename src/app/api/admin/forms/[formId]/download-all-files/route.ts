@@ -170,11 +170,12 @@ export async function GET(
 
     const versionIds = versions.map((v) => v.id);
 
-    // Fetch all responses for all versions
+    // Fetch all responses for all versions (exclude archived)
+    const NOT_ARCHIVED = { _or: [{ archived: { _null: true } }, { archived: { _eq: false } }] };
     const responses = (await client.request(
       readItems("form_responses" as any, {
         fields: ["id", "data", "form_version_id"],
-        filter: { form_version_id: { _in: versionIds } },
+        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED] },
         limit: -1,
       })
     )) as unknown as FormResponse[];
