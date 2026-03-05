@@ -3,13 +3,13 @@
 import { useEffect, useState, useRef, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
-import { fetchFloorplanAction } from "@/app/actions/features"
+import { fetchFloorplanAction, updateFloorplanCategoryFormFieldsAction, updateFloorplanCompanyNameFormFieldsAction } from "@/app/actions/features"
 import { fetchCompaniesForEventAction } from "@/app/actions/companies"
 import { fetchAllCompanyFormsForEventAction, fetchCompanyIdsMatchingFormFieldOptionAction, fetchCompanyFormFieldValuesAction } from "@/app/actions/forms"
 import type { CareerEventPage, Booth, Company } from '@/lib/schema'
 import type { FormField } from '@/lib/schema'
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, X, Filter, Download, Upload, Type } from "lucide-react"
+import { ArrowLeft, X, Filter, Download, Upload, Type, GraduationCap, Building2 } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -65,6 +65,16 @@ export default function AdminFloorplanPage() {
   const [displayValuesByCompany, setDisplayValuesByCompany] = useState<Record<string, string>>({})
   const [displayLoading, setDisplayLoading] = useState(false)
 
+  // Floorplan categories from forms (master-degrees fields) - replaces standard master categories on public floorplan
+  type CategoryFormFieldEntry = { formId: string; formVersionId: string; fieldName: string }
+  const [categoryFormFields, setCategoryFormFields] = useState<CategoryFormFieldEntry[]>([])
+  const [categoryFormFieldsSaving, setCategoryFormFieldsSaving] = useState(false)
+
+  // Company name form fields - used to display company names on the public floorplan (tooltip, popup). Multiple forms tried in order.
+  type CompanyNameFormFieldEntry = { formId: string; formVersionId: string; fieldName: string }
+  const [companyNameFormFields, setCompanyNameFormFields] = useState<CompanyNameFormFieldEntry[]>([])
+  const [companyNameFormFieldsSaving, setCompanyNameFormFieldsSaving] = useState(false)
+
   useEffect(() => {
     const loadData = async () => {
       if (!eventId) return
@@ -80,6 +90,14 @@ export default function AdminFloorplanPage() {
         }
         
         setPage(eventPage)
+        const floorplan = eventPage.floorplan as {
+          floorplan_category_form_fields?: Array<{ formId: string; formVersionId: string; fieldName: string }>;
+          floorplan_company_name_form_field?: Array<{ formId: string; formVersionId: string; fieldName: string }> | { formId: string; formVersionId: string; fieldName: string } | null;
+        }
+        setCategoryFormFields(floorplan?.floorplan_category_form_fields ?? [])
+        const raw = floorplan?.floorplan_company_name_form_field
+        const nameFields = Array.isArray(raw) ? raw : raw && typeof raw === "object" && raw.formId ? [raw] : []
+        setCompanyNameFormFields(nameFields)
         
         // Fetch SVG content and booths first (need booths for viewBox calculation)
         const data = await fetchFloorplanAction(eventPage)
@@ -174,6 +192,71 @@ export default function AdminFloorplanPage() {
     const form = eventForms.find(f => f.id === formId)
     if (!form?.activeVersion?.schema?.fields) return []
     return form.activeVersion.schema.fields.filter(f => f.type !== "file")
+  }
+
+  const getMasterDegreesFieldsForForm = (formId: string) => {
+    const form = eventForms.find(f => f.id === formId)
+    if (!form?.activeVersion?.schema?.fields) return []
+    return form.activeVersion.schema.fields.filter(f => f.type === "master-degrees")
+  }
+
+  const addCategoryFormField = () => setCategoryFormFields([...categoryFormFields, { formId: "", formVersionId: "", fieldName: "" }])
+  const removeCategoryFormField = (idx: number) => setCategoryFormFields(categoryFormFields.filter((_, i) => i !== idx))
+  const updateCategoryFormField = (idx: number, updates: Partial<CategoryFormFieldEntry>) => {
+    const next = [...categoryFormFields]
+    next[idx] = { ...next[idx], ...updates }
+    if (updates.formId !== undefined) {
+      const form = eventForms.find(f => f.id === updates.formId)
+      next[idx].formVersionId = form?.activeVersion?.id ?? ""
+      next[idx].fieldName = ""
+    }
+    if (updates.fieldName !== undefined) { /* no reset */ }
+    setCategoryFormFields(next)
+  }
+
+  const saveCategoryFormFields = async () => {
+    if (!eventId) return
+    setCategoryFormFieldsSaving(true)
+    try {
+      const result = await updateFloorplanCategoryFormFieldsAction(
+        eventId,
+        categoryFormFields.filter(e => e.formVersionId && e.fieldName)
+      )
+      if (!result.success) alert(result.error ?? "Failed to save")
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to save")
+    } finally {
+      setCategoryFormFieldsSaving(false)
+    }
+  }
+
+  const addCompanyNameFormField = () => setCompanyNameFormFields([...companyNameFormFields, { formId: "", formVersionId: "", fieldName: "" }])
+  const removeCompanyNameFormField = (idx: number) => setCompanyNameFormFields(companyNameFormFields.filter((_, i) => i !== idx))
+  const updateCompanyNameFormField = (idx: number, updates: Partial<CompanyNameFormFieldEntry>) => {
+    const next = [...companyNameFormFields]
+    next[idx] = { ...next[idx], ...updates }
+    if (updates.formId !== undefined) {
+      const form = eventForms.find(f => f.id === updates.formId)
+      next[idx].formVersionId = form?.activeVersion?.id ?? ""
+      next[idx].fieldName = ""
+    }
+    setCompanyNameFormFields(next)
+  }
+
+  const saveCompanyNameFormFields = async () => {
+    if (!eventId) return
+    setCompanyNameFormFieldsSaving(true)
+    try {
+      const result = await updateFloorplanCompanyNameFormFieldsAction(
+        eventId,
+        companyNameFormFields.filter(e => e.formVersionId && e.fieldName)
+      )
+      if (!result.success) alert(result.error ?? "Failed to save")
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to save")
+    } finally {
+      setCompanyNameFormFieldsSaving(false)
+    }
   }
 
   // Load display values when display entries change
@@ -882,6 +965,184 @@ export default function AdminFloorplanPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Categories from forms - master-degrees fields for public floorplan filter */}
+      <div className="p-4 bg-white/95 backdrop-blur-md border rounded-lg shadow-sm">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <GraduationCap className="h-4 w-4 text-neutral-600" />
+            <h3 className="font-semibold text-sm text-neutral-800">Categories from forms</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={addCategoryFormField} disabled={formsLoading}>
+              Add field
+            </Button>
+            <Button
+              size="sm"
+              onClick={saveCategoryFormFields}
+              disabled={categoryFormFieldsSaving || !categoryFormFields.some(e => e.formVersionId && e.fieldName)}
+            >
+              {categoryFormFieldsSaving ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          Select master-degrees form fields. On the public floorplan, students will see a dropdown of masters instead of the standard category logos. Companies are filtered by their form responses.
+        </p>
+        <div className="space-y-3">
+          {categoryFormFields.length === 0 ? (
+            <p className="text-sm text-muted-foreground italic">No category fields. Click &quot;Add field&quot; to add master-degrees fields from forms.</p>
+          ) : (
+            categoryFormFields.map((entry, idx) => {
+              const masterDegreesFields = getMasterDegreesFieldsForForm(entry.formId)
+              return (
+                <div key={idx} className="flex flex-wrap items-end gap-3 p-3 rounded-md bg-neutral-50 border">
+                  <div className="space-y-2 min-w-[160px]">
+                    <Label className="text-xs">Form</Label>
+                    <Select
+                      value={entry.formId || "__none__"}
+                      onValueChange={(v) => updateCategoryFormField(idx, { formId: v === "__none__" ? "" : v })}
+                      disabled={formsLoading}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select form..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">—</SelectItem>
+                        {eventForms.map((f) => (
+                          <Tooltip key={f.id}>
+                            <TooltipTrigger asChild>
+                              <SelectItem value={f.id}>{f.name}</SelectItem>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Slug: {f.slug}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 min-w-[160px]">
+                    <Label className="text-xs">Master-degrees field</Label>
+                    <Select
+                      value={entry.fieldName || "__none__"}
+                      onValueChange={(v) => updateCategoryFormField(idx, { fieldName: v === "__none__" ? "" : v })}
+                      disabled={!entry.formId || masterDegreesFields.length === 0}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={masterDegreesFields.length === 0 ? "No master-degrees fields" : "Select field..."} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">—</SelectItem>
+                        {masterDegreesFields.map((f) => (
+                          <SelectItem key={f.name} value={f.name}>{f.label || f.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={() => removeCategoryFormField(idx)} className="shrink-0 text-muted-foreground hover:text-destructive">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )
+            })
+          )}
+        </div>
+        {categoryFormFields.some(e => e.formVersionId && e.fieldName) && (
+          <p className="text-xs text-muted-foreground mt-2">
+            Public floorplan will use these fields for the master selector. Remember to save.
+          </p>
+        )}
+      </div>
+
+      {/* Company name form fields - display names on public floorplan */}
+      <div className="p-4 bg-white/95 backdrop-blur-md border rounded-lg shadow-sm">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-neutral-600" />
+            <h3 className="font-semibold text-sm text-neutral-800">Company name on floorplan</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={addCompanyNameFormField} disabled={formsLoading}>
+              Add field
+            </Button>
+            <Button
+              size="sm"
+              onClick={saveCompanyNameFormFields}
+              disabled={companyNameFormFieldsSaving || !companyNameFormFields.some(e => e.formVersionId && e.fieldName)}
+            >
+              {companyNameFormFieldsSaving ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          Select form fields to use as the company display name on the public floorplan (tooltip and popup). Multiple forms are tried in order; first non-empty value wins. Leave empty to use the default company name.
+        </p>
+        <div className="space-y-3">
+          {companyNameFormFields.length === 0 ? (
+            <p className="text-sm text-muted-foreground italic">No company name fields. Click &quot;Add field&quot; to add form fields.</p>
+          ) : (
+            companyNameFormFields.map((entry, idx) => {
+              const displayFields = getDisplayFieldsForForm(entry.formId)
+              return (
+                <div key={idx} className="flex flex-wrap items-end gap-3 p-3 rounded-md bg-neutral-50 border">
+                  <div className="space-y-2 min-w-[160px]">
+                    <Label className="text-xs">Form</Label>
+                    <Select
+                      value={entry.formId || "__none__"}
+                      onValueChange={(v) => updateCompanyNameFormField(idx, { formId: v === "__none__" ? "" : v })}
+                      disabled={formsLoading}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select form..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">—</SelectItem>
+                        {eventForms.map((f) => (
+                          <Tooltip key={f.id}>
+                            <TooltipTrigger asChild>
+                              <SelectItem value={f.id}>{f.name}</SelectItem>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Slug: {f.slug}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 min-w-[160px]">
+                    <Label className="text-xs">Company name field</Label>
+                    <Select
+                      value={entry.fieldName || "__none__"}
+                      onValueChange={(v) => updateCompanyNameFormField(idx, { fieldName: v === "__none__" ? "" : v })}
+                      disabled={!entry.formId || displayFields.length === 0}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={displayFields.length === 0 ? "No fields" : "Select field..."} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">—</SelectItem>
+                        {displayFields.map((f) => (
+                          <SelectItem key={f.name} value={f.name}>{f.label || f.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={() => removeCompanyNameFormField(idx)} className="shrink-0 text-muted-foreground hover:text-destructive">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )
+            })
+          )}
+        </div>
+        {companyNameFormFields.some(e => e.formVersionId && e.fieldName) && (
+          <p className="text-xs text-muted-foreground mt-2">
+            Public floorplan will use these fields for company names (first non-empty wins). Remember to save.
+          </p>
+        )}
       </div>
 
       {/* Company Assignment Panel */}

@@ -62,7 +62,9 @@ export async function listEventPages(opts?: {
           "companies.company_id.page_on_platform",
           "companies.company_id.status",
           "companies.company_id.options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option_id.*",
-          "floorplan.*", // include floorplan relation
+          "floorplan.*",
+          "floorplan.floorplan_category_form_fields", // explicit for floorplan category config
+          "floorplan.floorplan_company_name_form_field",
           "company_guide.*", // include company guide file
         ] as any,
         limit,

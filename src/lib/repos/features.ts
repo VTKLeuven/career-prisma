@@ -68,13 +68,11 @@ export async function listMasters(
     const { search, limit = 300, page = 1, sort = "name" } = opts ?? {}
     return client.request(
       readItems("master", {
-        fields: ["*"],
+        fields: ["id", "name", "short_name", "logo", "students", "modules"],
         limit,
         page,
         sort: sort as any,
-        ...(search
-          ? { search } // optional full-text search
-          : {}),
+        ...(search ? { search } : {}),
       })
     ) as unknown as Master[]
   } catch (error) {
@@ -96,11 +94,11 @@ export async function listFaculties(
     const { limit = 300, sort = "name" } = opts ?? {}
     // Try common Directus M2M patterns: faculty.masters or faculty.faculty_master
     const fieldSets = [
-      ["id", "name", "masters.master_id.id", "masters.master_id.name"],
-      ["id", "name", "faculty_master.master_id.id", "faculty_master.master_id.name"],
-      ["id", "name", "faculty_masters.master_id.id", "faculty_masters.master_id.name"],
-      ["id", "name", "masters.id", "masters.name"],
-      ["id", "name", "master.id", "master.name"],
+      ["id", "name", "logo", "masters.master_id.id", "masters.master_id.name", "masters.master_id.logo"],
+      ["id", "name", "logo", "faculty_master.master_id.id", "faculty_master.master_id.name", "faculty_master.master_id.logo"],
+      ["id", "name", "logo", "faculty_masters.master_id.id", "faculty_masters.master_id.name", "faculty_masters.master_id.logo"],
+      ["id", "name", "logo", "masters.id", "masters.name", "masters.logo"],
+      ["id", "name", "logo", "master.id", "master.name", "master.logo"],
     ]
     const collections = ["faculty", "Faculty"]
     for (const coll of collections) {

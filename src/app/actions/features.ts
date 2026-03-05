@@ -53,11 +53,37 @@ export async function fetchFloorplanAction(page: CareerEventPage) {
 }
 
 export async function fetchMastersAction() {
-    const masters = await listMasters({ limit: 50, sort: "name" }) ?? [];
+    const masters = await listMasters({ limit: 300, sort: "name" }) ?? [];
     return masters
 }
 
 export async function fetchFacultiesAction() {
   const faculties = await listFaculties({ limit: 100, sort: "name" }) ?? [];
   return faculties;
+}
+
+export async function updateFloorplanCategoryFormFieldsAction(
+  eventId: string,
+  categoryFormFields: Array<{ formId: string; formVersionId: string; fieldName: string }>
+) {
+  try {
+    const { updateFloorplanCategoryFormFields } = await import("@/lib/repos/floorplan");
+    return await updateFloorplanCategoryFormFields(eventId, categoryFormFields);
+  } catch (error) {
+    console.error("[updateFloorplanCategoryFormFieldsAction] Error:", error);
+    return { success: false, error: String(error) };
+  }
+}
+
+export async function updateFloorplanCompanyNameFormFieldsAction(
+  eventId: string,
+  companyNameFormFields: Array<{ formId: string; formVersionId: string; fieldName: string }>
+) {
+  try {
+    const { updateFloorplanCompanyNameFormFields } = await import("@/lib/repos/floorplan");
+    return await updateFloorplanCompanyNameFormFields(eventId, companyNameFormFields);
+  } catch (error) {
+    console.error("[updateFloorplanCompanyNameFormFieldsAction] Error:", error);
+    return { success: false, error: String(error) };
+  }
 }

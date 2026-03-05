@@ -29,6 +29,21 @@ When the form builder enables "Add faculties", options are built from the facult
 
 The code tries these field patterns: `masters.master_id`, `faculty_master.master_id`, `faculty_masters.master_id`, `masters`, `master`
 
+**Optional:** Add `logo` to both `faculty` and `master` collections for floorplan category logos and popup display.
+
+---
+
+## Floorplan categories from forms
+
+When using master-degrees form fields for the floorplan, add a JSON field to the `Floorplan` collection:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| floorplan_category_form_fields | JSON | Array of `{ formId, formVersionId, fieldName }` – master-degrees fields from company forms |
+| floorplan_company_name_form_field | JSON | Array of `{ formId, formVersionId, fieldName }` – form fields to use as company display name on the floorplan (tried in order; first non-empty wins) |
+
+Configure these in Admin → Floorplan. When `floorplan_category_form_fields` is set, the public floorplan shows a master dropdown instead of category logos, and companies are filtered by their form responses. Company popups show faculty/master logos from the form data. When `floorplan_company_name_form_field` is set, the tooltip and popup show the form field value instead of the default company name (multiple forms are tried in order; first non-empty value wins).
+
 ---
 
 ## form_responses collection – archived field

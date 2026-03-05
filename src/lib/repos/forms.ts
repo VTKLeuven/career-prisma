@@ -3,7 +3,7 @@
 
 import { readItems, createItem, updateItem, deleteItem, readItem } from "@directus/sdk";
 import { getAuthedDirectusOrThrow, directus } from "@/lib/directus";
-import type { Form, FormVersion, FormResponse, FormSchema, FormMetadata } from "@/lib/schema";
+import type { Form, FormVersion, FormResponse, FormSchema, FormMetadata, FormField } from "@/lib/schema";
 
 // ===================== FORMS =====================
 
@@ -756,6 +756,76 @@ export async function deleteFormResponse(id: string) {
   }
 }
 
+/** Migrate master-degrees fields in form responses from label format to canonical (fac:facId:masterId). */
+export async function migrateFormResponsesMasterDegrees(formId: string): Promise<{ updated: number; total: number }> {
+  try {
+    const client = await getAuthedDirectusOrThrow();
+    const { listMasters, listFaculties } = await import("@/lib/repos/features");
+    const { buildMasterDegreeOptionsForForm, normalizeMasterDegreesValues, normalizeFaculties } = await import("@/lib/utils/master-degree-options");
+
+    const form = await getFormById(formId);
+    if (!form?.form_versions?.length) return { updated: 0, total: 0 };
+
+    const masters = (await listMasters({ limit: 300, sort: "name" })) ?? [];
+    const rawFaculties = (await listFaculties({ limit: 100, sort: "name" })) ?? [];
+    const faculties = normalizeFaculties(rawFaculties);
+
+    const sortedVersions = [...form.form_versions].sort((a, b) => (b.version_number ?? 0) - (a.version_number ?? 0));
+    const masterDegreeFieldsByKey = new Map<string, FormField>();
+    for (const version of sortedVersions) {
+      const fields = (version as FormVersion & { schema?: { fields?: FormField[] } })?.schema?.fields ?? [];
+      for (const f of fields) {
+        if (f.type === "master-degrees" && !masterDegreeFieldsByKey.has(f.name)) {
+          masterDegreeFieldsByKey.set(f.name, f);
+        }
+      }
+    }
+    const masterDegreeFields = Array.from(masterDegreeFieldsByKey.values());
+    if (masterDegreeFields.length === 0) return { updated: 0, total: 0 };
+
+    const versionIds = form.form_versions.map((v) => v.id);
+    const responses = await client.request(
+      readItems("form_responses" as any, {
+        fields: ["id", "form_version_id", "data"],
+        filter: { form_version_id: { _in: versionIds } },
+        limit: -1,
+      })
+    ) as unknown as Array<{ id: string; form_version_id: string; data: Record<string, unknown> }>;
+
+    let updated = 0;
+    for (const response of responses) {
+      const data = { ...(response.data ?? {}) };
+      let changed = false;
+      for (const field of masterDegreeFields) {
+        const fieldValue = data[field.name];
+        if (fieldValue == null) continue;
+        const includeFaculties = field.masterDegreesIncludeFaculties ?? false;
+        const isMultiple = field.masterDegreesMultiple ?? false;
+        const options = buildMasterDegreeOptionsForForm(masters, faculties, includeFaculties);
+        const normalized = normalizeMasterDegreesValues(fieldValue, options, isMultiple, { masters, faculties });
+        const current = Array.isArray(fieldValue) ? fieldValue : [fieldValue];
+        const currentStr = current
+          .map((v) => (v != null && typeof v === "object" && ("id" in v || "value" in v || "label" in v)
+            ? String((v as Record<string, unknown>).id ?? (v as Record<string, unknown>).value ?? (v as Record<string, unknown>).label ?? v)
+            : String(v)))
+          .filter(Boolean);
+        if (JSON.stringify([...normalized].sort()) !== JSON.stringify([...currentStr].sort())) {
+          data[field.name] = isMultiple ? normalized : normalized[0] ?? null;
+          changed = true;
+        }
+      }
+      if (changed) {
+        await client.request(updateItem("form_responses" as any, response.id, { data }));
+        updated++;
+      }
+    }
+    return { updated, total: responses.length };
+  } catch (error) {
+    console.error("[migrateFormResponsesMasterDegrees] Error:", error);
+    throw error;
+  }
+}
+
 export async function countFormResponses(formId: string) {
   try {
     const client = await getAuthedDirectusOrThrow();
@@ -1079,8 +1149,49 @@ export async function getAllCompanyFormsForEvent(eventId: string) {
   }
 }
 
+/** Normalize for matching: trim, collapse spaces, lowercase, strip content in brackets. Treat "others" same as "other". */
+function normalizeForMatch(s: string): string {
+  let r = (s ?? "")
+    .replace(/\([^)]*\)/g, "")
+    .replace(/\[[^\]]*\]/g, "")
+    .replace(/\{[^}]*\}/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+  if (r === "others") return "other";
+  return r;
+}
+
+function valueMatchesOption(fieldValue: unknown, optionValue: string): boolean {
+  if (fieldValue === optionValue) return true;
+  if (fieldValue != null && String(fieldValue) === optionValue) return true;
+  const normOpt = normalizeForMatch(optionValue);
+  if (fieldValue != null && normalizeForMatch(String(fieldValue)) === normOpt) return true;
+  if (Array.isArray(fieldValue)) {
+    const arr = fieldValue as unknown[];
+    const baseMatch = arr.some(
+      (v) => v === optionValue || (v != null && normalizeForMatch(String(v)) === normOpt)
+    );
+    if (baseMatch) return true;
+    // Match fac:facId:masterId with stored masterId (legacy forms may store just master id)
+    const facMasterMatch = optionValue.match(/^fac:[^:]+:([^:]+)$/);
+    if (facMasterMatch) {
+      const masterId = facMasterMatch[1];
+      if (arr.some((v) => v != null && String(v).trim() === masterId)) return true;
+    }
+    return false;
+  }
+  // Match fac:facId:masterId with stored masterId (legacy forms may store just master id)
+  const facMasterMatch = optionValue.match(/^fac:[^:]+:([^:]+)$/);
+  if (facMasterMatch && fieldValue != null) {
+    const masterId = facMasterMatch[1];
+    if (String(fieldValue).trim() === masterId) return true;
+  }
+  return false;
+}
+
 /** Get company IDs that have a form response where the given field matches the option value.
- * Form response data is keyed by field.name, not field.id. */
+ * Form response data is keyed by field.name, not field.id. Uses normalized matching for master-degrees. */
 export async function getCompanyIdsMatchingFormFieldOption(
   formVersionId: string,
   fieldName: string,
@@ -1097,6 +1208,7 @@ export async function getCompanyIdsMatchingFormFieldOption(
           _and: [
             { form_version_id: { _eq: formVersionId } },
             { company_id: { _nnull: true } },
+            NOT_ARCHIVED_FILTER,
           ],
         },
         limit: -1,
@@ -1115,16 +1227,18 @@ export async function getCompanyIdsMatchingFormFieldOption(
     const companyIds: string[] = [];
     for (const [companyId, data] of latestByCompany) {
       const fieldValue = data[fieldName];
-      const matches =
-        fieldValue === optionValue ||
-        (Array.isArray(fieldValue) && fieldValue.includes(optionValue)) ||
-        (fieldValue != null && String(fieldValue) === optionValue);
-
-      if (matches) {
-        companyIds.push(companyId);
+      if (valueMatchesOption(fieldValue, optionValue)) {
+        companyIds.push(String(companyId));
       }
     }
 
+    console.log("[floorplan-category] getCompanyIdsMatchingFormFieldOption", {
+      formVersionId,
+      fieldName,
+      optionValue,
+      totalResponses: latestByCompany.size,
+      matchingCount: companyIds.length,
+    });
     return companyIds;
   } catch (error) {
     console.error("[getCompanyIdsMatchingFormFieldOption] Error:", error);
@@ -1132,7 +1246,7 @@ export async function getCompanyIdsMatchingFormFieldOption(
   }
 }
 
-/** Get form response field values for companies. Returns Map<companyId, displayValue>. */
+/** Get form response field values for companies. Returns Map<companyId, displayValue>. Uses single form version. */
 export async function getCompanyFormFieldValues(
   formVersionId: string,
   fieldName: string
@@ -1176,6 +1290,351 @@ export async function getCompanyFormFieldValues(
   } catch (error) {
     console.error("[getCompanyFormFieldValues] Error:", error);
     return {};
+  }
+}
+
+/** Get form response field values for companies across ALL form versions. Uses latest response per company. */
+export async function getCompanyFormFieldValuesFromForm(
+  formId: string,
+  fieldName: string
+): Promise<Record<string, string>> {
+  try {
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const client = await getServerDirectusClient();
+
+    const versions = await listFormVersionsForServer(formId);
+    const versionIds = versions.map((v) => v.id);
+    if (versionIds.length === 0) return {};
+
+    const responses = await client.request(
+      readItems("form_responses" as any, {
+        fields: ["id", "company_id", "data", "submitted_at"],
+        filter: {
+          _and: [
+            { form_version_id: { _in: versionIds } },
+            { company_id: { _nnull: true } },
+            NOT_ARCHIVED_FILTER,
+          ],
+        },
+        limit: -1,
+        sort: "-submitted_at",
+      })
+    ) as unknown as Array<{ company_id: string | { id: string }; data: Record<string, unknown> }>;
+
+    const latestByCompany = new Map<string, Record<string, unknown>>();
+    for (const r of responses) {
+      const companyId = typeof r.company_id === "string" ? r.company_id : r.company_id?.id;
+      if (!companyId || latestByCompany.has(companyId)) continue;
+      latestByCompany.set(companyId, r.data ?? {});
+    }
+
+    const result: Record<string, string> = {};
+    for (const [companyId, data] of latestByCompany) {
+      const fieldValue = data[fieldName];
+      if (fieldValue == null || fieldValue === "") continue;
+      const display =
+        Array.isArray(fieldValue)
+          ? (fieldValue as unknown[]).map(String).join(", ")
+          : String(fieldValue);
+      if (display) result[companyId] = display;
+    }
+    return result;
+  } catch (error) {
+    console.error("[getCompanyFormFieldValuesFromForm] Error:", error);
+    return {};
+  }
+}
+
+/** Get dedupe key for an option - same master/faculty = same key, so we don't show duplicates. */
+function getOptionDedupeKey(opt: { value: string; label: string }, masters: { id: string; name: string }[]): string {
+  const v = opt.value.trim();
+  const norm = (s: string) => (s ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (norm(v) === "other" || norm(v) === "others") return "other";
+  const facMaster = v.match(/^fac:[^:]+:([^:]+)$/);
+  if (facMaster) return `master:${facMaster[1]}`;
+  if (/^[0-9a-f-]{36}$/i.test(v)) return `master:${v}`;
+  const facOnly = v.match(/^fac:([^:]+)$/);
+  if (facOnly) return `fac:${facOnly[1]}`;
+  const afterDash = v.split(" - ").pop()?.trim();
+  const match = masters.find((m) => norm(m.name) === norm(afterDash ?? v));
+  if (match) return `master:${match.id}`;
+  return v;
+}
+
+export type FloorplanCategoryOption = { value: string; label: string; logo?: string };
+export type FloorplanCategoryOptionGroup = { groupLabel: string; options: FloorplanCategoryOption[] };
+
+/** Get floorplan category options from masters and faculties only. Returns grouped when faculties enabled. */
+export async function getFloorplanCategoryOptions(
+  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>
+): Promise<{ groups: FloorplanCategoryOptionGroup[] }> {
+  try {
+    const { listMasters, listFaculties } = await import("@/lib/repos/features");
+    const { buildMasterDegreeOptionsGrouped, normalizeFaculties } = await import("@/lib/utils/master-degree-options");
+
+    const masters = (await listMasters({ limit: 300, sort: "name" })) ?? [];
+    const rawFaculties = (await listFaculties({ limit: 100, sort: "name" })) ?? [];
+    const faculties = normalizeFaculties(rawFaculties);
+
+    let includeFaculties = false;
+    for (const { formId, formVersionId, fieldName } of categoryFields) {
+      const form = await getFormById(formId);
+      if (!form?.form_versions) continue;
+      const version = form.form_versions.find((v) => v.id === formVersionId) as FormVersion & { schema?: { fields?: FormField[] } };
+      const field = version?.schema?.fields?.find((f) => f.name === fieldName);
+      if (field?.type === "master-degrees") {
+        includeFaculties = field.masterDegreesIncludeFaculties ?? false;
+        break;
+      }
+    }
+
+    const groups = buildMasterDegreeOptionsGrouped(masters, faculties, includeFaculties);
+    return { groups };
+  } catch (error) {
+    console.error("[getFloorplanCategoryOptions] Error:", error);
+    return { groups: [] };
+  }
+}
+
+/** Get company IDs that have ALL selected values (in any of the configured form fields).
+ * Uses same logic as getCompanyMasterDegreesFromForm: all form versions, normalize label->value. */
+export async function getCompanyIdsMatchingFloorplanCategory(
+  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>,
+  selectedValues: string[]
+): Promise<string[]> {
+  if (selectedValues.length === 0) return [];
+  try {
+    const { listMasters, listFaculties } = await import("@/lib/repos/features");
+    const { normalizeMasterDegreesValues, normalizeFaculties } = await import("@/lib/utils/master-degree-options");
+    const { buildMasterDegreeOptionsForForm } = await import("@/lib/utils/master-degree-options");
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const client = await getServerDirectusClient();
+    if (!client) return [];
+
+    const masters = (await listMasters({ limit: 300, sort: "name" })) ?? [];
+    const rawFaculties = (await listFaculties({ limit: 100, sort: "name" })) ?? [];
+    const faculties = normalizeFaculties(rawFaculties);
+
+    const extractVal = (v: unknown): string | null => {
+      if (v == null) return null;
+      if (typeof v === "string" && v.trim()) return v.trim();
+      if (typeof v === "object" && v !== null) {
+        const o = v as Record<string, unknown>;
+        const id = o.id ?? o.value ?? o.name ?? o.label;
+        if (id != null && String(id).trim()) return String(id).trim();
+      }
+      return null;
+    };
+
+    const companyCanonicalValues = new Map<string, Set<string>>();
+    for (const { formId, formVersionId, fieldName } of categoryFields) {
+      const form = await getFormById(formId);
+      const version = form?.form_versions?.find((v) => v.id === formVersionId) as FormVersion & { schema?: { fields?: FormField[] } };
+      const field = version?.schema?.fields?.find((f) => f.name === fieldName);
+      const includeFaculties = field?.masterDegreesIncludeFaculties ?? false;
+      const isMultiple = field?.masterDegreesMultiple ?? false;
+      const formOpts = buildMasterDegreeOptionsForForm(masters, faculties, includeFaculties);
+
+      const versions = await listFormVersionsForServer(formId);
+      const versionIds = versions.map((v) => v.id);
+      if (versionIds.length === 0) continue;
+      const responses = await client.request(
+        readItems("form_responses" as any, {
+          fields: ["id", "company_id", "data"],
+          filter: {
+            _and: [
+              { form_version_id: { _in: versionIds } },
+              { company_id: { _nnull: true } },
+              NOT_ARCHIVED_FILTER,
+            ],
+          },
+          limit: -1,
+          sort: "-submitted_at",
+        })
+      ) as unknown as Array<{ company_id: string | { id: string }; data: Record<string, unknown> }>;
+      const latestByCompany = new Map<string, Record<string, unknown>>();
+      for (const r of responses) {
+        const companyId = typeof r.company_id === "string" ? r.company_id : r.company_id?.id;
+        if (!companyId || latestByCompany.has(companyId)) continue;
+        latestByCompany.set(companyId, r.data ?? {});
+      }
+      for (const [companyId, data] of latestByCompany) {
+        const fieldValue = data[fieldName];
+        if (fieldValue == null) continue;
+        const items = Array.isArray(fieldValue) ? fieldValue : [fieldValue];
+        const values = items.map(extractVal).filter((s): s is string => !!s);
+        const normalized = normalizeMasterDegreesValues(values, formOpts, isMultiple, { masters, faculties });
+        const set = companyCanonicalValues.get(companyId) ?? new Set<string>();
+        for (const v of normalized) set.add(v);
+        companyCanonicalValues.set(companyId, set);
+      }
+    }
+
+    const selectedSet = new Set(selectedValues.map((v) => v.trim()).filter(Boolean));
+    const result: string[] = [];
+    for (const [companyId, canonValues] of companyCanonicalValues) {
+      const hasAll = [...selectedSet].every((sel) => canonValues.has(sel));
+      if (hasAll) result.push(companyId);
+    }
+    console.log("[floorplan-category] getCompanyIdsMatchingFloorplanCategory", {
+      selectedValues: selectedValues.length,
+      categoryFieldsCount: categoryFields.length,
+      matchingCompanyCount: result.length,
+    });
+    return result;
+  } catch (error) {
+    console.error("[getCompanyIdsMatchingFloorplanCategory] Error:", error);
+    return [];
+  }
+}
+
+/** Get company's master/faculty logos from master-degrees form responses. Returns unique logo IDs only. */
+export async function getCompanyMasterDegreesFromForm(
+  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>,
+  companyId: string
+): Promise<string[]> {
+  try {
+    const { listMasters, listFaculties } = await import("@/lib/repos/features");
+    const { resolveLogosForValue, extractLogoId, normalizeFaculties } = await import("@/lib/utils/master-degree-options");
+
+    const { groups } = await getFloorplanCategoryOptions(categoryFields);
+    const opts = groups.flatMap((g) => g.options);
+    const masters = (await listMasters({ limit: 300, sort: "name" })) ?? [];
+    const rawFaculties = (await listFaculties({ limit: 100, sort: "name" })) ?? [];
+    const faculties = normalizeFaculties(rawFaculties);
+
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const client = await getServerDirectusClient();
+    if (!client) return [];
+
+    const valuesSeen = new Set<string>();
+    const orderedValues: string[] = [];
+    for (const { formId, fieldName } of categoryFields) {
+      const versions = await listFormVersionsForServer(formId);
+      const versionIds = versions.map((v) => v.id);
+      if (versionIds.length === 0) continue;
+      const responses = await client.request(
+        readItems("form_responses" as any, {
+          fields: ["id", "company_id", "data"],
+          filter: {
+            _and: [
+              { form_version_id: { _in: versionIds } },
+              { company_id: { _eq: companyId } },
+              NOT_ARCHIVED_FILTER,
+            ],
+          },
+          limit: 1,
+          sort: "-submitted_at",
+        })
+      ) as unknown as Array<{ data: Record<string, unknown> }>;
+      const data = responses?.[0]?.data ?? {};
+      const fieldValue = data[fieldName];
+      const extractVal = (v: unknown): string | null => {
+        if (v == null) return null;
+        if (typeof v === "string" && v.trim()) return v.trim();
+        if (typeof v === "object" && v !== null) {
+          const o = v as Record<string, unknown>;
+          const id = o.id ?? o.value ?? o.name ?? o.label;
+          if (id != null && String(id).trim()) return String(id).trim();
+        }
+        return null;
+      };
+      if (Array.isArray(fieldValue)) {
+        for (const v of fieldValue) {
+          const s = extractVal(v);
+          if (s && !valuesSeen.has(s)) {
+            valuesSeen.add(s);
+            orderedValues.push(s);
+          }
+        }
+      } else {
+        const s = extractVal(fieldValue);
+        if (s && !valuesSeen.has(s)) {
+          valuesSeen.add(s);
+          orderedValues.push(s);
+        }
+      }
+    }
+
+    type LogoSource = "master" | "faculty" | "other";
+    const logoSourceOrder: Record<LogoSource, number> = { master: 0, faculty: 1, other: 2 };
+    const getSourceFromValue = (v: string): LogoSource => {
+      const facMaster = v.match(/^fac:([^:]+):([^:]+)$/);
+      if (facMaster) return "master";
+      const facOnly = v.match(/^fac:([^:]+)$/);
+      if (facOnly) {
+        const f = faculties?.find((x) => x.id === facOnly[1]);
+        if (!f) return "faculty";
+        if (/^others?$/i.test((f.name ?? "").trim())) return "other";
+        const hasMasters = (f.masters ?? []).length > 0;
+        return hasMasters ? "master" : "faculty";
+      }
+      return "master";
+    };
+    const getSourceFromOptValue = (optValue: string): LogoSource => {
+      if (optValue.match(/^fac:[^:]+:[^:]+$/)) return "master";
+      const facOnly = optValue.match(/^fac:([^:]+)$/);
+      if (facOnly) {
+        const f = faculties?.find((x) => x.id === facOnly[1]);
+        if (f && /^others?$/i.test((f.name ?? "").trim())) return "other";
+        return "faculty";
+      }
+      return "master";
+    };
+
+    // Phase 1: Load all logos (with source) from values
+    const logoEntries: Array<{ logoId: string; source: LogoSource }> = [];
+    const seen = new Set<string>();
+    for (const val of orderedValues) {
+      const masterNameFromLabel = val.includes(" - ") ? val.split(" - ").pop()?.trim() : null;
+      const matchingOpts = opts.filter((o) =>
+        o.value === val || o.label === val ||
+        (masterNameFromLabel && (o.label === masterNameFromLabel || normalizeForMatch(o.label) === normalizeForMatch(masterNameFromLabel))) ||
+        normalizeForMatch(o.value) === normalizeForMatch(val) ||
+        normalizeForMatch(o.label) === normalizeForMatch(val) ||
+        valueMatchesOption(val, o.value) ||
+        (o.value.match(/^fac:[^:]+:([^:]+)$/)?.[1] === val.trim())
+      );
+      if (matchingOpts.length > 0) {
+        for (const opt of matchingOpts) {
+          const facOnly = opt.value.match(/^fac:([^:]+)$/);
+          if (facOnly) {
+            const f = faculties?.find((x) => x.id === facOnly[1]);
+            if (f && (f.masters ?? []).length > 0) continue;
+          }
+          let logo = extractLogoId(opt.logo);
+          if (!logo && opt.value.match(/^fac:[^:]+:([^:]+)$/)) {
+            const masterId = opt.value.split(":")[2];
+            const m = masters.find((x) => x.id === masterId);
+            logo = extractLogoId(m?.logo);
+          }
+          if (!logo && /^[0-9a-f-]{36}$/i.test(opt.value)) {
+            const m = masters.find((x) => x.id === opt.value);
+            logo = extractLogoId(m?.logo);
+          }
+          if (logo && !seen.has(logo)) {
+            seen.add(logo);
+            logoEntries.push({ logoId: logo, source: getSourceFromOptValue(opt.value) });
+          }
+        }
+      } else {
+        const resolved = resolveLogosForValue(val, masters, faculties);
+        const source = getSourceFromValue(val);
+        for (const logo of resolved) {
+          if (logo && !seen.has(logo)) {
+            seen.add(logo);
+            logoEntries.push({ logoId: logo, source });
+          }
+        }
+      }
+    }
+
+    // Phase 2: Sort by source (masters → faculties → other, left to right)
+    logoEntries.sort((a, b) => logoSourceOrder[a.source] - logoSourceOrder[b.source]);
+    return logoEntries.map((e) => e.logoId);
+  } catch (error) {
+    console.error("[getCompanyMasterDegreesFromForm] Error:", error);
+    return [];
   }
 }
 

@@ -6,12 +6,23 @@ import Link from "next/link"
 import NextImage from "next/image"
 import { fetchEventPagesAction } from "@/app/actions/events"
 import { fetchFloorplanAction, fetchMastersAction } from "@/app/actions/features"
+import { fetchFloorplanCategoryOptionsAction, fetchCompanyIdsMatchingFloorplanCategoryAction, fetchCompanyMasterDegreesFromFormAction, fetchCompanyFormFieldValuesFromFormAction } from "@/app/actions/forms"
 import type { CareerEventPage, Booth, Master, Company } from '@/lib/schema'
 import { getDirectusImageUrl } from "@/components/Images"
+import { extractLogoId } from "@/lib/utils/master-degree-options"
 import { slugifyCompanyName, slugifyEventName } from "@/lib/utils/slugify"
 import { hasCompanyPageAccess } from "@/lib/utils/company-access"
 import { usePageLayout } from '../../../layout'
 import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Clock, ArrowLeft, Users } from "lucide-react"
 import { StudentMatchingSoftware } from "@/components/StudentMatchingSoftware"
 
@@ -20,10 +31,16 @@ export default function SubPage() {
   const [page, setPage] = useState<CareerEventPage | null>(null)
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [allCategories, setAllCategories] = useState<Master[]>([])
+  const [formCategoryGroups, setFormCategoryGroups] = useState<Array<{ groupLabel: string; options: Array<{ value: string; label: string; logo?: string }> }>>([])
+  const [categoryFormFields, setCategoryFormFields] = useState<Array<{ formId: string; formVersionId: string; fieldName: string }>>([])
+  const [matchedCompanyIdsForm, setMatchedCompanyIdsForm] = useState<Set<string>>(new Set())
   const [popupBooth, setPopupBooth] = useState<Booth | null>(null)
   const [booths, setBooths] = useState<Booth[]>([])
   const [flickerCompanyId, setFlickerCompanyId] = useState<string | null>(null)
   const [flickerState, setFlickerState] = useState(false)
+  const [companyNameFormFields, setCompanyNameFormFields] = useState<Array<{ formId: string; formVersionId: string; fieldName: string }>>([])
+  const [companyNamesByCompanyId, setCompanyNamesByCompanyId] = useState<Record<string, string>>({})
+  const useFormCategories = categoryFormFields.length > 0
 
   const params = useParams()
   const pathname = usePathname()
@@ -51,11 +68,64 @@ export default function SubPage() {
       )
       setPage(found ?? null)
 
-      const categories = await fetchMastersAction()
-      setAllCategories(categories)
+      const fp = found?.floorplan as {
+        floorplan_category_form_fields?: Array<{ formId: string; formVersionId: string; fieldName: string }>;
+        floorplan_company_name_form_field?: Array<{ formId: string; formVersionId: string; fieldName: string }> | { formId: string; formVersionId: string; fieldName: string } | null;
+      }
+      const cfg = fp?.floorplan_category_form_fields
+      if (cfg && cfg.length > 0) {
+        setCategoryFormFields(cfg)
+        const { groups } = await fetchFloorplanCategoryOptionsAction(cfg)
+        setFormCategoryGroups(groups)
+        setAllCategories([])
+      } else {
+        setCategoryFormFields([])
+        setFormCategoryGroups([])
+        const categories = await fetchMastersAction()
+        setAllCategories(categories)
+      }
+      const raw = fp?.floorplan_company_name_form_field
+      const nameFields = Array.isArray(raw) ? raw : raw && typeof raw === "object" && raw.formId ? [raw] : []
+      setCompanyNameFormFields(nameFields)
     }
     load()
   }, [eventName])
+
+  useEffect(() => {
+    const complete = companyNameFormFields.filter(f => f.formId && f.fieldName)
+    if (complete.length === 0) {
+      setCompanyNamesByCompanyId({})
+      return
+    }
+    let cancelled = false
+    Promise.all(complete.map(f => fetchCompanyFormFieldValuesFromFormAction(f.formId, f.fieldName)))
+      .then((results) => {
+        if (cancelled) return
+        const merged: Record<string, string> = {}
+        for (const map of results) {
+          for (const [companyId, value] of Object.entries(map)) {
+            if (value && !merged[companyId]) merged[companyId] = value
+          }
+        }
+        setCompanyNamesByCompanyId(merged)
+      })
+    return () => { cancelled = true }
+  }, [companyNameFormFields])
+
+  useEffect(() => {
+    if (!useFormCategories || selectedCategories.length === 0) {
+      setMatchedCompanyIdsForm(new Set())
+      return
+    }
+    let cancelled = false
+    fetchCompanyIdsMatchingFloorplanCategoryAction(
+      categoryFormFields,
+      selectedCategories
+    ).then((ids) => {
+      if (!cancelled) setMatchedCompanyIdsForm(new Set(ids))
+    })
+    return () => { cancelled = true }
+  }, [useFormCategories, categoryFormFields, selectedCategories])
 
   // Flicker effect
   const flickerIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -85,12 +155,15 @@ export default function SubPage() {
         <>
           <Header
             categories={allCategories}
+            formCategoryGroups={formCategoryGroups}
+            useFormCategories={useFormCategories}
             selectedCategories={selectedCategories}
             setSelectedCategories={setSelectedCategories}
             booths={booths}
             triggerFlicker={triggerFlicker}
             eventName={page?.event?.name || ''}
             onBoothClick={setPopupBooth}
+            companyNamesByCompanyId={companyNamesByCompanyId}
           />
           <Floorplan
             page={page}
@@ -100,7 +173,11 @@ export default function SubPage() {
             flickerCompanyId={flickerCompanyId}
             flickerState={flickerState}
             categories={allCategories}
+            formCategoryGroups={formCategoryGroups}
+            useFormCategories={useFormCategories}
+            matchedCompanyIdsForm={matchedCompanyIdsForm}
             setSelectedCategories={setSelectedCategories}
+            companyNamesByCompanyId={companyNamesByCompanyId}
           />
         </>
       )}
@@ -131,6 +208,8 @@ export default function SubPage() {
           onClose={() => setPopupBooth(null)}
           booths={booths.filter(b => b.company).sort((a, b) => (a.booth_number ?? 0) - (b.booth_number ?? 0))}
           onSelectBooth={setPopupBooth}
+          categoryFormFields={categoryFormFields}
+          companyNamesByCompanyId={companyNamesByCompanyId}
         />
       )}
     </main>
@@ -140,6 +219,8 @@ export default function SubPage() {
 // ---------------- Header ----------------
 function Header({
   categories,
+  formCategoryGroups,
+  useFormCategories,
   selectedCategories,
   setSelectedCategories,
   booths,
@@ -147,8 +228,11 @@ function Header({
   eventName,
   isCompanyGuide = false,
   onBoothClick,
+  companyNamesByCompanyId = {},
 }: {
   categories: Master[]
+  formCategoryGroups: Array<{ groupLabel: string; options: Array<{ value: string; label: string; logo?: string }> }>
+  useFormCategories: boolean
   selectedCategories: string[]
   setSelectedCategories: (cats: string[]) => void
   booths: Booth[]
@@ -156,12 +240,13 @@ function Header({
   eventName: string
   isCompanyGuide?: boolean
   onBoothClick?: (booth: Booth) => void
+  companyNamesByCompanyId?: Record<string, string>
 }) {
-  const toggleCategory = (short_name: string) => {
-    if (selectedCategories.includes(short_name)) {
-      setSelectedCategories(selectedCategories.filter(c => c !== short_name))
+  const toggleCategory = (val: string) => {
+    if (selectedCategories.includes(val)) {
+      setSelectedCategories(selectedCategories.filter(c => c !== val))
     } else {
-      setSelectedCategories([...selectedCategories, short_name])
+      setSelectedCategories([...selectedCategories, val])
     }
   }
 
@@ -173,7 +258,8 @@ function Header({
   const matchingCompanies = showSearchDropdown
     ? booths.filter(b => b.company)
       .filter(b => {
-        const name = (b.company!.name ?? "").toLowerCase()
+        const displayName = companyNamesByCompanyId[b.company!.id] ?? b.company!.name ?? ""
+        const name = displayName.toLowerCase()
         const term = searchTerm.trim().toLowerCase()
         return term ? name.includes(term) : true
       })
@@ -279,7 +365,7 @@ function Header({
                               setIsFocused(false)
                             }}
                           >
-                            <span>{b.company!.name}</span>
+                            <span>{companyNamesByCompanyId[b.company!.id] ?? b.company!.name}</span>
                             <span className="text-gray-500">{String(b.booth_number)}</span>
                           </li>
                         ))
@@ -314,7 +400,7 @@ function Header({
 
             {/* Middle: Search bar (only for floorplan) or empty space (for company guide) */}
             {!isCompanyGuide && (
-              <div className="relative flex-1 max-w-xs">
+              <div className="relative flex-1 min-w-0 mx-4">
                 <input
                   type="text"
                   value={searchTerm}
@@ -338,7 +424,7 @@ function Header({
                             setIsFocused(false)
                           }}
                         >
-                          <span>{b.company!.name}</span>
+                          <span>{companyNamesByCompanyId[b.company!.id] ?? b.company!.name}</span>
                           <span className="text-gray-500">{String(b.booth_number)}</span>
                         </li>
                       ))
@@ -350,32 +436,54 @@ function Header({
               </div>
             )}
 
-            {/* Right: Category logos (only for floorplan) or buttons (for company guide) */}
+            {/* Right: Category logos or master select (only for floorplan) or buttons (for company guide) */}
             {!isCompanyGuide && (
-              <div className="flex flex-wrap items-center gap-2">
-                {categories.map(cat => {
-                  const isSelected = selectedCategories.includes(cat.short_name)
-                  return (
-                    <button
-                      key={cat.short_name}
-                      onClick={() => toggleCategory(cat.short_name)}
-                      className="relative w-10 h-10 rounded-full overflow-hidden border transition-all duration-200 cursor-pointer flex items-center justify-center"
-                      style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
-                    >
-                      <NextImage
-                        src={getDirectusImageUrl(cat.logo) ?? ''}
-                        alt={cat.short_name}
-                        width={32}
-                        height={32}
-                        className={`object-contain transition-all duration-200 transform ${
-                          isSelected
-                            ? 'scale-110 grayscale-0 opacity-100'
-                            : 'scale-90 grayscale-[50%] opacity-70'
-                        }`}
-                      />
-                    </button>
-                  )
-                })}
+              <div className="flex flex-1 min-w-0 items-center gap-2 justify-end">
+                {useFormCategories ? (
+                  <Select
+                    value={selectedCategories[0] ?? ""}
+                    onValueChange={(v) => setSelectedCategories(v === "__none__" ? [] : [v])}
+                  >
+                    <SelectTrigger className="flex-1 min-w-[180px] max-w-[320px]">
+                      <SelectValue placeholder="Select your master" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">All</SelectItem>
+                      {formCategoryGroups.map((grp, idx) => (
+                        <SelectGroup key={`${idx}-${grp.groupLabel}`}>
+                          <SelectLabel>{grp.groupLabel}</SelectLabel>
+                          {grp.options.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectGroup>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  categories.map(cat => {
+                    const isSelected = selectedCategories.includes(cat.short_name)
+                    return (
+                      <button
+                        key={cat.short_name}
+                        onClick={() => toggleCategory(cat.short_name)}
+                        className="relative w-10 h-10 rounded-full overflow-hidden border transition-all duration-200 cursor-pointer flex items-center justify-center"
+                        style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
+                      >
+                        <NextImage
+                          src={getDirectusImageUrl(cat.logo) ?? ''}
+                          alt={cat.short_name}
+                          width={32}
+                          height={32}
+                          className={`object-contain transition-all duration-200 transform ${
+                            isSelected
+                              ? 'scale-110 grayscale-0 opacity-100'
+                              : 'scale-90 grayscale-[50%] opacity-70'
+                          }`}
+                        />
+                      </button>
+                    )
+                  })
+                )}
               </div>
             )}
             {isCompanyGuide && (
@@ -415,7 +523,11 @@ function Floorplan({
   flickerCompanyId,
   flickerState,
   categories,
+  formCategoryGroups,
+  useFormCategories,
+  matchedCompanyIdsForm,
   setSelectedCategories,
+  companyNamesByCompanyId = {},
 }: {
   page: CareerEventPage
   selectedCategories: string[]
@@ -424,13 +536,17 @@ function Floorplan({
   flickerCompanyId: string | null
   flickerState: boolean
   categories: Master[]
+  formCategoryGroups: Array<{ groupLabel: string; options: Array<{ value: string; label: string; logo?: string }> }>
+  useFormCategories: boolean
+  matchedCompanyIdsForm: Set<string>
   setSelectedCategories: (cats: string[]) => void
+  companyNamesByCompanyId?: Record<string, string>
 }) {
-  const toggleCategory = (short_name: string) => {
-    if (selectedCategories.includes(short_name)) {
-      setSelectedCategories(selectedCategories.filter(c => c !== short_name))
+  const toggleCategory = (val: string) => {
+    if (selectedCategories.includes(val)) {
+      setSelectedCategories(selectedCategories.filter(c => c !== val))
     } else {
-      setSelectedCategories([...selectedCategories, short_name])
+      setSelectedCategories([...selectedCategories, val])
     }
   }
   const [boothsLocal, setBoothsLocal] = useState<Booth[]>([])
@@ -673,29 +789,51 @@ function Floorplan({
         {/* Mobile: Categories at bottom while loading */}
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t px-4 py-3 shadow-lg">
           <div className="flex flex-wrap items-center justify-center gap-2">
-            {categories.map(cat => {
-              const isSelected = selectedCategories.includes(cat.short_name)
-              return (
-                <button
-                  key={cat.short_name}
-                  onClick={() => toggleCategory(cat.short_name)}
-                  className="relative w-10 h-10 rounded-full overflow-hidden border-2 transition-all duration-200 cursor-pointer flex items-center justify-center shrink-0"
-                  style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
-                >
-                  <NextImage
-                    src={getDirectusImageUrl(cat.logo) ?? ''}
-                    alt={cat.short_name}
-                    width={36}
-                    height={36}
-                    className={`object-contain transition-all duration-200 transform ${
-                      isSelected
-                        ? 'scale-110 grayscale-0 opacity-100'
-                        : 'scale-90 grayscale-[50%] opacity-70'
-                    }`}
-                  />
-                </button>
-              )
-            })}
+            {useFormCategories ? (
+              <Select
+                value={selectedCategories[0] ?? ""}
+                onValueChange={(v) => setSelectedCategories(v === "__none__" ? [] : [v])}
+              >
+                <SelectTrigger className="w-full max-w-[280px]">
+                  <SelectValue placeholder="Select your master" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">All</SelectItem>
+                  {formCategoryGroups.map((grp, idx) => (
+                    <SelectGroup key={`${idx}-${grp.groupLabel}`}>
+                      <SelectLabel>{grp.groupLabel}</SelectLabel>
+                      {grp.options.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              categories.map(cat => {
+                const isSelected = selectedCategories.includes(cat.short_name)
+                return (
+                  <button
+                    key={cat.short_name}
+                    onClick={() => toggleCategory(cat.short_name)}
+                    className="relative w-10 h-10 rounded-full overflow-hidden border-2 transition-all duration-200 cursor-pointer flex items-center justify-center shrink-0"
+                    style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
+                  >
+                    <NextImage
+                      src={getDirectusImageUrl(cat.logo) ?? ''}
+                      alt={cat.short_name}
+                      width={36}
+                      height={36}
+                      className={`object-contain transition-all duration-200 transform ${
+                        isSelected
+                          ? 'scale-110 grayscale-0 opacity-100'
+                          : 'scale-90 grayscale-[50%] opacity-70'
+                      }`}
+                    />
+                  </button>
+                )
+              })
+            )}
           </div>
         </div>
       </>
@@ -741,15 +879,16 @@ function Floorplan({
           {boothsLocal.map((booth, i) => {
             if (!booth.coords || !booth.company) return null
 
-            const boothCats: Master[] = Array.isArray(booth.company.category)
-              ? booth.company.category.filter((c): c is Master => c !== null)
-              : []
-
-            const isCategorySelected =
-              selectedCategories.length > 0 &&
-              selectedCategories.every(cat =>
-                boothCats.map(c => c.short_name).includes(cat)
-              )
+            const isCategorySelected = useFormCategories
+              ? selectedCategories.length > 0 && !!booth.company?.id && matchedCompanyIdsForm.has(String(booth.company.id))
+              : (() => {
+                  const boothCats: Master[] = Array.isArray(booth.company?.category)
+                    ? booth.company!.category!.filter((c): c is Master => c !== null)
+                    : []
+                  return selectedCategories.length > 0 && selectedCategories.every(cat =>
+                    boothCats.map(c => c.short_name).includes(cat)
+                  )
+                })()
 
             const isFlicker = flickerCompanyId === booth.company.id && flickerState
             const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
@@ -793,11 +932,11 @@ function Floorplan({
               onClick: () => onBoothClick(booth),
               onMouseEnter: (e: React.MouseEvent) => {
                 setHoveredBoothId(booth.company!.id)
-                setTooltip({ companyName: booth.company!.name, x: e.clientX, y: e.clientY })
+                setTooltip({ companyName: companyNamesByCompanyId[booth.company!.id] ?? booth.company!.name, x: e.clientX, y: e.clientY })
               },
               onMouseLeave: () => { setHoveredBoothId(null); setTooltip(null) },
               onMouseMove: (e: React.MouseEvent) => {
-                if (booth.company) setTooltip({ companyName: booth.company.name, x: e.clientX, y: e.clientY })
+                if (booth.company) setTooltip({ companyName: companyNamesByCompanyId[booth.company.id] ?? booth.company.name, x: e.clientX, y: e.clientY })
               },
             }
 
@@ -847,15 +986,16 @@ function Floorplan({
           {boothsLocal.map((booth, i) => {
             if (!booth.coords || !booth.company) return null
 
-            const boothCats: Master[] = Array.isArray(booth.company.category)
-              ? booth.company.category.filter((c): c is Master => c !== null)
-              : []
-
-            const isCategorySelected =
-              selectedCategories.length > 0 &&
-              selectedCategories.every(cat =>
-                boothCats.map(c => c.short_name).includes(cat)
-              )
+            const isCategorySelected = useFormCategories
+              ? selectedCategories.length > 0 && !!booth.company?.id && matchedCompanyIdsForm.has(String(booth.company.id))
+              : (() => {
+                  const boothCats: Master[] = Array.isArray(booth.company?.category)
+                    ? booth.company!.category!.filter((c): c is Master => c !== null)
+                    : []
+                  return selectedCategories.length > 0 && selectedCategories.every(cat =>
+                    boothCats.map(c => c.short_name).includes(cat)
+                  )
+                })()
 
             const isFlicker = flickerCompanyId === booth.company.id && flickerState
             const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
@@ -899,11 +1039,11 @@ function Floorplan({
               onClick: () => onBoothClick(booth),
               onMouseEnter: (e: React.MouseEvent) => {
                 setHoveredBoothId(booth.company!.id)
-                setTooltip({ companyName: booth.company!.name, x: e.clientX, y: e.clientY })
+                setTooltip({ companyName: companyNamesByCompanyId[booth.company!.id] ?? booth.company!.name, x: e.clientX, y: e.clientY })
               },
               onMouseLeave: () => { setHoveredBoothId(null); setTooltip(null) },
               onMouseMove: (e: React.MouseEvent) => {
-                if (booth.company) setTooltip({ companyName: booth.company.name, x: e.clientX, y: e.clientY })
+                if (booth.company) setTooltip({ companyName: companyNamesByCompanyId[booth.company.id] ?? booth.company.name, x: e.clientX, y: e.clientY })
               },
             }
 
@@ -945,15 +1085,16 @@ function Floorplan({
           {boothsLocal.map((booth, i) => {
             if (!booth.coords || !booth.company) return null
 
-            const boothCats: Master[] = Array.isArray(booth.company.category)
-              ? booth.company.category.filter((c): c is Master => c !== null)
-              : []
-
-            const isCategorySelected =
-              selectedCategories.length > 0 &&
-              selectedCategories.every(cat =>
-                boothCats.map(c => c.short_name).includes(cat)
-              )
+            const isCategorySelected = useFormCategories
+              ? selectedCategories.length > 0 && !!booth.company?.id && matchedCompanyIdsForm.has(String(booth.company.id))
+              : (() => {
+                  const boothCats: Master[] = Array.isArray(booth.company?.category)
+                    ? booth.company!.category!.filter((c): c is Master => c !== null)
+                    : []
+                  return selectedCategories.length > 0 && selectedCategories.every(cat =>
+                    boothCats.map(c => c.short_name).includes(cat)
+                  )
+                })()
 
             const isFlicker = flickerCompanyId === booth.company.id && flickerState
             const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
@@ -997,11 +1138,11 @@ function Floorplan({
               onClick: () => onBoothClick(booth),
               onMouseEnter: (e: React.MouseEvent) => {
                 setHoveredBoothId(booth.company!.id)
-                setTooltip({ companyName: booth.company!.name, x: e.clientX, y: e.clientY })
+                setTooltip({ companyName: companyNamesByCompanyId[booth.company!.id] ?? booth.company!.name, x: e.clientX, y: e.clientY })
               },
               onMouseLeave: () => { setHoveredBoothId(null); setTooltip(null) },
               onMouseMove: (e: React.MouseEvent) => {
-                if (booth.company) setTooltip({ companyName: booth.company.name, x: e.clientX, y: e.clientY })
+                if (booth.company) setTooltip({ companyName: companyNamesByCompanyId[booth.company.id] ?? booth.company.name, x: e.clientX, y: e.clientY })
               },
             }
 
@@ -1051,15 +1192,16 @@ function Floorplan({
           {boothsLocal.map((booth, i) => {
             if (!booth.coords || !booth.company) return null
 
-            const boothCats: Master[] = Array.isArray(booth.company.category)
-              ? booth.company.category.filter((c): c is Master => c !== null)
-              : []
-
-            const isCategorySelected =
-              selectedCategories.length > 0 &&
-              selectedCategories.every(cat =>
-                boothCats.map(c => c.short_name).includes(cat)
-              )
+            const isCategorySelected = useFormCategories
+              ? selectedCategories.length > 0 && !!booth.company?.id && matchedCompanyIdsForm.has(String(booth.company.id))
+              : (() => {
+                  const boothCats: Master[] = Array.isArray(booth.company?.category)
+                    ? booth.company!.category!.filter((c): c is Master => c !== null)
+                    : []
+                  return selectedCategories.length > 0 && selectedCategories.every(cat =>
+                    boothCats.map(c => c.short_name).includes(cat)
+                  )
+                })()
 
             const isFlicker = flickerCompanyId === booth.company.id && flickerState
             const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
@@ -1103,11 +1245,11 @@ function Floorplan({
               onClick: () => onBoothClick(booth),
               onMouseEnter: (e: React.MouseEvent) => {
                 setHoveredBoothId(booth.company!.id)
-                setTooltip({ companyName: booth.company!.name, x: e.clientX, y: e.clientY })
+                setTooltip({ companyName: companyNamesByCompanyId[booth.company!.id] ?? booth.company!.name, x: e.clientX, y: e.clientY })
               },
               onMouseLeave: () => { setHoveredBoothId(null); setTooltip(null) },
               onMouseMove: (e: React.MouseEvent) => {
-                if (booth.company) setTooltip({ companyName: booth.company.name, x: e.clientX, y: e.clientY })
+                if (booth.company) setTooltip({ companyName: companyNamesByCompanyId[booth.company.id] ?? booth.company.name, x: e.clientX, y: e.clientY })
               },
             }
 
@@ -1156,34 +1298,58 @@ function Floorplan({
         booths={boothsLocal}
         selectedCategories={selectedCategories}
         onBoothClick={onBoothClick}
+        useFormCategories={useFormCategories}
+        matchedCompanyIdsForm={matchedCompanyIdsForm}
       />
 
       {/* Mobile: Categories at bottom */}
       <div className="floorplan-categories-isolated md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t px-4 py-3 shadow-lg">
         <div className="flex flex-wrap items-center justify-center gap-2">
-          {categories.map(cat => {
-            const isSelected = selectedCategories.includes(cat.short_name)
-            return (
-              <button
-                key={cat.short_name}
-                onClick={() => toggleCategory(cat.short_name)}
-                className="relative w-10 h-10 rounded-full overflow-hidden border-2 transition-all duration-200 cursor-pointer flex items-center justify-center shrink-0"
-                style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
-              >
-                <NextImage
-                  src={getDirectusImageUrl(cat.logo) ?? ''}
-                  alt={cat.short_name}
-                  width={36}
-                  height={36}
-                  className={`object-contain transition-all duration-200 transform ${
-                    isSelected
-                      ? 'scale-110 grayscale-0 opacity-100'
-                      : 'scale-90 grayscale-[50%] opacity-70'
-                  }`}
-                />
-              </button>
-            )
-          })}
+          {useFormCategories ? (
+            <Select
+              value={selectedCategories[0] ?? ""}
+              onValueChange={(v) => setSelectedCategories(v === "__none__" ? [] : [v])}
+            >
+              <SelectTrigger className="w-full max-w-[280px]">
+                <SelectValue placeholder="Select your master" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">All</SelectItem>
+                {formCategoryGroups.map((grp, idx) => (
+                  <SelectGroup key={`${idx}-${grp.groupLabel}`}>
+                    <SelectLabel>{grp.groupLabel}</SelectLabel>
+                    {grp.options.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            categories.map(cat => {
+              const isSelected = selectedCategories.includes(cat.short_name)
+              return (
+                <button
+                  key={cat.short_name}
+                  onClick={() => toggleCategory(cat.short_name)}
+                  className="relative w-10 h-10 rounded-full overflow-hidden border-2 transition-all duration-200 cursor-pointer flex items-center justify-center shrink-0"
+                  style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
+                >
+                  <NextImage
+                    src={getDirectusImageUrl(cat.logo) ?? ''}
+                    alt={cat.short_name}
+                    width={36}
+                    height={36}
+                    className={`object-contain transition-all duration-200 transform ${
+                      isSelected
+                        ? 'scale-110 grayscale-0 opacity-100'
+                        : 'scale-90 grayscale-[50%] opacity-70'
+                    }`}
+                  />
+                </button>
+              )
+            })
+          )}
         </div>
       </div>
     </>
@@ -1195,10 +1361,14 @@ function CompanyList({
   booths,
   selectedCategories,
   onBoothClick,
+  useFormCategories = false,
+  matchedCompanyIdsForm = new Set<string>(),
 }: {
   booths: Booth[]
   selectedCategories: string[]
   onBoothClick: (booth: Booth) => void
+  useFormCategories?: boolean
+  matchedCompanyIdsForm?: Set<string>
 }) {
   // Filter booths that have companies, sort alphabetically, then limit to max 2 entries per company (double booths)
   const allEntries = booths
@@ -1224,12 +1394,10 @@ function CompanyList({
   // Check if a company has ALL selected categories (same logic as floorplan)
   const hasSelectedCategory = (company: Company) => {
     if (selectedCategories.length === 0) return false
-    
+    if (useFormCategories) return !!company.id && matchedCompanyIdsForm.has(String(company.id))
     const companyCats: Master[] = Array.isArray(company.category)
       ? company.category.filter((c): c is Master => c !== null)
       : []
-    
-    // Company must have ALL selected categories (exact same logic as floorplan)
     return selectedCategories.every(cat =>
       companyCats.map(c => c.short_name).includes(cat)
     )
@@ -1364,6 +1532,8 @@ function CompanyGuidePage({ page }: { page: CareerEventPage }) {
     <div className="min-h-screen bg-vtk-bg">
       <Header
         categories={[]}
+        formCategoryGroups={[]}
+        useFormCategories={false}
         selectedCategories={[]}
         setSelectedCategories={() => {}}
         booths={[]}
@@ -1575,8 +1745,33 @@ function ComingSoonPage({ title, description, eventName }: { title: string; desc
   )
 }
 
-function Popup({ booth, onClose, booths, onSelectBooth }: { booth: Booth; onClose: () => void; booths: Booth[]; onSelectBooth: (b: Booth) => void }) {
+function Popup({
+  booth,
+  onClose,
+  booths,
+  onSelectBooth,
+  categoryFormFields = [],
+  companyNamesByCompanyId = {},
+}: {
+  booth: Booth
+  onClose: () => void
+  booths: Booth[]
+  onSelectBooth: (b: Booth) => void
+  categoryFormFields?: Array<{ formId: string; formVersionId: string; fieldName: string }>
+  companyNamesByCompanyId?: Record<string, string>
+}) {
   const company = booth.company!
+  const displayName = companyNamesByCompanyId[company.id] ?? company.name
+  const [formMasterLogos, setFormMasterLogos] = useState<string[]>([])
+
+  useEffect(() => {
+    if (categoryFormFields.length > 0 && company?.id) {
+      fetchCompanyMasterDegreesFromFormAction(categoryFormFields, company.id).then(setFormMasterLogos)
+    } else {
+      setFormMasterLogos([])
+    }
+  }, [company?.id, categoryFormFields])
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -1600,10 +1795,11 @@ function Popup({ booth, onClose, booths, onSelectBooth }: { booth: Booth; onClos
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [booth.id, booths, onClose, onSelectBooth])
 
-  // Get company categories/masters
-  const companyCategories: Master[] = Array.isArray(company.category)
-    ? company.category.filter((c): c is Master => c !== null)
-    : []
+  const useFormLogos = categoryFormFields.length > 0
+  const companyCategoryLogos: string[] = useFormLogos ? [] : (Array.isArray(company.category)
+    ? [...new Set(company.category.filter((c): c is Master => c !== null).map(c => extractLogoId(c.logo)).filter((l): l is string => !!l))]
+    : [])
+  const displayLogos = useFormLogos ? formMasterLogos : companyCategoryLogos
 
   return (
     <div
@@ -1621,7 +1817,7 @@ function Popup({ booth, onClose, booths, onSelectBooth }: { booth: Booth; onClos
           <div className="flex justify-center mb-4">
             <NextImage
               src={getDirectusImageUrl(company.logo) ?? ''}
-              alt={company.name}
+              alt={displayName}
               width={100}
               height={80}
               className="object-contain"
@@ -1630,27 +1826,29 @@ function Popup({ booth, onClose, booths, onSelectBooth }: { booth: Booth; onClos
         )}
 
         <h2 className="text-2xl font-semibold text-vtk-blue text-center mb-2">
-          {company.name}
+          {displayName}
         </h2>
 
-        {companyCategories.length > 0 && (
-          <div className="flex flex-wrap items-center justify-center gap-2 mb-4">
-            {companyCategories.map(cat => (
-              <div
-                key={cat.id}
-                className="relative w-10 h-10 rounded-full overflow-hidden border border-neutral-300 flex items-center justify-center bg-white"
-              >
-                {cat.logo && (
+        {displayLogos.length > 0 && (
+          <div className="flex flex-wrap items-center justify-center gap-3 mb-4">
+            {displayLogos.map((logoId) => {
+              const logoUrl = getDirectusImageUrl(logoId)
+              if (!logoUrl) return null
+              return (
+                <div
+                  key={logoId}
+                  className="w-12 h-12 rounded-full overflow-hidden border border-neutral-200 flex items-center justify-center bg-white flex-shrink-0"
+                >
                   <NextImage
-                    src={getDirectusImageUrl(cat.logo) ?? ''}
-                    alt={cat.short_name}
-                    width={32}
-                    height={32}
-                    className="object-contain"
+                    src={logoUrl}
+                    alt=""
+                    width={48}
+                    height={48}
+                    className="object-contain w-full h-full"
                   />
-                )}
-              </div>
-            ))}
+                </div>
+              )
+            })}
           </div>
         )}
 

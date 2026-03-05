@@ -6,7 +6,7 @@ import { ComingSoon } from "@/components/dashboard/ComingSoon"
 import { IconFileCv, IconMail } from "@tabler/icons-react"
 import { Linkedin } from "lucide-react"
 import { Star } from "lucide-react"
-import { CVPreview } from "@/components/cv-preview"
+import { CVFirstPagePreview } from "@/components/cv-first-page-preview"
 import { CVDocumentViewer } from "@/components/cv-document-viewer"
 import { useUser } from "@/providers/UserProvider"
 import { fetchCompanyByIdAction } from "@/app/actions/companies"
@@ -468,7 +468,7 @@ export default function CVBookPage() {
                           <CardContent className="p-4 flex flex-col h-full">
                             <div className="rounded-lg mb-3 overflow-hidden border shadow-sm flex-1 min-h-[600px]">
                               {student.cvFileUrl ? (
-                                <CVPreview
+                                <CVFirstPagePreview
                                   fileUrl={student.cvFileUrl}
                                   className="w-full h-full"
                                   title={`CV for ${student.firstName} ${student.lastName}`}
@@ -542,7 +542,7 @@ export default function CVBookPage() {
                             <CardContent className="p-4 flex flex-col h-full">
                               <div className="rounded-lg mb-3 overflow-hidden border shadow-sm flex-1 min-h-[600px]">
                                 {student.cvFileUrl ? (
-                                  <CVPreview
+                                  <CVFirstPagePreview
                                     fileUrl={student.cvFileUrl}
                                     className="w-full h-full"
                                     title={`CV for ${student.firstName} ${student.lastName}`}
@@ -619,7 +619,7 @@ export default function CVBookPage() {
                           <CardContent className="p-4 flex flex-col h-full">
                             <div className="rounded-lg mb-3 overflow-hidden border shadow-sm flex-1 min-h-[600px]">
                               {student.cvFileUrl ? (
-                                <CVPreview
+                                <CVFirstPagePreview
                                   fileUrl={student.cvFileUrl}
                                   className="w-full h-full"
                                   title={`CV for ${student.firstName} ${student.lastName}`}

@@ -386,3 +386,65 @@ export async function updateEventPageHeaderButtons(
   }
 }
 
+export async function updateFloorplanCategoryFormFields(
+  eventId: string,
+  categoryFormFields: Array<{ formId: string; formVersionId: string; fieldName: string }>
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const client = await getDirectusWithToken();
+    if (!client) return { success: false, error: "Not authenticated" };
+
+    const eventPage = await getEventPageWithFloorplan(eventId);
+    if (!eventPage?.floorplan?.id) return { success: false, error: "Event page or floorplan not found" };
+
+    await client.request(
+      updateItem("Floorplan", eventPage.floorplan.id, {
+        floorplan_category_form_fields: categoryFormFields,
+      })
+    );
+
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to update floorplan category form fields:", error);
+    const msg = error instanceof Error ? error.message : "Failed to update";
+    const hint = msg.includes("floorplan_category_form_fields") || msg.includes("doesn't exist")
+      ? " Add a JSON field 'floorplan_category_form_fields' to Floorplan in Directus."
+      : "";
+    return {
+      success: false,
+      error: msg + hint,
+    };
+  }
+}
+
+export async function updateFloorplanCompanyNameFormFields(
+  eventId: string,
+  companyNameFormFields: Array<{ formId: string; formVersionId: string; fieldName: string }>
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const client = await getDirectusWithToken();
+    if (!client) return { success: false, error: "Not authenticated" };
+
+    const eventPage = await getEventPageWithFloorplan(eventId);
+    if (!eventPage?.floorplan?.id) return { success: false, error: "Event page or floorplan not found" };
+
+    await client.request(
+      updateItem("Floorplan", eventPage.floorplan.id, {
+        floorplan_company_name_form_field: companyNameFormFields,
+      })
+    );
+
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to update floorplan company name form fields:", error);
+    const msg = error instanceof Error ? error.message : "Failed to update";
+    const hint = msg.includes("floorplan_company_name_form_field") || msg.includes("doesn't exist")
+      ? " Add a JSON field 'floorplan_company_name_form_field' to Floorplan in Directus."
+      : "";
+    return {
+      success: false,
+      error: msg + hint,
+    };
+  }
+}
+

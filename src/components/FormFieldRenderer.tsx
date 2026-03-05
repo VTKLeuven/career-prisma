@@ -18,7 +18,7 @@ import type { FormField } from "@/lib/schema";
 
 type MasterOption = { value: string; label: string };
 type Master = { id: string; name: string };
-type FacultyItem = { id: string; name: string; masters?: Array<{ master_id: Master | null } | Master> };
+type FacultyItem = { id: string; name: string; masters?: Array<{ master_id: Master | string | null } | Master>; faculty_master?: unknown[]; faculty_masters?: unknown[] };
 
 /** Normalize for matching: trim, collapse spaces, lowercase, strip content in brackets () [] {} */
 function normalizeForMatch(s: string): string {
@@ -41,15 +41,17 @@ function buildMasterDegreeOptions(
   }
   // Sort: faculties with masters first, then those without, "Other" always last
   const sortedFaculties = [...faculties].sort((a, b) => {
-    const aName = (a.name ?? "").toLowerCase();
-    const bName = (b.name ?? "").toLowerCase();
-    const aIsOther = aName === "other";
-    const bIsOther = bName === "other";
+    const aName = (a.name ?? "").trim();
+    const bName = (b.name ?? "").trim();
+    const aIsOther = /^others?$/i.test(aName);
+    const bIsOther = /^others?$/i.test(bName);
     if (aIsOther && !bIsOther) return 1;
     if (!aIsOther && bIsOther) return -1;
     if (aIsOther && bIsOther) return 0;
-    const aHasMasters = (a.masters ?? []).length > 0;
-    const bHasMasters = (b.masters ?? []).length > 0;
+    const aMasters = (a.masters ?? a.faculty_master ?? a.faculty_masters ?? []) as unknown[];
+    const bMasters = (b.masters ?? b.faculty_master ?? b.faculty_masters ?? []) as unknown[];
+    const aHasMasters = aMasters.length > 0;
+    const bHasMasters = bMasters.length > 0;
     if (aHasMasters && !bHasMasters) return -1;
     if (!aHasMasters && bHasMasters) return 1;
     return 0;
@@ -57,21 +59,24 @@ function buildMasterDegreeOptions(
   const options: MasterOption[] = [];
   for (const faculty of sortedFaculties) {
     const facultyName = faculty.name ?? "";
-    const isOther = facultyName.toLowerCase() === "other";
-    const mastersList = faculty.masters ?? [];
+    const isOther = /^others?$/i.test(facultyName.trim());
+    const mastersList = (faculty.masters ?? faculty.faculty_master ?? faculty.faculty_masters ?? []) as Array<{ master_id?: Master | string | null } | Master>;
     const resolvedMasters: Master[] = mastersList
       .map((item) => {
         if (item && typeof item === "object" && "master_id" in item) {
-          return (item as { master_id: Master | null }).master_id;
+          const mid = (item as { master_id: Master | string | null }).master_id;
+          if (mid && typeof mid === "object" && "id" in mid) return mid as Master;
+          if (mid && typeof mid === "string") return masters.find((m) => m.id === mid) ?? null;
+          return null;
         }
-        return item as Master;
+        return (item && typeof item === "object" && "id" in item) ? (item as Master) : null;
       })
       .filter((m): m is Master => m != null && typeof m === "object" && "id" in m && "name" in m);
 
     if (resolvedMasters.length === 0) {
       options.push({
-        value: isOther ? facultyName : `fac:${faculty.id}`,
-        label: isOther ? facultyName : `Fac. ${facultyName}`,
+        value: `fac:${faculty.id}`,
+        label: isOther ? "Other" : `Fac. ${facultyName}`,
       });
     } else {
       for (const m of resolvedMasters) {
@@ -162,6 +167,37 @@ function MasterDegreesField({
         normalizeForMatch(o.value) === normalizeForMatch(v) ||
         normalizeForMatch(o.label) === normalizeForMatch(v)
     );
+
+  // Normalize stored values from label format to value format (fac:facId:masterId) when loading
+  // e.g. converted checkbox data ["Fac. X - Y"] -> ["fac:1:12"]
+  useEffect(() => {
+    if (loading || options.length === 0) return;
+    const items = Array.isArray(value) ? value : value != null && value !== "" ? [value] : [];
+    const isCanonical = (s: string) => /^fac:[^:]+:[^:]+$/.test(s) || /^fac:[^:]+$/.test(s) || /^[0-9a-f-]{36}$/i.test(s);
+    if (items.every((item) => isCanonical(String(item).trim()))) return;
+    const normalized: string[] = [];
+    let needsUpdate = false;
+    for (const item of items) {
+      const s = String(item).trim();
+      if (!s) continue;
+      const opt = options.find(
+        (o) =>
+          o.value === s ||
+          o.label === s ||
+          normalizeForMatch(o.value) === normalizeForMatch(s) ||
+          normalizeForMatch(o.label) === normalizeForMatch(s)
+      );
+      if (opt) {
+        normalized.push(opt.value);
+        if (opt.value !== s) needsUpdate = true;
+      } else {
+        normalized.push(s);
+      }
+    }
+    if (needsUpdate) {
+      onChange(isMultiple ? normalized : normalized[0] ?? "");
+    }
+  }, [loading, options.length, value, isMultiple, onChange]);
 
   if (loading) {
     return (

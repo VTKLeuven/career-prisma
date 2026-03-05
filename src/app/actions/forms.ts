@@ -1017,6 +1017,64 @@ export async function fetchCompanyFormFieldValuesAction(formVersionId: string, f
   }
 }
 
+export async function fetchCompanyFormFieldValuesFromFormAction(formId: string, fieldName: string) {
+  try {
+    const { getCompanyFormFieldValuesFromForm } = await import("@/lib/repos/forms");
+    return await getCompanyFormFieldValuesFromForm(formId, fieldName);
+  } catch (error) {
+    console.error("[fetchCompanyFormFieldValuesFromFormAction] Error:", error);
+    return {};
+  }
+}
+
+export async function fetchFloorplanCategoryOptionsAction(
+  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>
+) {
+  try {
+    const { getFloorplanCategoryOptions } = await import("@/lib/repos/forms");
+    return await getFloorplanCategoryOptions(categoryFields);
+  } catch (error) {
+    console.error("[fetchFloorplanCategoryOptionsAction] Error:", error);
+    return { groups: [] };
+  }
+}
+
+export async function fetchCompanyIdsMatchingFloorplanCategoryAction(
+  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>,
+  selectedValues: string[]
+) {
+  try {
+    const { getCompanyIdsMatchingFloorplanCategory } = await import("@/lib/repos/forms");
+    return await getCompanyIdsMatchingFloorplanCategory(categoryFields, selectedValues);
+  } catch (error) {
+    console.error("[fetchCompanyIdsMatchingFloorplanCategoryAction] Error:", error);
+    return [];
+  }
+}
+
+export async function fetchCompanyMasterDegreesFromFormAction(
+  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>,
+  companyId: string
+) {
+  try {
+    const { getCompanyMasterDegreesFromForm } = await import("@/lib/repos/forms");
+    return await getCompanyMasterDegreesFromForm(categoryFields, companyId);
+  } catch (error) {
+    console.error("[fetchCompanyMasterDegreesFromFormAction] Error:", error);
+    return [];
+  }
+}
+
+export async function migrateFormResponsesMasterDegreesAction(formId: string) {
+  try {
+    const { migrateFormResponsesMasterDegrees } = await import("@/lib/repos/forms");
+    return await migrateFormResponsesMasterDegrees(formId);
+  } catch (error) {
+    console.error("[migrateFormResponsesMasterDegreesAction] Error:", error);
+    throw error;
+  }
+}
+
 export async function fetchCompanyFormBySlugAndEventAction(eventId: string, slug: string) {
   try {
     const { getCompanyFormBySlugAndEvent } = await import("@/lib/repos/forms");

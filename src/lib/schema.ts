@@ -182,6 +182,20 @@ export type CareerEventPage = {
   header_buttons?: HeaderButtonType[];
 };
 
+/** Config for a master-degrees form field used as floorplan category source */
+export type FloorplanCategoryFormField = {
+  formId: string;
+  formVersionId: string;
+  fieldName: string;
+};
+
+/** Config for a form field used as company display name on the floorplan */
+export type FloorplanCompanyNameFormField = {
+  formId: string;
+  formVersionId: string;
+  fieldName: string;
+};
+
 export type TimeSlot = {
   id: string;
   title: string;
@@ -198,6 +212,10 @@ export type Floorplan = {
   svg_file: string;
   year: string;
   background_image?: string;
+  /** Master-degrees form fields to use for floorplan category filter. When set, replaces standard master categories with a select of masters from these form fields. Add a JSON field "floorplan_category_form_fields" to Floorplan in Directus. */
+  floorplan_category_form_fields?: FloorplanCategoryFormField[];
+  /** Form fields to use as company display name on the floorplan (tooltip, popup). Tried in order; first non-empty value wins. Add a JSON field "floorplan_company_name_form_field" to Floorplan in Directus. */
+  floorplan_company_name_form_field?: FloorplanCompanyNameFormField[];
 }
 
 export type Booth = {
@@ -222,6 +240,7 @@ export type Master = {
 export type Faculty = {
   id: string;
   name: string;
+  logo?: string;
   masters?: Array<{ master_id: Master | null } | Master>;
 }
 
