@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { IconFileCv, IconMail } from "@tabler/icons-react";
 import { Linkedin } from "lucide-react";
-import { CVPreview } from "@/components/cv-preview";
+import { CVFirstPagePreview } from "@/components/cv-first-page-preview";
 import { CVDocumentViewer } from "@/components/cv-document-viewer";
 import { useUser } from "@/providers/UserProvider";
 import {
@@ -650,7 +650,7 @@ export default function CVBookScreeningPage() {
                             <div className="flex items-center gap-2 shrink-0">
                               <div className="w-32 h-40 rounded border overflow-hidden bg-muted flex-shrink-0">
                                 {student.cvFileUrl ? (
-                                  <CVPreview
+                                  <CVFirstPagePreview
                                     fileUrl={student.cvFileUrl}
                                     className="w-full h-full min-h-0"
                                     title={`CV ${student.firstName} ${student.lastName}`}

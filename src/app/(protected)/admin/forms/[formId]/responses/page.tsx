@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { fetchFormByIdAction, fetchFormVersionsAction, fetchFormResponsesAction, fetchFormResponsesTotalCountAction, fetchAllFormResponsesAction, fetchFirstFormResponseAction, fetchLatestFormResponseAction, deleteFormResponseAction, updateFormResponseAction, initializeAttendantUuidsAction, archiveDuplicateFormResponsesAction, fetchFormResponsesForAllVersionsAction, fetchFormResponsesTotalCountForAllVersionsAction, fetchFirstFormResponseForAllVersionsAction, fetchLatestFormResponseForAllVersionsAction, fetchAllFormResponsesForAllVersionsAction } from "@/app/actions/forms";
 import { fetchCompaniesForEventAction } from "@/app/actions/companies";
+import { fetchMastersAction, fetchFacultiesAction } from "@/app/actions/features";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +44,8 @@ import { CSV_UTF8_BOM } from "@/lib/utils/slugify";
 import { FormFieldRenderer } from "@/components/FormFieldRenderer";
 import { getDirectusImageUrl } from "@/components/Images";
 import NextImage from "next/image";
+import { resolveMasterDegreeValueToDisplayLabel, normalizeFaculties, type FacultyItem } from "@/lib/utils/master-degree-options";
+import type { Master } from "@/lib/schema";
 
 export default function FormResponsesPage() {
   const params = useParams();
@@ -74,6 +77,8 @@ export default function FormResponsesPage() {
   const [latestResponseDate, setLatestResponseDate] = useState<string | null>(null);
   const [initializingUuids, setInitializingUuids] = useState(false);
   const [archivingDuplicates, setArchivingDuplicates] = useState(false);
+  const [mastersForDisplay, setMastersForDisplay] = useState<Master[]>([]);
+  const [facultiesForDisplay, setFacultiesForDisplay] = useState<FacultyItem[]>([]);
   const [viewMode, setViewMode] = useState<"submissions" | "incomplete">("submissions");
   const [incompleteCompanies, setIncompleteCompanies] = useState<Array<{ id: string; name: string; salesperson: string; optionName: string }>>([]);
   const [loadingIncompleteCompanies, setLoadingIncompleteCompanies] = useState(false);
@@ -172,11 +177,12 @@ export default function FormResponsesPage() {
     loadFormData();
   }, [loadFormData]);
 
-  // Collect all unique fields from all versions (include options for checkbox/select/radio)
+  // Collect all unique fields from all versions (prefer newest version so master-degrees wins over old checkbox)
   useEffect(() => {
     if (versions.length > 0 && responses.length > 0) {
       const fieldMap = new Map<string, FormField>();
-      versions.forEach(version => {
+      const sortedVersions = [...versions].sort((a, b) => (b.version_number ?? 0) - (a.version_number ?? 0));
+      sortedVersions.forEach(version => {
         if (version.schema?.fields) {
           version.schema.fields.forEach((field: FormField) => {
             if (!fieldMap.has(field.name)) {
@@ -196,9 +202,10 @@ export default function FormResponsesPage() {
 
       setAllVersionsFields(fieldsWithData);
     } else if (versions.length > 0) {
-      // If no responses yet, show all fields
+      // If no responses yet, show all fields (newest version first so master-degrees wins)
       const fieldMap = new Map<string, FormField>();
-      versions.forEach(version => {
+      const sortedVersions = [...versions].sort((a, b) => (b.version_number ?? 0) - (a.version_number ?? 0));
+      sortedVersions.forEach(version => {
         if (version.schema?.fields) {
           version.schema.fields.forEach((field: FormField) => {
             if (!fieldMap.has(field.name)) {
@@ -226,6 +233,22 @@ export default function FormResponsesPage() {
       loadResponses(selectedVersionId, currentPage, false);
     }
   }, [currentPage, selectedVersionId, isAllVersions, loadResponses]);
+
+  // Load masters and faculties for master-degrees display labels
+  useEffect(() => {
+    const hasMasterDegrees = versions.some((v) =>
+      v.schema?.fields?.some((f) => f.type === "master-degrees")
+    );
+    if (!hasMasterDegrees) {
+      setMastersForDisplay([]);
+      setFacultiesForDisplay([]);
+      return;
+    }
+    Promise.all([fetchMastersAction(), fetchFacultiesAction()]).then(([masters, rawFaculties]) => {
+      setMastersForDisplay(masters ?? []);
+      setFacultiesForDisplay(normalizeFaculties(rawFaculties ?? []) ?? []);
+    });
+  }, [versions]);
 
   // Load company completion stats for company forms
   useEffect(() => {
@@ -766,6 +789,7 @@ export default function FormResponsesPage() {
     // Build field names and keys, combining firstname and lastname if both exist
     const fieldNames: string[] = [];
     const fieldKeys: string[] = [];
+    const fieldTypeMap = new Map(fieldsToUse.map(f => [f.name, f.type]));
 
     fieldsToUse.forEach(field => {
       // For event registration forms, exclude email field from export since it's already in Student Email column
@@ -898,6 +922,14 @@ export default function FormResponsesPage() {
           return 'NA';
         }
         if (value === null || value === undefined) return '';
+        // Resolve master-degrees to display names (e.g. fac:1:3 -> Fac. Engineering - Architectural Engineering)
+        if (fieldTypeMap.get(key) === 'master-degrees') {
+          const items = Array.isArray(value) ? value : [value];
+          const labels = items.map((v: unknown) =>
+            resolveMasterDegreeValueToDisplayLabel(v, mastersForDisplay, facultiesForDisplay) || String(v)
+          );
+          return labels.join('; ');
+        }
         if (Array.isArray(value)) return value.join('; ');
         return String(value);
       });
@@ -954,6 +986,10 @@ export default function FormResponsesPage() {
 
   const hasFileFields = versions.some((v) =>
     v.schema?.fields?.some((f) => f.type === "file")
+  );
+
+  const hasMasterDegreesFields = versions.some((v) =>
+    v.schema?.fields?.some((f) => f.type === "master-degrees")
   );
 
   const handleDeleteClick = (response: FormResponse) => {
@@ -1681,7 +1717,7 @@ export default function FormResponsesPage() {
                                     return (
                                       <TableCell key={field.name}>
                                         {fieldValue !== null && fieldValue !== undefined
-                                          ? formatFieldValue(fieldValue, fieldType)
+                                          ? formatFieldValue(fieldValue, fieldType, { masters: mastersForDisplay, faculties: facultiesForDisplay })
                                           : <span className="text-muted-foreground italic">NA</span>}
                                       </TableCell>
                                     );
@@ -1695,7 +1731,7 @@ export default function FormResponsesPage() {
                                 })
                                 .map((field) => (
                                   <TableCell key={field.name}>
-                                    {formatFieldValue(response.data[field.name], field.type)}
+                                    {formatFieldValue(response.data[field.name], field.type, { masters: mastersForDisplay, faculties: facultiesForDisplay })}
                                   </TableCell>
                                 ))
                             )}
@@ -2041,10 +2077,13 @@ export default function FormResponsesPage() {
                   return v.id === versionId;
                 })
               : selectedVersion;
+            // Use allVersionsFields so we show master-degrees (not old checkbox) when viewing responses
             const schemaFields = responseVersion?.schema?.fields ?? [];
-            const fields: FormField[] = schemaFields.length > 0
-              ? schemaFields
-              : allVersionsFields.map(f => ({ ...f, type: f.type as FormField["type"] }));
+            const fields: FormField[] = allVersionsFields.length > 0
+              ? allVersionsFields.map(f => ({ ...f, type: f.type as FormField["type"] }))
+              : schemaFields.length > 0
+                ? schemaFields
+                : [];
             const filteredFields = fields.filter(field => {
               if (responseVersion?.metadata?.is_event_registration && field.name === "email" && field.type === "email") return false;
               return true;
@@ -2250,9 +2289,36 @@ export default function FormResponsesPage() {
   );
 }
 
-function formatFieldValue(value: unknown, fieldType: string): React.ReactNode {
+function formatFieldValue(
+  value: unknown,
+  fieldType: string,
+  ctx?: { masters?: Master[]; faculties?: FacultyItem[] }
+): React.ReactNode {
   if (value === null || value === undefined) {
     return <span className="text-muted-foreground italic">-</span>;
+  }
+
+  if (fieldType === "master-degrees") {
+    const items = Array.isArray(value) ? value : (value != null && value !== "" ? [value] : []);
+    if (items.length === 0) return <span className="text-muted-foreground italic">-</span>;
+    const masters = ctx?.masters ?? [];
+    const faculties = ctx?.faculties ?? [];
+    return (
+      <div className="flex flex-col gap-1">
+        {items.map((v, idx) => {
+          const label = resolveMasterDegreeValueToDisplayLabel(v, masters, faculties);
+          return (
+            <div
+              key={idx}
+              className="flex items-center gap-2 rounded px-2 py-1 bg-muted text-muted-foreground"
+            >
+              <Check className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="text-sm">{label || String(v)}</span>
+            </div>
+          );
+        })}
+      </div>
+    );
   }
 
   if (Array.isArray(value)) {

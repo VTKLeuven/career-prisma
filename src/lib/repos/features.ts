@@ -1,6 +1,6 @@
 // lib/repos/features.ts
 import { getServerDirectusClient } from "@/lib/directus"
-import type { Floorplan, Booth, Master } from "@/lib/schema"
+import type { Floorplan, Booth, Master, Faculty } from "@/lib/schema"
 import { readItems } from "@directus/sdk"
 
 export async function listBooths(
@@ -68,17 +68,60 @@ export async function listMasters(
     const { search, limit = 300, page = 1, sort = "name" } = opts ?? {}
     return client.request(
       readItems("master", {
-        fields: ["*"],
+        fields: ["id", "name", "short_name", "logo", "students", "modules"],
         limit,
         page,
         sort: sort as any,
-        ...(search
-          ? { search } // optional full-text search
-          : {}),
+        ...(search ? { search } : {}),
       })
     ) as unknown as Master[]
   } catch (error) {
     console.error("Failed to fetch masters:", error)
+    return null
+  }
+}
+
+export async function listFaculties(
+  opts?: {
+    limit?: number
+    sort?: string
+  }
+): Promise<Faculty[] | null> {
+  try {
+    const client = await getServerDirectusClient()
+    if (!client) return null
+
+    const { limit = 300, sort = "name" } = opts ?? {}
+    // Try common Directus M2M patterns: faculty.masters or faculty.faculty_master
+    const fieldSets = [
+      ["id", "name", "logo", "masters.master_id.id", "masters.master_id.name", "masters.master_id.logo"],
+      ["id", "name", "logo", "faculty_master.master_id.id", "faculty_master.master_id.name", "faculty_master.master_id.logo"],
+      ["id", "name", "logo", "faculty_masters.master_id.id", "faculty_masters.master_id.name", "faculty_masters.master_id.logo"],
+      ["id", "name", "logo", "masters.id", "masters.name", "masters.logo"],
+      ["id", "name", "logo", "master.id", "master.name", "master.logo"],
+    ]
+    const collections = ["faculty", "Faculty"]
+    for (const coll of collections) {
+      for (const fields of fieldSets) {
+        try {
+          const result = await client.request(
+            readItems(coll as any, {
+              fields: fields as any,
+              limit,
+              sort: sort as any,
+            })
+          )
+          if (Array.isArray(result) && result.length >= 0) {
+            return result as unknown as Faculty[]
+          }
+        } catch {
+          continue
+        }
+      }
+    }
+    return null
+  } catch (error) {
+    console.error("Failed to fetch faculties:", error)
     return null
   }
 }

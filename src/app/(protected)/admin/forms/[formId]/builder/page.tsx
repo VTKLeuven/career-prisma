@@ -50,19 +50,21 @@ import {
   GripVertical,
   X,
   Image as ImageIcon,
-  Linkedin
+  Linkedin,
+  GraduationCap
 } from "lucide-react";
 import type { Form, FormVersion, FormField, FormSchema } from "@/lib/schema";
 import Link from "next/link";
 import { getDirectusImageUrl } from "@/components/Images";
 import NextImage from "next/image";
 
-type FieldType = "text" | "textarea" | "email" | "number" | "select" | "checkbox" | "radio" | "file" | "date" | "date-range" | "time" | "linkedin";
+type FieldType = "text" | "textarea" | "email" | "number" | "select" | "checkbox" | "radio" | "file" | "date" | "date-range" | "time" | "linkedin" | "master-degrees";
 
 const FIELD_TYPES: { value: FieldType; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { value: "text", label: "Text", icon: Type },
   { value: "textarea", label: "Text Area", icon: FileText },
   { value: "email", label: "Email", icon: Mail },
+  { value: "master-degrees", label: "Master Degrees", icon: GraduationCap },
   { value: "number", label: "Number", icon: Hash },
   { value: "select", label: "Select Dropdown", icon: List },
   { value: "checkbox", label: "Checkbox", icon: CheckSquare },
@@ -551,7 +553,24 @@ function FieldEditor({
               </div>
               <div className="space-y-1">
                 <Label htmlFor={`field-${index}-type`}>Field Type</Label>
-                <Select value={field.type || "text"} onValueChange={(value) => onUpdate({ type: value as FieldType })}>
+                <Select
+                  value={field.type || "text"}
+                  onValueChange={(value) => {
+                    const newType = value as FieldType;
+                    if (newType === "master-degrees") {
+                      const wasCheckbox = field.type === "checkbox";
+                      const opts = field.options ?? [];
+                      const hasFacFormat = opts.some((o) => typeof o === "string" && /^fac\.\s/i.test(o.trim()));
+                      onUpdate({
+                        type: newType,
+                        masterDegreesMultiple: wasCheckbox,
+                        masterDegreesIncludeFaculties: hasFacFormat,
+                      });
+                    } else {
+                      onUpdate({ type: newType });
+                    }
+                  }}
+                >
                   <SelectTrigger id={`field-${index}-type`}>
                     <SelectValue />
                   </SelectTrigger>
@@ -602,6 +621,42 @@ function FieldEditor({
                 Controls how wide the field appears. Half-width fields can appear side-by-side.
               </p>
             </div>
+
+            {field.type === "master-degrees" && (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Master degrees are loaded from Directus. Options come from the master and faculty collections.
+                </p>
+                <div className="flex flex-wrap gap-4">
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      type="button"
+                      variant={field.masterDegreesMultiple ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => onUpdate({ masterDegreesMultiple: !field.masterDegreesMultiple })}
+                    >
+                      Allow multiple
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      {field.masterDegreesMultiple ? "Checkbox mode" : "Single select"}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      type="button"
+                      variant={field.masterDegreesIncludeFaculties ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => onUpdate({ masterDegreesIncludeFaculties: !field.masterDegreesIncludeFaculties })}
+                    >
+                      Add faculties
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      {field.masterDegreesIncludeFaculties ? "Group by faculty" : "Masters only"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {(field.type === "select" || field.type === "radio" || field.type === "checkbox") && (
               <div className="space-y-1">
@@ -909,6 +964,22 @@ function FormFieldPreview({ field }: { field: FormField }) {
             <span>LinkedIn Profile URL</span>
           </div>
           <Input type="url" placeholder="https://linkedin.com/in/username" disabled />
+        </div>
+      );
+    case "master-degrees":
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <FieldIcon className="h-4 w-4" />
+            <span>Master Degrees</span>
+            {field.masterDegreesMultiple && <span className="text-xs">(multiple)</span>}
+            {field.masterDegreesIncludeFaculties && <span className="text-xs">(by faculty)</span>}
+          </div>
+          <Select disabled>
+            <SelectTrigger>
+              <SelectValue placeholder="Select master degree(s)..." />
+            </SelectTrigger>
+          </Select>
         </div>
       );
     case "text":

@@ -182,6 +182,20 @@ export type CareerEventPage = {
   header_buttons?: HeaderButtonType[];
 };
 
+/** Config for a master-degrees form field used as floorplan category source */
+export type FloorplanCategoryFormField = {
+  formId: string;
+  formVersionId: string;
+  fieldName: string;
+};
+
+/** Config for a form field used as company display name on the floorplan */
+export type FloorplanCompanyNameFormField = {
+  formId: string;
+  formVersionId: string;
+  fieldName: string;
+};
+
 export type TimeSlot = {
   id: string;
   title: string;
@@ -198,6 +212,10 @@ export type Floorplan = {
   svg_file: string;
   year: string;
   background_image?: string;
+  /** Master-degrees form fields to use for floorplan category filter. When set, replaces standard master categories with a select of masters from these form fields. Add a JSON field "floorplan_category_form_fields" to Floorplan in Directus. */
+  floorplan_category_form_fields?: FloorplanCategoryFormField[];
+  /** Form fields to use as company display name on the floorplan (tooltip, popup). Tried in order; first non-empty value wins. Add a JSON field "floorplan_company_name_form_field" to Floorplan in Directus. */
+  floorplan_company_name_form_field?: FloorplanCompanyNameFormField[];
 }
 
 export type Booth = {
@@ -216,6 +234,14 @@ export type Master = {
   logo: string;
   students?: number;
   modules?: string; // HTML content
+}
+
+/** Faculty with optional masters relation (from Directus faculty collection) */
+export type Faculty = {
+  id: string;
+  name: string;
+  logo?: string;
+  masters?: Array<{ master_id: Master | null } | Master>;
 }
 
 export type Form = {
@@ -267,7 +293,7 @@ export type FormField = {
   id: string;
   name: string;
   label: string;
-  type: 'text' | 'textarea' | 'email' | 'number' | 'select' | 'checkbox' | 'radio' | 'file' | 'date' | 'date-range' | 'time' | 'linkedin';
+  type: 'text' | 'textarea' | 'email' | 'number' | 'select' | 'checkbox' | 'radio' | 'file' | 'date' | 'date-range' | 'time' | 'linkedin' | 'master-degrees';
   required?: boolean;
   placeholder?: string;
   options?: string[]; // for select, radio, checkbox
@@ -283,6 +309,10 @@ export type FormField = {
   multiple?: boolean; // For file fields - allow multiple file uploads
   image?: string; // Directus file ID for field image (useful for material-related forms)
   description?: string; // Description text to show with the field
+  /** For master-degrees: allow selecting multiple masters (checkbox mode) */
+  masterDegreesMultiple?: boolean;
+  /** For master-degrees: show options grouped by faculty (fac. {faculty} - {master}) */
+  masterDegreesIncludeFaculties?: boolean;
 }
 
 export type FormResponse = {
@@ -413,6 +443,7 @@ export type Schema = {
   career_event: CareerEvent[];
   career_sub_option: CareerSubOption[];
   master: Master[];
+  faculty: Faculty[];
   Booths: Booth[];
   Floorplan: Floorplan[];
   company_user_requests: CompanyUserRequest[];

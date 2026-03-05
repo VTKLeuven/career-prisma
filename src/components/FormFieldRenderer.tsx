@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,6 +15,285 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Download } from "lucide-react";
 import type { FormField } from "@/lib/schema";
+
+type MasterOption = { value: string; label: string };
+type Master = { id: string; name: string };
+type FacultyItem = { id: string; name: string; masters?: Array<{ master_id: Master | string | null } | Master>; faculty_master?: unknown[]; faculty_masters?: unknown[] };
+
+/** Normalize for matching: trim, collapse spaces, lowercase, strip content in brackets () [] {} */
+function normalizeForMatch(s: string): string {
+  return s
+    .replace(/\([^)]*\)/g, "")
+    .replace(/\[[^\]]*\]/g, "")
+    .replace(/\{[^}]*\}/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function buildMasterDegreeOptions(
+  masters: Master[],
+  faculties: FacultyItem[] | null,
+  includeFaculties: boolean
+): MasterOption[] {
+  if (!includeFaculties || !faculties || faculties.length === 0) {
+    return masters.map((m) => ({ value: m.id, label: m.name }));
+  }
+  // Sort: faculties with masters first, then those without, "Other" always last
+  const sortedFaculties = [...faculties].sort((a, b) => {
+    const aName = (a.name ?? "").trim();
+    const bName = (b.name ?? "").trim();
+    const aIsOther = /^others?$/i.test(aName);
+    const bIsOther = /^others?$/i.test(bName);
+    if (aIsOther && !bIsOther) return 1;
+    if (!aIsOther && bIsOther) return -1;
+    if (aIsOther && bIsOther) return 0;
+    const aMasters = (a.masters ?? a.faculty_master ?? a.faculty_masters ?? []) as unknown[];
+    const bMasters = (b.masters ?? b.faculty_master ?? b.faculty_masters ?? []) as unknown[];
+    const aHasMasters = aMasters.length > 0;
+    const bHasMasters = bMasters.length > 0;
+    if (aHasMasters && !bHasMasters) return -1;
+    if (!aHasMasters && bHasMasters) return 1;
+    return 0;
+  });
+  const options: MasterOption[] = [];
+  for (const faculty of sortedFaculties) {
+    const facultyName = faculty.name ?? "";
+    const isOther = /^others?$/i.test(facultyName.trim());
+    const mastersList = (faculty.masters ?? faculty.faculty_master ?? faculty.faculty_masters ?? []) as Array<{ master_id?: Master | string | null } | Master>;
+    const resolvedMasters: Master[] = mastersList
+      .map((item) => {
+        if (item && typeof item === "object" && "master_id" in item) {
+          const mid = (item as { master_id: Master | string | null }).master_id;
+          if (mid && typeof mid === "object" && "id" in mid) return mid as Master;
+          if (mid && typeof mid === "string") return masters.find((m) => m.id === mid) ?? null;
+          return null;
+        }
+        return (item && typeof item === "object" && "id" in item) ? (item as Master) : null;
+      })
+      .filter((m): m is Master => m != null && typeof m === "object" && "id" in m && "name" in m);
+
+    if (resolvedMasters.length === 0) {
+      options.push({
+        value: `fac:${faculty.id}`,
+        label: isOther ? "Other" : `Fac. ${facultyName}`,
+      });
+    } else {
+      for (const m of resolvedMasters) {
+        options.push({
+          value: `fac:${faculty.id}:${m.id}`,
+          label: isOther ? `${facultyName} - ${m.name}` : `Fac. ${facultyName} - ${m.name}`,
+        });
+      }
+    }
+  }
+  return options;
+}
+
+function MasterDegreesField({
+  field,
+  value,
+  onChange,
+  error,
+  disabled,
+}: {
+  field: FormField;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  error?: string;
+  disabled?: boolean;
+}) {
+  const [masters, setMasters] = useState<Master[]>([]);
+  const [faculties, setFaculties] = useState<FacultyItem[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const includeFaculties = field.masterDegreesIncludeFaculties ?? false;
+  const isMultiple = field.masterDegreesMultiple ?? false;
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const [mastersRes, facultiesRes] = await Promise.all([
+          fetch("/api/masters"),
+          includeFaculties ? fetch("/api/faculties") : Promise.resolve(null),
+        ]);
+        if (cancelled) return;
+        const mastersData = await mastersRes.json();
+        setMasters(Array.isArray(mastersData) ? mastersData : []);
+        if (facultiesRes?.ok) {
+          const facultiesData = await facultiesRes.json();
+          setFaculties(Array.isArray(facultiesData) ? facultiesData : []);
+        } else {
+          setFaculties(null);
+        }
+      } catch {
+        if (!cancelled) setMasters([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [includeFaculties]);
+
+  let options = buildMasterDegreeOptions(masters, faculties, includeFaculties);
+  const legacyOpts = (field.options ?? []).filter(
+    (o): o is string => typeof o === "string" && o.trim().length > 0
+  );
+  // When "Add faculties" is on but faculties API returned no faculty-formatted options, use field.options
+  const hasFacFormatFromApi = options.some((o) => /^fac\.\s/i.test(o.label.trim()));
+  if (includeFaculties && !hasFacFormatFromApi && legacyOpts.some((o) => /^fac\.\s/i.test(o.trim()))) {
+    options = legacyOpts.map((o) => ({ value: o, label: o }));
+  } else {
+    const seenNormalized = new Set(options.map((o) => normalizeForMatch(o.label)));
+    for (const leg of legacyOpts) {
+      const norm = normalizeForMatch(leg);
+      if (!seenNormalized.has(norm)) {
+        options = [...options, { value: leg, label: leg }];
+        seenNormalized.add(norm);
+      }
+    }
+  }
+
+  const inputClassName = error ? "border-destructive" : "";
+
+  // Match stored value by option value OR label (for migration from checkbox/select with same option names)
+  // Normalize spaces so "fac.  Architecture  -  X" matches "fac. Architecture - X"
+  const findOptionByValueOrLabel = (v: string) =>
+    options.find(
+      (o) =>
+        o.value === v ||
+        o.label === v ||
+        normalizeForMatch(o.value) === normalizeForMatch(v) ||
+        normalizeForMatch(o.label) === normalizeForMatch(v)
+    );
+
+  // Normalize stored values from label format to value format (fac:facId:masterId) when loading
+  // e.g. converted checkbox data ["Fac. X - Y"] -> ["fac:1:12"]
+  useEffect(() => {
+    if (loading || options.length === 0) return;
+    const items = Array.isArray(value) ? value : value != null && value !== "" ? [value] : [];
+    const isCanonical = (s: string) => /^fac:[^:]+:[^:]+$/.test(s) || /^fac:[^:]+$/.test(s) || /^[0-9a-f-]{36}$/i.test(s);
+    if (items.every((item) => isCanonical(String(item).trim()))) return;
+    const normalized: string[] = [];
+    let needsUpdate = false;
+    for (const item of items) {
+      const s = String(item).trim();
+      if (!s) continue;
+      const opt = options.find(
+        (o) =>
+          o.value === s ||
+          o.label === s ||
+          normalizeForMatch(o.value) === normalizeForMatch(s) ||
+          normalizeForMatch(o.label) === normalizeForMatch(s)
+      );
+      if (opt) {
+        normalized.push(opt.value);
+        if (opt.value !== s) needsUpdate = true;
+      } else {
+        normalized.push(s);
+      }
+    }
+    if (needsUpdate) {
+      onChange(isMultiple ? normalized : normalized[0] ?? "");
+    }
+  }, [loading, options.length, value, isMultiple, onChange]);
+
+  if (loading) {
+    return (
+      <div className="text-sm text-muted-foreground py-2">Loading master degrees...</div>
+    );
+  }
+
+  if (options.length === 0) {
+    return (
+      <div className="text-sm text-muted-foreground py-2">
+        No master degrees available. Ensure the master (and faculty) collections exist in Directus.
+      </div>
+    );
+  }
+
+  if (isMultiple) {
+    const currentValues: string[] = Array.isArray(value)
+      ? (value as unknown[]).map((v) => String(v))
+      : value != null && value !== ""
+        ? [String(value)]
+        : [];
+    return (
+      <div className="space-y-2">
+        {options.map((opt, index) => {
+          const checked = currentValues.some(
+            (v) =>
+              v === opt.value ||
+              v === opt.label ||
+              normalizeForMatch(v) === normalizeForMatch(opt.value) ||
+              normalizeForMatch(v) === normalizeForMatch(opt.label)
+          );
+          return (
+            <div key={opt.value} className="flex items-center space-x-2">
+              <Checkbox
+                id={`${field.id}-${index}`}
+                checked={checked}
+                onCheckedChange={(isChecked) => {
+                  const matchesOpt = (val: string) =>
+                    val === opt.value ||
+                    val === opt.label ||
+                    normalizeForMatch(val) === normalizeForMatch(opt.value) ||
+                    normalizeForMatch(val) === normalizeForMatch(opt.label);
+                  if (isChecked === true) {
+                    const without = currentValues.filter((v) => !matchesOpt(v));
+                    onChange([...without, opt.value]);
+                  } else {
+                    onChange(currentValues.filter((v) => !matchesOpt(v)));
+                  }
+                }}
+                disabled={disabled}
+              />
+              <Label htmlFor={`${field.id}-${index}`} className="text-sm font-normal cursor-pointer">
+                {opt.label}
+              </Label>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const strValue = value != null && value !== "" ? String(value) : "";
+  const EMPTY_SENTINEL = "__empty__";
+  const hasEmpty = !field.required;
+  const matchingOption = strValue ? findOptionByValueOrLabel(strValue) : null;
+  const selectValue =
+    strValue === ""
+      ? (hasEmpty ? EMPTY_SENTINEL : undefined)
+      : matchingOption
+        ? matchingOption.value
+        : strValue;
+
+  return (
+    <Select
+      value={selectValue}
+      onValueChange={(v) => onChange(v === EMPTY_SENTINEL ? "" : v)}
+      required={field.required}
+      disabled={disabled}
+    >
+      <SelectTrigger id={field.id} className={inputClassName}>
+        <SelectValue placeholder={field.placeholder || "Select a master degree"} />
+      </SelectTrigger>
+      <SelectContent>
+        {hasEmpty && <SelectItem value={EMPTY_SENTINEL}>(Empty)</SelectItem>}
+        {options.map((opt) => (
+          <SelectItem key={opt.value} value={opt.value}>
+            {opt.label}
+          </SelectItem>
+        ))}
+        {strValue && !options.some((o) => o.value === strValue) && (
+          <SelectItem value={strValue}>{strValue}</SelectItem>
+        )}
+      </SelectContent>
+    </Select>
+  );
+}
 
 function countWords(text: string): number {
   return text.trim().split(/\s+/).filter((word) => word.length > 0).length;
@@ -207,6 +486,17 @@ export function FormFieldRenderer({
           placeholder={field.placeholder || "https://linkedin.com/in/username"}
           required={field.required}
           className={inputClassName}
+          disabled={disabled}
+        />
+      );
+
+    case "master-degrees":
+      return (
+        <MasterDegreesField
+          field={field}
+          value={value}
+          onChange={onChange}
+          error={error}
           disabled={disabled}
         />
       );
