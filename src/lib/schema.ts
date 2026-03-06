@@ -188,6 +188,8 @@ export type CareerEventPage = {
   company_guide?: string; // Directus file ID for PDF
   /** Which buttons to show in the event header. When empty/undefined, falls back to legacy behavior (header based on floorplan). Add a JSON field "header_buttons" to career_event_page in Directus (array of strings: "floorplan", "company_guide"). */
   header_buttons?: HeaderButtonType[];
+  /** Optional speakers (M2M with speaker collection). Each speaker has representative (M2O directus_users) and time (M2O timetable). */
+  speakers?: Speaker[];
 };
 
 /** Config for a master-degrees form field used as floorplan category source */
@@ -213,6 +215,28 @@ export type TimeSlot = {
   end_time: string;
   icon?: string
 }
+
+/** Speaker for a career event - representative (M2O directus_users) + time (M2O timetable) */
+export type Speaker = {
+  id: string;
+  /** Personal info (HTML) - bio, title, etc. */
+  personal_information?: string | null;
+  /** Talk content / abstract (HTML) */
+  content?: string | null;
+  representative?: {
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+    avatar?: string | { id?: string } | null;
+    company?: { id: string; name: string; logo?: string | { id?: string } | null; status?: string; options?: unknown[] } | null;
+  } | null;
+  time?: {
+    id: string;
+    title?: string | null;
+    start_time: string;
+    end_time?: string;
+  } | null;
+};
 
 export type Floorplan = {
   id: string;

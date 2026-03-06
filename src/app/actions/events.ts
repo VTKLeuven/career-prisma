@@ -7,7 +7,7 @@ import { listEventPages, getEventPageBySlug } from "@/lib/repos/event";
 import { slugifyEventName } from "@/lib/utils/slugify";
 import { getActiveMatchingSoftwareForEvent } from "@/lib/repos/matching-software";
 import DOMPurify from 'isomorphic-dompurify';
-import type { Company, CareerEvent, CareerEventOption } from "@/lib/schema";
+import type { Company, CareerEvent, CareerEventOption, Speaker } from "@/lib/schema";
 import { listCareerEventOptions } from "@/lib/repos/option";
 import { listCompanies } from "@/lib/repos/company";
 import { getOrCreateEventPage } from "@/lib/repos/floorplan";
@@ -180,6 +180,23 @@ export async function fetchEventPageBySlugAction(slug: string) {
 
     return company;
   }) ?? [];
+
+  // ✅ Flatten speakers (M2M: speakers.speaker_id or speakers direct)
+  page.speakers = (page.speakers as unknown as Array<{ speaker_id?: Speaker; id?: string; representative?: Speaker["representative"]; time?: Speaker["time"] }>)?.map((item) => {
+    const speaker = item.speaker_id ?? item;
+    if (!speaker || typeof speaker !== "object") return null;
+    const rep = speaker.representative;
+    const time = speaker.time;
+    const startTime = time?.start_time ? time.start_time.slice(0, -3) : undefined;
+    const endTime = time?.end_time ? time.end_time.slice(0, -3) : undefined;
+    return {
+      id: (speaker as { id?: string }).id ?? "",
+      personal_information: (speaker as Speaker).personal_information ?? null,
+      content: (speaker as Speaker).content ?? null,
+      representative: rep ?? null,
+      time: time ? { ...time, start_time: startTime ?? time.start_time, end_time: endTime ?? time.end_time } : null,
+    } as Speaker;
+  }).filter((s): s is Speaker => !!s) ?? [];
 
   // ✅ Clean up event times
   if (page.event?.start_hour) page.event.start_hour = page.event.start_hour.slice(0, -3);

@@ -23,6 +23,25 @@ export function slugifyEventName(name?: string | null): string {
   return slugifyCompanyName(name);
 }
 
+/** Slug for speaker (first_name + last_name). Use for speaker page URLs. */
+export function slugifySpeakerName(firstName?: string | null, lastName?: string | null): string {
+  const full = [firstName, lastName].filter(Boolean).join(" ").trim();
+  return slugifyCompanyName(full) || "speaker";
+}
+
+/** Get unique slug for a speaker. When multiple speakers share the same name, appends short id. */
+export function getSpeakerSlug(
+  speaker: { id: string; representative?: { first_name?: string | null; last_name?: string | null } | null },
+  allSpeakers: Array<{ id: string; representative?: { first_name?: string | null; last_name?: string | null } | null }>
+): string {
+  const base = slugifySpeakerName(speaker.representative?.first_name, speaker.representative?.last_name);
+  const sameName = allSpeakers.filter(
+    (s) => slugifySpeakerName(s.representative?.first_name, s.representative?.last_name) === base
+  );
+  if (sameName.length <= 1) return base;
+  return `${base}-${speaker.id.slice(0, 8)}`;
+}
+
 /** Normalize string for case+accent-insensitive matching (e.g. "Café" matches "cafe") */
 export function normalizeForMatching(str?: string | null): string {
   return (str ?? "")

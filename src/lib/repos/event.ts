@@ -154,7 +154,22 @@ export async function getEventPageBySlug(slug: string): Promise<CareerEventPage 
           "companies.company_id.options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option_id.*",
           "floorplan.*", // include floorplan relation
           "company_guide.*", // include company guide file
-        ],
+          "speakers.speaker_id.*",
+          "speakers.speaker_id.personal_information",
+          "speakers.speaker_id.content",
+          "speakers.speaker_id.representative.id",
+          "speakers.speaker_id.representative.first_name",
+          "speakers.speaker_id.representative.last_name",
+          "speakers.speaker_id.representative.avatar",
+          "speakers.speaker_id.representative.company.id",
+          "speakers.speaker_id.representative.company.name",
+          "speakers.speaker_id.representative.company.logo",
+          "speakers.speaker_id.representative.company.status",
+          "speakers.speaker_id.time.id",
+          "speakers.speaker_id.time.title",
+          "speakers.speaker_id.time.start_time",
+          "speakers.speaker_id.time.end_time",
+        ] as any,
         filter: {
           event: {
             _eq: matchingEvent.id as any,
