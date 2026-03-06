@@ -127,12 +127,21 @@ export type HeaderButtonType = 'floorplan' | 'company_guide' | 'cv_upload' | 'ma
 /** RIASEC types for student matching (Holland codes) */
 export type RIASECType = 'R' | 'I' | 'A' | 'S' | 'E' | 'C';
 
+/** Config for a master-degrees form field used as company category source (interested study fields) */
+export type MatchingCategoryFormField = {
+  formId: string;
+  formVersionId: string;
+  fieldName: string;
+};
+
 /** Matching software config - per year and event, with optional prerequisite form */
 export type MatchingSoftware = {
   id: string;
   year: string | AcademicYear;
   event: string | CareerEvent;
   prerequisite_form?: string | Form;
+  /** When set, company "interested categories" come from these form fields instead of company.category. Add JSON field "category_form_fields" to Matching_Software in Directus. */
+  category_form_fields?: MatchingCategoryFormField[];
   active: boolean;
 };
 

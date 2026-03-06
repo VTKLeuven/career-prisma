@@ -25,67 +25,150 @@ function ociaSimilarityScore(studentOcia: Record<OCIAType, number>, companyOcia:
   return raw / 100; // normalize to 0–1 so comparable with generalInfoOverlap
 }
 
-const STUDY_FIELD_KEYS = ["study_field", "study", "master", "program"];
+const STUDY_FIELD_KEYS = [
+  "course_of_study", // e.g. "Artificial Intelligence"
+  "faculty",         // e.g. "Engineering Technology"
+  "study_field",
+  "study",
+  "master",
+  "program",
+  "masters",
+  "master_degree",
+  "master_degrees",
+];
 
-function extractStudyField(data: Record<string, unknown> | null | undefined): string | null {
+/** Extract raw study field value(s) from form data. Handles strings, objects with name, and arrays (master-degrees multiselect).
+ * Collects from all STUDY_FIELD_KEYS so both course_of_study and faculty (etc.) are used for matching across form versions. */
+function extractStudyFieldRawValues(data: Record<string, unknown> | null | undefined): string[] {
   if (!data || typeof data !== "object") {
-    console.log("[Matching] extractStudyField: no data or not object");
-    return null;
+    console.log("[Matching] extractStudyFieldRawValues: no data or not object");
+    return [];
   }
+  const extractOne = (val: unknown): string | null => {
+    if (val == null) return null;
+    if (typeof val === "string" && val.trim()) return val.trim();
+    if (typeof val === "object" && val !== null && "name" in (val as object)) {
+      const name = String((val as { name: string }).name).trim();
+      if (name) return name;
+    }
+    if (typeof val === "object" && val !== null && ("id" in (val as object) || "value" in (val as object) || "label" in (val as object))) {
+      const o = val as Record<string, unknown>;
+      const v = o.name ?? o.label ?? o.value ?? o.id;
+      if (v != null && String(v).trim()) return String(v).trim();
+    }
+    return null;
+  };
+
+  const collected: string[] = [];
   for (const key of STUDY_FIELD_KEYS) {
     const val = data[key];
-    if (val != null && typeof val === "string" && val.trim()) {
-      console.log("[Matching] extractStudyField: found", key, "=", val.trim());
-      return val.trim();
-    }
-    if (val != null && typeof val === "object" && "name" in (val as object)) {
-      const name = String((val as { name: string }).name).trim();
-      console.log("[Matching] extractStudyField: found", key, ".name =", name);
-      return name;
+    if (val == null) continue;
+    if (Array.isArray(val)) {
+      const items = val.map(extractOne).filter((s): s is string => !!s);
+      for (const s of items) if (!collected.includes(s)) collected.push(s);
+    } else {
+      const s = extractOne(val);
+      if (s && !collected.includes(s)) collected.push(s);
     }
   }
-  console.log("[Matching] extractStudyField: no study field in keys", STUDY_FIELD_KEYS, "| data keys:", Object.keys(data));
-  return null;
+  if (collected.length > 0) {
+    console.log("[Matching] extractStudyFieldRawValues: found", collected);
+    return collected;
+  }
+  console.log("[Matching] extractStudyFieldRawValues: no study field in keys", STUDY_FIELD_KEYS, "| data keys:", Object.keys(data));
+  return [];
 }
 
+/** Resolve raw form values (e.g. fac:facId:masterId or master UUID) to display labels for matching. */
+async function resolveStudyFieldForMatching(
+  data: Record<string, unknown> | null | undefined
+): Promise<string[]> {
+  const raw = extractStudyFieldRawValues(data);
+  if (raw.length === 0) return [];
+
+  const isMasterDegreesValue = (s: string) =>
+    /^fac:[^:]+(:[^:]+)?$/.test(s) || /^[0-9a-f-]{36}$/i.test(s) || /^\d+$/.test(s);
+
+  const needsResolution = raw.some(isMasterDegreesValue);
+  if (!needsResolution) return raw;
+
+  try {
+    const { listMasters, listFaculties } = await import("./features");
+    const { normalizeFaculties } = await import("@/lib/utils/master-degree-options");
+    const { resolveMasterDegreeValueToDisplayLabel } = await import("@/lib/utils/master-degree-options");
+
+    const masters = (await listMasters({ limit: 300, sort: "name" })) ?? [];
+    const rawFaculties = (await listFaculties({ limit: 100, sort: "name" })) ?? [];
+    const faculties = normalizeFaculties(rawFaculties);
+
+    const resolved = raw.map((r) => {
+      if (isMasterDegreesValue(r)) {
+        const label = resolveMasterDegreeValueToDisplayLabel(r, masters, faculties);
+        return label || r;
+      }
+      return r;
+    });
+    console.log("[Matching] resolveStudyFieldForMatching: resolved", raw, "->", resolved);
+    return resolved.filter(Boolean);
+  } catch (err) {
+    console.error("[Matching] resolveStudyFieldForMatching error:", err);
+    return raw;
+  }
+}
+
+/** Extract company's interested study categories (from company profile or form). */
 function getCompanyCategoryNames(company: { category?: unknown }): string[] {
   const raw = company.category;
   if (!raw || !Array.isArray(raw)) return [];
   return raw
     .map((item) => {
-      if (typeof item === "object" && item && "master_id" in item) {
-        const mid = (item as { master_id: unknown }).master_id;
-        if (typeof mid === "object" && mid && "name" in mid) return String((mid as { name: string }).name).trim();
+      if (typeof item !== "object" || !item) return null;
+      const o = item as Record<string, unknown>;
+      // master_id relation (junction table)
+      const mid = o.master_id;
+      if (mid != null) {
+        if (typeof mid === "object" && mid && "name" in (mid as object)) return String((mid as { name: string }).name).trim();
       }
-      if (typeof item === "object" && item && "name" in item) return String((item as { name: string }).name).trim();
+      // category_id (alternate junction field)
+      const cid = o.category_id;
+      if (cid != null && typeof cid === "object" && cid && "name" in (cid as object)) return String((cid as { name: string }).name).trim();
+      // Direct master/category object
+      if ("name" in o) return String(o.name).trim();
       return null;
     })
     .filter((n): n is string => Boolean(n));
 }
 
+/** Check if any of the student's study fields match the company's interested categories.
+ * - Students with a specific field (e.g. Mechanical Engineering) only match companies that explicitly list it.
+ * - Students with "Other" or from a faculty without masters match companies that have "Other" in their categories. */
 function studyFieldMatches(
-  studentStudyField: string | null,
+  studentStudyFields: string[],
   companyCategoryNames: string[],
   companyHasOther: boolean,
   companyId?: string
 ): boolean {
-  if (!studentStudyField) {
+  if (studentStudyFields.length === 0) {
     if (companyId) console.log("[Matching] studyFieldMatches: company", companyId, "NO MATCH (no student study field)");
     return false;
   }
-  const normalized = studentStudyField.toLowerCase();
-  const directMatch = companyCategoryNames.some(
-    (name) => name.toLowerCase().includes(normalized) || normalized.includes(name.toLowerCase())
-  );
-  if (directMatch) {
-    if (companyId) console.log("[Matching] studyFieldMatches: company", companyId, "MATCH (direct, categories:", companyCategoryNames.join(", "), ")");
+  const studentHasOther = studentStudyFields.some((s) => /^others?$/i.test(s.trim()));
+  if (studentHasOther && companyHasOther) {
+    if (companyId) console.log("[Matching] studyFieldMatches: company", companyId, "MATCH (student has Other, company has Other)");
     return true;
   }
-  if (companyHasOther) {
-    if (companyId) console.log("[Matching] studyFieldMatches: company", companyId, "MATCH (Other fallback, student field not in", companyCategoryNames.join(", "), ")");
-    return true;
+  const explicitCategories = companyCategoryNames.filter((n) => n.toLowerCase() !== "other");
+  for (const studentField of studentStudyFields) {
+    const normalized = studentField.toLowerCase();
+    const directMatch = explicitCategories.some(
+      (name) => name.toLowerCase().includes(normalized) || normalized.includes(name.toLowerCase())
+    );
+    if (directMatch) {
+      if (companyId) console.log("[Matching] studyFieldMatches: company", companyId, "MATCH (student:", studentField, "| categories:", companyCategoryNames.join(", "), ")");
+      return true;
+    }
   }
-  if (companyId) console.log("[Matching] studyFieldMatches: company", companyId, "NO MATCH (student:", studentStudyField, "| company categories:", companyCategoryNames.join(", "), "| hasOther:", companyHasOther, ")");
+  if (companyId) console.log("[Matching] studyFieldMatches: company", companyId, "NO MATCH (student:", studentStudyFields.join(", "), "| company categories:", companyCategoryNames.join(", "), ")");
   return false;
 }
 
@@ -141,6 +224,32 @@ export async function getMatchingSoftwareByEventAndYear(eventId: string, yearId:
     return items.length > 0 ? items[0] : null;
   } catch (error) {
     console.error("[getMatchingSoftwareByEventAndYear] Error:", error);
+    return null;
+  }
+}
+
+/** Get matching software by ID (for config like category_form_fields). */
+export async function getMatchingSoftwareById(id: string): Promise<MatchingSoftware | null> {
+  try {
+    const client = await getServerDirectusClient();
+    const fields = ["*", "year.*", "event.*", "prerequisite_form.id", "prerequisite_form.name", "prerequisite_form.slug"];
+    for (const collection of MATCHING_SOFTWARE_COLLECTIONS) {
+      try {
+        const item = (await client.request(
+          readItems(collection as any, {
+            fields,
+            filter: { id: { _eq: id } },
+            limit: 1,
+          })
+        )) as unknown as MatchingSoftware[];
+        return item.length > 0 ? item[0] : null;
+      } catch {
+        continue;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error("[getMatchingSoftwareById] Error:", error);
     return null;
   }
 }
@@ -506,7 +615,8 @@ export async function getStudentFormResponseForForm(
 
 /** Get all company matching responses for a matching software, with company and category. */
 async function getCompanyMatchingResponsesForMatchingSoftware(
-  matchingSoftwareId: string
+  matchingSoftwareId: string,
+  categoryFormFields?: Array<{ formId: string; formVersionId: string; fieldName: string }>
 ): Promise<Array<{ companyId: string; ocia: Record<OCIAType, number>; categoryNames: string[]; hasOther: boolean; generalInfo: GeneralInfoAnswers }>> {
   const client = await getServerDirectusClient();
   const fields = [
@@ -520,6 +630,13 @@ async function getCompanyMatchingResponsesForMatchingSoftware(
     "company.category.master_id.id",
     "company.category.master_id.name",
   ];
+
+  let formCategoriesByCompany = new Map<string, string[]>();
+  if (categoryFormFields && categoryFormFields.length > 0) {
+    const { getCompanyCategoriesFromFormResponses } = await import("./forms");
+    formCategoriesByCompany = await getCompanyCategoriesFromFormResponses(categoryFormFields);
+    console.log("[Matching] getCompanyMatchingResponsesForMatchingSoftware: form categories for", formCategoriesByCompany.size, "companies");
+  }
 
   for (const collection of COMPANY_MATCHING_RESPONSE_COLLECTIONS) {
     try {
@@ -539,7 +656,9 @@ async function getCompanyMatchingResponsesForMatchingSoftware(
         .filter((item) => item.company?.id)
         .map((item) => {
           const companyId = typeof item.company === "string" ? item.company : item.company.id;
-          const categoryNames = getCompanyCategoryNames(item.company as { category?: unknown });
+          const fromProfile = getCompanyCategoryNames(item.company as { category?: unknown });
+          const fromForm = formCategoriesByCompany.get(companyId) ?? [];
+          const categoryNames = fromForm.length > 0 ? fromForm : fromProfile;
           const hasOther = categoryNames.some((n) => n.toLowerCase() === "other");
           const generalInfo: GeneralInfoAnswers = item.general_info_answers ?? {
             work_preference: [],
@@ -584,24 +703,26 @@ export async function computeAndStoreCompanyMatches(
   console.log("[Matching] computeAndStoreCompanyMatches: start | responseId:", studentResponseId, "| matchingSoftwareId:", matchingSoftwareId);
 
   const studentOcia = riasecToOcia(riasec);
-  const studentStudyField = extractStudyField(prerequisiteFormResponse ?? undefined);
+  const studentStudyFields = await resolveStudyFieldForMatching(prerequisiteFormResponse ?? undefined);
   const studentGi: GeneralInfoAnswers = studentGeneralInfo ?? {
     work_preference: [],
     company_preference: [],
     options_preference: [],
   };
 
-  console.log("[Matching] student RIASEC:", riasec, "| OCIA:", studentOcia, "| studyField:", studentStudyField ?? "(none)");
+  console.log("[Matching] student RIASEC:", riasec, "| OCIA:", studentOcia, "| studyFields:", studentStudyFields.length ? studentStudyFields : "(none)");
   console.log("[Matching] prerequisite_form_response keys:", prerequisiteFormResponse ? Object.keys(prerequisiteFormResponse) : "null");
 
-  const companyResponses = await getCompanyMatchingResponsesForMatchingSoftware(matchingSoftwareId);
+  const msConfig = await getMatchingSoftwareById(matchingSoftwareId);
+  const categoryFormFields = (msConfig as { category_form_fields?: Array<{ formId: string; formVersionId: string; fieldName: string }> })?.category_form_fields;
+  const companyResponses = await getCompanyMatchingResponsesForMatchingSoftware(matchingSoftwareId, categoryFormFields);
 
   if (companyResponses.length === 0) {
     console.log("[Matching] no company matching responses found - no companies have filled the software for this matching_software");
   }
 
   const eligible = companyResponses.filter((cr) =>
-    studyFieldMatches(studentStudyField, cr.categoryNames, cr.hasOther, cr.companyId)
+    studyFieldMatches(studentStudyFields, cr.categoryNames, cr.hasOther, cr.companyId)
   );
 
   console.log("[Matching] companies with OCIA:", companyResponses.length, "| eligible after study field filter:", eligible.length);
@@ -663,7 +784,9 @@ export async function getMatchScoresForResponse(
     company_preference: [],
     options_preference: [],
   };
-  const companyResponses = await getCompanyMatchingResponsesForMatchingSoftware(matchingSoftwareId);
+  const msConfig = await getMatchingSoftwareById(matchingSoftwareId);
+  const categoryFormFields = (msConfig as { category_form_fields?: Array<{ formId: string; formVersionId: string; fieldName: string }> })?.category_form_fields;
+  const companyResponses = await getCompanyMatchingResponsesForMatchingSoftware(matchingSoftwareId, categoryFormFields);
   const byId = new Map(companyResponses.map((cr) => [cr.companyId, cr]));
   const result: Record<string, number> = {};
   for (const companyId of companyIds) {

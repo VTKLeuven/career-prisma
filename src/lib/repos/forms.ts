@@ -1488,6 +1488,80 @@ export async function getCompanyIdsMatchingFloorplanCategory(
   }
 }
 
+/** Get company categories (interested study fields) from form responses. Returns Map<companyId, string[]> of display labels for matching. */
+export async function getCompanyCategoriesFromFormResponses(
+  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>
+): Promise<Map<string, string[]>> {
+  const result = new Map<string, string[]>();
+  if (categoryFields.length === 0) return result;
+  try {
+    const { listMasters, listFaculties } = await import("@/lib/repos/features");
+    const { normalizeFaculties, resolveMasterDegreeValueToDisplayLabel } = await import("@/lib/utils/master-degree-options");
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const client = await getServerDirectusClient();
+    if (!client) return result;
+
+    const masters = (await listMasters({ limit: 300, sort: "name" })) ?? [];
+    const rawFaculties = (await listFaculties({ limit: 100, sort: "name" })) ?? [];
+    const faculties = normalizeFaculties(rawFaculties);
+
+    const extractVal = (v: unknown): string | null => {
+      if (v == null) return null;
+      if (typeof v === "string" && v.trim()) return v.trim();
+      if (typeof v === "object" && v !== null) {
+        const o = v as Record<string, unknown>;
+        const id = o.id ?? o.value ?? o.name ?? o.label;
+        if (id != null && String(id).trim()) return String(id).trim();
+      }
+      return null;
+    };
+
+    for (const { formId, formVersionId, fieldName } of categoryFields) {
+      const versions = await listFormVersionsForServer(formId);
+      const versionIds = versions.map((v) => v.id);
+      if (versionIds.length === 0) continue;
+      const responses = await client.request(
+        readItems("form_responses" as any, {
+          fields: ["id", "company_id", "data"],
+          filter: {
+            _and: [
+              { form_version_id: { _in: versionIds } },
+              { company_id: { _nnull: true } },
+              NOT_ARCHIVED_FILTER,
+            ],
+          },
+          limit: -1,
+          sort: "-submitted_at",
+        })
+      ) as unknown as Array<{ company_id: string | { id: string }; data: Record<string, unknown> }>;
+      const latestByCompany = new Map<string, Record<string, unknown>>();
+      for (const r of responses) {
+        const companyId = typeof r.company_id === "string" ? r.company_id : r.company_id?.id;
+        if (!companyId || latestByCompany.has(companyId)) continue;
+        latestByCompany.set(companyId, r.data ?? {});
+      }
+      for (const [companyId, data] of latestByCompany) {
+        const fieldValue = data[fieldName];
+        if (fieldValue == null) continue;
+        const items = Array.isArray(fieldValue) ? fieldValue : [fieldValue];
+        const labels = items
+          .map((v) => {
+            const s = extractVal(v);
+            if (!s) return null;
+            return resolveMasterDegreeValueToDisplayLabel(s, masters, faculties) || s;
+          })
+          .filter((x): x is string => !!x);
+        const existing = result.get(companyId) ?? [];
+        result.set(companyId, [...new Set([...existing, ...labels])]);
+      }
+    }
+    return result;
+  } catch (error) {
+    console.error("[getCompanyCategoriesFromFormResponses] Error:", error);
+    return result;
+  }
+}
+
 /** Get company's master/faculty logos from master-degrees form responses. Returns unique logo IDs only. */
 export async function getCompanyMasterDegreesFromForm(
   categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>,

@@ -12,6 +12,7 @@ The API uses `Matching_Software` (PascalCase). If your Directus collection key d
 | year | M2O → Academic_Year | | Required |
 | event | M2O → career_event | | Required |
 | prerequisite_form | M2O → forms | | Optional - form students must fill before matching |
+| category_form_fields | JSON | | Optional - array of `{ formId, formVersionId, fieldName }` – master-degrees form fields from company forms. When set, company "interested categories" come from form responses instead of company.category (Settings). Use when companies specify target study fields per event via forms. |
 | active | Boolean | Toggle | Default: true |
 
 ## 2. Collection: `Student_Matching_Response` (or `student_matching_response`)
@@ -65,6 +66,8 @@ Uses the same `DIRECTUS_SERVER_TOKEN` as student login. If students can log in, 
 | `students` | **Read** (for student relation) |
 
 **Where to set**: Directus → Settings → Access Control → [Role used by DIRECTUS_SERVER_TOKEN] → Matching_Software / student_matching_response / company_matching_response.
+
+**"You don't have permission to access this" (403)**: If you see this in logs when fetching `Company_Matching_Response`, the server token's role lacks **Read** permission on that collection. Grant Read (and Create/Update if companies save matching data) for `company_matching_response` or `Company_Matching_Response` – use the exact collection name from your Directus schema. The code tries both PascalCase and snake_case; one may 403 while the other succeeds. Fix by granting permissions for the collection name your Directus uses.
 
 ## 5. Header buttons
 
