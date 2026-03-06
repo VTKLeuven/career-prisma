@@ -56,7 +56,7 @@ function Header() {
   const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
   const [menuOpenedViaClick, setMenuOpenedViaClick] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [companyRep, setCompanyRep] = useState<{ authenticated: boolean; name: string } | null>(null)
+  const [companyRep, setCompanyRep] = useState<{ authenticated: boolean; name: string; is_shifter?: boolean } | null>(null)
   const [student, setStudent] = useState<{ authenticated: boolean; firstName: string | null; lastName: string | null; is_shifter?: boolean } | null>(null)
   const router = useRouter()
   const pathname = usePathname()
@@ -380,6 +380,19 @@ function Header() {
                       <Link href="/student-login">Student login</Link>
                     </Button>
                   )}
+                  {companyRep?.is_shifter && (
+                    <Button
+                      asChild
+                      variant="outline"
+                      className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Link href="/dashboard/shifter">
+                        <Bell className="mr-2 h-4 w-4 text-orange-500" />
+                        Shifter Dashboard
+                      </Link>
+                    </Button>
+                  )}
                   {companyRep && (
                     <Button
                       asChild
@@ -399,6 +412,17 @@ function Header() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56">
+                          {student.is_shifter && (
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setMobileMenuOpen(false);
+                                router.push("/dashboard/shifter");
+                              }}
+                            >
+                              <Bell className="mr-2 h-4 w-4 text-orange-500" />
+                              Shifter Dashboard
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem
                             onClick={async () => {
                               await fetch("/api/students/logout", { method: "POST" });
