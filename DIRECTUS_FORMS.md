@@ -64,3 +64,21 @@ For student forms, when a student submits a new response, their previous respons
 - Form capacity checks (max_entries)
 - CV Book data
 - Student's "latest response" lookup (for prefill)
+
+---
+
+## Career event speakers
+
+The career event page supports optional speakers (M2M with the `speaker` collection).
+
+**speaker collection:**
+| Field | Type | Notes |
+|-------|------|-------|
+| personal_information | WYSIWYG/HTML | Bio, title, etc. Shown on speaker detail page |
+| content | WYSIWYG/HTML | Talk abstract / what they'll speak about |
+| representative | M2O → directus_users | User (first_name, last_name, avatar, company) |
+| time | M2O → timetable | Timetable slot (title, start_time, end_time) |
+
+**career_event_page:** Add M2M field `speakers` linking to `speaker`. The junction table typically has `speaker_id` pointing to speaker.
+
+**Display:** Speaker cards (section title "Discovery Stage") show a square photo with time overlay (top right), name and company logo + name below. When a speaker has no company (e.g. PhD), "KU Leuven" with its logo is shown as fallback.

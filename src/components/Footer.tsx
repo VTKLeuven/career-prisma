@@ -2,30 +2,32 @@
 
 import Link from 'next/link'
 import { Separator } from '@/components/ui/separator'
+import { usePageLayout } from '@/app/(public)/(site)/layout'
 
 export function Footer() {
+    const { darkHeaderFooter } = usePageLayout()
     return (
-        <footer className="bg-white border-t relative z-20">
+        <footer className={`border-t relative z-20 ${darkHeaderFooter ? 'bg-neutral-800/80 border-neutral-600/50' : 'bg-white'}`}>
             <div className="mx-auto max-w-7xl px-4 py-12 sm:py-16">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-10">
                     {/* VTK Career Hub Info */}
                     <div className="space-y-3">
                         <div className="flex items-center gap-3">
-                            <span className="font-semibold text-vtk-blue">VTK Career Hub</span>
+                            <span className={`font-semibold ${darkHeaderFooter ? 'text-white' : 'text-vtk-blue'}`}>VTK Career Hub</span>
                         </div>
-                        <p className="max-w-xs text-sm text-neutral-700">
+                        <p className={`max-w-xs text-sm ${darkHeaderFooter ? 'text-neutral-300' : 'text-neutral-700'}`}>
                             The all-in-one platform for engineering students looking for a job.
                         </p>
                     </div>
 
                     {/* Explore */}
                     <div>
-                        <h4 className="mb-3 text-sm font-medium text-neutral-900">Explore</h4>
-                        <ul className="space-y-2 text-sm text-neutral-700">
+                        <h4 className={`mb-3 text-sm font-medium ${darkHeaderFooter ? 'text-neutral-100' : 'text-neutral-900'}`}>Explore</h4>
+                        <ul className={`space-y-2 text-sm ${darkHeaderFooter ? 'text-neutral-300' : 'text-neutral-700'}`}>
                             <li>
                                 <a 
                                     href="/#all-events" 
-                                    className="hover:text-vtk-blue hover:underline underline-offset-4"
+                                    className={`hover:underline underline-offset-4 ${darkHeaderFooter ? 'hover:text-white' : 'hover:text-vtk-blue'}`}
                                     onClick={(e) => {
                                         // If already on homepage, trigger the view all events
                                         if (window.location.pathname === '/') {
@@ -40,7 +42,7 @@ export function Footer() {
                                 </a>
                             </li>
                             <li>
-                                <Link href="/vacancies" className="hover:text-vtk-blue hover:underline underline-offset-4">
+                                <Link href="/vacancies" className={`hover:underline underline-offset-4 ${darkHeaderFooter ? 'hover:text-white' : 'hover:text-vtk-blue'}`}>
                                     Vacancies
                                 </Link>
                             </li>
@@ -49,25 +51,25 @@ export function Footer() {
 
                     {/* For Companies */}
                     <div>
-                        <h4 className="mb-3 text-sm font-medium text-neutral-900">Login</h4>
-                        <ul className="space-y-2 text-sm text-neutral-700">
+                        <h4 className={`mb-3 text-sm font-medium ${darkHeaderFooter ? 'text-neutral-100' : 'text-neutral-900'}`}>Login</h4>
+                        <ul className={`space-y-2 text-sm ${darkHeaderFooter ? 'text-neutral-300' : 'text-neutral-700'}`}>
                             <li>
-                                <Link href="/student-login" className="hover:text-vtk-blue hover:underline underline-offset-4">
+                                <Link href="/student-login" className={`hover:underline underline-offset-4 ${darkHeaderFooter ? 'hover:text-white' : 'hover:text-vtk-blue'}`}>
                                     Student Login
                                 </Link>
                             </li>
                             <li>
-                                <Link href="/login" className="hover:text-vtk-blue hover:underline underline-offset-4">
+                                <Link href="/login" className={`hover:underline underline-offset-4 ${darkHeaderFooter ? 'hover:text-white' : 'hover:text-vtk-blue'}`}>
                                     Company Login
                                 </Link>
                             </li>
                         </ul>
                     </div>
                     <div>
-                        <h4 className="mb-3 text-sm font-medium text-neutral-900">For Companies</h4>
-                        <ul className="space-y-2 text-sm text-neutral-700">
+                        <h4 className={`mb-3 text-sm font-medium ${darkHeaderFooter ? 'text-neutral-100' : 'text-neutral-900'}`}>For Companies</h4>
+                        <ul className={`space-y-2 text-sm ${darkHeaderFooter ? 'text-neutral-300' : 'text-neutral-700'}`}>
                             <li>
-                                <Link href="/contact" className="hover:text-vtk-blue hover:underline underline-offset-4">
+                                <Link href="/contact" className={`hover:underline underline-offset-4 ${darkHeaderFooter ? 'hover:text-white' : 'hover:text-vtk-blue'}`}>
                                     Contact Us
                                 </Link>
                             </li>
@@ -76,12 +78,12 @@ export function Footer() {
 
                     {/* Get in Touch */}
                     <div>
-                        <h4 className="mb-3 text-sm font-medium text-neutral-900">Get in Touch</h4>
-                        <ul className="space-y-2 text-sm text-neutral-700">
+                        <h4 className={`mb-3 text-sm font-medium ${darkHeaderFooter ? 'text-neutral-100' : 'text-neutral-900'}`}>Get in Touch</h4>
+                        <ul className={`space-y-2 text-sm ${darkHeaderFooter ? 'text-neutral-300' : 'text-neutral-700'}`}>
                             <li>
                                 <a 
                                     href="mailto:bedrijvenrelaties@vtk.be" 
-                                    className="hover:text-vtk-blue hover:underline underline-offset-4"
+                                    className={`hover:underline underline-offset-4 ${darkHeaderFooter ? 'hover:text-white' : 'hover:text-vtk-blue'}`}
                                 >
                                     bedrijvenrelaties@vtk.be
                                 </a>
@@ -89,7 +91,7 @@ export function Footer() {
                             <li>
                                 <a 
                                     href="tel:+3216200097" 
-                                    className="hover:text-vtk-blue hover:underline underline-offset-4"
+                                    className={`hover:underline underline-offset-4 ${darkHeaderFooter ? 'hover:text-white' : 'hover:text-vtk-blue'}`}
                                 >
                                     +32 (0)16 20 00 97
                                 </a>
@@ -98,9 +100,9 @@ export function Footer() {
                     </div>
                 </div>
 
-                <Separator className="my-10" />
+                <Separator className={`my-10 ${darkHeaderFooter ? 'bg-neutral-600/50' : ''}`} />
 
-                <div className="flex flex-col items-start justify-between gap-4 text-xs text-neutral-600 sm:flex-row sm:items-center">
+                <div className={`flex flex-col items-start justify-between gap-4 text-xs sm:flex-row sm:items-center ${darkHeaderFooter ? 'text-neutral-400' : 'text-neutral-600'}`}>
                     <p>© {new Date().getFullYear()} VTK Career Hub. All rights reserved.</p>
                 </div>
             </div>

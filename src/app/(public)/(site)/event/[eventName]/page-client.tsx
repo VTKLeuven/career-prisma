@@ -16,9 +16,9 @@ import { useRouter, usePathname } from 'next/navigation'
 import { useParams } from "next/navigation"
 import { fetchEventPageBySlugAction, fetchEventsAction } from "@/app/actions/events"
 import { getDirectusImageUrl } from "@/components/Images";
-import { slugifyCompanyName, slugifyEventName } from "@/lib/utils/slugify";
+import { slugifyCompanyName, slugifyEventName, getSpeakerSlug } from "@/lib/utils/slugify";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
-import { CareerEventPage, Company, CareerEvent, HeaderButtonType } from '@/lib/schema'
+import { CareerEventPage, Company, CareerEvent, HeaderButtonType, Speaker } from '@/lib/schema'
 import dynamic from "next/dynamic"
 import HeroiconDynamic from "@/components/HeroiconDynamic"
 import { ChevronDown, MapPin, Car, ExternalLink, LogOut, User } from 'lucide-react'
@@ -1619,9 +1619,85 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
               </div>
             </div>
           </div>
+
+          {/* Speakers */}
+          {page?.speakers && page.speakers.length > 0 && (
+            <div className="mt-12">
+              <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-6">
+                Discovery Stage
+              </h2>
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+                {page.speakers.map((speaker) => (
+                  <SpeakerCard key={speaker.id} speaker={speaker} eventSlug={slugifyEventName(page.event.name)} allSpeakers={page.speakers ?? []} />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </section>
+  )
+}
+
+const KU_LEUVEN_LOGO_ID = "d93c21e6-1145-4d4e-96d2-7e8daa640b9f"
+
+// ---------------- SpeakerCard ----------------
+function SpeakerCard({ speaker, eventSlug, allSpeakers }: { speaker: Speaker; eventSlug: string; allSpeakers: Speaker[] }) {
+  const rep = speaker.representative
+  const avatarUrl = rep?.avatar ? getDirectusImageUrl(rep.avatar) : undefined
+  const company = rep?.company
+  // PhD fallback: no company → assume KU Leuven
+  const displayCompany = company ?? { name: "KU Leuven", logo: KU_LEUVEN_LOGO_ID }
+  const companyLogoUrl = displayCompany.logo ? getDirectusImageUrl(displayCompany.logo) : undefined
+  const startHour = speaker.time?.start_time
+  const endHour = speaker.time?.end_time
+  const timeLabel = startHour && endHour ? `${startHour} - ${endHour}` : startHour ?? endHour ?? null
+
+  return (
+    <Link
+      href={`/event/${eventSlug}/speakers/${getSpeakerSlug(speaker, allSpeakers)}`}
+      className="flex w-full flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition-shadow"
+    >
+      {/* Square photo with time overlay */}
+      <div className="relative aspect-square w-full">
+        {avatarUrl ? (
+          <Image
+            src={avatarUrl}
+            alt={rep ? `${rep.first_name ?? ""} ${rep.last_name ?? ""}`.trim() || "Speaker" : "Speaker"}
+            fill
+            className="object-cover"
+            sizes="(max-width: 640px) 33vw, (max-width: 1024px) 25vw, 20vw"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-neutral-100 text-2xl font-semibold text-neutral-400">
+            {(rep?.first_name?.[0] ?? rep?.last_name?.[0] ?? "?")}
+          </div>
+        )}
+        {timeLabel && (
+          <div className="absolute top-1.5 right-1.5 rounded bg-white/90 px-1.5 py-0.5 text-xs font-medium text-vtk-blue shadow-sm">
+            {timeLabel}
+          </div>
+        )}
+      </div>
+      {/* Name + company below photo (PhD fallback: KU Leuven when no company) */}
+      <div className="p-2 text-center">
+        <div className="text-sm font-semibold text-neutral-900">{(rep?.first_name ?? "")} {rep?.last_name}</div>
+        <div className="mt-1 flex items-center justify-center gap-1.5">
+          {companyLogoUrl && (
+            <div className="h-4 w-4 shrink-0 overflow-hidden rounded">
+              <Image
+                src={companyLogoUrl}
+                alt={displayCompany.name}
+                width={16}
+                height={16}
+                className="h-full w-full object-contain"
+              />
+            </div>
+          )}
+          <span className="text-xs text-neutral-600 truncate">{displayCompany.name}</span>
+        </div>
+      </div>
+    </Link>
   )
 }
 
