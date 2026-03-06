@@ -4,6 +4,7 @@ import { createDirectus, readMe, rest, staticToken } from "@directus/sdk";
 import { DirectusRole, DirectusUser } from "@/lib/schema";
 import type { NextRequest } from "next/server";
 import { cookies } from "next/headers";
+import { findStudentByEmail } from "@/lib/repos/students";
 
 const DIRECTUS_URL = process.env.DIRECTUS_URL || "http://localhost:8055";
 const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
@@ -33,6 +34,16 @@ async function getUserFromAccessToken(token: string): Promise<DirectusUser | und
     const role = me.role as any;
     const isAdmin = role?.admin_access === true || role?.name === "Administrator" || role?.id === "7b128ef4-f530-47d2-8f4c-ef82518eb313";
 
+    // Look up student by email to get is_shifter - engineering science account users
+    // may have a linked student record with shifter status
+    let isShifter = false;
+    if (me.email) {
+      const student = await findStudentByEmail(me.email);
+      if (student?.is_shifter) {
+        isShifter = true;
+      }
+    }
+
     return {
       id: me.id,
       name:
@@ -44,6 +55,7 @@ async function getUserFromAccessToken(token: string): Promise<DirectusUser | und
       role: (me.role as DirectusRole)?.name ?? "Unknown",
       admin: isAdmin,
       company: me.company,
+      is_shifter: isShifter,
     };
   } catch (error) {
     if (error instanceof Error) {

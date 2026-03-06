@@ -147,6 +147,7 @@ export async function GET(request: NextRequest) {
       admin: user.admin || false,
       name: user.name || user.email || '',
       email: user.email || '',
+      is_shifter: user.is_shifter || false,
     } : null;
 
     // Only return student if student is actually defined and has required fields
