@@ -59,7 +59,6 @@ export async function listEventPages(opts?: {
           "event.*", // make sure we get event fields
           "timetable.timetable_id.*",
           "companies.company_id.*",
-          "companies.company_id.page_on_platform",
           "companies.company_id.status",
           "companies.company_id.options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option_id.*",
           "floorplan.*",
@@ -151,7 +150,6 @@ export async function getEventPageBySlug(slug: string): Promise<CareerEventPage 
           "event.*",
           "timetable.timetable_id.*",
           "companies.company_id.*",
-          "companies.company_id.page_on_platform",
           "companies.company_id.status",
           "companies.company_id.options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option_id.*",
           "floorplan.*", // include floorplan relation

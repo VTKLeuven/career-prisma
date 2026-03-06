@@ -86,7 +86,7 @@ export default function CompanyPage() {
           import("@/lib/utils/company-access"),
         ]);
         if (fetched) {
-          // Check if company has access to company page (sub-option + page_on_platform + published)
+          // Check if company has access to company page (sub-option + published)
           if (!hasCompanyPageAccess(fetched, allSubOptions ?? [])) {
             setCompany(null);
             setLoading(false);

@@ -907,9 +907,9 @@ export async function getMatchedCompaniesForResponse(
   return [];
 }
 
-export type MatchedCompany = { id: string; name?: string; logo?: string; page_on_platform?: boolean; status?: string; options?: unknown[] };
+export type MatchedCompany = { id: string; name?: string; logo?: string; status?: string; options?: unknown[] };
 
-/** Fetch company id, name, logo, page_on_platform, status, options for given IDs (options needed for sub-option checks). */
+/** Fetch company id, name, logo, status, options for given IDs (options needed for sub-option checks). */
 export async function getCompaniesByIds(
   companyIds: string[]
 ): Promise<MatchedCompany[]> {
@@ -922,8 +922,9 @@ export async function getCompaniesByIds(
           "id",
           "name",
           "logo",
-          "page_on_platform",
           "status",
+          "sub_options.*",
+          "sub_options.career_sub_option_id.*",
           "options.career_event_option_id.*",
           "options.career_event_option_id.sub_options.*",
           "options.career_event_option_id.sub_options.career_sub_option_id.*",
