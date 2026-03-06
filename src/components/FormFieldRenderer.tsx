@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Download } from "lucide-react";
+import { Download, FileIcon } from "lucide-react";
 import type { FormField } from "@/lib/schema";
 
 type MasterOption = { value: string; label: string };
@@ -300,20 +300,88 @@ function countWords(text: string): number {
 }
 
 function FileDisplay({ fileId }: { fileId: string }) {
-  const [isImage, setIsImage] = useState<boolean | null>(null);
+  const [fileInfo, setFileInfo] = useState<{
+    type: string;
+    filename: string | null;
+  } | null>(null);
+  const [imageError, setImageError] = useState(false);
   const fileUrl = `/api/files/${fileId}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/files/${fileId}/info`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data) {
+          setFileInfo({
+            type: data.type ?? "application/octet-stream",
+            filename: data.filename ?? null,
+          });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [fileId]);
+
+  const isImage = fileInfo ? fileInfo.type?.toLowerCase().startsWith("image/") : null;
+  const isPdf = fileInfo?.type?.toLowerCase() === "application/pdf";
 
   return (
     <div className="flex flex-col gap-2">
-      {isImage !== false && (
-        <div className="relative w-24 h-24 rounded-lg border bg-muted overflow-hidden flex items-center justify-center">
+      {/* Image preview */}
+      {isImage === true && !imageError && (
+        <div className="relative rounded-lg border bg-muted overflow-hidden flex items-center justify-center min-h-[120px] max-h-48">
           <img
             src={fileUrl}
             alt="File preview"
-            className="max-w-full max-h-full object-contain"
-            onLoad={() => setIsImage(true)}
-            onError={() => setIsImage(false)}
+            className="max-w-full max-h-48 object-contain"
+            onLoad={() => setImageError(false)}
+            onError={() => setImageError(true)}
           />
+        </div>
+      )}
+      {/* PDF preview */}
+      {isPdf && (
+        <div className="rounded-lg border bg-muted overflow-hidden min-h-[200px] max-h-64">
+          <iframe
+            src={`${fileUrl}#toolbar=0`}
+            title="PDF preview"
+            className="w-full h-64 border-0"
+          />
+        </div>
+      )}
+      {/* Generic file preview (doc, xlsx, etc.) */}
+      {fileInfo && !isImage && !isPdf && (
+        <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-background">
+            <FileIcon className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">
+              {fileInfo.filename || "Uploaded file"}
+            </p>
+            <p className="text-xs text-muted-foreground">{fileInfo.type}</p>
+          </div>
+        </div>
+      )}
+      {/* Fallback when metadata not yet loaded - try image first */}
+      {!fileInfo && !imageError && (
+        <div className="relative rounded-lg border bg-muted overflow-hidden flex items-center justify-center min-h-[120px] max-h-48">
+          <img
+            src={fileUrl}
+            alt="File preview"
+            className="max-w-full max-h-48 object-contain"
+            onLoad={() => setImageError(false)}
+            onError={() => setImageError(true)}
+          />
+        </div>
+      )}
+      {!fileInfo && imageError && (
+        <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted">
+          <FileIcon className="h-6 w-6 shrink-0 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">File uploaded</span>
         </div>
       )}
       <a
@@ -613,87 +681,90 @@ export function FormFieldRenderer({
       const maxFileSize = field.validation?.maxFileSize || 50 * 1024 * 1024;
       const maxFileSizeMB = Math.round(maxFileSize / (1024 * 1024));
       const isMultiple = field.multiple || false;
+      const hasFiles =
+        value != null &&
+        value !== "" &&
+        (!Array.isArray(value) || value.length > 0);
 
       return (
-        <div className="space-y-2">
-          <Input
-            id={field.id}
-            name={field.name}
-            type="file"
-            multiple={isMultiple}
-            disabled={disabled}
-            required={field.required && !value}
-            onChange={async (e) => {
-              const files = Array.from(e.target.files || []);
-              if (files.length === 0) return;
+        <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
+          <div className="flex-1 min-w-0 space-y-2">
+            <Input
+              id={field.id}
+              name={field.name}
+              type="file"
+              multiple={isMultiple}
+              disabled={disabled}
+              required={field.required && !value}
+              onChange={async (e) => {
+                const files = Array.from(e.target.files || []);
+                if (files.length === 0) return;
 
-              const oversizedFiles = files.filter((file) => file.size > maxFileSize);
-              if (oversizedFiles.length > 0) {
-                alert(`Some files exceed the maximum size of ${maxFileSizeMB}MB. Please select smaller files.`);
-                e.target.value = "";
-                return;
-              }
-
-              if (field.validation?.allowedFileTypes && field.validation.allowedFileTypes.length > 0) {
-                const invalidFiles = files.filter(
-                  (file) =>
-                    !field.validation!.allowedFileTypes!.some(
-                      (type) => file.type === type || file.name.toLowerCase().endsWith(type.replace("*", ""))
-                    )
-                );
-                if (invalidFiles.length > 0) {
-                  alert(
-                    `Some files have invalid types. Allowed types: ${field.validation.allowedFileTypes.join(", ")}`
-                  );
+                const oversizedFiles = files.filter((file) => file.size > maxFileSize);
+                if (oversizedFiles.length > 0) {
+                  alert(`Some files exceed the maximum size of ${maxFileSizeMB}MB. Please select smaller files.`);
                   e.target.value = "";
                   return;
                 }
-              }
 
-              try {
-                const uploadedIds: string[] = [];
-                for (const file of files) {
-                  const formData = new FormData();
-                  formData.append("file", file);
-                  const response = await fetch("/api/upload", { method: "POST", body: formData });
-                  if (!response.ok) {
-                    const err = await response.json().catch(() => ({}));
-                    throw new Error(err.error || "Upload failed");
+                if (field.validation?.allowedFileTypes && field.validation.allowedFileTypes.length > 0) {
+                  const invalidFiles = files.filter(
+                    (file) =>
+                      !field.validation!.allowedFileTypes!.some(
+                        (type) => file.type === type || file.name.toLowerCase().endsWith(type.replace("*", ""))
+                      )
+                  );
+                  if (invalidFiles.length > 0) {
+                    alert(
+                      `Some files have invalid types. Allowed types: ${field.validation.allowedFileTypes.join(", ")}`
+                    );
+                    e.target.value = "";
+                    return;
                   }
-                  const result = await response.json();
-                  if (!result.id) throw new Error("Upload succeeded but no file ID returned");
-                  uploadedIds.push(result.id);
                 }
-                onChange(isMultiple ? uploadedIds : uploadedIds[0]);
-              } catch (error) {
-                console.error("File upload error:", error);
-                alert(`Failed to upload file: ${error instanceof Error ? error.message : String(error)}`);
-                e.target.value = "";
-              }
-            }}
-            className={inputClassName}
-          />
-          <p className="text-xs text-muted-foreground">
-            Max {maxFileSizeMB}MB{isMultiple ? " (multiple allowed)" : ""}
-          </p>
-          {value ? (
-            <div className="text-sm space-y-2">
+
+                try {
+                  const uploadedIds: string[] = [];
+                  for (const file of files) {
+                    const formData = new FormData();
+                    formData.append("file", file);
+                    const response = await fetch("/api/upload", { method: "POST", body: formData });
+                    if (!response.ok) {
+                      const err = await response.json().catch(() => ({}));
+                      throw new Error(err.error || "Upload failed");
+                    }
+                    const result = await response.json();
+                    if (!result.id) throw new Error("Upload succeeded but no file ID returned");
+                    uploadedIds.push(result.id);
+                  }
+                  onChange(isMultiple ? uploadedIds : uploadedIds[0]);
+                } catch (error) {
+                  console.error("File upload error:", error);
+                  alert(`Failed to upload file: ${error instanceof Error ? error.message : String(error)}`);
+                  e.target.value = "";
+                }
+              }}
+              className={inputClassName}
+            />
+            <p className="text-xs text-muted-foreground">
+              Max {maxFileSizeMB}MB{isMultiple ? " (multiple allowed)" : ""}
+            </p>
+            {hasFiles ? (
+              <p className="text-sm text-muted-foreground font-medium">
+                ✓ {isMultiple && Array.isArray(value) ? `${(value as string[]).length} file(s) uploaded` : "File uploaded"}
+              </p>
+            ) : null}
+          </div>
+          {hasFiles ? (
+            <div className="shrink-0 w-full sm:w-auto sm:min-w-[200px] space-y-2">
               {isMultiple && Array.isArray(value) ? (
-                <div className="space-y-2">
-                  <p className="text-muted-foreground font-medium">✓ {value.length} file(s) uploaded:</p>
-                  <ul className="space-y-1">
-                    {value.map((id, idx) => (
-                      <li key={idx} className="flex items-center gap-2">
-                        <FileDisplay fileId={typeof id === "string" ? id : String(id)} />
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                (value as string[]).map((id, idx) => (
+                  <div key={idx}>
+                    <FileDisplay fileId={typeof id === "string" ? id : String(id)} />
+                  </div>
+                ))
               ) : (
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground font-medium">✓ File uploaded:</span>
-                  <FileDisplay fileId={typeof value === "string" ? value : String(value)} />
-                </div>
+                <FileDisplay fileId={typeof value === "string" ? value : String(value)} />
               )}
             </div>
           ) : null}
