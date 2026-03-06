@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useMemo, useCallback } from "react"
 import { useParams, usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import NextImage from "next/image"
@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Clock, ArrowLeft, Users } from "lucide-react"
+import { Clock, ArrowLeft, Users, Loader2 } from "lucide-react"
 import { StudentMatchingSoftware } from "@/components/StudentMatchingSoftware"
 
 export default function SubPage() {
@@ -483,10 +483,12 @@ function Header({
                         style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
                       >
                         <NextImage
-                          src={getDirectusImageUrl(cat.logo) ?? ''}
+                          src={getDirectusImageUrl(cat.logo, { width: 64, height: 64 }) ?? ''}
                           alt={cat.short_name}
                           width={32}
                           height={32}
+                          sizes="32px"
+                          loading="lazy"
                           className={`object-contain transition-all duration-200 transform ${
                             isSelected
                               ? 'scale-110 grayscale-0 opacity-100'
@@ -584,6 +586,68 @@ function Floorplan({
   const isPanningRef = useRef(false)
   const lastPanPointRef = useRef<{ x: number; y: number } | null>(null)
   const rafIdRef = useRef<number | null>(null)
+  const tooltipRafRef = useRef<number | null>(null)
+  const pendingTooltipRef = useRef<{ companyName: string; x: number; y: number } | null>(null)
+
+  // Memoize booth overlay data to avoid recalculating on every render
+  const boothOverlayData = useMemo(() => {
+    const origVbParts = originalViewBox.split(/\s+/).map(Number)
+    if (origVbParts.length !== 4) return []
+    const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
+    return boothsLocal
+      .filter((b): b is Booth => !!b.coords && !!b.company)
+      .map((booth) => {
+        const isCategorySelected = useFormCategories
+          ? selectedCategories.length > 0 && !!booth.company?.id && matchedCompanyIdsForm.has(String(booth.company.id))
+          : (() => {
+              const boothCats: Master[] = Array.isArray(booth.company?.category)
+                ? booth.company!.category!.filter((c): c is Master => c !== null)
+                : []
+              return selectedCategories.length > 0 && selectedCategories.every(cat =>
+                boothCats.map(c => c.short_name).includes(cat)
+              )
+            })()
+        const isFlicker = flickerCompanyId === booth.company!.id && flickerState
+        const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
+        const boothX = origVbX + (booth.coords!.x_pct / 100) * origVbWidth
+        const boothY = origVbY + (booth.coords!.y_pct / 100) * origVbHeight
+        const boothWidth = (booth.coords!.width_pct / 100) * origVbWidth
+        const boothHeight = (booth.coords!.height_pct / 100) * origVbHeight
+        const rotation = (booth.coords as { rotation_deg?: number }).rotation_deg
+        const boothCx = boothX + boothWidth / 2
+        const boothCy = boothY + boothHeight / 2
+        const boothShape = rotation != null && Math.abs(rotation) > 0.5
+          ? (() => {
+              const rad = (rotation * Math.PI) / 180
+              const c = Math.cos(rad)
+              const s = Math.sin(rad)
+              const hw = boothWidth / 2
+              const hh = boothHeight / 2
+              return `M ${boothCx + (-hw * c + hh * s)} ${boothCy + (-hw * s - hh * c)} L ${boothCx + (hw * c + hh * s)} ${boothCy + (hw * s - hh * c)} L ${boothCx + (hw * c - hh * s)} ${boothCy + (hw * s + hh * c)} L ${boothCx + (-hw * c - hh * s)} ${boothCy + (-hw * s + hh * c)} Z`
+            })()
+          : null
+        return { booth, boothX, boothY, boothWidth, boothHeight, boothShape, isSelected }
+      })
+  }, [boothsLocal, originalViewBox, useFormCategories, selectedCategories, matchedCompanyIdsForm, flickerCompanyId, flickerState])
+
+  // Memoize SVG data URL - expensive encodeURIComponent on large SVG
+  const svgDataUrl = useMemo(() => {
+    if (!svgContent) return null
+    const p = originalViewBox.split(/\s+/).map(Number)
+    if (p.length !== 4) return null
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgContent)}`
+  }, [svgContent, originalViewBox])
+
+  // Throttled tooltip update to reduce re-renders during mouse move
+  const handleBoothMouseMove = useCallback((companyName: string, x: number, y: number) => {
+    pendingTooltipRef.current = { companyName, x, y }
+    if (tooltipRafRef.current) return
+    tooltipRafRef.current = requestAnimationFrame(() => {
+      const p = pendingTooltipRef.current
+      if (p) setTooltip(p)
+      tooltipRafRef.current = null
+    })
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -884,10 +948,12 @@ function Floorplan({
                     style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
                   >
                     <NextImage
-                      src={getDirectusImageUrl(cat.logo) ?? ''}
+                      src={getDirectusImageUrl(cat.logo, { width: 72, height: 72 }) ?? ''}
                       alt={cat.short_name}
                       width={36}
                       height={36}
+                      sizes="36px"
+                      loading="lazy"
                       className={`object-contain transition-all duration-200 transform ${
                         isSelected
                           ? 'scale-110 grayscale-0 opacity-100'
@@ -940,198 +1006,51 @@ function Floorplan({
             preserveAspectRatio="xMidYMid meet"
           >
           {/* First: Render unselected white booths behind SVG */}
-          {boothsLocal.map((booth, i) => {
-            if (!booth.coords || !booth.company) return null
-
-            const isCategorySelected = useFormCategories
-              ? selectedCategories.length > 0 && !!booth.company?.id && matchedCompanyIdsForm.has(String(booth.company.id))
-              : (() => {
-                  const boothCats: Master[] = Array.isArray(booth.company?.category)
-                    ? booth.company!.category!.filter((c): c is Master => c !== null)
-                    : []
-                  return selectedCategories.length > 0 && selectedCategories.every(cat =>
-                    boothCats.map(c => c.short_name).includes(cat)
-                  )
-                })()
-
-            const isFlicker = flickerCompanyId === booth.company.id && flickerState
-            const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
-
-            // Only render unselected booths here (white background)
-            if (isSelected) return null
-
-            const origVbParts = originalViewBox.split(/\s+/).map(Number)
-            if (origVbParts.length !== 4) return null
-            const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
-
-            const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
-            const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
-            const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
-            const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
-            const rotation = (booth.coords as { rotation_deg?: number }).rotation_deg
-            const boothCx = boothX + boothWidth / 2
-            const boothCy = boothY + boothHeight / 2
-
-            const boothShape = rotation != null && Math.abs(rotation) > 0.5
-              ? (() => {
-                  const rad = (rotation * Math.PI) / 180
-                  const c = Math.cos(rad)
-                  const s = Math.sin(rad)
-                  const hw = boothWidth / 2
-                  const hh = boothHeight / 2
-                  const x1 = boothCx + (-hw * c + hh * s)
-                  const y1 = boothCy + (-hw * s - hh * c)
-                  const x2 = boothCx + (hw * c + hh * s)
-                  const y2 = boothCy + (hw * s - hh * c)
-                  const x3 = boothCx + (hw * c - hh * s)
-                  const y3 = boothCy + (hw * s + hh * c)
-                  const x4 = boothCx + (-hw * c - hh * s)
-                  const y4 = boothCy + (-hw * s + hh * c)
-                  return `M ${x1} ${y1} L ${x2} ${y2} L ${x3} ${y3} L ${x4} ${y4} Z`
-                })()
-              : null
-
+          {boothOverlayData.filter(d => !d.isSelected).map((d, i) => {
+            const companyName = companyNamesByCompanyId[d.booth.company!.id] ?? d.booth.company!.name
             const commonProps = {
               style: { cursor: "pointer" } as React.CSSProperties,
-              onClick: () => onBoothClick(booth),
+              onClick: () => onBoothClick(d.booth),
               onMouseEnter: (e: React.MouseEvent) => {
-                setHoveredBoothId(booth.company!.id)
-                setTooltip({ companyName: companyNamesByCompanyId[booth.company!.id] ?? booth.company!.name, x: e.clientX, y: e.clientY })
+                setHoveredBoothId(d.booth.company!.id)
+                setTooltip({ companyName, x: e.clientX, y: e.clientY })
               },
               onMouseLeave: () => { setHoveredBoothId(null); setTooltip(null) },
-              onMouseMove: (e: React.MouseEvent) => {
-                if (booth.company) setTooltip({ companyName: companyNamesByCompanyId[booth.company.id] ?? booth.company.name, x: e.clientX, y: e.clientY })
-              },
+              onMouseMove: (e: React.MouseEvent) => handleBoothMouseMove(companyName, e.clientX, e.clientY),
             }
-
-            return boothShape ? (
-              <path
-                key={`unselected-${i}`}
-                d={boothShape}
-                fill="white"
-                stroke="#e5e7eb"
-                strokeWidth={1}
-                {...commonProps}
-              />
+            return d.boothShape ? (
+              <path key={`unselected-${i}`} d={d.boothShape} fill="white" stroke="#e5e7eb" strokeWidth={1} {...commonProps} />
             ) : (
-              <rect
-                key={`unselected-${i}`}
-                x={boothX}
-                y={boothY}
-                width={boothWidth}
-                height={boothHeight}
-                fill="white"
-                stroke="#e5e7eb"
-                strokeWidth={1}
-                {...commonProps}
-              />
+              <rect key={`unselected-${i}`} x={d.boothX} y={d.boothY} width={d.boothWidth} height={d.boothHeight} fill="white" stroke="#e5e7eb" strokeWidth={1} {...commonProps} />
             )
           })}
 
-          {/* Second: Floorplan SVG as image - preserves exact rendering (no white blocks, circles, or missing lines) */}
-          {svgContent && (() => {
+          {/* Second: Floorplan SVG as image */}
+          {svgDataUrl && (() => {
             const p = originalViewBox.split(/\s+/).map(Number)
             if (p.length !== 4) return null
-            const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgContent)}`
             return (
-              <image
-                href={dataUrl}
-                x={p[0]}
-                y={p[1]}
-                width={p[2]}
-                height={p[3]}
-                preserveAspectRatio="xMidYMid meet"
-                style={{ pointerEvents: 'none' }}
-              />
+              <image href={svgDataUrl} x={p[0]} y={p[1]} width={p[2]} height={p[3]} preserveAspectRatio="xMidYMid meet" style={{ pointerEvents: 'none' }} />
             )
           })()}
 
           {/* Third: Render selected booths on top */}
-          {boothsLocal.map((booth, i) => {
-            if (!booth.coords || !booth.company) return null
-
-            const isCategorySelected = useFormCategories
-              ? selectedCategories.length > 0 && !!booth.company?.id && matchedCompanyIdsForm.has(String(booth.company.id))
-              : (() => {
-                  const boothCats: Master[] = Array.isArray(booth.company?.category)
-                    ? booth.company!.category!.filter((c): c is Master => c !== null)
-                    : []
-                  return selectedCategories.length > 0 && selectedCategories.every(cat =>
-                    boothCats.map(c => c.short_name).includes(cat)
-                  )
-                })()
-
-            const isFlicker = flickerCompanyId === booth.company.id && flickerState
-            const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
-
-            // Only render selected booths here
-            if (!isSelected) return null
-
-            const origVbParts = originalViewBox.split(/\s+/).map(Number)
-            if (origVbParts.length !== 4) return null
-            const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
-
-            const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
-            const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
-            const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
-            const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
-            const rotation = (booth.coords as { rotation_deg?: number }).rotation_deg
-            const boothCx = boothX + boothWidth / 2
-            const boothCy = boothY + boothHeight / 2
-
-            const boothShape = rotation != null && Math.abs(rotation) > 0.5
-              ? (() => {
-                  const rad = (rotation * Math.PI) / 180
-                  const c = Math.cos(rad)
-                  const s = Math.sin(rad)
-                  const hw = boothWidth / 2
-                  const hh = boothHeight / 2
-                  const x1 = boothCx + (-hw * c + hh * s)
-                  const y1 = boothCy + (-hw * s - hh * c)
-                  const x2 = boothCx + (hw * c + hh * s)
-                  const y2 = boothCy + (hw * s - hh * c)
-                  const x3 = boothCx + (hw * c - hh * s)
-                  const y3 = boothCy + (hw * s + hh * c)
-                  const x4 = boothCx + (-hw * c - hh * s)
-                  const y4 = boothCy + (-hw * s + hh * c)
-                  return `M ${x1} ${y1} L ${x2} ${y2} L ${x3} ${y3} L ${x4} ${y4} Z`
-                })()
-              : null
-
+          {boothOverlayData.filter(d => d.isSelected).map((d, i) => {
+            const companyName = companyNamesByCompanyId[d.booth.company!.id] ?? d.booth.company!.name
             const commonProps = {
               style: { cursor: "pointer" } as React.CSSProperties,
-              onClick: () => onBoothClick(booth),
+              onClick: () => onBoothClick(d.booth),
               onMouseEnter: (e: React.MouseEvent) => {
-                setHoveredBoothId(booth.company!.id)
-                setTooltip({ companyName: companyNamesByCompanyId[booth.company!.id] ?? booth.company!.name, x: e.clientX, y: e.clientY })
+                setHoveredBoothId(d.booth.company!.id)
+                setTooltip({ companyName, x: e.clientX, y: e.clientY })
               },
               onMouseLeave: () => { setHoveredBoothId(null); setTooltip(null) },
-              onMouseMove: (e: React.MouseEvent) => {
-                if (booth.company) setTooltip({ companyName: companyNamesByCompanyId[booth.company.id] ?? booth.company.name, x: e.clientX, y: e.clientY })
-              },
+              onMouseMove: (e: React.MouseEvent) => handleBoothMouseMove(companyName, e.clientX, e.clientY),
             }
-
-            return boothShape ? (
-              <path
-                key={`selected-${i}`}
-                d={boothShape}
-                fill="rgba(0,51,102,0.35)"
-                stroke="#003366"
-                strokeWidth={1}
-                {...commonProps}
-              />
+            return d.boothShape ? (
+              <path key={`selected-${i}`} d={d.boothShape} fill="rgba(0,51,102,0.35)" stroke="#003366" strokeWidth={1} {...commonProps} />
             ) : (
-              <rect
-                key={`selected-${i}`}
-                x={boothX}
-                y={boothY}
-                width={boothWidth}
-                height={boothHeight}
-                fill="rgba(0,51,102,0.35)"
-                stroke="#003366"
-                strokeWidth={1}
-                {...commonProps}
-              />
+              <rect key={`selected-${i}`} x={d.boothX} y={d.boothY} width={d.boothWidth} height={d.boothHeight} fill="rgba(0,51,102,0.35)" stroke="#003366" strokeWidth={1} {...commonProps} />
             )
           })}
           </svg>
@@ -1146,198 +1065,51 @@ function Floorplan({
             preserveAspectRatio="xMidYMid meet"
           >
           {/* First: Render unselected white booths behind SVG */}
-          {boothsLocal.map((booth, i) => {
-            if (!booth.coords || !booth.company) return null
-
-            const isCategorySelected = useFormCategories
-              ? selectedCategories.length > 0 && !!booth.company?.id && matchedCompanyIdsForm.has(String(booth.company.id))
-              : (() => {
-                  const boothCats: Master[] = Array.isArray(booth.company?.category)
-                    ? booth.company!.category!.filter((c): c is Master => c !== null)
-                    : []
-                  return selectedCategories.length > 0 && selectedCategories.every(cat =>
-                    boothCats.map(c => c.short_name).includes(cat)
-                  )
-                })()
-
-            const isFlicker = flickerCompanyId === booth.company.id && flickerState
-            const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
-
-            // Only render unselected booths here (white background)
-            if (isSelected) return null
-
-            const origVbParts = originalViewBox.split(/\s+/).map(Number)
-            if (origVbParts.length !== 4) return null
-            const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
-
-            const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
-            const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
-            const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
-            const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
-            const rotation = (booth.coords as { rotation_deg?: number }).rotation_deg
-            const boothCx = boothX + boothWidth / 2
-            const boothCy = boothY + boothHeight / 2
-
-            const boothShape = rotation != null && Math.abs(rotation) > 0.5
-              ? (() => {
-                  const rad = (rotation * Math.PI) / 180
-                  const c = Math.cos(rad)
-                  const s = Math.sin(rad)
-                  const hw = boothWidth / 2
-                  const hh = boothHeight / 2
-                  const x1 = boothCx + (-hw * c + hh * s)
-                  const y1 = boothCy + (-hw * s - hh * c)
-                  const x2 = boothCx + (hw * c + hh * s)
-                  const y2 = boothCy + (hw * s - hh * c)
-                  const x3 = boothCx + (hw * c - hh * s)
-                  const y3 = boothCy + (hw * s + hh * c)
-                  const x4 = boothCx + (-hw * c - hh * s)
-                  const y4 = boothCy + (-hw * s + hh * c)
-                  return `M ${x1} ${y1} L ${x2} ${y2} L ${x3} ${y3} L ${x4} ${y4} Z`
-                })()
-              : null
-
+          {boothOverlayData.filter(d => !d.isSelected).map((d, i) => {
+            const companyName = companyNamesByCompanyId[d.booth.company!.id] ?? d.booth.company!.name
             const commonProps = {
               style: { cursor: "pointer" } as React.CSSProperties,
-              onClick: () => onBoothClick(booth),
+              onClick: () => onBoothClick(d.booth),
               onMouseEnter: (e: React.MouseEvent) => {
-                setHoveredBoothId(booth.company!.id)
-                setTooltip({ companyName: companyNamesByCompanyId[booth.company!.id] ?? booth.company!.name, x: e.clientX, y: e.clientY })
+                setHoveredBoothId(d.booth.company!.id)
+                setTooltip({ companyName, x: e.clientX, y: e.clientY })
               },
               onMouseLeave: () => { setHoveredBoothId(null); setTooltip(null) },
-              onMouseMove: (e: React.MouseEvent) => {
-                if (booth.company) setTooltip({ companyName: companyNamesByCompanyId[booth.company.id] ?? booth.company.name, x: e.clientX, y: e.clientY })
-              },
+              onMouseMove: (e: React.MouseEvent) => handleBoothMouseMove(companyName, e.clientX, e.clientY),
             }
-
-            return boothShape ? (
-              <path
-                key={`unselected-desktop-${i}`}
-                d={boothShape}
-                fill="white"
-                stroke="#e5e7eb"
-                strokeWidth={1}
-                {...commonProps}
-              />
+            return d.boothShape ? (
+              <path key={`unselected-desktop-${i}`} d={d.boothShape} fill="white" stroke="#e5e7eb" strokeWidth={1} {...commonProps} />
             ) : (
-              <rect
-                key={`unselected-desktop-${i}`}
-                x={boothX}
-                y={boothY}
-                width={boothWidth}
-                height={boothHeight}
-                fill="white"
-                stroke="#e5e7eb"
-                strokeWidth={1}
-                {...commonProps}
-              />
+              <rect key={`unselected-desktop-${i}`} x={d.boothX} y={d.boothY} width={d.boothWidth} height={d.boothHeight} fill="white" stroke="#e5e7eb" strokeWidth={1} {...commonProps} />
             )
           })}
 
-          {/* Second: Floorplan SVG as image - preserves exact rendering (no white blocks, circles, or missing lines) */}
-          {svgContent && (() => {
+          {/* Second: Floorplan SVG as image */}
+          {svgDataUrl && (() => {
             const p = originalViewBox.split(/\s+/).map(Number)
             if (p.length !== 4) return null
-            const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgContent)}`
             return (
-              <image
-                href={dataUrl}
-                x={p[0]}
-                y={p[1]}
-                width={p[2]}
-                height={p[3]}
-                preserveAspectRatio="xMidYMid meet"
-                style={{ pointerEvents: 'none' }}
-              />
+              <image href={svgDataUrl} x={p[0]} y={p[1]} width={p[2]} height={p[3]} preserveAspectRatio="xMidYMid meet" style={{ pointerEvents: 'none' }} />
             )
           })()}
 
           {/* Third: Render selected booths on top */}
-          {boothsLocal.map((booth, i) => {
-            if (!booth.coords || !booth.company) return null
-
-            const isCategorySelected = useFormCategories
-              ? selectedCategories.length > 0 && !!booth.company?.id && matchedCompanyIdsForm.has(String(booth.company.id))
-              : (() => {
-                  const boothCats: Master[] = Array.isArray(booth.company?.category)
-                    ? booth.company!.category!.filter((c): c is Master => c !== null)
-                    : []
-                  return selectedCategories.length > 0 && selectedCategories.every(cat =>
-                    boothCats.map(c => c.short_name).includes(cat)
-                  )
-                })()
-
-            const isFlicker = flickerCompanyId === booth.company.id && flickerState
-            const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
-
-            // Only render selected booths here
-            if (!isSelected) return null
-
-            const origVbParts = originalViewBox.split(/\s+/).map(Number)
-            if (origVbParts.length !== 4) return null
-            const [origVbX, origVbY, origVbWidth, origVbHeight] = origVbParts
-
-            const boothX = origVbX + (booth.coords.x_pct / 100) * origVbWidth
-            const boothY = origVbY + (booth.coords.y_pct / 100) * origVbHeight
-            const boothWidth = (booth.coords.width_pct / 100) * origVbWidth
-            const boothHeight = (booth.coords.height_pct / 100) * origVbHeight
-            const rotation = (booth.coords as { rotation_deg?: number }).rotation_deg
-            const boothCx = boothX + boothWidth / 2
-            const boothCy = boothY + boothHeight / 2
-
-            const boothShape = rotation != null && Math.abs(rotation) > 0.5
-              ? (() => {
-                  const rad = (rotation * Math.PI) / 180
-                  const c = Math.cos(rad)
-                  const s = Math.sin(rad)
-                  const hw = boothWidth / 2
-                  const hh = boothHeight / 2
-                  const x1 = boothCx + (-hw * c + hh * s)
-                  const y1 = boothCy + (-hw * s - hh * c)
-                  const x2 = boothCx + (hw * c + hh * s)
-                  const y2 = boothCy + (hw * s - hh * c)
-                  const x3 = boothCx + (hw * c - hh * s)
-                  const y3 = boothCy + (hw * s + hh * c)
-                  const x4 = boothCx + (-hw * c - hh * s)
-                  const y4 = boothCy + (-hw * s + hh * c)
-                  return `M ${x1} ${y1} L ${x2} ${y2} L ${x3} ${y3} L ${x4} ${y4} Z`
-                })()
-              : null
-
+          {boothOverlayData.filter(d => d.isSelected).map((d, i) => {
+            const companyName = companyNamesByCompanyId[d.booth.company!.id] ?? d.booth.company!.name
             const commonProps = {
               style: { cursor: "pointer" } as React.CSSProperties,
-              onClick: () => onBoothClick(booth),
+              onClick: () => onBoothClick(d.booth),
               onMouseEnter: (e: React.MouseEvent) => {
-                setHoveredBoothId(booth.company!.id)
-                setTooltip({ companyName: companyNamesByCompanyId[booth.company!.id] ?? booth.company!.name, x: e.clientX, y: e.clientY })
+                setHoveredBoothId(d.booth.company!.id)
+                setTooltip({ companyName, x: e.clientX, y: e.clientY })
               },
               onMouseLeave: () => { setHoveredBoothId(null); setTooltip(null) },
-              onMouseMove: (e: React.MouseEvent) => {
-                if (booth.company) setTooltip({ companyName: companyNamesByCompanyId[booth.company.id] ?? booth.company.name, x: e.clientX, y: e.clientY })
-              },
+              onMouseMove: (e: React.MouseEvent) => handleBoothMouseMove(companyName, e.clientX, e.clientY),
             }
-
-            return boothShape ? (
-              <path
-                key={`selected-desktop-${i}`}
-                d={boothShape}
-                fill="rgba(0,51,102,0.35)"
-                stroke="#003366"
-                strokeWidth={1}
-                {...commonProps}
-              />
+            return d.boothShape ? (
+              <path key={`selected-desktop-${i}`} d={d.boothShape} fill="rgba(0,51,102,0.35)" stroke="#003366" strokeWidth={1} {...commonProps} />
             ) : (
-              <rect
-                key={`selected-desktop-${i}`}
-                x={boothX}
-                y={boothY}
-                width={boothWidth}
-                height={boothHeight}
-                fill="rgba(0,51,102,0.35)"
-                stroke="#003366"
-                strokeWidth={1}
-                {...commonProps}
-              />
+              <rect key={`selected-desktop-${i}`} x={d.boothX} y={d.boothY} width={d.boothWidth} height={d.boothHeight} fill="rgba(0,51,102,0.35)" stroke="#003366" strokeWidth={1} {...commonProps} />
             )
           })}
           </svg>
@@ -1400,10 +1172,12 @@ function Floorplan({
                   style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
                 >
                   <NextImage
-                    src={getDirectusImageUrl(cat.logo) ?? ''}
+                    src={getDirectusImageUrl(cat.logo, { width: 72, height: 72 }) ?? ''}
                     alt={cat.short_name}
                     width={36}
                     height={36}
+                    sizes="36px"
+                    loading="lazy"
                     className={`object-contain transition-all duration-200 transform ${
                       isSelected
                         ? 'scale-110 grayscale-0 opacity-100'
@@ -1827,11 +1601,17 @@ function Popup({
   const company = booth.company!
   const displayName = companyNamesByCompanyId[company.id] ?? company.name
   const [formMasterLogos, setFormMasterLogos] = useState<string[]>([])
+  const [logosLoading, setLogosLoading] = useState(categoryFormFields.length > 0)
 
   useEffect(() => {
     if (categoryFormFields.length > 0 && company?.id) {
-      fetchCompanyMasterDegreesFromFormAction(categoryFormFields, company.id).then(setFormMasterLogos)
+      setLogosLoading(true)
+      fetchCompanyMasterDegreesFromFormAction(categoryFormFields, company.id).then((logos) => {
+        setFormMasterLogos(logos)
+        setLogosLoading(false)
+      })
     } else {
+      setLogosLoading(false)
       setFormMasterLogos([])
     }
   }, [company?.id, categoryFormFields])
@@ -1877,6 +1657,13 @@ function Popup({
         <div className="absolute top-3 right-3 text-neutral-600 font-semibold text-sm">
           Booth {booth.booth_number}
         </div>
+        {logosLoading ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-4">
+            <Loader2 className="h-10 w-10 animate-spin text-vtk-blue" />
+            <p className="text-neutral-600 text-sm">Loading company info...</p>
+          </div>
+        ) : (
+          <>
         {company.logo && (
           <div className="flex justify-center mb-4">
             <NextImage
@@ -1935,6 +1722,8 @@ function Popup({
               View company page
             </Link>
           </div>
+        )}
+          </>
         )}
       </div>
     </div>
