@@ -105,6 +105,6 @@ ENV HOSTNAME "0.0.0.0"
 ENV PM2_HOME=/app/.pm2
 
 # server.js is created by next build from the standalone output
-# PM2 cluster mode: one process per CPU core for better concurrency
-CMD ["pm2-runtime", "start", "server.js", "-i", "max"]
+# PM2 cluster mode: 16 workers (matches 16-core host; -i max can be limited by container)
+CMD ["pm2-runtime", "start", "server.js", "-i", "16"]
 
