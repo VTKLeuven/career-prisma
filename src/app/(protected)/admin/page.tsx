@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { fetchCompaniesAction, fetchCompaniesWithSubOptionsAction, createCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, addSubOptionToCompanyAction, removeSubOptionFromCompanyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction, fetchCompanyOptionsDebugAction } from "@/app/actions/companies";
+import { fetchCompaniesAction, fetchCompaniesWithSubOptionsAction, createCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, addSubOptionToCompanyAction, removeSubOptionFromCompanyAction, addSubOptionToCompanyOnlyAction, removeSubOptionFromCompanyOnlyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction, fetchCompanyOptionsDebugAction } from "@/app/actions/companies";
 import { fetchEventsAction, findCompaniesWithEventOptions, addCompaniesToEventPageAction } from "@/app/actions/events";
 import { listMatchingSoftwareAction, createMatchingSoftwareAction } from "@/app/actions/matching-software";
 import { fetchAcademicYearsAction } from "@/app/actions/cv-book";
@@ -85,6 +85,8 @@ type CareerEventOptionWithCompanySubOptions = CareerEventOption & { companySubOp
 type CompanyRow = Pick<Company, "id" | "name" | "VAT" | "address" | "salesperson" | "status"> & {
   representatives?: Partial<CompanyRep>[];
   options?: CareerEventOptionWithCompanySubOptions[];
+  /** Company-level sub-options (from company.sub_options junction) */
+  sub_options?: CareerSubOption[];
 };
 
 export default function AdminPage() {
@@ -176,13 +178,71 @@ function resolveSubOptionFromItem(s: unknown): CareerSubOption | null {
   return null;
 }
 
-/** Extract company's selected sub_options from junction and/or option (handles Directus formats). Uses expanded career_sub_option_id when available. */
-function extractCompanySubOptions(opt: unknown, allSubOptions?: CareerSubOption[], rawOption?: unknown): CareerSubOption[] {
+/** Resolve company.sub_options (junction array) to CareerSubOption[] for display. */
+function resolveCompanySubOptions(company: unknown, allSubOptions: CareerSubOption[]): CareerSubOption[] {
+  const raw = (company && typeof company === "object" && "sub_options" in company)
+    ? (company as { sub_options?: unknown }).sub_options
+    : undefined;
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  const byId = new Map(allSubOptions.map((s) => [String(s.id), s]));
+  const result: CareerSubOption[] = [];
+  const seen = new Set<string>();
+  for (const s of raw) {
+    let resolved: CareerSubOption | null = null;
+    if (s && typeof s === "object" && "name" in s) resolved = s as CareerSubOption;
+    else if (s && typeof s === "object" && "career_sub_option_id" in s) {
+      const ref = (s as { career_sub_option_id: CareerSubOption | string | null }).career_sub_option_id;
+      resolved = ref && typeof ref === "object" ? (ref as CareerSubOption) : (typeof ref === "string" ? byId.get(ref) ?? null : null);
+    } else if (typeof s === "string") resolved = byId.get(s) ?? null;
+    else if (s && typeof s === "object" && "id" in s) resolved = byId.get(String((s as { id: string }).id)) ?? null;
+    if (resolved && !seen.has(String(resolved.id))) {
+      seen.add(String(resolved.id));
+      result.push(resolved);
+    }
+  }
+  return result;
+}
+
+/** Extract company's selected sub_options from company.sub_options, junction, and/or option (handles Directus formats). */
+function extractCompanySubOptions(opt: unknown, allSubOptions?: CareerSubOption[], rawOption?: unknown, company?: unknown): CareerSubOption[] {
+  const resolveAndReturn = (subOpts: unknown[]): CareerSubOption[] => {
+    const resolved = subOpts
+      .map((s) => {
+        if (s && typeof s === 'object' && 'name' in s) return s as CareerSubOption;
+        if (s && typeof s === 'object' && 'career_sub_option_id' in s) {
+          const ref = (s as { career_sub_option_id: CareerSubOption | null }).career_sub_option_id;
+          return ref && typeof ref === 'object' ? (ref as CareerSubOption) : null;
+        }
+        if (s && typeof s === 'object' && 'career_sub_option' in s) {
+          const ref = (s as { career_sub_option: CareerSubOption | null }).career_sub_option;
+          return ref && typeof ref === 'object' ? (ref as CareerSubOption) : null;
+        }
+        if (typeof s === 'string' && allSubOptions) {
+          return allSubOptions.find((a) => a.id === s) ?? null;
+        }
+        if (s && typeof s === 'object' && 'id' in s && allSubOptions) {
+          return allSubOptions.find((a) => a.id === (s as { id: string }).id) ?? null;
+        }
+        return null;
+      })
+      .filter((s): s is CareerSubOption => s !== null);
+    return resolved;
+  };
+
+  // Primary: company.sub_options (company_career_sub_option junction - company-level)
+  const companySubs = (company && typeof company === "object" && "sub_options" in company)
+    ? (company as { sub_options?: unknown }).sub_options
+    : undefined;
+  if (Array.isArray(companySubs) && companySubs.length > 0) {
+    const resolved = resolveAndReturn(companySubs);
+    if (resolved.length > 0) return resolved;
+  }
+
   if (!opt || typeof opt !== 'object') return [];
   const raw = opt as Record<string, unknown>;
   let subOpts = (raw.sub_options ?? raw.career_sub_options ?? raw.sub_option) as unknown[] | undefined;
 
-  // Primary: option's sub_options from nested path (option.events[].career_event_option_id.sub_options) - expanded objects with career_sub_option_id
+  // Option's sub_options from nested path (option.events[].career_event_option_id.sub_options) - expanded objects with career_sub_option_id
   if (rawOption && typeof rawOption === 'object') {
     const optionRaw = rawOption as Record<string, unknown>;
     const events = optionRaw.events as Array<Record<string, unknown>> | undefined;
@@ -213,27 +273,7 @@ function extractCompanySubOptions(opt: unknown, allSubOptions?: CareerSubOption[
   }
   if (!Array.isArray(subOpts)) return [];
 
-  const resolved = subOpts
-    .map((s) => {
-      if (s && typeof s === 'object' && 'name' in s) return s as CareerSubOption;
-      if (s && typeof s === 'object' && 'career_sub_option_id' in s) {
-        const ref = (s as { career_sub_option_id: CareerSubOption | null }).career_sub_option_id;
-        return ref && typeof ref === 'object' ? (ref as CareerSubOption) : null;
-      }
-      if (s && typeof s === 'object' && 'career_sub_option' in s) {
-        const ref = (s as { career_sub_option: CareerSubOption | null }).career_sub_option;
-        return ref && typeof ref === 'object' ? (ref as CareerSubOption) : null;
-      }
-      if (typeof s === 'string' && allSubOptions) {
-        return allSubOptions.find((a) => a.id === s) ?? null;
-      }
-      if (s && typeof s === 'object' && 'id' in s && allSubOptions) {
-        return allSubOptions.find((a) => a.id === (s as { id: string }).id) ?? null;
-      }
-      return null;
-    })
-    .filter((s): s is CareerSubOption => s !== null);
-
+  const resolved = resolveAndReturn(subOpts);
   if (resolved.length > 0) return resolved;
   // Fallback: resolve by IDs from junction or option
   const ids = getSubOptionIdsFromJunction(opt).length > 0 ? getSubOptionIdsFromJunction(opt) : getSubOptionIdsFromOption(rawOption ?? opt);
@@ -257,6 +297,7 @@ function CompaniesSection() {
   const [rowSelection, setRowSelection] = React.useState({});
   const [selectedCompany, setSelectedCompany] = React.useState<CompanyRow | null>(null);
   const [viewMode, setViewMode] = React.useState<"companies" | "users" | "options">("companies");
+  const [allSubOptions, setAllSubOptions] = React.useState<CareerSubOption[]>([]);
 
   const refreshCompanies = React.useCallback(() => {
     setLoading(true);
@@ -271,6 +312,7 @@ function CompaniesSection() {
           salesperson: r.salesperson ?? "",
           status: r.status ?? "",
           representatives: (r.representatives ?? []).map((rep) => ({ ...rep })) as Partial<CompanyRep>[],
+          sub_options: resolveCompanySubOptions(r, allSubOptions ?? []),
           options: (r.options ?? []).map((opt, optIndex) => {
             // Handle both direct CareerEventOption and junction table format
             let rawOption: CareerEventOption | null = null;
@@ -286,7 +328,7 @@ function CompaniesSection() {
               return null;
             }
 
-            const companySubOptions = extractCompanySubOptions(opt, allSubOptions, rawOption);
+            const companySubOptions = extractCompanySubOptions(opt, allSubOptions, rawOption, r);
 
             // Resolve option's sub_options (can be IDs from nested events path) for SubOptionsDialog
             const optionSubOptionIds = getSubOptionIdsFromOption(rawOption);
@@ -366,6 +408,7 @@ function CompaniesSection() {
           }).filter((opt): opt is CareerEventOptionWithCompanySubOptions => opt !== null && opt !== undefined && opt.id !== undefined),
         }));
         setData(mapped);
+        setAllSubOptions(allSubOptions ?? []);
         setSelectedCompany((prev) => {
           if (!prev) return prev;
           const updated = mapped.find((c) => c.id === prev.id);
@@ -390,6 +433,7 @@ function CompaniesSection() {
           salesperson: r.salesperson ?? "",
           status: r.status ?? "",
           representatives: (r.representatives ?? []).map((rep) => ({ ...rep })) as Partial<CompanyRep>[],
+          sub_options: resolveCompanySubOptions(r, allSubOptions ?? []),
           options: (r.options ?? []).map((opt, optIndex) => {
             // Handle both direct CareerEventOption and junction table format
             let rawOption: CareerEventOption | null = null;
@@ -405,7 +449,7 @@ function CompaniesSection() {
               return null;
             }
 
-            const companySubOptions = extractCompanySubOptions(opt, allSubOptions, rawOption);
+            const companySubOptions = extractCompanySubOptions(opt, allSubOptions, rawOption, r);
 
             // Resolve option's sub_options (can be IDs from nested events path) for SubOptionsDialog
             const optionSubOptionIds = getSubOptionIdsFromOption(rawOption);
@@ -485,6 +529,7 @@ function CompaniesSection() {
           }).filter((opt): opt is CareerEventOptionWithCompanySubOptions => opt !== null && opt !== undefined && opt.id !== undefined),
         }));
         setData(mapped);
+        setAllSubOptions(allSubOptions ?? []);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -725,16 +770,23 @@ function CompaniesSection() {
             }}
           />
         ) : viewMode === "options" ? (
-          <CompanyOptionsTable
-            company={selectedCompany}
-            onAddOption={(newOption) => {
-              addOptionToCompany(selectedCompany.id, newOption);
-            }}
-            onRemoveOption={(optionId) => {
-              removeOptionFromCompany(selectedCompany.id, optionId);
-            }}
-            onSubOptionsChange={() => refreshCompanies()}
-          />
+          <>
+            <CompanySubOptionsSection
+              company={selectedCompany}
+              allSubOptions={allSubOptions}
+              onSubOptionsChange={() => refreshCompanies()}
+            />
+            <CompanyOptionsTable
+              company={selectedCompany}
+              onAddOption={(newOption) => {
+                addOptionToCompany(selectedCompany.id, newOption);
+              }}
+              onRemoveOption={(optionId) => {
+                removeOptionFromCompany(selectedCompany.id, optionId);
+              }}
+              onSubOptionsChange={() => refreshCompanies()}
+            />
+          </>
         ) : null}
       </CardContent>
     </Card>
@@ -1113,6 +1165,84 @@ function UserFormDialog({ company, onCreate }: {
 }
 
 /** ------------------------------------------------------------------
+ * Company Sub-Options Section (company-level only, no option required)
+ * - allows giving a company sub-options without any option
+ * ------------------------------------------------------------------ */
+function CompanySubOptionsSection({ company, allSubOptions, onSubOptionsChange }: {
+  company: CompanyRow;
+  allSubOptions: CareerSubOption[];
+  onSubOptionsChange: () => void;
+}) {
+  const [adding, setAdding] = React.useState(false);
+  const companySubs = company.sub_options ?? [];
+  const availableToAdd = allSubOptions.filter(
+    (s) => !companySubs.some((c) => String(c.id) === String(s.id))
+  );
+
+  const handleAdd = async (subOptionId: string) => {
+    setAdding(true);
+    try {
+      const updated = await addSubOptionToCompanyOnlyAction(company.id, subOptionId);
+      if (updated) onSubOptionsChange();
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleRemove = async (subOptionId: string) => {
+    try {
+      const updated = await removeSubOptionFromCompanyOnlyAction(company.id, subOptionId);
+      if (updated) onSubOptionsChange();
+    } catch (e) {
+      console.error("[CompanySubOptionsSection] Remove failed:", e);
+    }
+  };
+
+  return (
+    <div className="mb-4 p-4 rounded-lg border bg-muted/30">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-sm font-medium">Company sub-options</span>
+        <span className="text-muted-foreground text-xs">(without requiring an option)</span>
+      </div>
+      <div className="flex flex-wrap gap-2 items-center">
+        {companySubs.map((s) => (
+          <span
+            key={s.id}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-primary/10 text-primary text-sm"
+          >
+            {s.name}
+            <button
+              type="button"
+              onClick={() => handleRemove(String(s.id))}
+              className="hover:bg-primary/20 rounded p-0.5"
+              aria-label={`Remove ${s.name}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+        {availableToAdd.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" disabled={adding}>
+                <IconPlus className="h-4 w-4 mr-1" /> Add sub-option
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              {availableToAdd.map((s) => (
+                <DropdownMenuItem key={s.id} onSelect={() => handleAdd(String(s.id))}>
+                  {s.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** ------------------------------------------------------------------
  * Company Options Table (full-featured)
  * - displays all options a company has
  * ------------------------------------------------------------------ */
@@ -1286,6 +1416,8 @@ function SubOptionsDialog({
   const [open, setOpen] = React.useState(false);
   const [allSubOptions, setAllSubOptions] = React.useState<CareerSubOption[]>([]);
   const [loading, setLoading] = React.useState(false);
+  const [actionLoading, setActionLoading] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
 
   // If option has no sub_options defined, fetch all from career_sub_option
   const subOptionsToShow = availableSubOptions.length > 0 ? availableSubOptions : allSubOptions;
@@ -1302,25 +1434,43 @@ function SubOptionsDialog({
     }
   }, [open, availableSubOptions.length]);
 
-  const companySubIds = new Set(companySubOptions.map((s) => s.id));
-  const canAdd = subOptionsToShow.filter((s) => !companySubIds.has(s.id));
+  const companySubIds = new Set(companySubOptions.map((s) => String(s.id)));
+  const canAdd = subOptionsToShow.filter((s) => !companySubIds.has(String(s.id)));
   const canRemove = companySubOptions;
 
   const handleAdd = async (subOptionId: string) => {
+    setError(null);
+    setActionLoading(subOptionId);
     try {
-      await addSubOptionToCompanyAction(companyId, option.id, subOptionId);
-      onUpdate?.();
+      const result = await addSubOptionToCompanyAction(companyId, option.id, subOptionId);
+      if (result) {
+        onUpdate?.();
+      } else {
+        setError("Failed to add sub-option. The company may not have this option, or the update could not be saved.");
+      }
     } catch (e) {
       console.error("Error adding sub-option:", e);
+      setError(e instanceof Error ? e.message : "Failed to add sub-option");
+    } finally {
+      setActionLoading(null);
     }
   };
 
   const handleRemove = async (subOptionId: string) => {
+    setError(null);
+    setActionLoading(subOptionId);
     try {
-      await removeSubOptionFromCompanyAction(companyId, option.id, subOptionId);
-      onUpdate?.();
+      const result = await removeSubOptionFromCompanyAction(companyId, option.id, subOptionId);
+      if (result !== null) {
+        onUpdate?.();
+      } else {
+        setError("Failed to remove sub-option.");
+      }
     } catch (e) {
       console.error("Error removing sub-option:", e);
+      setError(e instanceof Error ? e.message : "Failed to remove sub-option");
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -1328,8 +1478,13 @@ function SubOptionsDialog({
     ? companySubOptions.map((s) => s.name).join(", ")
     : "—";
 
+  const handleOpenChange = (next: boolean) => {
+    if (!next) setError(null);
+    setOpen(next);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm" className="h-8 text-left font-normal max-w-[200px] truncate">
           {displayText}
@@ -1343,6 +1498,11 @@ function SubOptionsDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          {error && (
+            <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </div>
+          )}
           {loading ? (
             <div className="text-sm text-muted-foreground">Loading sub-options...</div>
           ) : subOptionsToShow.length === 0 ? (
@@ -1362,10 +1522,11 @@ function SubOptionsDialog({
                         <button
                           type="button"
                           onClick={() => handleRemove(s.id)}
-                          className="ml-1 rounded hover:bg-destructive/20"
+                          className="ml-1 rounded hover:bg-destructive/20 disabled:opacity-50"
                           aria-label={`Remove ${s.name}`}
+                          disabled={actionLoading !== null}
                         >
-                          <X className="h-3 w-3" />
+                          {actionLoading === s.id ? "…" : <X className="h-3 w-3" />}
                         </button>
                       </span>
                     ))}
@@ -1385,8 +1546,9 @@ function SubOptionsDialog({
                         size="sm"
                         className="h-7 text-xs"
                         onClick={() => handleAdd(s.id)}
+                        disabled={actionLoading !== null}
                       >
-                        + {s.name}
+                        {actionLoading === s.id ? "..." : `+ ${s.name}`}
                       </Button>
                     ))}
                   </div>

@@ -19,7 +19,7 @@ async function getUserFromAccessToken(token: string): Promise<DirectusUser | und
     // Try to fetch user info - this will throw if token is invalid/expired
     const me = await directus.request(
       readMe({
-        fields: ["*", { role: ["*"], company: ["*"] } as any],
+        fields: ["*", { role: ["*"], company: ["*", "sub_options.*", "sub_options.career_sub_option_id.*"] } as any],
       })
     ) as any;
 

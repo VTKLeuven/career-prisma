@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { fetchEventsAction } from "@/app/actions/events";
 import { fetchCompanyFormsForEventAction, checkCompanyFormCompletionBatchWithCompulsoryAction } from "@/app/actions/forms";
 import { fetchCompaniesForEventAction } from "@/app/actions/companies";
-import { getMatchingSoftwareForEventAction, getCompanyMatchingResponseCompletedIdsAction } from "@/app/actions/matching-software";
+import { getMatchingSoftwareForEventAction, getCompanyMatchingResponseCompletedIdsAction, fetchMatchedCompaniesAction } from "@/app/actions/matching-software";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -79,11 +79,22 @@ export default function CompanyFormCompletionPage() {
 
     setLoadingStatus(true);
     try {
-      // Fetch companies (with options) and matching software in parallel
-      const [companies, matchingSoftware] = await Promise.all([
+      const [registeredCompanies, matchingSoftware] = await Promise.all([
         fetchCompaniesForEventAction(selectedEventId, false),
         getMatchingSoftwareForEventAction(selectedEventId),
       ]);
+
+      const matchingSoftwareCompletedIds = matchingSoftware
+        ? await getCompanyMatchingResponseCompletedIdsAction(matchingSoftware.id, [])
+        : new Set<string>();
+
+      const registeredIds = new Set(registeredCompanies.map((c) => String(c.id)));
+      const extraIdsFromMatching = matchingSoftware
+        ? Array.from(matchingSoftwareCompletedIds).filter((id) => !registeredIds.has(String(id)))
+        : [];
+      const extraCompanies =
+        extraIdsFromMatching.length > 0 ? await fetchMatchedCompaniesAction(extraIdsFromMatching) : [];
+      const companies = [...registeredCompanies, ...extraCompanies];
 
       if (companies.length === 0) {
         setCompanyStatuses([]);
@@ -217,11 +228,11 @@ export default function CompanyFormCompletionPage() {
         companyDataList.push({
           company: {
             id: company.id,
-            name: company.name,
+            name: company.name ?? "",
             status: (company as { status?: string }).status,
           },
-          salesperson: getSalespersonInfo(company),
-          optionNames: getOptionNamesForEvent(company),
+          salesperson: getSalespersonInfo(company as { salesperson?: unknown }),
+          optionNames: getOptionNamesForEvent(company as { options?: unknown[] }),
           optionKey: key,
           forms,
         });
@@ -256,14 +267,7 @@ export default function CompanyFormCompletionPage() {
         }
       });
 
-      const allPromises = [
-        ...batchPromises,
-        matchingSoftware
-          ? getCompanyMatchingResponseCompletedIdsAction(matchingSoftware.id, companyIds)
-          : Promise.resolve(new Set<string>()),
-      ];
-      const results = await Promise.all(allPromises);
-      const matchingSoftwareCompletedIds = (results[results.length - 1] as Set<string>) ?? new Set<string>();
+      await Promise.all(batchPromises);
 
       const statuses: CompanyFormStatus[] = companyDataList.map(({ company, salesperson, optionNames, forms }) => {
         const completedFormIds = completedFormIdsMap.get(company.id) ?? new Set<string>();
@@ -276,12 +280,13 @@ export default function CompanyFormCompletionPage() {
           isCompulsory: (form.metadata as { is_compulsory?: boolean })?.is_compulsory === true,
         }));
         if (matchingSoftware) {
+          const companyIdNorm = String(company.id ?? "").trim();
           formStatuses.push({
             formId: `matching-software-${matchingSoftware.id}`,
             formName: "Matching Software",
             formSlug: "",
             formVersionId: "",
-            completed: matchingSoftwareCompletedIds.has(company.id),
+            completed: companyIdNorm ? matchingSoftwareCompletedIds.has(companyIdNorm) : false,
             isMatchingSoftware: true,
             matchingSoftwareLink: `/dashboard/matching-software/event/${encodeURIComponent(selectedEventId)}`,
           });

@@ -28,7 +28,6 @@ export async function listBooths(
           "*.*.*.*",
           "company.*",
           "company.logo",
-          "company.page_on_platform",
           "company.status",
           "company.category.master_id.*",
           "company.category.master_id.logo",

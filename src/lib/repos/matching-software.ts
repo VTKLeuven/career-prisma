@@ -174,7 +174,7 @@ function studyFieldMatches(
 
 const MATCHING_SOFTWARE_COLLECTIONS = ["Matching_Software", "matching_software"] as const;
 const STUDENT_MATCHING_RESPONSE_COLLECTIONS = ["student_matching_response", "Student_Matching_Response"] as const;
-const COMPANY_MATCHING_RESPONSE_COLLECTIONS = ["Company_Matching_Response", "company_matching_response"] as const;
+const COMPANY_MATCHING_RESPONSE_COLLECTIONS = ["company_matching_response", "Company_Matching_Response"] as const;
 
 async function listFromCollection(
   client: Awaited<ReturnType<typeof getAuthedDirectusOrThrow>>,
@@ -308,36 +308,67 @@ export async function getFirstActiveMatchingSoftware(): Promise<MatchingSoftware
   }
 }
 
-/** Batch get company IDs that have completed matching software (ocia_answers with 13+ keys). */
+/** Normalize company ID from Directus (may return string, number, or object { id }) */
+function normalizeCompanyIdForMatching(v: unknown): string | null {
+  if (v == null) return null;
+  if (typeof v === "string" && v.trim()) return v.trim();
+  if (typeof v === "number") return String(v);
+  if (typeof v === "object" && v !== null && "id" in (v as object)) return String((v as { id: unknown }).id).trim() || null;
+  return null;
+}
+
+const OCIA_DIMENSIONS: OCIAType[] = ["Clan", "Adhocracy", "Market", "Hierarchy"];
+
+/** Check if response is complete: ocia_answers with 13+ keys OR ocia with all 4 dimensions. */
+function isResponseComplete(item: { ocia_answers?: Record<string, unknown>; ocia?: Record<string, unknown> }): boolean {
+  if (item.ocia_answers && Object.keys(item.ocia_answers).length >= 13) return true;
+  const ocia = item.ocia;
+  if (ocia && typeof ocia === "object") {
+    const hasAll = OCIA_DIMENSIONS.every((d) => d in ocia && typeof (ocia as Record<string, unknown>)[d] === "number");
+    if (hasAll) return true;
+  }
+  return false;
+}
+
+/** Get ALL company IDs that have completed matching software (ocia_answers with 13+ keys or ocia with 4 dims).
+ * Fetches without filtering by company list so admin overview shows correct status for every company.
+ * Handles PascalCase field names (Matching_Software) for Directus schema variants. */
 export async function getCompanyMatchingResponseCompletedIds(
   matchingSoftwareId: string,
-  companyIds: string[]
+  _companyIds: string[]
 ): Promise<Set<string>> {
   const result = new Set<string>();
-  if (companyIds.length === 0) return result;
+  const msIdStr = String(matchingSoftwareId);
+  const msIdNum = /^\d+$/.test(msIdStr) ? Number(matchingSoftwareId) : null;
+  const matchesMs = (ms: unknown) => {
+    if (ms == null) return false;
+    const id = typeof ms === "object" && ms !== null && "id" in (ms as object) ? (ms as { id: unknown }).id : ms;
+    const s = String(id);
+    const n = typeof id === "number" ? id : /^\d+$/.test(s) ? Number(s) : NaN;
+    return s === msIdStr || (msIdNum != null && n === msIdNum);
+  };
   try {
     const client = await getServerDirectusClient();
-    const fields = ["company", "ocia_answers"];
-    const filter = {
-      _and: [
-        { matching_software: { _eq: matchingSoftwareId } },
-        { company: { _in: companyIds } },
-      ],
-    };
+    const fields = ["company", "ocia_answers", "ocia", "matching_software"];
     for (const collection of COMPANY_MATCHING_RESPONSE_COLLECTIONS) {
       try {
         const items = (await client.request(
-          readItems(collection as any, { fields, filter, limit: -1 })
-        )) as unknown as CompanyMatchingResponse[];
+          readItems(collection as any, {
+            fields,
+            filter: { ocia_answers: { _nnull: true } },
+            limit: 10000, // Explicit high limit; Directus caps at 100 by default
+          })
+        )) as unknown as Array<CompanyMatchingResponse & { matching_software?: unknown }>;
         for (const item of items) {
-          const companyId = typeof item.company === "string" ? item.company : (item.company as { id: string })?.id;
-          if (companyId && item.ocia_answers && Object.keys(item.ocia_answers).length >= 13) {
+          if (!matchesMs(item.matching_software)) continue;
+          const companyId = normalizeCompanyIdForMatching(item.company);
+          if (companyId && isResponseComplete(item)) {
             result.add(companyId);
           }
         }
         return result;
       } catch {
-        // Try next collection
+        continue;
       }
     }
   } catch (error) {
@@ -876,9 +907,9 @@ export async function getMatchedCompaniesForResponse(
   return [];
 }
 
-export type MatchedCompany = { id: string; name?: string; logo?: string; page_on_platform?: boolean; status?: string; options?: unknown[] };
+export type MatchedCompany = { id: string; name?: string; logo?: string; status?: string; options?: unknown[] };
 
-/** Fetch company id, name, logo, page_on_platform, status, options for given IDs (options needed for sub-option checks). */
+/** Fetch company id, name, logo, status, options for given IDs (options needed for sub-option checks). */
 export async function getCompaniesByIds(
   companyIds: string[]
 ): Promise<MatchedCompany[]> {
@@ -891,8 +922,9 @@ export async function getCompaniesByIds(
           "id",
           "name",
           "logo",
-          "page_on_platform",
           "status",
+          "sub_options.*",
+          "sub_options.career_sub_option_id.*",
           "options.career_event_option_id.*",
           "options.career_event_option_id.sub_options.*",
           "options.career_event_option_id.sub_options.career_sub_option_id.*",

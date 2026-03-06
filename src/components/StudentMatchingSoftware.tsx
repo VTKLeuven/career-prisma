@@ -93,7 +93,7 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [matchedCompanies, setMatchedCompanies] = useState<Array<{ id: string; name?: string; logo?: string; page_on_platform?: boolean; status?: string }>>([]);
+  const [matchedCompanies, setMatchedCompanies] = useState<Array<{ id: string; name?: string; logo?: string; status?: string }>>([]);
   const [overlapByCompanyId, setOverlapByCompanyId] = useState<Record<string, string[]>>({});
   const [scoreByCompanyId, setScoreByCompanyId] = useState<Record<string, number>>({});
 
