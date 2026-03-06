@@ -74,6 +74,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpixman-1-0 \
     && rm -rf /var/lib/apt/lists/*
 
+# Install PM2 for clustering (one process per CPU core)
+RUN npm install -g pm2
+
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
@@ -83,6 +86,9 @@ COPY --from=builder /app/public ./public
 # Set the correct permission for prerender cache
 RUN mkdir .next
 RUN chown nextjs:nodejs .next
+
+# PM2 needs a writable home dir; nextjs user has no real home (often /nonexistent)
+RUN mkdir -p /app/.pm2 && chown nextjs:nodejs /app/.pm2
 
 # Automatically leverage output traces to reduce image size
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
@@ -95,7 +101,10 @@ EXPOSE 3000
 ENV PORT 3000
 # set hostname to localhost
 ENV HOSTNAME "0.0.0.0"
+# PM2 stores config/logs in PM2_HOME; must be writable by nextjs user
+ENV PM2_HOME=/app/.pm2
 
 # server.js is created by next build from the standalone output
-CMD ["node", "server.js"]
+# PM2 cluster mode: one process per CPU core for better concurrency
+CMD ["pm2-runtime", "start", "server.js", "-i", "max"]
 

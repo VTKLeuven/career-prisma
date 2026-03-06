@@ -20,4 +20,13 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-
+    # Load test fixes: raise file descriptor limit (default 1024 is too low for 1000+ connections)
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    # Kernel tuning for high connection load (requires Docker host to allow these)
+    # If you get "permission denied" errors, set these on the host instead - see k6/README.md
+    sysctls:
+      - net.core.somaxconn=1024
+      - net.ipv4.tcp_tw_reuse=1
