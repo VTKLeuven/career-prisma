@@ -193,12 +193,12 @@ export async function getCompaniesForEvent(eventId: string, usePublic = false) {
           "options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option.*",
         ];
 
-    const companies = await client.request(
+    const companies = (await client.request(
       readItems("company" as any, {
         fields,
         limit: -1,
       })
-    ) as unknown as Company[];
+    )) as unknown as Company[];
 
     console.log(`[getCompaniesForEvent] Fetched ${companies.length} companies for event ${eventId}`);
 
