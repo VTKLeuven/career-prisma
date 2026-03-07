@@ -542,6 +542,14 @@ export async function submitFormResponseAction(data: {
       await archivePreviousStudentResponsesForForm(student.id, formId);
     }
 
+    // For company forms: archive previous responses before creating the new one (keeps only one active per company)
+    const companyId = data.company_id || _company_id;
+    if (companyId && isCompanyForm) {
+      const formId = typeof formVersion.form_id === "string" ? formVersion.form_id : (formVersion.form_id as { id: string }).id;
+      const { archivePreviousCompanyResponsesForForm } = await import("@/lib/repos/forms");
+      await archivePreviousCompanyResponsesForForm(companyId as string, formId);
+    }
+
     // Create form response using server client to ensure it works for both logged-in and non-logged-in users
     // The server client has elevated permissions needed for public form submissions
     const { createItem } = await import("@directus/sdk");

@@ -411,7 +411,42 @@ export async function archivePreviousStudentResponsesForForm(
   }
 }
 
-/** Archive duplicate student responses for a form, keeping only the most recent per student. Returns count archived. */
+/** Archive all previous form responses from this company for the given form. Call before creating a new response. */
+export async function archivePreviousCompanyResponsesForForm(
+  companyId: string,
+  formId: string
+): Promise<void> {
+  try {
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const client = await getServerDirectusClient();
+    const versions = await listFormVersionsForServer(formId);
+    const versionIds = versions.map((v) => v.id);
+    if (versionIds.length === 0) return;
+
+    const responses = await client.request(
+      readItems("form_responses" as any, {
+        fields: ["id", "company_id"],
+        filter: {
+          _and: [
+            { form_version_id: { _in: versionIds } },
+            { company_id: { _eq: companyId } },
+          ],
+        },
+        limit: -1,
+      })
+    ) as unknown as Array<{ id: string; company_id?: string | { id: string } }>;
+
+    const { updateItem } = await import("@directus/sdk");
+    for (const r of responses) {
+      await client.request(updateItem("form_responses" as any, r.id, { archived: true }));
+    }
+  } catch (error) {
+    console.error("[archivePreviousCompanyResponsesForForm] Error:", error);
+    // Non-fatal: continue with submission
+  }
+}
+
+/** Archive duplicate student/company responses for a form, keeping only the most recent per student or company. Returns count archived. */
 export async function archiveDuplicateResponsesForForm(formId: string): Promise<{ archived: number }> {
   try {
     const client = await getAuthedDirectusOrThrow();
@@ -421,27 +456,29 @@ export async function archiveDuplicateResponsesForForm(formId: string): Promise<
 
     const responses = await client.request(
       readItems("form_responses" as any, {
-        fields: ["id", "data", "submitted_at"],
+        fields: ["id", "data", "company_id", "submitted_at"],
         filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
         limit: -1,
         sort: "-submitted_at",
       })
-    ) as unknown as Array<{ id: string; data?: Record<string, unknown>; submitted_at: string }>;
+    ) as unknown as Array<{ id: string; data?: Record<string, unknown>; company_id?: string | { id: string }; submitted_at: string }>;
 
-    // Group by student_id
-    const byStudent = new Map<string, typeof responses>();
+    // Group by dedupe key: company_id for company forms, _student_id for student forms
+    const byKey = new Map<string, typeof responses>();
     for (const r of responses) {
+      const companyId = typeof r.company_id === "string" ? r.company_id : r.company_id?.id;
       const studentId = (r.data as Record<string, unknown>)?._student_id as string | undefined;
-      if (studentId) {
-        const list = byStudent.get(studentId) ?? [];
+      const key = companyId ? `company:${companyId}` : studentId ? `student:${studentId}` : undefined;
+      if (key) {
+        const list = byKey.get(key) ?? [];
         list.push(r);
-        byStudent.set(studentId, list);
+        byKey.set(key, list);
       }
     }
 
     const { updateItem } = await import("@directus/sdk");
     let archived = 0;
-    for (const [, list] of byStudent) {
+    for (const [, list] of byKey) {
       if (list.length <= 1) continue;
       // Keep first (most recent by sort), archive the rest
       const toArchive = list.slice(1);
@@ -1256,12 +1293,13 @@ export async function getCompanyFormFieldValues(
     const client = await getServerDirectusClient();
 
     const responses = await client.request(
-      readItems("form_responses", {
+      readItems("form_responses" as any, {
         fields: ["id", "company_id", "data"],
         filter: {
           _and: [
             { form_version_id: { _eq: formVersionId } },
             { company_id: { _nnull: true } },
+            NOT_ARCHIVED_FILTER,
           ],
         },
         limit: -1,
