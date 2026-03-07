@@ -48,7 +48,10 @@ export default function NoSidebarLayout({ children }: { children: React.ReactNod
   // Apply padding only if page doesn't have a banner and layout header is shown
   return (
     <PageLayoutContext.Provider value={{ hasBanner, setHasBanner, hideLayoutHeader, setHideLayoutHeader, darkHeaderFooter, setDarkHeaderFooter }}>
-      <main className={`min-h-svh bg-vtk-bg text-neutral-900 ${hasBanner || hideLayoutHeader ? '' : 'pt-28 md:pt-32'} ${darkHeaderFooter ? 'bg-black text-neutral-100' : ''}`}>
+      <main
+        className={`min-h-svh text-neutral-900 ${hasBanner || hideLayoutHeader ? '' : 'pt-28 md:pt-32'} ${darkHeaderFooter ? 'text-neutral-100' : 'bg-vtk-bg'}`}
+        style={darkHeaderFooter ? { background: 'linear-gradient(135deg, var(--color-vtk-blue) 0%, var(--color-vtk-blue-dark) 50%, var(--color-vtk-blue-darker) 100%)' } : undefined}
+      >
         {!hideLayoutHeader && <Header />}
         <div className={darkHeaderFooter ? 'relative z-10' : undefined}>
           {children}
@@ -177,7 +180,6 @@ function Header() {
 
   return (
     <>
-      {darkHeaderFooter && <div className="fixed inset-0 z-0 bg-black pointer-events-none" aria-hidden />}
       <header
         ref={menuRef}
         onKeyDown={(e) => {
@@ -191,7 +193,7 @@ function Header() {
         aria-label="Site navigation"
       >
       <div className="mx-auto max-w-7xl px-2 sm:px-4">
-        <div className={`flex items-center justify-between gap-2 sm:gap-3 rounded-xl sm:rounded-2xl border px-2 sm:px-3 md:px-5 py-1.5 sm:py-2 md:py-3 backdrop-blur-md ${darkHeaderFooter ? 'bg-neutral-800/80 border-neutral-600/50 shadow-[0_12px_40px_rgba(0,0,0,0.3)] ring-1 ring-neutral-600/30' : 'bg-white/85 shadow-[0_12px_40px_rgba(0,0,0,0.10)] ring-1 ring-black/5'}`}>
+        <div className={`flex items-center justify-between gap-2 sm:gap-3 rounded-xl sm:rounded-2xl px-2 sm:px-3 md:px-5 py-1.5 sm:py-2 md:py-3 backdrop-blur-md ${darkHeaderFooter ? 'bg-vtk-blue-dark border-0 shadow-none ring-0' : 'bg-white/85 shadow-[0_12px_40px_rgba(0,0,0,0.10)] ring-1 ring-black/5'}`}>
           <Link href="/" className="flex shrink-0 items-center gap-1 sm:gap-2 rounded-full px-1 sm:px-2">
             <Image
               src="/career_blue.png"
@@ -204,7 +206,7 @@ function Header() {
           </Link>
 
           <nav className="hidden items-center gap-2 md:flex">
-            <Link href="/" className={`rounded-full px-4 py-2 text-sm font-medium ${darkHeaderFooter ? 'bg-white/20 text-white hover:bg-white/30 border border-white/40' : 'bg-vtk-blue text-white'}`}>Home</Link>
+            <Link href="/" className={`rounded-full px-4 py-2 text-sm font-medium ${darkHeaderFooter ? 'bg-[#262626] text-white hover:bg-[#333] border-0' : 'bg-vtk-blue text-white'}`}>Home</Link>
 
             {/* TEMPORARY: Replaced Events dropdown with Jobfair 2026 link. Revert to Events dropdown when done. */}
             <Link href="/event/vtk-jobfair" className={`rounded-full px-4 py-2 text-sm font-medium ${darkHeaderFooter ? 'text-neutral-200 hover:bg-neutral-700/50' : 'text-neutral-800 hover:bg-neutral-100'}`}>
@@ -217,7 +219,7 @@ function Header() {
 
           {/* Mobile nav - TEMPORARY: Jobfair 2026 link (was Events button). Revert when done. */}
           <nav className="md:hidden flex items-center gap-2">
-            <Link href="/" className={`rounded-full px-3 py-1.5 text-xs font-medium ${darkHeaderFooter ? 'bg-white/20 text-white hover:bg-white/30 border border-white/40' : 'bg-vtk-blue text-white'}`}>Home</Link>
+            <Link href="/" className={`rounded-full px-3 py-1.5 text-xs font-medium ${darkHeaderFooter ? 'bg-[#262626] text-white hover:bg-[#333] border-0' : 'bg-vtk-blue text-white'}`}>Home</Link>
             <Link href="/event/vtk-jobfair" className={`rounded-full px-3 py-1.5 text-xs font-medium ${darkHeaderFooter ? 'text-neutral-200 hover:bg-neutral-700/50' : 'text-neutral-800 hover:bg-neutral-100'}`}>
               Jobfair 2026
             </Link>
@@ -226,7 +228,7 @@ function Header() {
 
           <div className="ml-auto flex items-center gap-2">
             {!student && (
-              <Button asChild variant="outline" className={`hidden rounded-full md:inline-flex ${darkHeaderFooter ? 'bg-white/20 text-white hover:bg-white/30 border-white/40' : 'border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10'}`}>
+              <Button asChild variant="outline" className={`hidden rounded-full md:inline-flex border-0 ${darkHeaderFooter ? 'bg-[#262626] text-white hover:bg-[#333]' : 'border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10'}`}>
                 <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>
               </Button>
             )}
@@ -376,7 +378,7 @@ function Header() {
                     <Button
                       asChild
                       variant="outline"
-                      className={`rounded-full w-full ${darkHeaderFooter ? 'bg-white/20 text-white hover:bg-white/30 border-white/40' : 'border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10'}`}
+                      className={`rounded-full w-full border-0 ${darkHeaderFooter ? 'bg-[#262626] text-white hover:bg-[#333]' : 'border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10'}`}
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>

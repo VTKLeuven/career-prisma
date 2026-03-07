@@ -44,6 +44,7 @@
   --radius-xl: calc(var(--radius) + 4px);
   --color-vtk-blue: #0B4D8C;
   --color-vtk-blue-dark: #083B6A;
+  --color-vtk-blue-darker: #062d52;
   --color-vtk-light: #E8F1FF;
   --color-vtk-yellow: #FFD200;
   --color-vtk-bg: #F9FBFF;
