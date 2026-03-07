@@ -18,7 +18,7 @@ import { fetchEventPageBySlugAction, fetchEventsAction } from "@/app/actions/eve
 import { getDirectusImageUrl } from "@/components/Images";
 import { slugifyCompanyName, slugifyEventName, getSpeakerSlug } from "@/lib/utils/slugify";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
-import { CareerEventPage, Company, CareerEvent, HeaderButtonType, Speaker } from '@/lib/schema'
+import { CareerEventPage, Company, CareerEvent, HeaderButtonType, Speaker, TimetableType } from '@/lib/schema'
 import dynamic from "next/dynamic"
 import HeroiconDynamic from "@/components/HeroiconDynamic"
 import { ChevronDown, MapPin, Car, ExternalLink, LogOut, User } from 'lucide-react'
@@ -1507,9 +1507,47 @@ function Popup({
 }
 
 // ---------------- PracticalInformation ----------------
+const TIMETABLE_TYPE_LABELS: Record<TimetableType, string> = {
+  student: 'Student',
+  company: 'Company',
+  discovery: 'Discovery',
+}
+
 function PracticalInformation({ page }: { page?: CareerEventPage }) {
   const lat = page?.location?.coordinates?.[1]
   const lng = page?.location?.coordinates?.[0]
+
+  // Timetable type filter: collect unique types from items that have type
+  const timetableTypes = (page?.timetable ?? []).reduce<TimetableType[]>((acc, item) => {
+    const t = item.type
+    if (Array.isArray(t)) {
+      for (const v of t) {
+        if ((v === 'student' || v === 'company' || v === 'discovery') && !acc.includes(v)) {
+          acc.push(v)
+        }
+      }
+    }
+    return acc
+  }, []).sort((a, b) => ['student', 'company', 'discovery'].indexOf(a) - ['student', 'company', 'discovery'].indexOf(b))
+  const hasTimetableTypeFilter = timetableTypes.length > 0
+  const [selectedTimetableType, setSelectedTimetableType] = useState<TimetableType | null>(null)
+
+  useEffect(() => {
+    if (hasTimetableTypeFilter && timetableTypes.length > 0) {
+      setSelectedTimetableType((prev) =>
+        prev && timetableTypes.includes(prev) ? prev : timetableTypes[0]
+      )
+    } else {
+      setSelectedTimetableType(null)
+    }
+  }, [page?.timetable])
+
+  const filteredTimetable = (page?.timetable ?? []).filter((item) => {
+    if (!hasTimetableTypeFilter || !selectedTimetableType) return true
+    const t = item.type
+    if (!t || !Array.isArray(t)) return true // no type = show in all
+    return t.includes(selectedTimetableType)
+  })
 
   const getDirectionsUrl = lat && lng 
     ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
@@ -1586,8 +1624,28 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
 
             <div>
               <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-4">Timetable</h2>
+              {hasTimetableTypeFilter && (
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {timetableTypes.map((t) => (
+                    <label
+                      key={t}
+                      className="flex items-center gap-2 cursor-pointer"
+                    >
+                      <input
+                        type="radio"
+                        name="timetable-type"
+                        value={t}
+                        checked={selectedTimetableType === t}
+                        onChange={() => setSelectedTimetableType(t)}
+                        className="h-4 w-4 border-neutral-300 text-vtk-blue focus:ring-vtk-blue"
+                      />
+                      <span className="text-sm font-medium text-neutral-700">{TIMETABLE_TYPE_LABELS[t]}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
               <div className="relative border-l-2 border-vtk-blue/30 pl-12">
-                {page?.timetable?.map((item, index) => (
+                {filteredTimetable.map((item, index) => (
                   <div key={index} className="relative mb-10 last:mb-0">
                     <span className="absolute -left-7 top-2 flex h-10 w-10 items-center justify-center rounded-full bg-vtk-yellow shadow-md">
                       {item.icon ? (

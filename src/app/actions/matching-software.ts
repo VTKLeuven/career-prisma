@@ -132,6 +132,20 @@ export async function fetchMatchedCompaniesForResponseAction(responseId: string)
   return getMatchedCompaniesForResponse(responseId);
 }
 
+/** Fetch matched company IDs for the current student on an event. Returns { matchedIds, hasMatchingSoftware }. */
+export async function fetchMatchedCompanyIdsForEventAction(eventId: string): Promise<{
+  matchedIds: string[];
+  hasMatchingSoftware: boolean;
+}> {
+  const ms = await getMatchingSoftwareForEventAction(eventId);
+  if (!ms?.id) return { matchedIds: [], hasMatchingSoftware: false };
+  const resp = await getStudentMatchingResponseForCurrentUserAction(ms.id);
+  if (!resp?.id) return { matchedIds: [], hasMatchingSoftware: true };
+  const companies = await getMatchedCompaniesForResponse(resp.id);
+  const matchedIds = companies.map((c) => c.id).filter(Boolean);
+  return { matchedIds, hasMatchingSoftware: true };
+}
+
 /** Fetch company general info for matched companies. Returns map of companyId -> GeneralInfoAnswers. */
 export async function fetchCompanyGeneralInfoAction(
   matchingSoftwareId: string,

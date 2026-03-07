@@ -1712,6 +1712,173 @@ export async function getCompanyMasterDegreesFromForm(
   }
 }
 
+/** Batch version: get master/faculty logos for multiple companies at once. Returns Record<companyId, string[]>. */
+export async function getCompanyMasterDegreesFromFormBatch(
+  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>,
+  companyIds: string[]
+): Promise<Record<string, string[]>> {
+  const result: Record<string, string[]> = {};
+  if (companyIds.length === 0) return result;
+  try {
+    const { listMasters, listFaculties } = await import("@/lib/repos/features");
+    const { resolveLogosForValue, extractLogoId, normalizeFaculties } = await import("@/lib/utils/master-degree-options");
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const client = await getServerDirectusClient();
+    if (!client) return result;
+
+    const { groups } = await getFloorplanCategoryOptions(categoryFields);
+    const opts = groups.flatMap((g) => g.options);
+    const masters = (await listMasters({ limit: 300, sort: "name" })) ?? [];
+    const rawFaculties = (await listFaculties({ limit: 100, sort: "name" })) ?? [];
+    const faculties = normalizeFaculties(rawFaculties);
+
+    type LogoSource = "master" | "faculty" | "other";
+    const logoSourceOrder: Record<LogoSource, number> = { master: 0, faculty: 1, other: 2 };
+    const getSourceFromValue = (v: string): LogoSource => {
+      const facMaster = v.match(/^fac:([^:]+):([^:]+)$/);
+      if (facMaster) return "master";
+      const facOnly = v.match(/^fac:([^:]+)$/);
+      if (facOnly) {
+        const f = faculties?.find((x) => String(x.id) === facOnly[1]);
+        if (!f) return "faculty";
+        if (/^others?$/i.test((f.name ?? "").trim())) return "other";
+        const hasMasters = (f.masters ?? []).length > 0;
+        return hasMasters ? "master" : "faculty";
+      }
+      return "master";
+    };
+    const getSourceFromOptValue = (optValue: string): LogoSource => {
+      if (optValue.match(/^fac:[^:]+:[^:]+$/)) return "master";
+      const facOnly = optValue.match(/^fac:([^:]+)$/);
+      if (facOnly) {
+        const f = faculties?.find((x) => String(x.id) === facOnly[1]);
+        if (f && /^others?$/i.test((f.name ?? "").trim())) return "other";
+        return "faculty";
+      }
+      return "master";
+    };
+
+    const extractVal = (v: unknown): string | null => {
+      if (v == null) return null;
+      if (typeof v === "string" && v.trim()) return v.trim();
+      if (typeof v === "object" && v !== null) {
+        const o = v as Record<string, unknown>;
+        const id = o.id ?? o.value ?? o.name ?? o.label;
+        if (id != null && String(id).trim()) return String(id).trim();
+      }
+      return null;
+    };
+
+    const companyDataByFormId = new Map<string, Map<string, Record<string, unknown>>>();
+    const formIdsSeen = new Set<string>();
+    for (const { formId } of categoryFields) {
+      if (formIdsSeen.has(formId)) continue;
+      formIdsSeen.add(formId);
+      const versions = await listFormVersionsForServer(formId);
+      const versionIds = versions.map((v) => v.id);
+      if (versionIds.length === 0) continue;
+      const responses = await client.request(
+        readItems("form_responses" as any, {
+          fields: ["id", "company_id", "data"],
+          filter: {
+            _and: [
+              { form_version_id: { _in: versionIds } },
+              { company_id: { _in: companyIds } },
+              NOT_ARCHIVED_FILTER,
+            ],
+          },
+          limit: -1,
+          sort: "-submitted_at",
+        })
+      ) as unknown as Array<{ company_id: string | { id: string }; data: Record<string, unknown> }>;
+      const byCompany = new Map<string, Record<string, unknown>>();
+      companyDataByFormId.set(formId, byCompany);
+      for (const r of responses) {
+        const companyId = typeof r.company_id === "string" ? r.company_id : r.company_id?.id;
+        if (!companyId || byCompany.has(companyId)) continue;
+        byCompany.set(companyId, r.data ?? {});
+      }
+    }
+
+    for (const companyId of companyIds) {
+      const valuesSeen = new Set<string>();
+      const orderedValues: string[] = [];
+      for (const { formId, fieldName } of categoryFields) {
+        const byCompany = companyDataByFormId.get(formId);
+        const data = byCompany?.get(companyId) ?? {};
+        const fieldValue = data[fieldName];
+        if (Array.isArray(fieldValue)) {
+          for (const v of fieldValue) {
+            const s = extractVal(v);
+            if (s && !valuesSeen.has(s)) {
+              valuesSeen.add(s);
+              orderedValues.push(s);
+            }
+          }
+        } else {
+          const s = extractVal(fieldValue);
+          if (s && !valuesSeen.has(s)) {
+            valuesSeen.add(s);
+            orderedValues.push(s);
+          }
+        }
+      }
+
+      const logoEntries: Array<{ logoId: string; source: LogoSource }> = [];
+      const seen = new Set<string>();
+      for (const val of orderedValues) {
+        const masterNameFromLabel = val.includes(" - ") ? val.split(" - ").pop()?.trim() : null;
+        const matchingOpts = opts.filter((o) =>
+          o.value === val || o.label === val ||
+          (masterNameFromLabel && (o.label === masterNameFromLabel || normalizeForMatch(o.label) === normalizeForMatch(masterNameFromLabel))) ||
+          normalizeForMatch(o.value) === normalizeForMatch(val) ||
+          normalizeForMatch(o.label) === normalizeForMatch(val) ||
+          valueMatchesOption(val, o.value) ||
+          (o.value.match(/^fac:[^:]+:([^:]+)$/)?.[1] === val.trim())
+        );
+        if (matchingOpts.length > 0) {
+          for (const opt of matchingOpts) {
+            const facOnly = opt.value.match(/^fac:([^:]+)$/);
+            if (facOnly) {
+              const f = faculties?.find((x) => String(x.id) === facOnly[1]);
+              if (f && (f.masters ?? []).length > 0) continue;
+            }
+            let logo = extractLogoId(opt.logo);
+            if (!logo && opt.value.match(/^fac:[^:]+:([^:]+)$/)) {
+              const masterId = opt.value.split(":")[2];
+              const m = masters.find((x) => String(x.id) === masterId);
+              logo = extractLogoId(m?.logo);
+            }
+            if (!logo && /^[0-9a-f-]{36}$/i.test(opt.value)) {
+              const m = masters.find((x) => String(x.id) === opt.value);
+              logo = extractLogoId(m?.logo);
+            }
+            if (logo && !seen.has(logo)) {
+              seen.add(logo);
+              logoEntries.push({ logoId: logo, source: getSourceFromOptValue(opt.value) });
+            }
+          }
+        } else {
+          const resolved = resolveLogosForValue(val, masters, faculties);
+          const source = getSourceFromValue(val);
+          for (const logo of resolved) {
+            if (logo && !seen.has(logo)) {
+              seen.add(logo);
+              logoEntries.push({ logoId: logo, source });
+            }
+          }
+        }
+      }
+      logoEntries.sort((a, b) => logoSourceOrder[a.source] - logoSourceOrder[b.source]);
+      result[companyId] = logoEntries.map((e) => e.logoId);
+    }
+    return result;
+  } catch (error) {
+    console.error("[getCompanyMasterDegreesFromFormBatch] Error:", error);
+    return {};
+  }
+}
+
 export async function getCompanyFormBySlugAndEvent(eventId: string, slug: string) {
   try {
     // Try authenticated first, fall back to public client for public form access

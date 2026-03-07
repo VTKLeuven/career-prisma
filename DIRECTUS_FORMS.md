@@ -82,3 +82,19 @@ The career event page supports optional speakers (M2M with the `speaker` collect
 **career_event_page:** Add M2M field `speakers` linking to `speaker`. The junction table typically has `speaker_id` pointing to speaker.
 
 **Display:** Speaker cards (section title "Discovery Stage") show a square photo with time overlay (top right), name and company logo + name below. When a speaker has no company (e.g. PhD), "KU Leuven" with its logo is shown as fallback.
+
+---
+
+## Timetable type filter
+
+The timetable can optionally have a `type` field to show different schedules for students, companies, and discovery.
+
+**timetable collection** (or the timetable slot collection used in career_event_page.timetable):
+
+| Field | Type | Notes |
+|-------|------|-------|
+| type | JSON (dropdown/multiselect) | Optional. Array of strings: `["student"]`, `["company"]`, `["discovery"]`. When any timetable slot has this field, a radio selector appears above the timetable to filter by type. |
+
+**Options:** `student`, `company`, `discovery`
+
+**Display:** When type is present on any slot, radio buttons (Student | Company | Discovery) appear above the timetable. Only slots matching the selected type are shown. Slots without type are shown in all views.

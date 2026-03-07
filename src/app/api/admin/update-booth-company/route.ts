@@ -5,7 +5,7 @@ import { updateBoothCompany, getBoothsForFloorplan } from "@/lib/repos/floorplan
 import { getCompanyById } from "@/lib/repos/company";
 import { getCompanySubOptionAnyStatus } from "@/lib/utils/company-access";
 import { readItems } from "@directus/sdk";
-import { getDirectusWithToken } from "@/lib/directus";
+import { getDirectusForAdminOperations } from "@/lib/directus";
 import type { Booth } from "@/lib/schema";
 
 export async function POST(req: Request) {
@@ -30,14 +30,14 @@ export async function POST(req: Request) {
 
     // If assigning a company, check if it's already assigned to another booth
     if (companyId) {
-      // Get the booth first to find its floorplan
-      const client = await getDirectusWithToken();
+      // Get the booth first to find its floorplan (use admin client for elevated permissions)
+      const client = await getDirectusForAdminOperations();
       if (!client) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
 
       const currentBooth = await client.request(
-        readItems("booths" as any, {
+        readItems("Booths" as any, {
           fields: ["*", { Floorplan: ["id"] }],
           filter: {
             id: {
