@@ -219,6 +219,8 @@ export type TimeSlot = {
   icon?: string;
   /** Optional: array of types e.g. ["student"]. When any slot has this, show type filter above timetable. */
   type?: TimetableType[];
+  /** Optional: M2O speaker. When present, slot is clickable to speaker page. */
+  speaker?: Speaker | null;
 }
 
 /** Speaker for a career event - representative (M2O directus_users) + time (M2O timetable) */

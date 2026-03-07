@@ -122,7 +122,7 @@ export async function fetchEventPagesAction(lim = 50) {
   pages.map(page => {
     // ✅ Flatten timetable relation
     const validTypes: TimetableType[] = ['student', 'company', 'discovery'];
-    page.timetable = ((page.timetable as unknown as Array<{ timetable_id: { id: string; title: string; start_time: string; end_time: string; description?: string; icon?: string; type?: string[] } }>)?.map((item) => {
+    page.timetable = ((page.timetable as unknown as Array<{ timetable_id: { id: string; title: string; start_time: string; end_time: string; description?: string; icon?: string; type?: string[]; speaker?: Speaker; speaker_id?: Speaker } }>)?.map((item) => {
       const slot = item.timetable_id;
 
       // Remove seconds from start_time and end_time
@@ -133,7 +133,8 @@ export async function fetchEventPagesAction(lim = 50) {
       const type: TimetableType[] | undefined = Array.isArray(slot.type)
         ? slot.type.filter((t): t is TimetableType => validTypes.includes(t as TimetableType))
         : undefined;
-      return { ...slot, type };
+      const speaker = slot.speaker ?? slot.speaker_id ?? undefined;
+      return { ...slot, type, speaker };
     }) ?? []) as TimeSlot[];
 
     page.companies = (page.companies as unknown as Array<{ company_id: Company }>)?.map((item) => {
@@ -171,7 +172,7 @@ export async function fetchEventPageBySlugAction(slug: string) {
 
   // ✅ Flatten timetable relation
   const validTypes: TimetableType[] = ['student', 'company', 'discovery'];
-  page.timetable = ((page.timetable as unknown as Array<{ timetable_id: { id: string; title: string; start_time: string; end_time: string; description?: string; icon?: string; type?: string[] } }>)?.map((item) => {
+  page.timetable = ((page.timetable as unknown as Array<{ timetable_id: { id: string; title: string; start_time: string; end_time: string; description?: string; icon?: string; type?: string[]; speaker?: Speaker; speaker_id?: Speaker } }>)?.map((item) => {
     const slot = item.timetable_id;
 
     // Remove seconds from start_time and end_time
@@ -182,7 +183,8 @@ export async function fetchEventPageBySlugAction(slug: string) {
     const type: TimetableType[] | undefined = Array.isArray(slot.type)
       ? slot.type.filter((t): t is TimetableType => validTypes.includes(t as TimetableType))
       : undefined;
-    return { ...slot, type };
+    const speaker = slot.speaker ?? slot.speaker_id ?? undefined;
+    return { ...slot, type, speaker };
   }) ?? []) as TimeSlot[];
 
   page.companies = (page.companies as unknown as Array<{ company_id: Company }>)?.map((item) => {
