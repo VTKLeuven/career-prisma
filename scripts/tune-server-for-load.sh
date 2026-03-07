@@ -44,17 +44,20 @@ echo "=== Current values ==="
 sysctl net.core.somaxconn net.ipv4.tcp_tw_reuse net.ipv4.ip_local_port_range 2>/dev/null || true
 [ -f /proc/sys/net/netfilter/nf_conntrack_max ] && sysctl net.netfilter.nf_conntrack_max 2>/dev/null || true
 
+# Create persistent config file
+CONF="/etc/sysctl.d/99-load-test.conf"
 echo ""
-echo "=== To make permanent, add to /etc/sysctl.d/99-load-test.conf ==="
-cat << 'EOF'
-# High-concurrency load tuning
+echo "Creating $CONF for persistence across reboots..."
+cat << 'EOF' | tee "$CONF"
+
+# High-concurrency load tuning (jobfair 2000+ attendees)
 net.core.somaxconn=65535
 net.ipv4.tcp_tw_reuse=1
 net.ipv4.tcp_timestamps=1
 net.ipv4.tcp_fin_timeout=15
 net.ipv4.ip_local_port_range=1024 65535
 fs.file-max=2097152
-# If nf_conntrack is loaded:
+# nf_conntrack (Docker NAT)
 net.netfilter.nf_conntrack_max=262144
 net.netfilter.nf_conntrack_buckets=65536
 net.netfilter.nf_conntrack_tcp_timeout_established=86400
@@ -62,4 +65,4 @@ net.netfilter.nf_conntrack_tcp_timeout_time_wait=30
 EOF
 
 echo ""
-echo "Done. Run 'sysctl -p /etc/sysctl.d/99-load-test.conf' after creating the file."
+echo "Done. Settings are active now and will persist after reboot."
