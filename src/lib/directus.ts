@@ -77,6 +77,16 @@ export function getAdminDirectusClient() {
 }
 
 /**
+ * For admin operations (e.g. booth assignment): prefer server token for elevated permissions.
+ * Falls back to user token if server token is not configured.
+ */
+export async function getDirectusForAdminOperations() {
+  const adminClient = getAdminDirectusClient();
+  if (adminClient) return adminClient;
+  return getDirectusWithToken();
+}
+
+/**
  * Get the folder ID for the "Form_uploads" folder.
  * 
  * Configuration:

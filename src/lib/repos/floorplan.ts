@@ -2,7 +2,7 @@
 "use server";
 
 import { readItems, createItem, updateItem, deleteItems, deleteItem } from "@directus/sdk";
-import { getDirectusWithToken } from "@/lib/directus";
+import { getDirectusWithToken, getDirectusForAdminOperations } from "@/lib/directus";
 import type { Floorplan, Booth, CareerEventPage, Company, HeaderButtonType } from "@/lib/schema";
 
 export async function createFloorplan(payload: {
@@ -241,7 +241,7 @@ export async function getEventPageWithFloorplan(eventId: string): Promise<Career
 
 export async function updateBoothCompany(boothId: string, companyId: string | null): Promise<Booth | null> {
   try {
-    const client = await getDirectusWithToken();
+    const client = await getDirectusForAdminOperations();
     if (!client) return null;
 
     const updated = await client.request(
@@ -328,7 +328,7 @@ export async function getCompaniesForEvent(eventId: string): Promise<Company[]> 
 
 export async function getBoothsForFloorplan(floorplanId: string): Promise<Booth[]> {
   try {
-    const client = await getDirectusWithToken();
+    const client = await getDirectusForAdminOperations();
     if (!client) return [];
 
     const booths = await client.request(

@@ -1081,6 +1081,19 @@ export async function fetchCompanyMasterDegreesFromFormAction(
   }
 }
 
+export async function fetchCompanyMasterDegreesFromFormBatchAction(
+  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>,
+  companyIds: string[]
+): Promise<Record<string, string[]>> {
+  try {
+    const { getCompanyMasterDegreesFromFormBatch } = await import("@/lib/repos/forms");
+    return await getCompanyMasterDegreesFromFormBatch(categoryFields, companyIds);
+  } catch (error) {
+    console.error("[fetchCompanyMasterDegreesFromFormBatchAction] Error:", error);
+    return {};
+  }
+}
+
 export async function migrateFormResponsesMasterDegreesAction(formId: string) {
   try {
     const { migrateFormResponsesMasterDegrees } = await import("@/lib/repos/forms");

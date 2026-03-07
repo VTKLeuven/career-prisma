@@ -206,6 +206,9 @@ export type FloorplanCompanyNameFormField = {
   fieldName: string;
 };
 
+/** Timetable type - optional JSON array on timetable slots. When present, enables type filter (student/company/discovery). */
+export type TimetableType = 'student' | 'company' | 'discovery';
+
 export type TimeSlot = {
   id: string;
   title: string;
@@ -213,7 +216,9 @@ export type TimeSlot = {
   description?: string;
   start_time: string;
   end_time: string;
-  icon?: string
+  icon?: string;
+  /** Optional: array of types e.g. ["student"]. When any slot has this, show type filter above timetable. */
+  type?: TimetableType[];
 }
 
 /** Speaker for a career event - representative (M2O directus_users) + time (M2O timetable) */

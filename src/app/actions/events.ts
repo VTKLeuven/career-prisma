@@ -7,7 +7,7 @@ import { listEventPages, getEventPageBySlug } from "@/lib/repos/event";
 import { slugifyEventName } from "@/lib/utils/slugify";
 import { getActiveMatchingSoftwareForEvent } from "@/lib/repos/matching-software";
 import DOMPurify from 'isomorphic-dompurify';
-import type { Company, CareerEvent, CareerEventOption, Speaker } from "@/lib/schema";
+import type { Company, CareerEvent, CareerEventOption, Speaker, TimeSlot, TimetableType } from "@/lib/schema";
 import { listCareerEventOptions } from "@/lib/repos/option";
 import { listCompanies } from "@/lib/repos/company";
 import { getOrCreateEventPage } from "@/lib/repos/floorplan";
@@ -121,15 +121,20 @@ export async function fetchEventPagesAction(lim = 50) {
 
   pages.map(page => {
     // ✅ Flatten timetable relation
-    page.timetable = (page.timetable as unknown as Array<{ timetable_id: { id: string; title: string; start_time: string; end_time: string; description?: string; icon?: string } }>)?.map((item) => {
+    const validTypes: TimetableType[] = ['student', 'company', 'discovery'];
+    page.timetable = ((page.timetable as unknown as Array<{ timetable_id: { id: string; title: string; start_time: string; end_time: string; description?: string; icon?: string; type?: string[] } }>)?.map((item) => {
       const slot = item.timetable_id;
 
       // Remove seconds from start_time and end_time
       if (slot.start_time) slot.start_time = slot.start_time.slice(0, -3);
       if (slot.end_time) slot.end_time = slot.end_time.slice(0, -3);
 
-      return slot;
-    }) ?? [];
+      // Normalize type to TimetableType[]
+      const type: TimetableType[] | undefined = Array.isArray(slot.type)
+        ? slot.type.filter((t): t is TimetableType => validTypes.includes(t as TimetableType))
+        : undefined;
+      return { ...slot, type };
+    }) ?? []) as TimeSlot[];
 
     page.companies = (page.companies as unknown as Array<{ company_id: Company }>)?.map((item) => {
       const company = item.company_id;
@@ -165,15 +170,20 @@ export async function fetchEventPageBySlugAction(slug: string) {
   }
 
   // ✅ Flatten timetable relation
-  page.timetable = (page.timetable as unknown as Array<{ timetable_id: { id: string; title: string; start_time: string; end_time: string; description?: string; icon?: string } }>)?.map((item) => {
+  const validTypes: TimetableType[] = ['student', 'company', 'discovery'];
+  page.timetable = ((page.timetable as unknown as Array<{ timetable_id: { id: string; title: string; start_time: string; end_time: string; description?: string; icon?: string; type?: string[] } }>)?.map((item) => {
     const slot = item.timetable_id;
 
     // Remove seconds from start_time and end_time
     if (slot.start_time) slot.start_time = slot.start_time.slice(0, -3);
     if (slot.end_time) slot.end_time = slot.end_time.slice(0, -3);
 
-    return slot;
-  }) ?? [];
+    // Normalize type to TimetableType[]
+    const type: TimetableType[] | undefined = Array.isArray(slot.type)
+      ? slot.type.filter((t): t is TimetableType => validTypes.includes(t as TimetableType))
+      : undefined;
+    return { ...slot, type };
+  }) ?? []) as TimeSlot[];
 
   page.companies = (page.companies as unknown as Array<{ company_id: Company }>)?.map((item) => {
     const company = item.company_id;

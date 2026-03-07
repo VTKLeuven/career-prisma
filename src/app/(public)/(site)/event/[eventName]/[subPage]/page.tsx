@@ -1,13 +1,13 @@
 'use client'
 
 import { useEffect, useState, useRef, useMemo, useCallback } from "react"
-import { useParams, usePathname, useRouter } from "next/navigation"
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import NextImage from "next/image"
 import { fetchEventPagesAction } from "@/app/actions/events"
 import { fetchFloorplanAction, fetchMastersAction } from "@/app/actions/features"
 import * as Sentry from "@sentry/nextjs"
-import { fetchFloorplanCategoryOptionsAction, fetchCompanyIdsMatchingFloorplanCategoryAction, fetchCompanyMasterDegreesFromFormAction, fetchCompanyFormFieldValuesFromFormAction } from "@/app/actions/forms"
+import { fetchFloorplanCategoryOptionsAction, fetchCompanyIdsMatchingFloorplanCategoryAction, fetchCompanyMasterDegreesFromFormBatchAction, fetchCompanyFormFieldValuesFromFormAction } from "@/app/actions/forms"
 import type { CareerEventPage, Booth, Master, Company } from '@/lib/schema'
 import { getDirectusImageUrl } from "@/components/Images"
 import { extractLogoId } from "@/lib/utils/master-degree-options"
@@ -26,9 +26,12 @@ import {
 } from "@/components/ui/select"
 import { Clock, ArrowLeft, Users, Loader2 } from "lucide-react"
 import { StudentMatchingSoftware } from "@/components/StudentMatchingSoftware"
+import { fetchMatchedCompanyIdsForEventAction } from "@/app/actions/matching-software"
 
 export default function SubPage() {
   const { setHideLayoutHeader } = usePageLayout()
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [page, setPage] = useState<CareerEventPage | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
@@ -42,6 +45,9 @@ export default function SubPage() {
   const [flickerState, setFlickerState] = useState(false)
   const [companyNameFormFields, setCompanyNameFormFields] = useState<Array<{ formId: string; formVersionId: string; fieldName: string }>>([])
   const [companyNamesByCompanyId, setCompanyNamesByCompanyId] = useState<Record<string, string>>({})
+  const [companyLogosByCompanyId, setCompanyLogosByCompanyId] = useState<Record<string, string[]>>({})
+  const [matchedCompanyIdsFromMatching, setMatchedCompanyIdsFromMatching] = useState<Set<string>>(new Set())
+  const [showOnlyMyMatches, setShowOnlyMyMatches] = useState(false)
   const useFormCategories = categoryFormFields.length > 0
 
   const params = useParams()
@@ -98,25 +104,47 @@ export default function SubPage() {
   }, [eventName, pathname, subPage])
 
   useEffect(() => {
-    const complete = companyNameFormFields.filter(f => f.formId && f.fieldName)
-    if (complete.length === 0) {
-      setCompanyNamesByCompanyId({})
+    const nameFieldsComplete = companyNameFormFields.filter(f => f.formId && f.fieldName)
+    const companyIds = [...new Set(booths.filter(b => b.company?.id).map(b => b.company!.id))]
+    const needsNames = nameFieldsComplete.length > 0
+    const needsLogos = useFormCategories && companyIds.length > 0
+
+    if (!needsNames && !needsLogos) {
+      if (!needsNames) setCompanyNamesByCompanyId({})
+      if (!needsLogos) setCompanyLogosByCompanyId({})
       return
     }
+
     let cancelled = false
-    Promise.all(complete.map(f => fetchCompanyFormFieldValuesFromFormAction(f.formId, f.fieldName)))
-      .then((results) => {
-        if (cancelled) return
-        const merged: Record<string, string> = {}
-        for (const map of results) {
-          for (const [companyId, value] of Object.entries(map)) {
-            if (value && !merged[companyId]) merged[companyId] = value
-          }
-        }
-        setCompanyNamesByCompanyId(merged)
-      })
+    const promises: Promise<unknown>[] = []
+
+    if (needsNames) {
+      promises.push(
+        Promise.all(nameFieldsComplete.map(f => fetchCompanyFormFieldValuesFromFormAction(f.formId, f.fieldName)))
+          .then((results) => {
+            if (cancelled) return
+            const merged: Record<string, string> = {}
+            for (const map of results) {
+              for (const [companyId, value] of Object.entries(map)) {
+                if (value && !merged[companyId]) merged[companyId] = value
+              }
+            }
+            setCompanyNamesByCompanyId(merged)
+          })
+      )
+    }
+    if (needsLogos) {
+      promises.push(
+        fetchCompanyMasterDegreesFromFormBatchAction(categoryFormFields, companyIds).then((dict) => {
+          if (cancelled) return
+          setCompanyLogosByCompanyId(dict)
+        })
+      )
+    }
+
+    Promise.all(promises)
     return () => { cancelled = true }
-  }, [companyNameFormFields])
+  }, [companyNameFormFields, booths, categoryFormFields, useFormCategories])
 
   useEffect(() => {
     if (!useFormCategories || selectedCategories.length === 0) {
@@ -132,6 +160,36 @@ export default function SubPage() {
     })
     return () => { cancelled = true }
   }, [useFormCategories, categoryFormFields, selectedCategories])
+
+  // Load matched company IDs for "My matches" filter (when student has completed matching)
+  const [hasMatchingSoftware, setHasMatchingSoftware] = useState(false)
+  useEffect(() => {
+    if (!isFloorplanPage || !page?.event?.id) {
+      setMatchedCompanyIdsFromMatching(new Set())
+      setHasMatchingSoftware(false)
+      return
+    }
+    let cancelled = false
+    fetchMatchedCompanyIdsForEventAction(page.event.id).then((result) => {
+      if (!cancelled) {
+        setMatchedCompanyIdsFromMatching(new Set(result.matchedIds))
+        setHasMatchingSoftware(result.hasMatchingSoftware)
+      }
+    })
+    return () => { cancelled = true }
+  }, [isFloorplanPage, page?.event?.id])
+
+  // When returning from login (showMatches=true), turn on "My matches" filter once we have matches
+  useEffect(() => {
+    if (!isFloorplanPage || searchParams.get("showMatches") !== "true") return
+    if (matchedCompanyIdsFromMatching.size > 0) {
+      setShowOnlyMyMatches(true)
+      setSelectedCategories([])
+      // Clean URL
+      const url = new URL(pathname, window.location.origin)
+      router.replace(url.pathname, { scroll: false })
+    }
+  }, [isFloorplanPage, searchParams, matchedCompanyIdsFromMatching.size, pathname, router])
 
   // Flicker effect
   const flickerIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -177,6 +235,10 @@ export default function SubPage() {
             eventName={page?.event?.name || ''}
             onBoothClick={setPopupBooth}
             companyNamesByCompanyId={companyNamesByCompanyId}
+            matchedCompanyIdsFromMatching={matchedCompanyIdsFromMatching}
+            showOnlyMyMatches={showOnlyMyMatches}
+            setShowOnlyMyMatches={setShowOnlyMyMatches}
+            hasMatchingSoftware={hasMatchingSoftware}
           />
           <Floorplan
             page={page}
@@ -191,6 +253,10 @@ export default function SubPage() {
             matchedCompanyIdsForm={matchedCompanyIdsForm}
             setSelectedCategories={setSelectedCategories}
             companyNamesByCompanyId={companyNamesByCompanyId}
+            matchedCompanyIdsFromMatching={matchedCompanyIdsFromMatching}
+            showOnlyMyMatches={showOnlyMyMatches}
+            setShowOnlyMyMatches={setShowOnlyMyMatches}
+            hasMatchingSoftware={hasMatchingSoftware}
           />
         </>
       )}
@@ -223,6 +289,7 @@ export default function SubPage() {
           onSelectBooth={setPopupBooth}
           categoryFormFields={categoryFormFields}
           companyNamesByCompanyId={companyNamesByCompanyId}
+          companyLogosByCompanyId={companyLogosByCompanyId}
         />
       )}
     </main>
@@ -242,6 +309,10 @@ function Header({
   isCompanyGuide = false,
   onBoothClick,
   companyNamesByCompanyId = {},
+  matchedCompanyIdsFromMatching = new Set(),
+  showOnlyMyMatches = false,
+  setShowOnlyMyMatches,
+  hasMatchingSoftware = false,
 }: {
   categories: Master[]
   formCategoryGroups: Array<{ groupLabel: string; options: Array<{ value: string; label: string; logo?: string }> }>
@@ -254,13 +325,28 @@ function Header({
   isCompanyGuide?: boolean
   onBoothClick?: (booth: Booth) => void
   companyNamesByCompanyId?: Record<string, string>
+  matchedCompanyIdsFromMatching?: Set<string>
+  showOnlyMyMatches?: boolean
+  setShowOnlyMyMatches?: (v: boolean) => void
+  hasMatchingSoftware?: boolean
 }) {
   const toggleCategory = (val: string) => {
     if (selectedCategories.includes(val)) {
       setSelectedCategories(selectedCategories.filter(c => c !== val))
     } else {
+      setShowOnlyMyMatches?.(false)
       setSelectedCategories([...selectedCategories, val])
     }
+  }
+
+  const handleMasterSelect = (v: string) => {
+    if (v !== "__none__") setShowOnlyMyMatches?.(false)
+    setSelectedCategories(v === "__none__" ? [] : [v])
+  }
+
+  const handleMyMatchesClick = () => {
+    setSelectedCategories([])
+    setShowOnlyMyMatches?.(true)
   }
 
   const router = useRouter()
@@ -411,51 +497,69 @@ function Header({
               </Link>
             </div>
 
-            {/* Middle: Search bar (only for floorplan) or empty space (for company guide) */}
+            {/* Middle: Search | My matches | Select (only for floorplan) */}
             {!isCompanyGuide && (
-              <div className="relative flex-1 min-w-0 mx-4">
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  onFocus={() => setIsFocused(true)}
-                  onBlur={() => setTimeout(() => setIsFocused(false), 200)}
-                  placeholder="Search company..."
-                  className="w-full rounded-full border border-gray-300 px-4 py-2 text-sm"
-                />
-                {showSearchDropdown && (
-                  <ul className="absolute top-full left-0 w-full mt-1 max-h-60 overflow-auto rounded-lg border bg-white shadow-lg z-50">
-                    {matchingCompanies.length > 0 ? (
-                      matchingCompanies.map(b => (
-                        <li
-                          key={b.id}
-                          className="px-4 py-2 hover:bg-vtk-blue/10 cursor-pointer flex justify-between"
-                          onClick={() => {
-                            triggerFlicker(b.company!.id)
-                            onBoothClick?.(b)
-                            setSearchTerm("")
-                            setIsFocused(false)
-                          }}
-                        >
-                          <span>{companyNamesByCompanyId[b.company!.id] ?? b.company!.name}</span>
-                          <span className="text-gray-500">{String(b.booth_number)}</span>
-                        </li>
-                      ))
-                    ) : (
-                      <li className="px-4 py-3 text-sm text-neutral-500">No companies found</li>
-                    )}
-                  </ul>
+              <div className="flex flex-1 min-w-0 items-center gap-3 mx-4">
+                <div className="relative flex-1 min-w-0">
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => setTimeout(() => setIsFocused(false), 200)}
+                    placeholder="Search company..."
+                    className="w-full rounded-full border border-gray-300 px-4 py-2 text-sm"
+                  />
+                  {showSearchDropdown && (
+                    <ul className="absolute top-full left-0 w-full mt-1 max-h-60 overflow-auto rounded-lg border bg-white shadow-lg z-50">
+                      {matchingCompanies.length > 0 ? (
+                        matchingCompanies.map(b => (
+                          <li
+                            key={b.id}
+                            className="px-4 py-2 hover:bg-vtk-blue/10 cursor-pointer flex justify-between"
+                            onClick={() => {
+                              triggerFlicker(b.company!.id)
+                              onBoothClick?.(b)
+                              setSearchTerm("")
+                              setIsFocused(false)
+                            }}
+                          >
+                            <span>{companyNamesByCompanyId[b.company!.id] ?? b.company!.name}</span>
+                            <span className="text-gray-500">{String(b.booth_number)}</span>
+                          </li>
+                        ))
+                      ) : (
+                        <li className="px-4 py-3 text-sm text-neutral-500">No companies found</li>
+                      )}
+                    </ul>
+                  )}
+                </div>
+                {hasMatchingSoftware && (
+                  matchedCompanyIdsFromMatching.size > 0 && setShowOnlyMyMatches ? (
+                    <button
+                      type="button"
+                      onClick={() => (showOnlyMyMatches ? setShowOnlyMyMatches(false) : handleMyMatchesClick())}
+                      className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
+                        showOnlyMyMatches
+                          ? "bg-vtk-blue text-white"
+                          : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
+                      }`}
+                    >
+                      My matches
+                    </button>
+                  ) : (
+                    <Link
+                      href={`/event/${slugifyEventName(eventName)}/matching-software?redirectTo=${encodeURIComponent(`/event/${slugifyEventName(eventName)}/floorplan?showMatches=true`)}`}
+                      className="shrink-0 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap bg-neutral-100 text-neutral-700 hover:bg-neutral-200 transition-colors"
+                    >
+                      My matches
+                    </Link>
+                  )
                 )}
-              </div>
-            )}
-
-            {/* Right: Category logos or master select (only for floorplan) or buttons (for company guide) */}
-            {!isCompanyGuide && (
-              <div className="flex flex-1 min-w-0 items-center gap-2 justify-end">
                 {useFormCategories ? (
                   <Select
                     value={selectedCategories[0] ?? ""}
-                    onValueChange={(v) => setSelectedCategories(v === "__none__" ? [] : [v])}
+                    onValueChange={handleMasterSelect}
                   >
                     <SelectTrigger className="flex-1 min-w-[180px] max-w-[320px]">
                       <SelectValue placeholder="Select your master" />
@@ -473,31 +577,33 @@ function Header({
                     </SelectContent>
                   </Select>
                 ) : (
-                  categories.map(cat => {
-                    const isSelected = selectedCategories.includes(cat.short_name)
-                    return (
-                      <button
-                        key={cat.short_name}
-                        onClick={() => toggleCategory(cat.short_name)}
-                        className="relative w-10 h-10 rounded-full overflow-hidden border transition-all duration-200 cursor-pointer flex items-center justify-center"
-                        style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
-                      >
-                        <NextImage
-                          src={getDirectusImageUrl(cat.logo, { width: 64, height: 64 }) ?? ''}
-                          alt={cat.short_name}
-                          width={32}
-                          height={32}
-                          sizes="32px"
-                          loading="lazy"
-                          className={`object-contain transition-all duration-200 transform ${
-                            isSelected
-                              ? 'scale-110 grayscale-0 opacity-100'
-                              : 'scale-90 grayscale-[50%] opacity-70'
-                          }`}
-                        />
-                      </button>
-                    )
-                  })
+                  <div className="flex items-center gap-2">
+                    {categories.map(cat => {
+                      const isSelected = selectedCategories.includes(cat.short_name)
+                      return (
+                        <button
+                          key={cat.short_name}
+                          onClick={() => toggleCategory(cat.short_name)}
+                          className="relative w-10 h-10 rounded-full overflow-hidden border transition-all duration-200 cursor-pointer flex items-center justify-center"
+                          style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
+                        >
+                          <NextImage
+                            src={getDirectusImageUrl(cat.logo, { width: 64, height: 64 }) ?? ''}
+                            alt={cat.short_name}
+                            width={32}
+                            height={32}
+                            sizes="32px"
+                            loading="lazy"
+                            className={`object-contain transition-all duration-200 transform ${
+                              isSelected
+                                ? 'scale-110 grayscale-0 opacity-100'
+                                : 'scale-90 grayscale-[50%] opacity-70'
+                            }`}
+                          />
+                        </button>
+                      )
+                    })}
+                  </div>
                 )}
               </div>
             )}
@@ -543,6 +649,10 @@ function Floorplan({
   matchedCompanyIdsForm,
   setSelectedCategories,
   companyNamesByCompanyId = {},
+  matchedCompanyIdsFromMatching = new Set(),
+  showOnlyMyMatches = false,
+  setShowOnlyMyMatches,
+  hasMatchingSoftware = false,
 }: {
   page: CareerEventPage
   selectedCategories: string[]
@@ -556,14 +666,30 @@ function Floorplan({
   matchedCompanyIdsForm: Set<string>
   setSelectedCategories: (cats: string[]) => void
   companyNamesByCompanyId?: Record<string, string>
+  matchedCompanyIdsFromMatching?: Set<string>
+  showOnlyMyMatches?: boolean
+  setShowOnlyMyMatches?: (v: boolean) => void
+  hasMatchingSoftware?: boolean
 }) {
   const toggleCategory = (val: string) => {
     if (selectedCategories.includes(val)) {
       setSelectedCategories(selectedCategories.filter(c => c !== val))
     } else {
+      setShowOnlyMyMatches?.(false)
       setSelectedCategories([...selectedCategories, val])
     }
   }
+
+  const handleMasterSelect = (v: string) => {
+    if (v !== "__none__") setShowOnlyMyMatches?.(false)
+    setSelectedCategories(v === "__none__" ? [] : [v])
+  }
+
+  const handleMyMatchesClick = () => {
+    setSelectedCategories([])
+    setShowOnlyMyMatches?.(true)
+  }
+
   const [boothsLocal, setBoothsLocal] = useState<Booth[]>([])
   const [svgContent, setSvgContent] = useState<string>("")
   const [floorplanError, setFloorplanError] = useState<string | null>(null)
@@ -597,16 +723,18 @@ function Floorplan({
     return boothsLocal
       .filter((b): b is Booth => !!b.coords && !!b.company)
       .map((booth) => {
-        const isCategorySelected = useFormCategories
-          ? selectedCategories.length > 0 && !!booth.company?.id && matchedCompanyIdsForm.has(String(booth.company.id))
-          : (() => {
-              const boothCats: Master[] = Array.isArray(booth.company?.category)
-                ? booth.company!.category!.filter((c): c is Master => c !== null)
-                : []
-              return selectedCategories.length > 0 && selectedCategories.every(cat =>
-                boothCats.map(c => c.short_name).includes(cat)
-              )
-            })()
+        const isCategorySelected = showOnlyMyMatches
+          ? !!booth.company?.id && matchedCompanyIdsFromMatching.has(String(booth.company.id))
+          : useFormCategories
+            ? selectedCategories.length > 0 && !!booth.company?.id && matchedCompanyIdsForm.has(String(booth.company.id))
+            : (() => {
+                const boothCats: Master[] = Array.isArray(booth.company?.category)
+                  ? booth.company!.category!.filter((c): c is Master => c !== null)
+                  : []
+                return selectedCategories.length > 0 && selectedCategories.every(cat =>
+                  boothCats.map(c => c.short_name).includes(cat)
+                )
+              })()
         const isFlicker = flickerCompanyId === booth.company!.id && flickerState
         const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
         const boothX = origVbX + (booth.coords!.x_pct / 100) * origVbWidth
@@ -628,7 +756,7 @@ function Floorplan({
           : null
         return { booth, boothX, boothY, boothWidth, boothHeight, boothShape, isSelected }
       })
-  }, [boothsLocal, originalViewBox, useFormCategories, selectedCategories, matchedCompanyIdsForm, flickerCompanyId, flickerState])
+  }, [boothsLocal, originalViewBox, useFormCategories, selectedCategories, matchedCompanyIdsForm, matchedCompanyIdsFromMatching, showOnlyMyMatches, flickerCompanyId, flickerState])
 
   // Memoize SVG data URL - expensive encodeURIComponent on large SVG
   const svgDataUrl = useMemo(() => {
@@ -1136,15 +1264,40 @@ function Floorplan({
         onBoothClick={onBoothClick}
         useFormCategories={useFormCategories}
         matchedCompanyIdsForm={matchedCompanyIdsForm}
+        companyNamesByCompanyId={companyNamesByCompanyId}
+        matchedCompanyIdsFromMatching={matchedCompanyIdsFromMatching}
+        showOnlyMyMatches={showOnlyMyMatches}
       />
 
       {/* Mobile: Categories at bottom */}
       <div className="floorplan-categories-isolated md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t px-4 py-3 shadow-lg">
         <div className="flex flex-wrap items-center justify-center gap-2">
+          {hasMatchingSoftware && (
+            matchedCompanyIdsFromMatching.size > 0 && setShowOnlyMyMatches ? (
+              <button
+                type="button"
+                onClick={() => (showOnlyMyMatches ? setShowOnlyMyMatches(false) : handleMyMatchesClick())}
+                className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
+                  showOnlyMyMatches
+                    ? "bg-vtk-blue text-white"
+                    : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
+                }`}
+              >
+                My matches
+              </button>
+            ) : (
+              <Link
+                href={`/event/${slugifyEventName(page.event?.name ?? '')}/matching-software?redirectTo=${encodeURIComponent(`/event/${slugifyEventName(page.event?.name ?? '')}/floorplan?showMatches=true`)}`}
+                className="shrink-0 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap bg-neutral-100 text-neutral-700 hover:bg-neutral-200 transition-colors"
+              >
+                My matches
+              </Link>
+            )
+          )}
           {useFormCategories ? (
             <Select
               value={selectedCategories[0] ?? ""}
-              onValueChange={(v) => setSelectedCategories(v === "__none__" ? [] : [v])}
+              onValueChange={handleMasterSelect}
             >
               <SelectTrigger className="w-full max-w-[280px]">
                 <SelectValue placeholder="Select your master" />
@@ -1201,15 +1354,21 @@ function CompanyList({
   onBoothClick,
   useFormCategories = false,
   matchedCompanyIdsForm = new Set<string>(),
+  companyNamesByCompanyId = {},
+  matchedCompanyIdsFromMatching = new Set<string>(),
+  showOnlyMyMatches = false,
 }: {
   booths: Booth[]
   selectedCategories: string[]
   onBoothClick: (booth: Booth) => void
   useFormCategories?: boolean
   matchedCompanyIdsForm?: Set<string>
+  companyNamesByCompanyId?: Record<string, string>
+  matchedCompanyIdsFromMatching?: Set<string>
+  showOnlyMyMatches?: boolean
 }) {
   // Filter booths that have companies, sort alphabetically, then limit to max 2 entries per company (double booths)
-  const allEntries = booths
+  let allEntries = booths
     .filter(b => b.company && b.booth_number)
     .map(b => ({
       company: b.company!,
@@ -1217,6 +1376,11 @@ function CompanyList({
       boothId: b.id,
     }))
     .sort((a, b) => a.boothNumber - b.boothNumber)
+  // When "My matches" filter is on, only show matched companies
+  if (showOnlyMyMatches && matchedCompanyIdsFromMatching.size > 0) {
+    allEntries = allEntries.filter(({ company }) => matchedCompanyIdsFromMatching.has(String(company.id)))
+  }
+
   // Limit to at most 2 entries per company (double booths only show twice)
   const companyCount = new Map<string, number>()
   const companiesWithBooths = allEntries.filter(({ company }) => {
@@ -1225,12 +1389,17 @@ function CompanyList({
     return count <= 2
   })
 
+  const uniqueCompanyCount = new Set(companiesWithBooths.map(({ company }) => company.id)).size
+
   if (companiesWithBooths.length === 0) {
     return null
   }
 
   // Check if a company has ALL selected categories (same logic as floorplan)
   const hasSelectedCategory = (company: Company) => {
+    if (showOnlyMyMatches && matchedCompanyIdsFromMatching.size > 0) {
+      return matchedCompanyIdsFromMatching.has(String(company.id))
+    }
     if (selectedCategories.length === 0) return false
     if (useFormCategories) return !!company.id && matchedCompanyIdsForm.has(String(company.id))
     const companyCats: Master[] = Array.isArray(company.category)
@@ -1245,7 +1414,7 @@ function CompanyList({
     <div className="w-full px-2 sm:px-4 pb-4 relative z-10">
       <div className="max-w-7xl mx-auto">
         <h2 className="text-xl font-semibold text-neutral-900 mb-4 mt-6">
-          Companies ({companiesWithBooths.length})
+          Companies ({uniqueCompanyCount})
         </h2>
         <div 
           className="gap-3"
@@ -1290,6 +1459,7 @@ function CompanyList({
                 booths={booths}
                 isHighlighted={isHighlighted}
                 onBoothClick={onBoothClick}
+                companyNamesByCompanyId={companyNamesByCompanyId}
               />
             )
           })}
@@ -1307,6 +1477,7 @@ function CompanyListItem({
   booths,
   isHighlighted,
   onBoothClick,
+  companyNamesByCompanyId = {},
 }: {
   company: Company
   boothNumber: number
@@ -1314,8 +1485,10 @@ function CompanyListItem({
   booths: Booth[]
   isHighlighted: boolean
   onBoothClick: (booth: Booth) => void
+  companyNamesByCompanyId?: Record<string, string>
 }) {
   const booth = booths.find(b => b.id === boothId)
+  const displayName = companyNamesByCompanyId[company.id] ?? company.name
   return (
     <button
       onClick={() => booth && onBoothClick(booth)}
@@ -1330,7 +1503,7 @@ function CompanyListItem({
     >
       <div className="flex-1 min-w-0">
         <div className={`text-sm ${isHighlighted ? 'font-bold text-black' : 'font-medium text-neutral-900'}`}>
-          {company.name}
+          {displayName}
         </div>
         <div className="text-xs text-neutral-500 mt-1">
           Booth {boothNumber}
@@ -1461,6 +1634,7 @@ function PDFViewer({ pdfUrl }: { pdfUrl: string }) {
 function MatchingSoftwarePage({ page, eventName }: { page: CareerEventPage | null; eventName: string }) {
   const [student, setStudent] = useState<{ id: string } | null>(null)
   const [loading, setLoading] = useState(true)
+  const searchParams = useSearchParams()
 
   useEffect(() => {
     fetch('/api/user/check?' + Date.now(), { cache: 'no-store', credentials: 'include' })
@@ -1488,6 +1662,7 @@ function MatchingSoftwarePage({ page, eventName }: { page: CareerEventPage | nul
   }
 
   if (!student) {
+    const redirectAfterLogin = searchParams.get("redirectTo") || `/event/${eventSlug}/matching-software`
     return (
       <div className="min-h-screen bg-gradient-to-br from-vtk-blue/5 via-white to-vtk-yellow/5 flex items-center justify-center px-4 py-16">
         <div className="max-w-2xl mx-auto text-center">
@@ -1496,7 +1671,7 @@ function MatchingSoftwarePage({ page, eventName }: { page: CareerEventPage | nul
             You need to be logged in as a student to access the matching software.
           </p>
           <Button asChild className="rounded-full bg-vtk-blue text-white">
-            <Link href={`/student-login?redirectTo=${encodeURIComponent(`/event/${eventSlug}/matching-software`)}`}>
+            <Link href={`/student-login?redirectTo=${encodeURIComponent(redirectAfterLogin)}`}>
               Student Login
             </Link>
           </Button>
@@ -1590,6 +1765,7 @@ function Popup({
   onSelectBooth,
   categoryFormFields = [],
   companyNamesByCompanyId = {},
+  companyLogosByCompanyId = {},
 }: {
   booth: Booth
   onClose: () => void
@@ -1597,24 +1773,14 @@ function Popup({
   onSelectBooth: (b: Booth) => void
   categoryFormFields?: Array<{ formId: string; formVersionId: string; fieldName: string }>
   companyNamesByCompanyId?: Record<string, string>
+  companyLogosByCompanyId?: Record<string, string[]>
 }) {
   const company = booth.company!
   const displayName = companyNamesByCompanyId[company.id] ?? company.name
-  const [formMasterLogos, setFormMasterLogos] = useState<string[]>([])
-  const [logosLoading, setLogosLoading] = useState(categoryFormFields.length > 0)
-
-  useEffect(() => {
-    if (categoryFormFields.length > 0 && company?.id) {
-      setLogosLoading(true)
-      fetchCompanyMasterDegreesFromFormAction(categoryFormFields, company.id).then((logos) => {
-        setFormMasterLogos(logos)
-        setLogosLoading(false)
-      })
-    } else {
-      setLogosLoading(false)
-      setFormMasterLogos([])
-    }
-  }, [company?.id, categoryFormFields])
+  const useFormLogos = categoryFormFields.length > 0
+  const formMasterLogos = companyLogosByCompanyId[company.id] ?? []
+  const logosBatchLoaded = Object.keys(companyLogosByCompanyId).length > 0
+  const logosLoading = useFormLogos && !logosBatchLoaded
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1639,7 +1805,6 @@ function Popup({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [booth.id, booths, onClose, onSelectBooth])
 
-  const useFormLogos = categoryFormFields.length > 0
   const companyCategoryLogos: string[] = useFormLogos ? [] : (Array.isArray(company.category)
     ? [...new Set(company.category.filter((c): c is Master => c !== null).map(c => extractLogoId(c.logo)).filter((l): l is string => !!l))]
     : [])
