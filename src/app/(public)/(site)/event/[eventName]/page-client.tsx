@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollCue } from '@/components/ScrollCue'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useParams } from "next/navigation"
 import { fetchEventPageBySlugAction, fetchEventsAction } from "@/app/actions/events"
@@ -1549,6 +1549,17 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
     return t.includes(selectedTimetableType)
   })
 
+  const eventSlug = page?.event?.name ? slugifyEventName(page.event.name) : ''
+  const allSpeakersForSlug = useMemo(() => {
+    const fromPage = page?.speakers ?? []
+    const fromTimetable = (page?.timetable ?? []).flatMap((t) => (t.speaker ? [t.speaker] : []))
+    const byId = new Map<string, Speaker>()
+    for (const s of [...fromPage, ...fromTimetable]) {
+      if (s?.id) byId.set(s.id, s)
+    }
+    return Array.from(byId.values())
+  }, [page])
+
   const getDirectionsUrl = lat && lng 
     ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
     : null
@@ -1663,30 +1674,49 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
                     <div className="flex items-center gap-3 mb-1 ml-6">
                       <span className="text-sm font-medium text-vtk-blue">{item.start_time} - {item.end_time}</span>
                     </div>
-                    <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 hover:shadow-lg transition-shadow duration-300">
-                      <h3 className="font-semibold text-neutral-900">{item.title}</h3>
-                      {item.description && (
-                        <div
-                          className="text-neutral-700 mt-1 text-sm"
-                          dangerouslySetInnerHTML={{ __html: item.description }}
-                        />
-                      )}
-                    </div>
+                    {item.speaker && eventSlug ? (
+                      <Link
+                        href={`/event/${eventSlug}/speakers/${getSpeakerSlug(item.speaker, allSpeakersForSlug)}`}
+                        className="block rounded-lg border border-neutral-200 bg-neutral-50 p-4 hover:shadow-lg hover:border-vtk-blue/50 transition-all duration-300 cursor-pointer"
+                      >
+                        <h3 className="font-semibold text-neutral-900">{item.title}</h3>
+                        {item.description && (
+                          <div
+                            className="text-neutral-700 mt-1 text-sm"
+                            dangerouslySetInnerHTML={{ __html: item.description }}
+                          />
+                        )}
+                      </Link>
+                    ) : (
+                      <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 hover:shadow-lg transition-shadow duration-300">
+                        <h3 className="font-semibold text-neutral-900">{item.title}</h3>
+                        {item.description && (
+                          <div
+                            className="text-neutral-700 mt-1 text-sm"
+                            dangerouslySetInnerHTML={{ __html: item.description }}
+                          />
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Speakers */}
+          {/* Speakers - same timeslot = one card */}
           {page?.speakers && page.speakers.length > 0 && (
             <div className="mt-12">
               <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-6">
                 Discovery Stage
               </h2>
               <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
-                {page.speakers.map((speaker) => (
-                  <SpeakerCard key={speaker.id} speaker={speaker} eventSlug={slugifyEventName(page.event.name)} allSpeakers={page.speakers ?? []} />
+                {groupSpeakersByTimeSlot(page.speakers ?? []).map((group) => (
+                  group.length === 1 ? (
+                    <SpeakerCard key={group[0].id} speaker={group[0]} eventSlug={slugifyEventName(page.event.name)} allSpeakers={page.speakers ?? []} />
+                  ) : (
+                    <SpeakerCardMulti key={group[0].id} speakers={group} eventSlug={slugifyEventName(page.event.name)} allSpeakers={page.speakers ?? []} />
+                  )
                 ))}
               </div>
             </div>
@@ -1698,6 +1728,33 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
 }
 
 const KU_LEUVEN_LOGO_ID = "d93c21e6-1145-4d4e-96d2-7e8daa640b9f"
+
+/** Parse "HH:mm" or "HH:mm:ss" to minutes since midnight for chronological sort. */
+function parseTimeToMinutes(t: string | undefined): number {
+  if (!t) return Infinity
+  const [h, m] = t.split(':').map(Number)
+  return (h ?? 0) * 60 + (m ?? 0)
+}
+
+/** Group speakers by time slot. Same time = one group. Returns array of groups in chronological order. */
+function groupSpeakersByTimeSlot(speakers: Speaker[]): Speaker[][] {
+  const byKey = new Map<string, Speaker[]>()
+  for (const s of speakers) {
+    const key = s.time?.id ?? (s.time ? `${s.time.start_time ?? ''}-${s.time.end_time ?? ''}` : `no-time-${s.id}`)
+    const list = byKey.get(key) ?? []
+    list.push(s)
+    byKey.set(key, list)
+  }
+  const groups = Array.from(byKey.values())
+  groups.sort((a, b) => {
+    const startA = a[0]?.time?.start_time
+    const startB = b[0]?.time?.start_time
+    const minA = parseTimeToMinutes(startA)
+    const minB = parseTimeToMinutes(startB)
+    return minA - minB
+  })
+  return groups
+}
 
 // ---------------- SpeakerCard ----------------
 function SpeakerCard({ speaker, eventSlug, allSpeakers }: { speaker: Speaker; eventSlug: string; allSpeakers: Speaker[] }) {
@@ -1756,6 +1813,74 @@ function SpeakerCard({ speaker, eventSlug, allSpeakers }: { speaker: Speaker; ev
         </div>
       </div>
     </Link>
+  )
+}
+
+// ---------------- SpeakerCardMulti (multiple speakers, same timeslot) ----------------
+function SpeakerCardMulti({ speakers, eventSlug, allSpeakers }: { speakers: Speaker[]; eventSlug: string; allSpeakers: Speaker[] }) {
+  const t = speakers[0]?.time
+  const timeLabel = t ? (t.start_time && t.end_time ? `${t.start_time} - ${t.end_time}` : t.start_time ?? t.end_time ?? null) : null
+
+  return (
+    <div className="flex w-full flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition-shadow">
+      <div className="relative aspect-square w-full flex">
+        {speakers.map((speaker) => {
+          const rep = speaker.representative
+          const avatarUrl = rep?.avatar ? getDirectusImageUrl(rep.avatar) : undefined
+          return (
+            <Link
+              key={speaker.id}
+              href={`/event/${eventSlug}/speakers/${getSpeakerSlug(speaker, allSpeakers)}`}
+              className="relative flex-1 min-w-0"
+            >
+              {avatarUrl ? (
+                <Image
+                  src={avatarUrl}
+                  alt={rep ? `${rep.first_name ?? ""} ${rep.last_name ?? ""}`.trim() || "Speaker" : "Speaker"}
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 640px) 33vw, (max-width: 1024px) 25vw, 20vw"
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center bg-neutral-100 text-2xl font-semibold text-neutral-400">
+                  {(rep?.first_name?.[0] ?? rep?.last_name?.[0] ?? "?")}
+                </div>
+              )}
+            </Link>
+          )
+        })}
+        {timeLabel && (
+          <div className="absolute top-1.5 right-1.5 rounded bg-white/90 px-1.5 py-0.5 text-xs font-medium text-vtk-blue shadow-sm">
+            {timeLabel}
+          </div>
+        )}
+      </div>
+      <div className="p-2 space-y-2">
+        {speakers.map((speaker) => {
+          const rep = speaker.representative
+          const company = rep?.company
+          const displayCompany = company ?? { name: "KU Leuven", logo: KU_LEUVEN_LOGO_ID }
+          const companyLogoUrl = displayCompany.logo ? getDirectusImageUrl(displayCompany.logo) : undefined
+          return (
+            <Link
+              key={speaker.id}
+              href={`/event/${eventSlug}/speakers/${getSpeakerSlug(speaker, allSpeakers)}`}
+              className="block text-center hover:bg-neutral-50 -mx-1 px-1 py-0.5 rounded transition-colors"
+            >
+              <div className="text-sm font-semibold text-neutral-900">{(rep?.first_name ?? "")} {rep?.last_name}</div>
+              <div className="mt-1 flex items-center justify-center gap-1.5">
+                {companyLogoUrl && (
+                  <div className="h-4 w-4 shrink-0 overflow-hidden rounded">
+                    <Image src={companyLogoUrl} alt={displayCompany.name} width={16} height={16} className="h-full w-full object-contain" />
+                  </div>
+                )}
+                <span className="text-xs text-neutral-600 truncate">{displayCompany.name}</span>
+              </div>
+            </Link>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
