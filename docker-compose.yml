@@ -1,18 +1,16 @@
-version: '3.8'
-
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        # Docker Compose automatically reads .env file for variable substitution
         DIRECTUS_URL: ${DIRECTUS_URL}
         NEXT_PUBLIC_DIRECTUS_URL: ${NEXT_PUBLIC_DIRECTUS_URL:-${DIRECTUS_URL}}
         NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN}
         SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN}
-    ports:
-      - "3002:3000"
+    # REMOVED the 'ports' mapping here so they don't clash on the host when scaling
+    expose:
+      - "3000"
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_DIRECTUS_URL=${NEXT_PUBLIC_DIRECTUS_URL:-${DIRECTUS_URL}}
@@ -20,13 +18,31 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    # Load test fixes: raise file descriptor limit (default 1024 is too low for 1000+ connections)
+    # Scale to 8 replicas (leaves your remaining 8 cores for Directus, DB, and OS)
+    deploy:
+      mode: replicated
+      replicas: 8
     ulimits:
       nofile:
         soft: 65536
         hard: 65536
-    # Kernel tuning for high connection load (requires Docker host to allow these)
-    # If you get "permission denied" errors, set these on the host instead - see k6/README.md
     sysctls:
       - net.core.somaxconn=1024
       - net.ipv4.tcp_tw_reuse=1
+
+  # The Load Balancer handles the host port mapping and distributes traffic
+  loadbalancer:
+    image: caddy:2-alpine
+    ports:
+      # Maps external 3002 to internal 80
+      - "3002:80"
+    # Caddy acts as a reverse proxy. Docker's internal DNS automatically 
+    # round-robins requests to 'app:3000' across all 8 replicas.
+    command: caddy reverse-proxy --from :80 --to http://app:3000
+    restart: unless-stopped
+    depends_on:
+      - app
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
