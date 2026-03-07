@@ -817,6 +817,14 @@ function Header({ page }: { page?: CareerEventPage }) {
                     Floorplan
                   </Link>
                 )}
+                {shouldShowHeaderButton(page, "matching_software") && (
+                  <Link
+                    href={`/event/${slugifyEventName(page.event.name)}/matching-software`}
+                    className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
+                  >
+                    Matching Software
+                  </Link>
+                )}
                 {shouldShowHeaderButton(page, "company_guide") && page.company_guide && (
                   <CompanyGuideButton 
                     companyGuide={page.company_guide} 
@@ -832,20 +840,12 @@ function Header({ page }: { page?: CareerEventPage }) {
                     CV Upload
                   </Link>
                 )}
-                {shouldShowHeaderButton(page, "matching_software") && (
-                  <Link
-                    href={`/event/${slugifyEventName(page.event.name)}/matching-software`}
-                    className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
-                  >
-                    Matching Software
-                  </Link>
-                )}
               </>
             )}
           </nav>
 
-          {/* Mobile Nav - Home + event buttons */}
-          <nav className="md:hidden flex items-center gap-1.5 overflow-x-auto flex-1 min-w-0">
+          {/* Mobile Nav - Home + event buttons (horizontal scroll, scrollbar hidden) */}
+          <nav className="md:hidden flex items-center gap-1.5 overflow-x-auto flex-1 min-w-0 scrollbar-hide">
             <Link href="/" className="rounded-full bg-vtk-blue px-2.5 py-1 text-xs font-medium text-white whitespace-nowrap shrink-0">
               Home
             </Link>
@@ -857,6 +857,14 @@ function Header({ page }: { page?: CareerEventPage }) {
                     className="rounded-full px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 whitespace-nowrap shrink-0"
                   >
                     Floorplan
+                  </Link>
+                )}
+                {shouldShowHeaderButton(page, "matching_software") && (
+                  <Link
+                    href={`/event/${slugifyEventName(page.event.name)}/matching-software`}
+                    className="rounded-full px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 whitespace-nowrap shrink-0"
+                  >
+                    Matching
                   </Link>
                 )}
                 {shouldShowHeaderButton(page, "company_guide") && page.company_guide && (
@@ -872,14 +880,6 @@ function Header({ page }: { page?: CareerEventPage }) {
                     className="rounded-full px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 whitespace-nowrap shrink-0"
                   >
                     CV Upload
-                  </Link>
-                )}
-                {shouldShowHeaderButton(page, "matching_software") && (
-                  <Link
-                    href={`/event/${slugifyEventName(page.event.name)}/matching-software`}
-                    className="rounded-full px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 whitespace-nowrap shrink-0"
-                  >
-                    Matching Software
                   </Link>
                 )}
               </>
@@ -1461,7 +1461,7 @@ function CompanyGuideButton({ companyGuide, isMobile, eventName }: {
         : "rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
       }
     >
-      Company Guide
+      {isMobile ? "Guide" : "Company Guide"}
     </a>
   )
 }
