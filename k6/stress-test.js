@@ -6,6 +6,7 @@
  *   1. public_browsers    – Students/visitors browsing the site (homepage, event pages, floorplans)
  *   2. drink_orderers     – Booth visitors placing drink orders via QR codes
  *   3. student_auth       – Students logging in / checking auth status
+ *   4. company_auth       – Company reps logging in / checking auth status
  *
  * Run:
  *   k6 run k6/stress-test.js                                          # defaults (localhost:3000)
@@ -29,7 +30,7 @@ import {
   DEFAULT_THRESHOLDS,
 } from "./config.js";
 
-import { loginAsStudent } from "./lib/auth.js";
+import { loginAsStudent, loginAsCompanyRep } from "./lib/auth.js";
 import { randomItem, withJar } from "./lib/helpers.js";
 
 // ---------------------------------------------------------------------------
@@ -73,8 +74,8 @@ export const options = {
         { duration: "1m", target: 20 },
         { duration: "3m", target: 80 },
         { duration: "5m", target: 100 },
-        { duration: "3m", target: 150 },
-        { duration: "2m", target: 150 },
+        { duration: "3m", target: 200 },
+        { duration: "2m", target: 200 },
         { duration: "2m", target: 50 },
         { duration: "1m", target: 0 },
       ],
@@ -90,8 +91,25 @@ export const options = {
         { duration: "1m", target: 30 },
         { duration: "3m", target: 100 },
         { duration: "5m", target: 100 },
-        { duration: "3m", target: 150 },
-        { duration: "2m", target: 150 },
+        { duration: "3m", target: 200 },
+        { duration: "2m", target: 200 },
+        { duration: "2m", target: 50 },
+        { duration: "1m", target: 0 },
+      ],
+      gracefulRampDown: "30s",
+    },
+
+    // Company reps constantly checking their auth status (SPA polling)
+    company_auth: {
+      executor: "ramping-vus",
+      exec: "companyAuthFlow",
+      startVUs: 0,
+      stages: [
+        { duration: "1m", target: 30 },
+        { duration: "3m", target: 100 },
+        { duration: "5m", target: 100 },
+        { duration: "3m", target: 200 },
+        { duration: "2m", target: 200 },
         { duration: "2m", target: 50 },
         { duration: "1m", target: 0 },
       ],
@@ -262,6 +280,49 @@ export function studentAuthFlow() {
         pageLoadTrend.add(res.timings.duration);
         check(res, {
           "student event page": (r) => r.status === 200 || r.status === 404,
+        }) || errorCount.add(1);
+      });
+    }
+
+    sleep(randomIntBetween(3, 8));
+  }
+
+  sleep(randomIntBetween(5, 10));
+}
+
+// ===========================================================================
+// SCENARIO 4: Company auth flow (login + polling user/check)
+// ===========================================================================
+export function companyAuthFlow() {
+  const jar = http.cookieJar();
+
+  group("Company rep login", () => {
+    const { ok } = loginAsCompanyRep(jar);
+    if (!ok) {
+      errorCount.add(1);
+      return;
+    }
+  });
+
+  sleep(randomIntBetween(1, 3));
+
+  // Simulate the SPA polling /api/user/check every few seconds
+  const pollRounds = randomIntBetween(5, 15);
+  for (let i = 0; i < pollRounds; i++) {
+    group("Company user check poll", () => {
+      const res = http.get(`${BASE_URL}/api/user/check`, withJar(jar));
+      apiCallTrend.add(res.timings.duration);
+      check(res, { "user check 200": (r) => r.status === 200 }) || errorCount.add(1);
+    });
+
+    // Browse a page between polls
+    if (i % 3 === 0) {
+      group("Company browses event page", () => {
+        const slug = TEST_EVENT_SLUG || "jobfair-2026";
+        const res = http.get(`${BASE_URL}/event/${slug}`, withJar(jar));
+        pageLoadTrend.add(res.timings.duration);
+        check(res, {
+          "company event page": (r) => r.status === 200 || r.status === 404,
         }) || errorCount.add(1);
       });
     }

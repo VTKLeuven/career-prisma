@@ -86,15 +86,16 @@ TEST_ATTENDANT_UUIDS=uuid-from-form-responses
 k6 run k6/stress-test.js
 ```
 
-Runs 3 concurrent scenarios simulating real jobfair traffic patterns:
+Runs 4 concurrent scenarios simulating real jobfair traffic patterns:
 
 | Scenario | Peak VUs | What it tests |
 |----------|----------|---------------|
 | `public_browsers` | 1000 | Homepage, event pages, floorplan, vacancies |
-| `drink_orderers` | 150 | Booth QR → drink menu → order → status polling |
-| `student_auth` | 150 | Student login + /api/user/check polling |
+| `drink_orderers` | 200 | Booth QR → drink menu → order → status polling |
+| `student_auth` | 200 | Student login + /api/user/check polling |
+| `company_auth` | 200 | Company rep login + /api/user/check polling |
 
-Total peak concurrent VUs: **~1300**.
+Total peak concurrent VUs: **~1600**.
 
 ### Individual scenarios
 
