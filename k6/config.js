@@ -29,7 +29,7 @@ export const STUDENT_PASSWORD =
 // ---------------------------------------------------------------------------
 // Test data IDs – replace these with real IDs from your Directus instance
 // ---------------------------------------------------------------------------
-export const TEST_EVENT_SLUG = __ENV.TEST_EVENT_SLUG || "jobfair-2026";
+export const TEST_EVENT_SLUG = __ENV.TEST_EVENT_SLUG || "vtk-jobfair";
 export const TEST_ATTENDANT_UUIDS = (__ENV.TEST_ATTENDANT_UUIDS || "").split(",").filter(Boolean);
 export const TEST_BOOTH_IDS = (__ENV.TEST_BOOTH_IDS || "").split(",").filter(Boolean);
 export const TEST_DRINK_IDS = (__ENV.TEST_DRINK_IDS || "").split(",").filter(Boolean);

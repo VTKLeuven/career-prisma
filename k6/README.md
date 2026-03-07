@@ -26,7 +26,7 @@ Create dedicated test accounts — **never use real credentials**:
 
 You need real IDs from your Directus instance for meaningful tests:
 
-- **Event slug**: the slug of your jobfair event page (e.g. `jobfair-2026`)
+- **Event slug**: the slug of your jobfair event page (e.g. `vtk-jobfair`)
 - **Attendant UUIDs**: a few `attendant_uuid` values from `form_responses`
 - **Booth IDs**: IDs from the `Booths` collection
 - **Drink IDs**: IDs from the `drinks` collection

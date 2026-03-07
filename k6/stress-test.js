@@ -147,7 +147,7 @@ export function publicBrowsing() {
   sleep(randomIntBetween(2, 5));
 
   group("Event page", () => {
-    const slug = TEST_EVENT_SLUG || "jobfair-2026";
+    const slug = TEST_EVENT_SLUG || "vtk-jobfair";
     const res = http.get(`${BASE_URL}/api/events/${slug}`);
     apiCallTrend.add(res.timings.duration);
     check(res, {
@@ -159,7 +159,7 @@ export function publicBrowsing() {
 
   // Simulate browsing an event SSR page
   group("Event SSR page", () => {
-    const slug = TEST_EVENT_SLUG || "jobfair-2026";
+    const slug = TEST_EVENT_SLUG || "vtk-jobfair";
     const res = http.get(`${BASE_URL}/event/${slug}`);
     pageLoadTrend.add(res.timings.duration);
     check(res, {
@@ -275,7 +275,7 @@ export function studentAuthFlow() {
     // Browse a page between polls
     if (i % 3 === 0) {
       group("Student browses event page", () => {
-        const slug = TEST_EVENT_SLUG || "jobfair-2026";
+        const slug = TEST_EVENT_SLUG || "vtk-jobfair";
         const res = http.get(`${BASE_URL}/event/${slug}`, withJar(jar));
         pageLoadTrend.add(res.timings.duration);
         check(res, {
@@ -318,7 +318,7 @@ export function companyAuthFlow() {
     // Browse a page between polls
     if (i % 3 === 0) {
       group("Company browses event page", () => {
-        const slug = TEST_EVENT_SLUG || "jobfair-2026";
+        const slug = TEST_EVENT_SLUG || "vtk-jobfair";
         const res = http.get(`${BASE_URL}/event/${slug}`, withJar(jar));
         pageLoadTrend.add(res.timings.duration);
         check(res, {

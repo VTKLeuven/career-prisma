@@ -46,8 +46,8 @@ export const options = {
 const PAGES = [
   "/",
   "/api/homepage",
-  `/event/${TEST_EVENT_SLUG || "jobfair-2026"}`,
-  `/api/events/${TEST_EVENT_SLUG || "jobfair-2026"}`,
+  `/event/${TEST_EVENT_SLUG || "vtk-jobfair"}`,
+  `/api/events/${TEST_EVENT_SLUG || "vtk-jobfair"}`,
   "/vacancies",
   "/contact",
   "/our-students",
