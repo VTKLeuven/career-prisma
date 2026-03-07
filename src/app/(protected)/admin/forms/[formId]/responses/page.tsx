@@ -1143,7 +1143,7 @@ export default function FormResponsesPage() {
 
   const handleArchiveDuplicates = async () => {
     if (!form || !formId) return;
-    if (!confirm(`Archive duplicate responses for "${form.name}"? This will keep only the most recent response per student and archive older ones.`)) {
+    if (!confirm(`Archive duplicate responses for "${form.name}"? This will keep only the most recent response per student or company and archive older ones.`)) {
       return;
     }
     setArchivingDuplicates(true);
