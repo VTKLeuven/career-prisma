@@ -5,8 +5,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, Save, ThumbsUp } from "lucide-react";
-import { formatDateTimeBE } from "@/lib/date-utils";
+import { Loader2, CheckCircle2, Save, Star } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -19,7 +18,75 @@ type AttendantInfo = {
       name: string;
     };
   };
+  student_id?: {
+    first_name: string | null;
+    last_name: string | null;
+    full_name: string | null;
+  } | null;
 };
+
+/** Extract display values for scan confirmation. Student name from student who filled the form. */
+function getScanDisplayInfo(attendant: AttendantInfo) {
+  const data = attendant.data;
+
+  // Student name: from student who filled the form (_student_full_name or student_id relation)
+  let name = "";
+  const metaName = data._student_full_name;
+  if (typeof metaName === "string" && metaName.trim()) {
+    name = metaName.trim();
+  } else if (attendant.student_id) {
+    const s = attendant.student_id;
+    if (s.full_name && String(s.full_name).trim()) {
+      name = String(s.full_name).trim();
+    } else {
+      const first = (s.first_name ?? "").trim();
+      const last = (s.last_name ?? "").trim();
+      name = `${first} ${last}`.trim();
+    }
+  }
+  if (!name) {
+    const first = (data.firstname as string) || (data.name as string) || "";
+    const last = (data.lastname as string) || (data.surname as string) || "";
+    name = `${first} ${last}`.trim() || "Unknown";
+  }
+
+  const yearKeys = ["year_of_study", "year", "academic_year", "study_year", "_student_year"];
+  let yearOfStudy = "";
+  for (const k of yearKeys) {
+    const v = data[k];
+    if (v != null && String(v).trim()) {
+      yearOfStudy = String(v).trim();
+      break;
+    }
+  }
+
+  // Use study_field only
+  const extractOne = (val: unknown): string | null => {
+    if (val == null) return null;
+    if (typeof val === "string" && val.trim()) return val.trim();
+    if (typeof val === "object" && val !== null && "name" in (val as object))
+      return String((val as { name: string }).name).trim() || null;
+    if (typeof val === "object" && val !== null) {
+      const o = val as Record<string, unknown>;
+      const v = o.name ?? o.label ?? o.value ?? o.id;
+      if (v != null && String(v).trim()) return String(v).trim();
+    }
+    return null;
+  };
+  let studyField = "";
+  const studyFieldVal = data.study_field;
+  if (studyFieldVal != null) {
+    if (Array.isArray(studyFieldVal)) {
+      const first = studyFieldVal.map(extractOne).find(Boolean);
+      if (first) studyField = first;
+    } else {
+      const s = extractOne(studyFieldVal);
+      if (s) studyField = s;
+    }
+  }
+
+  return { name, yearOfStudy, studyField };
+}
 
 type UserCheckResponse = {
   companyRep: null | {
@@ -56,8 +123,8 @@ export default function AttendantPage() {
   const [comment, setComment] = useState<string>("");
   const [initialFeedback, setInitialFeedback] = useState<{ liked: boolean; comment: string } | null>(null);
   const [savingFeedback, setSavingFeedback] = useState(false);
-  const [feedbackSaved, setFeedbackSaved] = useState(false);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const [showConfirmation, setShowConfirmation] = useState(false);
 
   const doScan = React.useCallback(async (targetUuid: string) => {
     setScanning(true);
@@ -170,7 +237,6 @@ export default function AttendantPage() {
   const saveFeedback = async () => {
     if (!scanId) return;
     setSavingFeedback(true);
-    setFeedbackSaved(false);
     setFeedbackError(null);
     try {
       const payload: { liked: boolean; comment: string } = {
@@ -188,7 +254,7 @@ export default function AttendantPage() {
         throw new Error(body?.error || `Failed to save feedback (${res.status})`);
       }
       setInitialFeedback({ liked, comment });
-      setFeedbackSaved(true);
+      setShowConfirmation(true);
     } catch (e) {
       setFeedbackError(e instanceof Error ? e.message : "Failed to save feedback");
     } finally {
@@ -232,7 +298,7 @@ export default function AttendantPage() {
               <p className="text-muted-foreground">
                 To scan and view attendee details, please log in with your company account.
               </p>
-              <Button onClick={() => router.push("/login")}>
+              <Button onClick={() => router.push(`/login?redirectTo=${encodeURIComponent(`/attendant/${uuid}`)}`)}>
                 Go to company login
               </Button>
             </div>
@@ -242,9 +308,26 @@ export default function AttendantPage() {
     );
   }
 
-  const formName = typeof attendant.form_version_id === 'object' && attendant.form_version_id?.form_id
-    ? (typeof attendant.form_version_id.form_id === 'object' ? attendant.form_version_id.form_id.name : '')
-    : '';
+  if (showConfirmation) {
+    return (
+      <div className="container mx-auto p-8">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center py-12">
+              <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
+              <h2 className="text-2xl font-bold mb-2">Thank You!</h2>
+              <p className="text-muted-foreground mb-4">
+                Your feedback has been saved successfully.
+              </p>
+              <Button onClick={() => router.push("/")}>Go Home</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const scanInfo = getScanDisplayInfo(attendant);
 
   return (
     <div className="container mx-auto p-8 max-w-2xl">
@@ -252,11 +335,18 @@ export default function AttendantPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Attendant Information</CardTitle>
-            {isCompanyRep && scanned && (
-              <div className="flex items-center gap-2 text-sm text-green-600">
-                <CheckCircle2 className="h-4 w-4" />
-                <span>Scanned</span>
-              </div>
+            {isCompanyRep && scanned && scanId && (
+              <button
+                type="button"
+                onClick={() => setLiked((prev) => !prev)}
+                disabled={savingFeedback}
+                className="p-2 rounded-full hover:bg-muted transition-colors disabled:opacity-50"
+                aria-label={liked ? "Remove star" : "Add star"}
+              >
+                <Star
+                  className={`h-5 w-5 ${liked ? "fill-amber-300 text-amber-400" : "text-muted-foreground"}`}
+                />
+              </button>
             )}
           </div>
         </CardHeader>
@@ -280,23 +370,21 @@ export default function AttendantPage() {
             </div>
           )}
 
-          {formName && (
-            <div>
-              <p className="text-sm text-muted-foreground">Event</p>
-              <p className="font-medium">{formName}</p>
-            </div>
-          )}
-          
-          <div>
-            <p className="text-sm text-muted-foreground">Registration Date</p>
-            <p className="font-medium">{formatDateTimeBE(attendant.submitted_at)}</p>
-          </div>
-
           {isCompanyRep && scanned && scanId && (
-            <div className="border-t pt-4 space-y-4">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-green-600">
+                <CheckCircle2 className="h-5 w-5 shrink-0" />
+                <span className="font-medium">Scanned</span>
+              </div>
+
               <div>
-                <h3 className="font-semibold">Quick feedback</h3>
-                <p className="text-sm text-muted-foreground">Like and add a note right after scanning.</p>
+                <p className="text-lg font-semibold">
+                  {scanInfo.name}
+                  {scanInfo.yearOfStudy ? ` – ${scanInfo.yearOfStudy}` : ""}
+                </p>
+                {scanInfo.studyField ? (
+                  <p className="text-sm text-muted-foreground mt-0.5">{scanInfo.studyField}</p>
+                ) : null}
               </div>
 
               {feedbackError && (
@@ -304,26 +392,6 @@ export default function AttendantPage() {
                   {feedbackError}
                 </div>
               )}
-              {feedbackSaved && (
-                <div className="text-sm text-green-700 bg-green-50 border border-green-200 p-2 rounded">
-                  Saved.
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label>Like</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant={liked ? "default" : "outline"}
-                    disabled={savingFeedback}
-                    onClick={() => setLiked((prev) => !prev)}
-                  >
-                    <ThumbsUp className="h-4 w-4 mr-2" />
-                    Like
-                  </Button>
-                </div>
-              </div>
 
               <div className="space-y-2">
                 <Label htmlFor="comment">Comment</Label>
@@ -336,31 +404,9 @@ export default function AttendantPage() {
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2">
+              <div className="flex justify-end">
                 <Button
-                  variant="outline"
                   disabled={savingFeedback}
-                  onClick={() => {
-                    setFeedbackSaved(false);
-                    setFeedbackError(null);
-                    if (initialFeedback) {
-                      setComment(initialFeedback.comment);
-                      setLiked(initialFeedback.liked);
-                    } else {
-                      setComment("");
-                      setLiked(false);
-                    }
-                  }}
-                >
-                  Reset
-                </Button>
-                <Button
-                  disabled={
-                    savingFeedback ||
-                    (initialFeedback
-                      ? liked === initialFeedback.liked && comment === initialFeedback.comment
-                      : liked === false && comment === "")
-                  }
                   onClick={() => void saveFeedback()}
                 >
                   {savingFeedback ? (
@@ -379,32 +425,34 @@ export default function AttendantPage() {
             </div>
           )}
 
-          <div className="border-t pt-4 space-y-3">
-            <h3 className="font-semibold">Details</h3>
-            {Object.entries(attendant.data).map(([key, value]) => {
-              // Skip internal fields
-              if (key.startsWith('_')) return null;
-              
-              const displayKey = key
-                .replace(/([A-Z])/g, ' $1')
-                .replace(/^./, str => str.toUpperCase())
-                .trim();
-              
-              let displayValue: React.ReactNode = String(value || '');
-              if (Array.isArray(value)) {
-                displayValue = value.join(', ');
-              } else if (value === null || value === undefined) {
-                displayValue = <span className="text-muted-foreground italic">Not provided</span>;
-              }
-
-              return (
-                <div key={key} className="flex flex-col gap-1">
-                  <p className="text-sm text-muted-foreground">{displayKey}</p>
-                  <p className="font-medium">{displayValue}</p>
+          {!isCompanyRep || !scanned ? (
+            <>
+              {Object.keys(attendant.data).some((k) => !k.startsWith("_")) && (
+                <div className="border-t pt-4 space-y-3">
+                  <h3 className="font-semibold">Details</h3>
+                  {Object.entries(attendant.data).map(([key, value]) => {
+                    if (key.startsWith("_")) return null;
+                    const displayKey = key
+                      .replace(/([A-Z])/g, " $1")
+                      .replace(/^./, (str) => str.toUpperCase())
+                      .trim();
+                    let displayValue: React.ReactNode = String(value || "");
+                    if (Array.isArray(value)) {
+                      displayValue = value.join(", ");
+                    } else if (value === null || value === undefined) {
+                      displayValue = <span className="text-muted-foreground italic">Not provided</span>;
+                    }
+                    return (
+                      <div key={key} className="flex flex-col gap-1">
+                        <p className="text-sm text-muted-foreground">{displayKey}</p>
+                        <p className="font-medium">{displayValue}</p>
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
+              )}
+            </>
+          ) : null}
         </CardContent>
       </Card>
     </div>
