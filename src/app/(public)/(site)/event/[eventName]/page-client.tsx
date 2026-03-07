@@ -20,7 +20,6 @@ import { slugifyCompanyName, slugifyEventName, getSpeakerSlug } from "@/lib/util
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
 import { CareerEventPage, Company, CareerEvent, HeaderButtonType, Speaker, TimetableType } from '@/lib/schema'
 import dynamic from "next/dynamic"
-import HeroiconDynamic from "@/components/HeroiconDynamic"
 import { ChevronDown, MapPin, Car, ExternalLink, LogOut, User } from 'lucide-react'
 import { useBannerPage } from '@/hooks/use-banner-page'
 import { usePageLayout } from '../../layout'
@@ -1508,9 +1507,9 @@ function Popup({
 
 // ---------------- PracticalInformation ----------------
 const TIMETABLE_TYPE_LABELS: Record<TimetableType, string> = {
-  student: 'Student',
-  company: 'Company',
-  discovery: 'Discovery',
+  student: 'For Students',
+  company: 'For Companies',
+  discovery: 'Discovery Stage',
 }
 
 function PracticalInformation({ page }: { page?: CareerEventPage }) {
@@ -1635,71 +1634,69 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
 
             <div>
               <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-4">Timetable</h2>
-              {hasTimetableTypeFilter && (
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {timetableTypes.map((t) => (
-                    <label
-                      key={t}
-                      className="flex items-center gap-2 cursor-pointer"
-                    >
-                      <input
-                        type="radio"
-                        name="timetable-type"
-                        value={t}
-                        checked={selectedTimetableType === t}
-                        onChange={() => setSelectedTimetableType(t)}
-                        className="h-4 w-4 border-neutral-300 text-vtk-blue focus:ring-vtk-blue"
-                      />
-                      <span className="text-sm font-medium text-neutral-700">{TIMETABLE_TYPE_LABELS[t]}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-              <div className="relative border-l-2 border-vtk-blue/30 pl-12">
-                {filteredTimetable.map((item, index) => (
-                  <div key={index} className="relative mb-10 last:mb-0">
-                    <span className="absolute -left-7 top-2 flex h-10 w-10 items-center justify-center rounded-full bg-vtk-yellow shadow-md">
-                      {item.icon ? (
-                        <HeroiconDynamic
-                          name={item.icon}
-                          className="w-5 h-5 text-black" // smaller + black
-                        />
-                      ) : (
-                        <HeroiconDynamic
-                          name={"star"}
-                          className="w-5 h-5 text-black" // smaller + black
-                        />
-                      )}
-                    </span>
-                    <div className="flex items-center gap-3 mb-1 ml-6">
-                      <span className="text-sm font-medium text-vtk-blue">{item.start_time} - {item.end_time}</span>
-                    </div>
-                    {item.speaker && eventSlug ? (
-                      <Link
-                        href={`/event/${eventSlug}/speakers/${getSpeakerSlug(item.speaker, allSpeakersForSlug)}`}
-                        className="block rounded-lg border border-neutral-200 bg-neutral-50 p-4 hover:shadow-lg hover:border-vtk-blue/50 transition-all duration-300 cursor-pointer"
+              <div className="rounded-2xl border border-neutral-200 bg-white shadow-sm overflow-hidden">
+                {hasTimetableTypeFilter && (
+                  <div className="flex border-b border-neutral-100">
+                    {timetableTypes.map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setSelectedTimetableType(t)}
+                        className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
+                          selectedTimetableType === t
+                            ? "border-b-2 border-vtk-blue text-vtk-blue bg-vtk-light/30"
+                            : "text-neutral-500 hover:text-neutral-700"
+                        }`}
                       >
-                        <h3 className="font-semibold text-neutral-900">{item.title}</h3>
-                        {item.description && (
-                          <div
-                            className="text-neutral-700 mt-1 text-sm"
-                            dangerouslySetInnerHTML={{ __html: item.description }}
-                          />
+                        {TIMETABLE_TYPE_LABELS[t]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="p-4 space-y-3">
+                  {filteredTimetable.map((item, index) => {
+                    const speakerName = item.speaker?.representative
+                      ? `${item.speaker.representative.first_name ?? ""} ${item.speaker.representative.last_name ?? ""}`.trim()
+                      : null
+                    const content = (
+                      <div className="mt-1">
+                        {item.speaker && speakerName ? (
+                          <>
+                            <p className="font-semibold text-neutral-900">{speakerName}</p>
+                            <p className="text-sm text-neutral-600 mt-0.5">{item.title}</p>
+                          </>
+                        ) : (
+                          <p className="font-semibold text-neutral-900">{item.title}</p>
                         )}
-                      </Link>
-                    ) : (
-                      <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 hover:shadow-lg transition-shadow duration-300">
-                        <h3 className="font-semibold text-neutral-900">{item.title}</h3>
                         {item.description && (
-                          <div
-                            className="text-neutral-700 mt-1 text-sm"
-                            dangerouslySetInnerHTML={{ __html: item.description }}
-                          />
+                          <div className="text-neutral-600 mt-1 text-sm" dangerouslySetInnerHTML={{ __html: item.description }} />
                         )}
                       </div>
-                    )}
-                  </div>
-                ))}
+                    )
+                    const timeStr = item.end_time ? `${item.start_time} – ${item.end_time}` : item.start_time
+                    return (
+                      <div key={index}>
+                        {item.speaker && eventSlug ? (
+                          <Link
+                            href={`/event/${eventSlug}/speakers/${getSpeakerSlug(item.speaker, allSpeakersForSlug)}`}
+                            className="block rounded-lg border border-neutral-200 bg-neutral-50 p-4 hover:shadow-md hover:border-vtk-blue/50 transition-all cursor-pointer"
+                          >
+                            <span className="text-xs font-medium text-vtk-blue">{timeStr}</span>
+                            {content}
+                          </Link>
+                        ) : (
+                          <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+                            <span className="text-xs font-medium text-vtk-blue">{timeStr}</span>
+                            {content}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {filteredTimetable.length === 0 && (
+                    <p className="py-6 text-center text-sm text-neutral-500">No timetable items.</p>
+                  )}
+                </div>
               </div>
             </div>
           </div>

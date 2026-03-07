@@ -47,6 +47,7 @@
   --color-vtk-light: #E8F1FF;
   --color-vtk-yellow: #FFD200;
   --color-vtk-bg: #F9FBFF;
+  --shadow-soft: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
 }
 
 :root {
