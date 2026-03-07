@@ -27,7 +27,7 @@ services:
         soft: 65536
         hard: 65536
     sysctls:
-      - net.core.somaxconn=1024
+      - net.core.somaxconn=8192
       - net.ipv4.tcp_tw_reuse=1
 
   # The Load Balancer handles the host port mapping and distributes traffic
@@ -36,9 +36,11 @@ services:
     ports:
       # Maps external 3002 to internal 80
       - "3002:80"
-    # Caddy acts as a reverse proxy. Docker's internal DNS automatically 
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    # Caddy acts as a reverse proxy. Docker's internal DNS automatically
     # round-robins requests to 'app:3000' across all 8 replicas.
-    command: caddy reverse-proxy --from :80 --to http://app:3000
+    command: caddy run --config /etc/caddy/Caddyfile
     restart: unless-stopped
     depends_on:
       - app
@@ -46,3 +48,6 @@ services:
       nofile:
         soft: 65536
         hard: 65536
+    sysctls:
+      - net.core.somaxconn=65535
+      - net.ipv4.tcp_tw_reuse=1

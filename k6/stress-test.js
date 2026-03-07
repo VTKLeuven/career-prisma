@@ -49,6 +49,8 @@ const errorCount = new Counter("error_count");
 // Options – scenario-based execution
 // ---------------------------------------------------------------------------
 export const options = {
+  // Reduce memory at 1400+ VUs (we don't need response bodies for most checks)
+  discardResponseBodies: true,
   scenarios: {
     // 70% of traffic: students/visitors browsing the public site
     public_browsers: {
