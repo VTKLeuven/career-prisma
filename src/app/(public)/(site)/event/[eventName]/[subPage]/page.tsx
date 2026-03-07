@@ -1368,7 +1368,7 @@ function CompanyList({
   showOnlyMyMatches?: boolean
 }) {
   // Filter booths that have companies, sort alphabetically, then limit to max 2 entries per company (double booths)
-  let allEntries = booths
+  const allEntries = booths
     .filter(b => b.company && b.booth_number)
     .map(b => ({
       company: b.company!,
@@ -1376,10 +1376,6 @@ function CompanyList({
       boothId: b.id,
     }))
     .sort((a, b) => a.boothNumber - b.boothNumber)
-  // When "My matches" filter is on, only show matched companies
-  if (showOnlyMyMatches && matchedCompanyIdsFromMatching.size > 0) {
-    allEntries = allEntries.filter(({ company }) => matchedCompanyIdsFromMatching.has(String(company.id)))
-  }
 
   // Limit to at most 2 entries per company (double booths only show twice)
   const companyCount = new Map<string, number>()
