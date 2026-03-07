@@ -719,6 +719,14 @@ export async function listSalespersons(opts?: {
 }) {
   const { search, limit = 25, page = 1, sort = "first_name" } = opts ?? {};
 
+  const baseUrl = process.env.DIRECTUS_URL;
+  if (!baseUrl) {
+    console.error("[listSalespersons] DIRECTUS_URL not configured");
+    return [];
+  }
+
+  const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
+
   try {
     const params = new URLSearchParams({
       fields: USER_FIELDS.join(","),     // list of fields you want
@@ -735,7 +743,7 @@ export async function listSalespersons(opts?: {
     }
 
     // Public (no auth header)
-    const res = await fetch(`${process.env.DIRECTUS_URL}users?${params}`, {
+    const res = await fetch(`${normalizedBase}users?${params}`, {
       // No Authorization header — public access
       next: { revalidate: 60 }, // optional caching (Next.js)
     });
@@ -762,6 +770,14 @@ export async function fetchSalespersonByID(salesperson_id: string, opts?: {
 }) {
   const { search, limit = 25, page = 1, sort = "first_name" } = opts ?? {};
 
+  const baseUrl = process.env.DIRECTUS_URL;
+  if (!baseUrl) {
+    console.error("[fetchSalespersonByID] DIRECTUS_URL not configured");
+    return null;
+  }
+
+  const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
+
   try {
     const params = new URLSearchParams({
       fields: USER_FIELDS.join(","),     // list of fields you want
@@ -779,7 +795,7 @@ export async function fetchSalespersonByID(salesperson_id: string, opts?: {
     }
 
     // Public (no auth header)
-    const res = await fetch(`${process.env.DIRECTUS_URL}users?${params}`, {
+    const res = await fetch(`${normalizedBase}users?${params}`, {
       // No Authorization header — public access
       next: { revalidate: 60 }, // optional caching (Next.js)
     });
