@@ -584,7 +584,7 @@ function Header() {
             {!student && !companyRep && (
               <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/student-login">Student login</Link></Button>
             )}
-            {companyRep && (
+            {!student && companyRep && (
               <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>
             )}
             {student && (
@@ -739,7 +739,7 @@ function Header() {
                       <Link href="/student-login">Student login</Link>
                     </Button>
                   )}
-                  {companyRep && (
+                  {!student && companyRep && (
                     <Button 
                       asChild
                       className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"

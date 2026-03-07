@@ -228,26 +228,26 @@ function Header() {
 
           <div className="ml-auto flex items-center gap-2">
             {!student && (
-              <Button asChild variant="outline" className={`hidden rounded-full md:inline-flex border-0 ${darkHeaderFooter ? 'bg-[#262626] text-white hover:bg-[#333]' : 'border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10'}`}>
+              <Button asChild variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex">
                 <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>
               </Button>
             )}
             {!student && !companyRep && (
-              <Button asChild className={`hidden rounded-full md:inline-flex ${darkHeaderFooter ? 'bg-white/20 text-white hover:bg-white/30 border-white/40' : 'bg-vtk-blue hover:bg-vtk-blueDark text-white'}`}><Link href="/student-login">Student login</Link></Button>
+              <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/student-login">Student login</Link></Button>
             )}
-            {companyRep && (
-              <Button asChild className={`hidden rounded-full md:inline-flex ${darkHeaderFooter ? 'bg-white/20 text-white hover:bg-white/30 border-white/40' : 'bg-vtk-blue hover:bg-vtk-blueDark text-white'}`}><Link href="/contact">Contact Us</Link></Button>
+            {!student && companyRep && (
+              <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>
             )}
             {student && (
               <>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className={`hidden rounded-full md:inline-flex ${darkHeaderFooter ? 'bg-white/20 text-white hover:bg-white/30 border-white/40' : 'border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10'}`}>
+                    <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex">
                       <User className="h-4 w-4 mr-2" />
                       {student.firstName} {student.lastName}
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className={darkHeaderFooter ? 'bg-neutral-800 border-neutral-600 text-neutral-100 [&_[role=menuitem]]:text-neutral-100 [&_[role=menuitem]]:focus:bg-neutral-700 [&_[role=menuitem]]:focus:text-white' : ''}>
+                  <DropdownMenuContent align="end">
                     {student.is_shifter && (
                       <DropdownMenuItem onClick={() => router.push("/dashboard/shifter")}>
                         <Bell className="mr-2 h-4 w-4 text-orange-500" />
@@ -266,7 +266,7 @@ function Header() {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <Button asChild className={`hidden rounded-full md:inline-flex ${darkHeaderFooter ? 'bg-white/20 text-white hover:bg-white/30 border-white/40' : 'bg-vtk-blue hover:bg-vtk-blueDark text-white'}`}><Link href="/contact">Contact Us</Link></Button>
+                <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>
               </>
             )}
 
@@ -378,7 +378,7 @@ function Header() {
                     <Button
                       asChild
                       variant="outline"
-                      className={`rounded-full w-full border-0 ${darkHeaderFooter ? 'bg-[#262626] text-white hover:bg-[#333]' : 'border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10'}`}
+                      className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>
@@ -387,29 +387,16 @@ function Header() {
                   {!student && !companyRep && (
                     <Button
                       asChild
-                      className={`rounded-full w-full ${darkHeaderFooter ? 'bg-white/20 text-white hover:bg-white/30 border-white/40' : 'bg-vtk-blue hover:bg-vtk-blueDark text-white'}`}
+                      className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       <Link href="/student-login">Student login</Link>
                     </Button>
                   )}
-                  {companyRep?.is_shifter && (
+                  {!student && companyRep && (
                     <Button
                       asChild
-                      variant="outline"
-                      className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      <Link href="/dashboard/shifter">
-                        <Bell className="mr-2 h-4 w-4 text-orange-500" />
-                        Shifter Dashboard
-                      </Link>
-                    </Button>
-                  )}
-                  {companyRep && (
-                    <Button
-                      asChild
-                      className={`rounded-full w-full ${darkHeaderFooter ? 'bg-white/20 text-white hover:bg-white/30 border-white/40' : 'bg-vtk-blue hover:bg-vtk-blueDark text-white'}`}
+                      className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       <Link href="/contact">Contact Us</Link>
@@ -419,23 +406,12 @@ function Header() {
                     <>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="outline" className={`rounded-full w-full ${darkHeaderFooter ? 'bg-white/20 text-white hover:bg-white/30 border-white/40' : 'border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10'}`}>
+                          <Button variant="outline" className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full">
                             <User className="h-4 w-4 mr-2" />
                             {student.firstName} {student.lastName}
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56">
-                          {student.is_shifter && (
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setMobileMenuOpen(false);
-                                router.push("/dashboard/shifter");
-                              }}
-                            >
-                              <Bell className="mr-2 h-4 w-4 text-orange-500" />
-                              Shifter Dashboard
-                            </DropdownMenuItem>
-                          )}
                           <DropdownMenuItem
                             onClick={async () => {
                               await fetch("/api/students/logout", { method: "POST" });
@@ -450,7 +426,7 @@ function Header() {
                       </DropdownMenu>
                       <Button
                         asChild
-                        className={`rounded-full w-full ${darkHeaderFooter ? 'bg-white/20 text-white hover:bg-white/30 border-white/40' : 'bg-vtk-blue hover:bg-vtk-blueDark text-white'}`}
+                        className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
                         onClick={() => setMobileMenuOpen(false)}
                       >
                         <Link href="/contact">Contact Us</Link>
