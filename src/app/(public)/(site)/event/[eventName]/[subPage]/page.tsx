@@ -4,8 +4,6 @@ import { useEffect, useState, useRef, useMemo, useCallback } from "react"
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import NextImage from "next/image"
-import { fetchEventPagesAction } from "@/app/actions/events"
-import { fetchFloorplanAction, fetchMastersAction } from "@/app/actions/features"
 import * as Sentry from "@sentry/nextjs"
 import { fetchFloorplanCategoryOptionsAction, fetchCompanyIdsMatchingFloorplanCategoryAction, fetchCompanyMasterDegreesFromFormBatchAction, fetchCompanyFormFieldValuesFromFormAction } from "@/app/actions/forms"
 import type { CareerEventPage, Booth, Master, Company } from '@/lib/schema'
@@ -67,15 +65,21 @@ export default function SubPage() {
   useEffect(() => {
     let cancelled = false
     async function load() {
-      const events = await fetchEventPagesAction()
-
       if (!eventName) return
-      const found = events.find(
-        (p) =>
-          p.event?.name &&
-          slugifyEventName(p.event.name) === slugifyEventName(eventName)
-      )
-      setPage(found ?? null)
+      const res = await fetch(`/api/events/${encodeURIComponent(eventName)}`)
+      if (cancelled) return
+      if (!res.ok) {
+        setPage(null)
+        setCategoryFormFields([])
+        setFormCategoryGroups([])
+        setAllCategories([])
+        setCompanyNameFormFields([])
+        return
+      }
+      const found = await res.json()
+
+      if (cancelled) return
+      setPage(found)
 
       const fp = found?.floorplan as {
         floorplan_category_form_fields?: Array<{ formId: string; formVersionId: string; fieldName: string }>;
@@ -85,13 +89,18 @@ export default function SubPage() {
       if (cfg && cfg.length > 0) {
         setCategoryFormFields(cfg)
         const { groups } = await fetchFloorplanCategoryOptionsAction(cfg)
-        setFormCategoryGroups(groups)
-        setAllCategories([])
+        if (!cancelled) {
+          setFormCategoryGroups(groups)
+          setAllCategories([])
+        }
       } else {
         setCategoryFormFields([])
         setFormCategoryGroups([])
-        const categories = await fetchMastersAction()
-        setAllCategories(categories)
+        const mastersRes = await fetch("/api/masters")
+        if (!cancelled && mastersRes.ok) {
+          const categories = await mastersRes.json()
+          setAllCategories(categories)
+        }
       }
       const raw = fp?.floorplan_company_name_form_field
       const nameFields = Array.isArray(raw) ? raw : raw && typeof raw === "object" && raw.formId ? [raw] : []
@@ -242,6 +251,7 @@ export default function SubPage() {
           />
           <Floorplan
             page={page}
+            eventSlug={eventName || slugifyEventName(page.event?.name || '')}
             selectedCategories={selectedCategories}
             onBoothClick={setPopupBooth}
             setBooths={setBooths}
@@ -638,6 +648,7 @@ function Header({
 // ---------------- Floorplan ----------------
 function Floorplan({
   page,
+  eventSlug,
   selectedCategories,
   onBoothClick,
   setBooths,
@@ -655,6 +666,7 @@ function Floorplan({
   hasMatchingSoftware = false,
 }: {
   page: CareerEventPage
+  eventSlug: string
   selectedCategories: string[]
   onBoothClick: (booth: Booth) => void
   setBooths: (b: Booth[]) => void
@@ -780,13 +792,15 @@ function Floorplan({
   useEffect(() => {
     let cancelled = false
     const loadData = async () => {
-      if (!page) return
+      if (!page || !eventSlug) return
       try {
         setFloorplanError(null)
-        const data = await fetchFloorplanAction(page)
+        const res = await fetch(`/api/events/${encodeURIComponent(eventSlug)}/floorplan`)
+        if (!res.ok || cancelled) return
+        const data = await res.json()
         if (!data || cancelled) return
 
-        const boothsData = (data.booths || []).filter((b): b is Booth => b !== null)
+        const boothsData = (data.booths || []).filter((b: unknown): b is Booth => b !== null)
         if (!cancelled) {
           setBoothsLocal(boothsData)
           setBooths(boothsData)
@@ -827,7 +841,7 @@ function Floorplan({
     return () => {
       cancelled = true
     }
-  }, [page, setBooths])
+  }, [page, eventSlug, setBooths])
 
   // Initialize refs with current state
   useEffect(() => {

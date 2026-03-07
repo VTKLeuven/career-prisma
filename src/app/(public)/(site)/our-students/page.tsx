@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from "react"
-import { fetchMastersAction } from "@/app/actions/features"
 import type { Master } from "@/lib/schema"
 import { getDirectusImageUrl } from "@/components/Images"
 import DOMPurify from "isomorphic-dompurify"
@@ -13,7 +12,9 @@ export default function OurStudentsPage() {
   useEffect(() => {
     async function loadMasters() {
       try {
-        const data = await fetchMastersAction()
+        const res = await fetch("/api/masters")
+        if (!res.ok) throw new Error("Failed to fetch")
+        const data = (await res.json()) as Master[]
         // Show all masters, but prioritize those with student data
         // Sort by: has students (desc), then by name
         const sorted = data.sort((a, b) => {
