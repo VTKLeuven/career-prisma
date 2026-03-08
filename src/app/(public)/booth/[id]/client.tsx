@@ -137,8 +137,8 @@ export default function BoothClient({
                     </p>
                     <p className="text-xs text-muted-foreground mt-4">
                         {isPreparing
-                            ? 'A shifter is now preparing your order. It will arrive soon!'
-                            : 'Please wait until a shifter picks up your order.'}
+                            ? 'Your order is being prepared. It wil arrive soon!'
+                            : 'Your order is being picked up soon.'}
                     </p>
 
                     {!isPreparing && (
