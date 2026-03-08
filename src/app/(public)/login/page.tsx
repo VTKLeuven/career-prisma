@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useState } from "react";
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import NextImage from "next/image";
 import Link from "next/link";
 import { getDirectusImageUrl } from "@/components/Images";
@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/dialog";
 
 export default function LoginPage() {
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirectTo");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
@@ -52,7 +54,8 @@ export default function LoginPage() {
       } else {
         // Force a hard navigation to ensure cookies are properly set
         // and client-side state is refreshed
-        window.location.href = "/dashboard";
+        const target = redirectTo && redirectTo.startsWith("/") && !redirectTo.startsWith("//") ? redirectTo : "/dashboard";
+        window.location.href = target;
       }
     } catch {
       setError("Network error.");
