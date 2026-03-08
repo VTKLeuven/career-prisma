@@ -363,13 +363,13 @@ export default function PublicFormPage() {
               </p>
             </div>
           )}
-          {isEditing && (
+          {/* {isEditing && (
             <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md">
               <p className="text-sm text-amber-800 dark:text-amber-200">
                 You have already submitted a response. You can update your answers below.
               </p>
             </div>
-          )}
+          )} */}
           <form onSubmit={handleSubmit} className="space-y-6">
             {(() => {
               // Group fields by layout rows
