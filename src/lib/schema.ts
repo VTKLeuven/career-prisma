@@ -123,6 +123,14 @@ export type CareerEventOption = {
 /** Header button types that can be shown on the event page header */
 export type HeaderButtonType = 'floorplan' | 'company_guide' | 'cv_upload' | 'matching_software';
 
+/** Schedule for an event - PDF per master (student timetables). Companies with "Student Schedules" sub-option see schedules for masters in their company.category. */
+export type Schedule = {
+  id: string;
+  event: string | CareerEvent;
+  master: string | Master;
+  pdf: string | { id?: string }; // Directus file
+};
+
 /** RIASEC types for student matching (Holland codes) */
 export type RIASECType = 'R' | 'I' | 'A' | 'S' | 'E' | 'C';
 
