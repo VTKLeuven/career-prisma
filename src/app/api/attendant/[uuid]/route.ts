@@ -25,7 +25,7 @@ export async function GET(
       );
     }
 
-    // Find the form response by attendant_uuid
+    // Find the form response by attendant_uuid (student form - include student who filled it)
     const responses = await client.request(
       readItems("form_responses" as any, {
         fields: [
@@ -33,6 +33,7 @@ export async function GET(
           "data",
           "submitted_at",
           { form_version_id: { form_id: ["name"] } } as any,
+          { student_id: ["first_name", "last_name", "full_name"] } as any,
         ],
         filter: {
           attendant_uuid: { _eq: uuid },
@@ -48,6 +49,11 @@ export async function GET(
           name: string;
         };
       };
+      student_id?: {
+        first_name: string | null;
+        last_name: string | null;
+        full_name: string | null;
+      } | null;
     }>;
 
     if (responses.length === 0) {

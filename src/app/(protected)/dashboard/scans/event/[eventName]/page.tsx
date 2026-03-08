@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Download } from "lucide-react";
+import { Loader2, Download, Search } from "lucide-react";
 import { formatDateTimeBE } from "@/lib/date-utils";
 import { useUser } from "@/providers/UserProvider";
 import {
@@ -19,6 +19,8 @@ import {
 import { fetchEventsAction } from "@/app/actions/events";
 import type { CareerEvent } from "@/lib/schema";
 import { slugifyEventName, CSV_UTF8_BOM } from "@/lib/utils/slugify";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 
 type AttendantScan = {
   id: string;
@@ -58,6 +60,8 @@ export default function EventScansPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [eventId, setEventId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [favouritesOnly, setFavouritesOnly] = useState(false);
 
   // Find event ID from event name first, then load scans
   useEffect(() => {
@@ -251,6 +255,29 @@ export default function EventScansPage() {
     window.URL.revokeObjectURL(url);
   };
 
+  const matchesSearch = (scan: AttendantScan, q: string): boolean => {
+    if (!q.trim()) return true;
+    const lower = q.trim().toLowerCase();
+    const data = scan.form_response_id.data;
+    const firstName = (data.firstname as string) || (data.name as string) || "";
+    const lastName = (data.lastname as string) || (data.surname as string) || "";
+    const name = `${firstName} ${lastName}`.trim();
+    const email = (data.email as string) || "";
+    const studentFullName = (data._student_full_name as string) || "";
+    const studentEmail = (data._student_email as string) || "";
+    const studentUsername = (data._student_username as string) || "";
+    const searchable = [name, email, studentFullName, studentEmail, studentUsername]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return searchable.includes(lower);
+  };
+
+  const filteredScans = scans.filter((scan) => {
+    if (favouritesOnly && !scan.liked) return false;
+    return matchesSearch(scan, searchQuery);
+  });
+
   if (loading) {
     return (
       <div className="container mx-auto p-8">
@@ -280,6 +307,29 @@ export default function EventScansPage() {
           <CardDescription>
             {scans.length} attendant{scans.length !== 1 ? "s" : ""} scanned for this event
           </CardDescription>
+          {scans.length > 0 && (
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search students..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="favourites"
+                  checked={favouritesOnly}
+                  onCheckedChange={(checked) => setFavouritesOnly(checked === true)}
+                />
+                <span className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                  Favourites only
+                </span>
+              </div>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {error ? (
@@ -290,6 +340,25 @@ export default function EventScansPage() {
             <div className="text-center py-12">
               <p className="text-muted-foreground">No scans yet for this event.</p>
             </div>
+          ) : filteredScans.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground mb-4">
+                {searchQuery || favouritesOnly
+                  ? "No scans match your filters."
+                  : "No scans yet for this event."}
+              </p>
+              {(searchQuery || favouritesOnly) && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setFavouritesOnly(false);
+                  }}
+                >
+                  Clear filters
+                </Button>
+              )}
+            </div>
           ) : (
             <div className="border rounded-lg overflow-hidden">
               <Table>
@@ -297,7 +366,7 @@ export default function EventScansPage() {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
-                    {scans.some(scan => scan.form_response_id.data?._student_username || scan.form_response_id.data?._student_email) && (
+                    {filteredScans.some(scan => scan.form_response_id.data?._student_username || scan.form_response_id.data?._student_email) && (
                       <>
                         <TableHead>Student Username</TableHead>
                         <TableHead>Student Email</TableHead>
@@ -312,7 +381,7 @@ export default function EventScansPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {scans.map((scan) => {
+                  {filteredScans.map((scan) => {
                     const response = scan.form_response_id;
                     // Support both new format (firstname/lastname) and old format (name/surname)
                     const firstName = (response.data.firstname as string) || (response.data.name as string) || "";
@@ -325,7 +394,7 @@ export default function EventScansPage() {
                       <TableRow key={scan.id}>
                         <TableCell className="font-medium">{name}</TableCell>
                         <TableCell>{email}</TableCell>
-                        {scans.some(s => s.form_response_id.data?._student_username || s.form_response_id.data?._student_email) && (
+                        {filteredScans.some(s => s.form_response_id.data?._student_username || s.form_response_id.data?._student_email) && (
                           <>
                             <TableCell>{(typeof response.data._student_username === 'string' ? response.data._student_username : '') || 'N/A'}</TableCell>
                             <TableCell>{(typeof response.data._student_email === 'string' ? response.data._student_email : '') || 'N/A'}</TableCell>

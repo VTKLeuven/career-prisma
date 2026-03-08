@@ -1,41 +1,53 @@
 "use server"
 
 import { listOrders } from "@/lib/repos/orders";
+import { listZones } from "@/lib/repos/zones";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { getStudentFromCookies } from "@/lib/auth-student";
 import { getAdminDirectusClient } from "@/lib/directus";
 import { updateItem, deleteItem } from "@directus/sdk";
 import { revalidatePath } from "next/cache";
 
+// Resolve zone for an order - must match getOrderZone logic in shifter client
+function getOrderZoneId(order: { booth?: { id?: string } | string; zone?: { id?: string } | string }, zones: { id: string; booths?: any[] }[]): string | null {
+    const boothId = (order.booth as any)?.id ?? order.booth;
+    if (!boothId) return null;
+
+    // Primary: zone.booths M2M - find which zone contains this booth
+    for (const zone of zones) {
+        if (zone.booths && Array.isArray(zone.booths)) {
+            const found = zone.booths.some((b: any) => {
+                const bId = typeof b === 'object' ? b.id : b;
+                return String(bId) === String(boothId);
+            });
+            if (found) return zone.id;
+        }
+    }
+
+    // Fallback: booth.zone
+    const boothZone = (order.booth as any)?.zone;
+    if (boothZone) {
+        if (typeof boothZone === 'object') return boothZone.id ?? null;
+        return boothZone;
+    }
+
+    // Fallback: order.zone
+    if (order.zone) {
+        if (typeof order.zone === 'object') return (order.zone as any).id ?? null;
+        return order.zone as string;
+    }
+    return null;
+}
+
 export async function fetchOrdersAction(zoneId?: string) {
-    // Fetch Pending and Preparing orders
-    // We can't do OR in listOrders easily without modifying it or custom filter.
-    // I'll update listOrders to handle filtering properly or just fetch all active.
     const allOrders = await listOrders({});
 
-    // Filter in memory for now if repo doesn't support advanced OR
-    // But let's assume we want Pending or Preparing
     let activeOrders = allOrders.filter(o => o.status !== 'finished');
 
     if (zoneId && zoneId !== 'all') {
-        // Filter by zone if relational or denormalized
-        // activeOrders = activeOrders.filter(o => o.zone === zoneId || o.booth?.zone === zoneId);
-        // Need valid zone logic. Assuming order.zone is populated.
-        // If not, we might need to rely on booth.zone
-        // Let's assume order.zone matches or booth.zone matches
-        activeOrders = activeOrders.filter(o => {
-            // Check explicit zone field on order
-            if (typeof o.zone === 'string' && o.zone === zoneId) return true;
-            if (typeof o.zone === 'object' && o.zone?.id === zoneId) return true;
-
-            // Check booth zone
-            // @ts-ignore
-            const boothZone = o.booth?.zone;
-            if (typeof boothZone === 'string' && boothZone === zoneId) return true;
-            if (typeof boothZone === 'object' && boothZone?.id === zoneId) return true;
-
-            return false;
-        });
+        // Use same zone resolution as shifter dashboard display (zone.booths M2M)
+        const zones = await listZones();
+        activeOrders = activeOrders.filter(o => getOrderZoneId(o, zones) === zoneId);
     }
 
     return activeOrders.sort((a, b) => new Date(a.date_created).getTime() - new Date(b.date_created).getTime());
