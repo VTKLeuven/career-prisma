@@ -241,7 +241,6 @@ export function generateEventConfirmationEmailHtml({
               <p style="font-weight: 600; color: #1f2937; margin-bottom: 12px;">Your Attendant QR Code</p>
               <p style="color: #6b7280; font-size: 14px; margin-bottom: 16px;">Present this QR code at the event for quick check-in.</p>
               <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${shortCode}" alt="Attendant QR Code" width="200" height="200" style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; background-color: #ffffff;" />
-              <p style="margin-top: 12px; font-size: 13px; color: #6b7280; font-family: monospace;">${shortCode}</p>
             </div>`;
           })() : ''}
           <div class="signature">

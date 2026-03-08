@@ -1,7 +1,7 @@
 // lib/eventsight.ts - EventSight subscription integration (static config for a single event)
 
 // Set to true to log the request instead of sending it
-const EVENTSIGHT_DEBUG = true;
+const EVENTSIGHT_DEBUG = false;
 
 const EVENTSIGHT_API_URL = "https://api.eventsight.eu/api/subscription";
 
