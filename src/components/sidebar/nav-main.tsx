@@ -54,41 +54,19 @@ function NavMainItem({ item }: { item: NavItem }) {
       <SidebarMenuItem>
         {item.items !== undefined ? (
           <>
-            {item.title === "Events" ? (
-              <div className="flex items-center gap-0 w-full">
-                <SidebarMenuButton tooltip={item.title} asChild className="flex-1 rounded-r-none pr-0">
-                  <Link href="/dashboard">
-                    {item.icon && <item.icon />}
-                    <span>{item.title}</span>
-                    {hasWarningInSubItems && !isOpen && (
-                      <IconAlertTriangle className="h-4 w-4 text-red-600 shrink-0" style={{ color: '#dc2626' }} title="Page background image has invalid dimensions" />
-                    )}
-                    {item.badge !== undefined && item.badge > 0 && (
-                      <SidebarMenuBadge>{item.badge}</SidebarMenuBadge>
-                    )}
-                  </Link>
-                </SidebarMenuButton>
-                <CollapsibleTrigger asChild>
-                  <SidebarMenuButton tooltip="Toggle menu" className="rounded-l-none p-2 shrink-0 w-auto">
-                    <ChevronRight className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                  </SidebarMenuButton>
-                </CollapsibleTrigger>
-              </div>
-            ) : (
-              <CollapsibleTrigger asChild>
-                <SidebarMenuButton tooltip={item.title} className="flex-1">
-                  {item.icon && <item.icon />}
-                  <span>{item.title}</span>
-                  {hasWarningInSubItems && !isOpen && (
-                    <IconAlertTriangle className="h-4 w-4 text-red-600 shrink-0" style={{ color: '#dc2626' }} title="Page background image has invalid dimensions" />
-                  )}
-                  {item.badge !== undefined && item.badge > 0 && (
-                    <SidebarMenuBadge>{item.badge}</SidebarMenuBadge>
-                  )}
-                  <ChevronRight className="h-4 w-4 ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                </SidebarMenuButton>
-              </CollapsibleTrigger>
-            )}
+            <CollapsibleTrigger asChild>
+              <SidebarMenuButton tooltip={item.title} className="flex-1">
+                {item.icon && <item.icon />}
+                <span>{item.title}</span>
+                {hasWarningInSubItems && !isOpen && (
+                  <IconAlertTriangle className="h-4 w-4 text-red-600 shrink-0" style={{ color: '#dc2626' }} title="Page background image has invalid dimensions" />
+                )}
+                {item.badge !== undefined && item.badge > 0 && (
+                  <SidebarMenuBadge>{item.badge}</SidebarMenuBadge>
+                )}
+                <ChevronRight className="h-4 w-4 ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+              </SidebarMenuButton>
+            </CollapsibleTrigger>
             <CollapsibleContent>
               <SidebarMenuSub>
                 {item.items?.map((subItem) => (
