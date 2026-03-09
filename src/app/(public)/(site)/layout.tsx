@@ -11,12 +11,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, LogOut, User, Bell } from 'lucide-react'
+import { ChevronDown, LogOut, User, Bell, Star } from 'lucide-react'
 import { useRouter, usePathname } from 'next/navigation'
 import { fetchEventsAction } from "@/app/actions/events";
 import { CareerEvent } from '@/lib/schema'
 import { Footer } from '@/components/Footer'
-import { getUpcomingEventsWithFallback } from '@/lib/utils/events';
+import { getUpcomingEventsWithFallback } from '@/lib/utils/events'
+import { StudentLikedCompaniesProvider } from '@/providers/StudentLikedCompaniesProvider';
 
 // Context to allow pages to opt-out of header padding if they have a banner
 // and to hide the layout header if they render their own
@@ -48,16 +49,18 @@ export default function NoSidebarLayout({ children }: { children: React.ReactNod
   // Apply padding only if page doesn't have a banner and layout header is shown
   return (
     <PageLayoutContext.Provider value={{ hasBanner, setHasBanner, hideLayoutHeader, setHideLayoutHeader, darkHeaderFooter, setDarkHeaderFooter }}>
-      <main
-        className={`min-h-svh text-neutral-900 ${hasBanner || hideLayoutHeader ? '' : 'pt-28 md:pt-32'} ${darkHeaderFooter ? 'text-neutral-100' : 'bg-vtk-bg'}`}
-        style={darkHeaderFooter ? { background: 'linear-gradient(135deg, var(--color-vtk-blue) 0%, var(--color-vtk-blue-dark) 50%, var(--color-vtk-blue-darker) 100%)' } : undefined}
-      >
-        {!hideLayoutHeader && <Header />}
-        <div className={darkHeaderFooter ? 'relative z-10' : undefined}>
-          {children}
-          <Footer />
-        </div>
-      </main>
+      <StudentLikedCompaniesProvider>
+        <main
+          className={`min-h-svh text-neutral-900 ${hasBanner || hideLayoutHeader ? '' : 'pt-28 md:pt-32'} ${darkHeaderFooter ? 'text-neutral-100' : 'bg-vtk-bg'}`}
+          style={darkHeaderFooter ? { background: 'linear-gradient(135deg, var(--color-vtk-blue) 0%, var(--color-vtk-blue-dark) 50%, var(--color-vtk-blue-darker) 100%)' } : undefined}
+        >
+          {!hideLayoutHeader && <Header />}
+          <div className={darkHeaderFooter ? 'relative z-10' : undefined}>
+            {children}
+            <Footer />
+          </div>
+        </main>
+      </StudentLikedCompaniesProvider>
     </PageLayoutContext.Provider>
   )
 }
@@ -254,6 +257,12 @@ function Header() {
                         Shifter Dashboard
                       </DropdownMenuItem>
                     )}
+                    <DropdownMenuItem asChild>
+                      <Link href="/student/liked-companies">
+                        <Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />
+                        Liked companies
+                      </Link>
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={async () => {
                         await fetch("/api/students/logout", { method: "POST" });
@@ -412,6 +421,12 @@ function Header() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuItem asChild>
+                            <Link href="/student/liked-companies" onClick={() => setMobileMenuOpen(false)}>
+                              <Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />
+                              Liked companies
+                            </Link>
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={async () => {
                               await fetch("/api/students/logout", { method: "POST" });

@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { slugifyCompanyName, slugifyEventName } from "@/lib/utils/slugify";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
+import { CompanyLikeButton } from "@/components/CompanyLikeButton";
 import { getDirectusImageUrl } from "@/components/Images";
 import { useRouter } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -266,8 +267,8 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
                     const hasPage = hasCompanyPageAccess(c);
                     const logoUrl = c.logo ? getDirectusImageUrl(c.logo) : null;
                     const overlapKeywords = overlapByCompanyId[c.id] ?? [];
-                    const cardContent = (
-                      <div className="group flex h-full min-h-[280px] flex-col items-center rounded-xl border border-border/60 bg-card p-5 text-center transition-colors hover:border-vtk-blue/30 hover:bg-muted/30">
+                    const cardInner = (
+                      <div className="group relative flex h-full min-h-[280px] flex-col items-center rounded-xl border border-border/60 bg-card p-5 text-center transition-colors hover:border-vtk-blue/30 hover:bg-muted/30">
                         <div className="flex h-14 shrink-0 items-center justify-center">
                           {logoUrl ? (
                             <Image
@@ -305,13 +306,14 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
                       </div>
                     );
                     return (
-                      <div key={c.id} className="min-h-[280px]">
+                      <div key={c.id} className="min-h-[280px] relative">
+                        <CompanyLikeButton companyId={c.id} />
                         {hasPage ? (
                           <Link href={`/company/${slugifyCompanyName(c.name) || c.id}`} className="block h-full">
-                            {cardContent}
+                            {cardInner}
                           </Link>
                         ) : (
-                          cardContent
+                          cardInner
                         )}
                       </div>
                     );

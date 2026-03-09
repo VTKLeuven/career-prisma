@@ -28,6 +28,7 @@ The API uses `Matching_Software` (PascalCase). If your Directus collection key d
 | prerequisite_form_response | JSON | | Optional - included form response data |
 | general_info_answers | JSON | | { work_preference: string[], company_preference: string[], options_preference: string[] } – multiselect options |
 | companies | M2M → company | | Top 30 matched company IDs (auto-filled on submit) |
+| matches_last_computed_at | DateTime | | Optional. Set when matches are recomputed. Used to avoid recomputing on every page visit (only once per day when student has matches). |
 | submitted_at | DateTime | | Auto on create |
 
 **Unique constraint**: (student, matching_software) - one response per student per matching software.
