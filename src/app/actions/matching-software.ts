@@ -4,6 +4,7 @@ import {
   listMatchingSoftware,
   getActiveMatchingSoftwareForEvent,
   getFirstActiveMatchingSoftware,
+  getMatchingSoftwareById,
   createMatchingSoftware,
   updateMatchingSoftware,
   getStudentMatchingResponse,
@@ -58,15 +59,25 @@ export async function getCompanyMatchingResponseAction(companyId: string, matchi
   return getCompanyMatchingResponse(companyId, matchingSoftwareId);
 }
 
-/** Get company matching response for company view. Strips students if company lacks "Matching Software" suboption. */
+/** Get company matching response for company view. Strips students if:
+ * - Matching_Software.companies_can_view_matches is false (not yet open to companies), or
+ * - Company lacks "Matching Software" suboption. */
 export async function getCompanyMatchingResponseForCompanyViewAction(companyId: string, matchingSoftwareId: string) {
   const { fetchCompanyByIdAction } = await import("@/app/actions/companies");
   const { hasMatchingSoftwareSubOption } = await import("@/lib/utils/company-access");
   const response = await getCompanyMatchingResponse(companyId, matchingSoftwareId);
   if (!response) return null;
+  const studentCount = Array.isArray((response as { students?: unknown }).students) ? (response as { students: unknown[] }).students.length : 0;
+
+  const ms = await getMatchingSoftwareById(matchingSoftwareId);
+  const companiesCanViewMatches = ms?.companies_can_view_matches ?? false;
+  if (!companiesCanViewMatches) {
+    console.log("[Matching] getCompanyMatchingResponseForCompanyViewAction: stripping students (not open to companies) | companyId:", companyId, "| had:", studentCount);
+    return { ...response, students: [] };
+  }
+
   const company = await fetchCompanyByIdAction(companyId, false, true);
   const hasSubOption = hasMatchingSoftwareSubOption(company);
-  const studentCount = Array.isArray((response as { students?: unknown }).students) ? (response as { students: unknown[] }).students.length : 0;
   if (!hasSubOption) {
     console.log("[Matching] getCompanyMatchingResponseForCompanyViewAction: stripping students (no suboption) | companyId:", companyId, "| had:", studentCount);
     return { ...response, students: [] };
