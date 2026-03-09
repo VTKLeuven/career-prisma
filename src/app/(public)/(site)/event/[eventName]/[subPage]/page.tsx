@@ -24,7 +24,9 @@ import {
 } from "@/components/ui/select"
 import { Clock, ArrowLeft, Users, Loader2 } from "lucide-react"
 import { StudentMatchingSoftware } from "@/components/StudentMatchingSoftware"
+import { CompanyLikeButton } from "@/components/CompanyLikeButton"
 import { fetchMatchedCompanyIdsForEventAction } from "@/app/actions/matching-software"
+import { useStudentLikedCompanies } from "@/providers/StudentLikedCompaniesProvider"
 
 export default function SubPage() {
   const { setHideLayoutHeader } = usePageLayout()
@@ -46,7 +48,9 @@ export default function SubPage() {
   const [companyLogosByCompanyId, setCompanyLogosByCompanyId] = useState<Record<string, string[]>>({})
   const [matchedCompanyIdsFromMatching, setMatchedCompanyIdsFromMatching] = useState<Set<string>>(new Set())
   const [showOnlyMyMatches, setShowOnlyMyMatches] = useState(false)
+  const [showOnlyMyLiked, setShowOnlyMyLiked] = useState(false)
   const useFormCategories = categoryFormFields.length > 0
+  const { isStudent, likedIds: likedCompanyIds } = useStudentLikedCompanies()
 
   const params = useParams()
   const pathname = usePathname()
@@ -125,33 +129,33 @@ export default function SubPage() {
     }
 
     let cancelled = false
-    const promises: Promise<unknown>[] = []
 
-    if (needsNames) {
-      promises.push(
-        Promise.all(nameFieldsComplete.map(f => fetchCompanyFormFieldValuesFromFormAction(f.formId, f.fieldName)))
+    const loadNames = needsNames
+      ? Promise.all(nameFieldsComplete.map(f => fetchCompanyFormFieldValuesFromFormAction(f.formId, f.fieldName)))
           .then((results) => {
-            if (cancelled) return
             const merged: Record<string, string> = {}
             for (const map of results) {
               for (const [companyId, value] of Object.entries(map)) {
                 if (value && !merged[companyId]) merged[companyId] = value
               }
             }
-            setCompanyNamesByCompanyId(merged)
+            return merged
           })
-      )
-    }
-    if (needsLogos) {
-      promises.push(
-        fetchCompanyMasterDegreesFromFormBatchAction(categoryFormFields, companyIds).then((dict) => {
-          if (cancelled) return
-          setCompanyLogosByCompanyId(dict)
-        })
-      )
-    }
+      : null
 
-    Promise.all(promises)
+    const loadLogos = needsLogos && companyIds.length > 0
+      ? fetchCompanyMasterDegreesFromFormBatchAction(categoryFormFields, companyIds)
+      : null
+
+    Promise.all([
+      loadNames ?? Promise.resolve(null),
+      loadLogos ?? Promise.resolve(null),
+    ]).then(([names, logos]) => {
+      if (cancelled) return
+      if (names !== null) setCompanyNamesByCompanyId(names)
+      if (logos !== null) setCompanyLogosByCompanyId(logos)
+    })
+
     return () => { cancelled = true }
   }, [companyNameFormFields, booths, categoryFormFields, useFormCategories])
 
@@ -193,12 +197,38 @@ export default function SubPage() {
     if (!isFloorplanPage || searchParams.get("showMatches") !== "true") return
     if (matchedCompanyIdsFromMatching.size > 0) {
       setShowOnlyMyMatches(true)
+      setShowOnlyMyLiked(false)
       setSelectedCategories([])
-      // Clean URL
       const url = new URL(pathname, window.location.origin)
       router.replace(url.pathname, { scroll: false })
     }
   }, [isFloorplanPage, searchParams, matchedCompanyIdsFromMatching.size, pathname, router])
+
+  // When returning from login (showLiked=true), turn on "My liked" filter once we have liked companies
+  useEffect(() => {
+    if (!isFloorplanPage || searchParams.get("showLiked") !== "true") return
+    if (isStudent === true && likedCompanyIds.size > 0) {
+      setShowOnlyMyLiked(true)
+      setShowOnlyMyMatches(false)
+      setSelectedCategories([])
+      const url = new URL(pathname, window.location.origin)
+      router.replace(url.pathname, { scroll: false })
+    }
+  }, [isFloorplanPage, searchParams, isStudent, likedCompanyIds.size, pathname, router])
+
+  // When returning from login (popupBooth=id), reopen the floorplan popup for that booth
+  useEffect(() => {
+    if (!isFloorplanPage || !page?.event?.id || booths.length === 0) return
+    const popupBoothId = searchParams.get("popupBooth")
+    if (!popupBoothId) return
+    const booth = booths.find((b) => String(b.id) === String(popupBoothId))
+    if (booth) {
+      setPopupBooth(booth)
+      const url = new URL(pathname, window.location.origin)
+      url.searchParams.delete("popupBooth")
+      router.replace(url.pathname + (url.search || ""), { scroll: false })
+    }
+  }, [isFloorplanPage, page?.event?.id, booths, searchParams, pathname, router])
 
   // Flicker effect
   const flickerIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -248,6 +278,10 @@ export default function SubPage() {
             showOnlyMyMatches={showOnlyMyMatches}
             setShowOnlyMyMatches={setShowOnlyMyMatches}
             hasMatchingSoftware={hasMatchingSoftware}
+            likedCompanyIds={likedCompanyIds}
+            isStudent={isStudent}
+            showOnlyMyLiked={showOnlyMyLiked}
+            setShowOnlyMyLiked={setShowOnlyMyLiked}
           />
           <Floorplan
             page={page}
@@ -267,6 +301,10 @@ export default function SubPage() {
             showOnlyMyMatches={showOnlyMyMatches}
             setShowOnlyMyMatches={setShowOnlyMyMatches}
             hasMatchingSoftware={hasMatchingSoftware}
+            likedCompanyIds={likedCompanyIds}
+            isStudent={isStudent}
+            showOnlyMyLiked={showOnlyMyLiked}
+            setShowOnlyMyLiked={setShowOnlyMyLiked}
           />
         </>
       )}
@@ -323,6 +361,10 @@ function Header({
   showOnlyMyMatches = false,
   setShowOnlyMyMatches,
   hasMatchingSoftware = false,
+  likedCompanyIds = new Set(),
+  isStudent = null,
+  showOnlyMyLiked = false,
+  setShowOnlyMyLiked,
 }: {
   categories: Master[]
   formCategoryGroups: Array<{ groupLabel: string; options: Array<{ value: string; label: string; logo?: string }> }>
@@ -339,24 +381,29 @@ function Header({
   showOnlyMyMatches?: boolean
   setShowOnlyMyMatches?: (v: boolean) => void
   hasMatchingSoftware?: boolean
+  likedCompanyIds?: Set<string>
+  isStudent?: boolean | null
+  showOnlyMyLiked?: boolean
+  setShowOnlyMyLiked?: (v: boolean) => void
 }) {
+  const handleMyLikedClick = () => {
+    setShowOnlyMyLiked?.(!showOnlyMyLiked)
+  }
+
   const toggleCategory = (val: string) => {
     if (selectedCategories.includes(val)) {
       setSelectedCategories(selectedCategories.filter(c => c !== val))
     } else {
-      setShowOnlyMyMatches?.(false)
       setSelectedCategories([...selectedCategories, val])
     }
   }
 
   const handleMasterSelect = (v: string) => {
-    if (v !== "__none__") setShowOnlyMyMatches?.(false)
     setSelectedCategories(v === "__none__" ? [] : [v])
   }
 
   const handleMyMatchesClick = () => {
-    setSelectedCategories([])
-    setShowOnlyMyMatches?.(true)
+    setShowOnlyMyMatches?.(!showOnlyMyMatches)
   }
 
   const router = useRouter()
@@ -548,7 +595,7 @@ function Header({
                   matchedCompanyIdsFromMatching.size > 0 && setShowOnlyMyMatches ? (
                     <button
                       type="button"
-                      onClick={() => (showOnlyMyMatches ? setShowOnlyMyMatches(false) : handleMyMatchesClick())}
+                      onClick={handleMyMatchesClick}
                       className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
                         showOnlyMyMatches
                           ? "bg-vtk-blue text-white"
@@ -565,6 +612,26 @@ function Header({
                       My matches
                     </Link>
                   )
+                )}
+                {isStudent === true && setShowOnlyMyLiked ? (
+                  <button
+                    type="button"
+                    onClick={handleMyLikedClick}
+                    className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
+                      showOnlyMyLiked
+                        ? "bg-vtk-yellow text-neutral-900"
+                        : "bg-amber-200/70 text-neutral-700 hover:bg-amber-200"
+                    }`}
+                  >
+                    My liked
+                  </button>
+                ) : isStudent === false && (
+                  <Link
+                    href={`/student-login?redirectTo=${encodeURIComponent(`/event/${slugifyEventName(eventName)}/floorplan?showLiked=true`)}`}
+                    className="shrink-0 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap bg-amber-200/70 text-neutral-700 hover:bg-amber-200 transition-colors"
+                  >
+                    My liked
+                  </Link>
                 )}
                 {useFormCategories ? (
                   <Select
@@ -664,6 +731,10 @@ function Floorplan({
   showOnlyMyMatches = false,
   setShowOnlyMyMatches,
   hasMatchingSoftware = false,
+  likedCompanyIds = new Set(),
+  isStudent = null,
+  showOnlyMyLiked = false,
+  setShowOnlyMyLiked,
 }: {
   page: CareerEventPage
   eventSlug: string
@@ -682,24 +753,29 @@ function Floorplan({
   showOnlyMyMatches?: boolean
   setShowOnlyMyMatches?: (v: boolean) => void
   hasMatchingSoftware?: boolean
+  likedCompanyIds?: Set<string>
+  isStudent?: boolean | null
+  showOnlyMyLiked?: boolean
+  setShowOnlyMyLiked?: (v: boolean) => void
 }) {
+  const handleMyLikedClick = () => {
+    setShowOnlyMyLiked?.(!showOnlyMyLiked)
+  }
+
   const toggleCategory = (val: string) => {
     if (selectedCategories.includes(val)) {
       setSelectedCategories(selectedCategories.filter(c => c !== val))
     } else {
-      setShowOnlyMyMatches?.(false)
       setSelectedCategories([...selectedCategories, val])
     }
   }
 
   const handleMasterSelect = (v: string) => {
-    if (v !== "__none__") setShowOnlyMyMatches?.(false)
     setSelectedCategories(v === "__none__" ? [] : [v])
   }
 
   const handleMyMatchesClick = () => {
-    setSelectedCategories([])
-    setShowOnlyMyMatches?.(true)
+    setShowOnlyMyMatches?.(!showOnlyMyMatches)
   }
 
   const [boothsLocal, setBoothsLocal] = useState<Booth[]>([])
@@ -728,6 +804,7 @@ function Floorplan({
   const pendingTooltipRef = useRef<{ companyName: string; x: number; y: number } | null>(null)
 
   // Memoize booth overlay data to avoid recalculating on every render
+  // isLikedHighlight takes precedence over isCategorySelected for coloring (yellow > blue)
   const boothOverlayData = useMemo(() => {
     const origVbParts = originalViewBox.split(/\s+/).map(Number)
     if (origVbParts.length !== 4) return []
@@ -735,6 +812,7 @@ function Floorplan({
     return boothsLocal
       .filter((b): b is Booth => !!b.coords && !!b.company)
       .map((booth) => {
+        const isLikedHighlight = showOnlyMyLiked && !!booth.company?.id && likedCompanyIds.has(String(booth.company.id))
         const isCategorySelected = showOnlyMyMatches
           ? !!booth.company?.id && matchedCompanyIdsFromMatching.has(String(booth.company.id))
           : useFormCategories
@@ -748,7 +826,7 @@ function Floorplan({
                 )
               })()
         const isFlicker = flickerCompanyId === booth.company!.id && flickerState
-        const isSelected = isFlicker || (!flickerCompanyId && isCategorySelected)
+        const isSelected = isFlicker || (!flickerCompanyId && (isLikedHighlight || isCategorySelected))
         const boothX = origVbX + (booth.coords!.x_pct / 100) * origVbWidth
         const boothY = origVbY + (booth.coords!.y_pct / 100) * origVbHeight
         const boothWidth = (booth.coords!.width_pct / 100) * origVbWidth
@@ -766,9 +844,9 @@ function Floorplan({
               return `M ${boothCx + (-hw * c + hh * s)} ${boothCy + (-hw * s - hh * c)} L ${boothCx + (hw * c + hh * s)} ${boothCy + (hw * s - hh * c)} L ${boothCx + (hw * c - hh * s)} ${boothCy + (hw * s + hh * c)} L ${boothCx + (-hw * c - hh * s)} ${boothCy + (-hw * s + hh * c)} Z`
             })()
           : null
-        return { booth, boothX, boothY, boothWidth, boothHeight, boothShape, isSelected }
+        return { booth, boothX, boothY, boothWidth, boothHeight, boothShape, isSelected, isLikedHighlight }
       })
-  }, [boothsLocal, originalViewBox, useFormCategories, selectedCategories, matchedCompanyIdsForm, matchedCompanyIdsFromMatching, showOnlyMyMatches, flickerCompanyId, flickerState])
+  }, [boothsLocal, originalViewBox, useFormCategories, selectedCategories, matchedCompanyIdsForm, matchedCompanyIdsFromMatching, showOnlyMyMatches, likedCompanyIds, showOnlyMyLiked, flickerCompanyId, flickerState])
 
   // Memoize SVG data URL - expensive encodeURIComponent on large SVG
   const svgDataUrl = useMemo(() => {
@@ -1125,7 +1203,7 @@ function Floorplan({
           }}
         />
       )}
-      <div className={`pt-32 md:pt-[90px] flex justify-center w-full px-2 sm:px-4 pb-4 ${backgroundImage ? "relative z-10" : ""}`}>
+      <div className={`pt-32 md:pt-[90px] flex flex-col items-center w-full px-2 sm:px-4 pb-4 ${backgroundImage ? "relative z-10" : ""}`}>
         <div 
           ref={floorplanContainerRef}
           className="relative w-full max-w-full md:hidden"
@@ -1176,7 +1254,7 @@ function Floorplan({
             )
           })()}
 
-          {/* Third: Render selected booths on top */}
+          {/* Third: Render selected booths on top - yellow for liked, blue for category/matches */}
           {boothOverlayData.filter(d => d.isSelected).map((d, i) => {
             const companyName = companyNamesByCompanyId[d.booth.company!.id] ?? d.booth.company!.name
             const commonProps = {
@@ -1189,10 +1267,13 @@ function Floorplan({
               onMouseLeave: () => { setHoveredBoothId(null); setTooltip(null) },
               onMouseMove: (e: React.MouseEvent) => handleBoothMouseMove(companyName, e.clientX, e.clientY),
             }
+            const isYellow = d.isLikedHighlight
+            const fillStyle = isYellow ? "rgba(255,210,0,0.45)" : "rgba(0,51,102,0.35)"
+            const strokeStyle = isYellow ? "#D4A017" : "#003366"
             return d.boothShape ? (
-              <path key={`selected-${i}`} d={d.boothShape} fill="rgba(0,51,102,0.35)" stroke="#003366" strokeWidth={1} {...commonProps} />
+              <path key={`selected-${i}`} d={d.boothShape} fill={fillStyle} stroke={strokeStyle} strokeWidth={1} {...commonProps} />
             ) : (
-              <rect key={`selected-${i}`} x={d.boothX} y={d.boothY} width={d.boothWidth} height={d.boothHeight} fill="rgba(0,51,102,0.35)" stroke="#003366" strokeWidth={1} {...commonProps} />
+              <rect key={`selected-${i}`} x={d.boothX} y={d.boothY} width={d.boothWidth} height={d.boothHeight} fill={fillStyle} stroke={strokeStyle} strokeWidth={1} {...commonProps} />
             )
           })}
           </svg>
@@ -1235,7 +1316,7 @@ function Floorplan({
             )
           })()}
 
-          {/* Third: Render selected booths on top */}
+          {/* Third: Render selected booths on top - yellow for liked, blue for category/matches */}
           {boothOverlayData.filter(d => d.isSelected).map((d, i) => {
             const companyName = companyNamesByCompanyId[d.booth.company!.id] ?? d.booth.company!.name
             const commonProps = {
@@ -1248,10 +1329,13 @@ function Floorplan({
               onMouseLeave: () => { setHoveredBoothId(null); setTooltip(null) },
               onMouseMove: (e: React.MouseEvent) => handleBoothMouseMove(companyName, e.clientX, e.clientY),
             }
+            const isYellow = d.isLikedHighlight
+            const fillStyle = isYellow ? "rgba(255,210,0,0.45)" : "rgba(0,51,102,0.35)"
+            const strokeStyle = isYellow ? "#D4A017" : "#003366"
             return d.boothShape ? (
-              <path key={`selected-desktop-${i}`} d={d.boothShape} fill="rgba(0,51,102,0.35)" stroke="#003366" strokeWidth={1} {...commonProps} />
+              <path key={`selected-desktop-${i}`} d={d.boothShape} fill={fillStyle} stroke={strokeStyle} strokeWidth={1} {...commonProps} />
             ) : (
-              <rect key={`selected-desktop-${i}`} x={d.boothX} y={d.boothY} width={d.boothWidth} height={d.boothHeight} fill="rgba(0,51,102,0.35)" stroke="#003366" strokeWidth={1} {...commonProps} />
+              <rect key={`selected-desktop-${i}`} x={d.boothX} y={d.boothY} width={d.boothWidth} height={d.boothHeight} fill={fillStyle} stroke={strokeStyle} strokeWidth={1} {...commonProps} />
             )
           })}
           </svg>
@@ -1272,7 +1356,7 @@ function Floorplan({
       </div>
 
       {/* Company List */}
-      <CompanyList 
+      <CompanyList
         booths={boothsLocal}
         selectedCategories={selectedCategories}
         onBoothClick={onBoothClick}
@@ -1281,6 +1365,8 @@ function Floorplan({
         companyNamesByCompanyId={companyNamesByCompanyId}
         matchedCompanyIdsFromMatching={matchedCompanyIdsFromMatching}
         showOnlyMyMatches={showOnlyMyMatches}
+        likedCompanyIds={likedCompanyIds}
+        showOnlyMyLiked={showOnlyMyLiked}
       />
 
       {/* Mobile: Categories at bottom */}
@@ -1290,7 +1376,7 @@ function Floorplan({
             matchedCompanyIdsFromMatching.size > 0 && setShowOnlyMyMatches ? (
               <button
                 type="button"
-                onClick={() => (showOnlyMyMatches ? setShowOnlyMyMatches(false) : handleMyMatchesClick())}
+                onClick={handleMyMatchesClick}
                 className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
                   showOnlyMyMatches
                     ? "bg-vtk-blue text-white"
@@ -1307,6 +1393,26 @@ function Floorplan({
                 My matches
               </Link>
             )
+          )}
+          {isStudent === true && setShowOnlyMyLiked ? (
+            <button
+              type="button"
+              onClick={handleMyLikedClick}
+              className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
+                showOnlyMyLiked
+                  ? "bg-vtk-yellow text-neutral-900"
+                  : "bg-amber-200/70 text-neutral-700 hover:bg-amber-200"
+              }`}
+            >
+              My liked
+            </button>
+          ) : isStudent === false && (
+            <Link
+              href={`/student-login?redirectTo=${encodeURIComponent(`/event/${slugifyEventName(page.event?.name ?? '')}/floorplan?showLiked=true`)}`}
+              className="shrink-0 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap bg-amber-200/70 text-neutral-700 hover:bg-amber-200 transition-colors"
+            >
+              My liked
+            </Link>
           )}
           {useFormCategories ? (
             <Select
@@ -1371,6 +1477,8 @@ function CompanyList({
   companyNamesByCompanyId = {},
   matchedCompanyIdsFromMatching = new Set<string>(),
   showOnlyMyMatches = false,
+  likedCompanyIds = new Set<string>(),
+  showOnlyMyLiked = false,
 }: {
   booths: Booth[]
   selectedCategories: string[]
@@ -1380,6 +1488,8 @@ function CompanyList({
   companyNamesByCompanyId?: Record<string, string>
   matchedCompanyIdsFromMatching?: Set<string>
   showOnlyMyMatches?: boolean
+  likedCompanyIds?: Set<string>
+  showOnlyMyLiked?: boolean
 }) {
   // Filter booths that have companies, sort alphabetically, then limit to max 2 entries per company (double booths)
   const allEntries = booths
@@ -1405,19 +1515,21 @@ function CompanyList({
     return null
   }
 
-  // Check if a company has ALL selected categories (same logic as floorplan)
+  // Check if a company matches any active filter (union when multiple filters on)
   const hasSelectedCategory = (company: Company) => {
-    if (showOnlyMyMatches && matchedCompanyIdsFromMatching.size > 0) {
-      return matchedCompanyIdsFromMatching.has(String(company.id))
-    }
-    if (selectedCategories.length === 0) return false
-    if (useFormCategories) return !!company.id && matchedCompanyIdsForm.has(String(company.id))
-    const companyCats: Master[] = Array.isArray(company.category)
-      ? company.category.filter((c): c is Master => c !== null)
-      : []
-    return selectedCategories.every(cat =>
-      companyCats.map(c => c.short_name).includes(cat)
-    )
+    const isLiked = likedCompanyIds.has(String(company.id))
+    const isMatch = matchedCompanyIdsFromMatching.has(String(company.id))
+    const isCategoryMatch = useFormCategories
+      ? !!company.id && matchedCompanyIdsForm.has(String(company.id))
+      : (() => {
+          const companyCats: Master[] = Array.isArray(company.category)
+            ? company.category.filter((c): c is Master => c !== null)
+            : []
+          return selectedCategories.length > 0 && selectedCategories.every(cat =>
+            companyCats.map(c => c.short_name).includes(cat)
+          )
+        })()
+    return (showOnlyMyLiked && isLiked) || (showOnlyMyMatches && matchedCompanyIdsFromMatching.size > 0 && isMatch) || isCategoryMatch
   }
 
   return (
@@ -1459,6 +1571,7 @@ function CompanyList({
           <div className="company-list-columns">
           {companiesWithBooths.map(({ company, boothNumber, boothId }) => {
             const isHighlighted = hasSelectedCategory(company)
+            const isLikedHighlight = isHighlighted && likedCompanyIds.has(String(company.id))
             
             return (
               <CompanyListItem
@@ -1468,6 +1581,7 @@ function CompanyList({
                 boothId={boothId}
                 booths={booths}
                 isHighlighted={isHighlighted}
+                isLikedHighlight={isLikedHighlight}
                 onBoothClick={onBoothClick}
                 companyNamesByCompanyId={companyNamesByCompanyId}
               />
@@ -1486,6 +1600,7 @@ function CompanyListItem({
   boothId,
   booths,
   isHighlighted,
+  isLikedHighlight = false,
   onBoothClick,
   companyNamesByCompanyId = {},
 }: {
@@ -1494,23 +1609,31 @@ function CompanyListItem({
   boothId: string
   booths: Booth[]
   isHighlighted: boolean
+  isLikedHighlight?: boolean
   onBoothClick: (booth: Booth) => void
   companyNamesByCompanyId?: Record<string, string>
 }) {
   const booth = booths.find(b => b.id === boothId)
   const displayName = companyNamesByCompanyId[company.id] ?? company.name
+  const borderClass = isLikedHighlight ? 'border-amber-500' : isHighlighted ? 'border-vtk-blue font-bold' : 'border-neutral-200 hover:border-vtk-blue/50 hover:bg-neutral-50'
+  const bgColor = isLikedHighlight ? 'rgba(255,210,0,0.35)' : isHighlighted ? 'rgba(147, 166, 193, 1)' : 'white'
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => booth && onBoothClick(booth)}
-      className={`w-full text-left p-3 rounded-lg border transition-all cursor-pointer ${
-        isHighlighted
-          ? 'border-vtk-blue font-bold'
-          : 'bg-white border-neutral-200 hover:border-vtk-blue/50 hover:bg-neutral-50'
-      }`}
+      onKeyDown={(e) => {
+        if ((e.key === "Enter" || e.key === " ") && booth) {
+          e.preventDefault()
+          onBoothClick(booth)
+        }
+      }}
+      className={`relative w-full text-left p-3 rounded-lg border transition-all cursor-pointer bg-white ${borderClass}`}
       style={{
-        backgroundColor: isHighlighted ? 'rgba(147, 166, 193, 1)' : 'white',
+        backgroundColor: bgColor,
       }}
     >
+      <CompanyLikeButton companyId={company.id} compact />
       <div className="flex-1 min-w-0">
         <div className={`text-sm ${isHighlighted ? 'font-bold text-black' : 'font-medium text-neutral-900'}`}>
           {displayName}
@@ -1519,7 +1642,7 @@ function CompanyListItem({
           Booth {boothNumber}
         </div>
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -1829,8 +1952,11 @@ function Popup({
         className="relative rounded-2xl bg-white text-neutral-900 px-8 py-6 shadow-2xl max-w-3xl w-full mx-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="absolute top-3 right-3 text-neutral-600 font-semibold text-sm">
-          Booth {booth.booth_number}
+        <div className="absolute top-3 right-3 flex items-center gap-2">
+          <span className="text-neutral-600 font-semibold text-sm">
+            Booth {booth.booth_number}
+          </span>
+          <CompanyLikeButton companyId={company.id} popupBoothId={String(booth.id)} inline />
         </div>
         {logosLoading ? (
           <div className="flex flex-col items-center justify-center py-12 gap-4">

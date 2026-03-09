@@ -18,9 +18,10 @@ import { fetchEventPageBySlugAction, fetchEventsAction } from "@/app/actions/eve
 import { getDirectusImageUrl } from "@/components/Images";
 import { slugifyCompanyName, slugifyEventName, getSpeakerSlug } from "@/lib/utils/slugify";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
+import { CompanyLikeButton } from "@/components/CompanyLikeButton";
 import { CareerEventPage, Company, CareerEvent, HeaderButtonType, Speaker, TimetableType } from '@/lib/schema'
 import dynamic from "next/dynamic"
-import { ChevronDown, MapPin, Car, ExternalLink, LogOut, User } from 'lucide-react'
+import { ChevronDown, MapPin, Car, ExternalLink, LogOut, User, Star } from 'lucide-react'
 import { useBannerPage } from '@/hooks/use-banner-page'
 import { usePageLayout } from '../../layout'
 import { getUpcomingEventsWithFallback } from '@/lib/utils/events'
@@ -403,6 +404,12 @@ function HomepageHeader() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    <DropdownMenuItem asChild>
+                      <Link href="/student/liked-companies">
+                        <Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />
+                        Liked companies
+                      </Link>
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={async () => {
                         await fetch("/api/students/logout", { method: "POST" });
@@ -561,6 +568,12 @@ function HomepageHeader() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuItem asChild>
+                            <Link href="/student/liked-companies" onClick={() => setMobileMenuOpen(false)}>
+                              <Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />
+                              Liked companies
+                            </Link>
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={async () => {
                               await fetch("/api/students/logout", { method: "POST" });
@@ -909,6 +922,12 @@ function Header({ page }: { page?: CareerEventPage }) {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    <DropdownMenuItem asChild>
+                      <Link href="/student/liked-companies">
+                        <Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />
+                        Liked companies
+                      </Link>
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={async () => {
                         await fetch("/api/students/logout", { method: "POST" });
@@ -1008,6 +1027,12 @@ function Header({ page }: { page?: CareerEventPage }) {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuItem asChild>
+                            <Link href="/student/liked-companies" onClick={() => setMobileMenuOpen(false)}>
+                              <Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />
+                              Liked companies
+                            </Link>
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={async () => {
                               await fetch("/api/students/logout", { method: "POST" });
@@ -1331,14 +1356,17 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <button
-          type="button"
-          className="absolute top-2 right-2 text-neutral-500 hover:text-neutral-800 p-1"
-          onClick={handleBack}
-          aria-label="Back to company list"
-        >
-          ✕
-        </button>
+        <div className="absolute top-2 right-2 flex items-center gap-2">
+          <CompanyLikeButton companyId={selectedCompany.id} inline compact />
+          <button
+            type="button"
+            className="text-neutral-500 hover:text-neutral-800 p-1"
+            onClick={handleBack}
+            aria-label="Back to company list"
+          >
+            ✕
+          </button>
+        </div>
 
         {hasMultiple && (
           <>
@@ -1408,11 +1436,12 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
           return (
             <motion.div
               key={i}
-              className="group cursor-pointer flex justify-center"
+              className="group cursor-pointer flex justify-center relative"
               whileHover={{ y: -1, scale: 1.02 }}
               onClick={(e) => handleSelectCompany(company, e.currentTarget as HTMLElement)}
             >
-              <div className="rounded-lg bg-white/90 p-2.5 shadow-[0_4px_12px_rgba(11,77,140,0.06)] ring-1 ring-black/5 hover:shadow-md transition-shadow">
+              <div className="relative rounded-lg bg-white/90 p-2.5 shadow-[0_4px_12px_rgba(11,77,140,0.06)] ring-1 ring-black/5 hover:shadow-md transition-shadow">
+                <CompanyLikeButton companyId={company.id} compact />
                 <div className="size-14 flex items-center justify-center">
                   <Image
                     src={logoUrl}

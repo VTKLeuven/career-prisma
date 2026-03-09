@@ -1763,11 +1763,31 @@ const COMPANY_STUDENTS_JUNCTION = [
 
 const MATCHES_RECOMPUTE_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-/** Get when matches were last computed (from junction date_created). Returns null if unknown or no matches. */
+/** Get when matches were last computed. Tries matches_last_computed_at on response first, then junction date_created. Returns null if unknown or no matches. */
 export async function getMatchesLastComputedAt(responseId: string): Promise<Date | null> {
   const client = await getServerDirectusClient();
-  const respFieldVariants = ["student_matching_response_id", "student_matching_response"] as const;
 
+  // Primary: matches_last_computed_at on student_matching_response (most reliable)
+  for (const collection of STUDENT_MATCHING_RESPONSE_COLLECTIONS) {
+    try {
+      const items = (await client.request(
+        readItems(collection as any, {
+          fields: ["matches_last_computed_at"],
+          filter: { id: { _eq: responseId } },
+          limit: 1,
+        })
+      )) as unknown as Array<{ matches_last_computed_at?: string }>;
+      if (items.length > 0 && items[0].matches_last_computed_at) {
+        const d = new Date(items[0].matches_last_computed_at);
+        if (!isNaN(d.getTime())) return d;
+      }
+    } catch {
+      // Field may not exist; try junction
+    }
+  }
+
+  // Fallback: junction date_created (Directus may add this to M2M tables)
+  const respFieldVariants = ["student_matching_response_id", "student_matching_response"] as const;
   for (const junction of JUNCTION_COLLECTIONS) {
     for (const respField of respFieldVariants) {
       try {
@@ -1791,8 +1811,10 @@ export async function getMatchesLastComputedAt(responseId: string): Promise<Date
   return null;
 }
 
-/** Returns true if matches should be recomputed (stale or never computed). */
+/** Returns true if matches should be recomputed. Recomputes: (1) when student has no matches yet, or (2) when last compute was >24h ago. */
 export async function shouldRecomputeMatches(responseId: string): Promise<boolean> {
+  const matchCount = (await getMatchedCompanyIdsForResponse(responseId)).length;
+  if (matchCount === 0) return true; // No matches yet – always recompute to pick up new companies
   const lastAt = await getMatchesLastComputedAt(responseId);
   if (!lastAt) return true;
   return Date.now() - lastAt.getTime() > MATCHES_RECOMPUTE_INTERVAL_MS;
@@ -1891,6 +1913,16 @@ async function updateStudentMatchingResponseCompanies(responseId: string, compan
           await client.request(createItem(junction as any, { [respField]: responseId, [companyField]: companyId }));
         }
         console.log("[Matching] updateStudentMatchingResponseCompanies: success via", junction, "fields:", respField, companyField, "| count:", companyIds.length);
+        // Store when we last computed (avoids recomputing on every page visit; used with 24h throttle)
+        const now = new Date().toISOString();
+        for (const coll of STUDENT_MATCHING_RESPONSE_COLLECTIONS) {
+          try {
+            await client.request(updateItem(coll as any, responseId, { matches_last_computed_at: now } as any));
+            break;
+          } catch {
+            // Field may not exist in Directus; continue without failing
+          }
+        }
         return;
       } catch (err) {
         console.log("[Matching] updateStudentMatchingResponseCompanies: failed", junction, respField, companyField, "|", err);

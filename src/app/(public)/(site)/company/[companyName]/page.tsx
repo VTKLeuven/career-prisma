@@ -18,10 +18,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, LogOut, User } from "lucide-react";
+import { ChevronDown, LogOut, User, Star } from "lucide-react";
 import { usePageLayout } from '../../layout';
 import { usePathname } from 'next/navigation';
 import { getUpcomingEventsWithFallback } from '@/lib/utils/events';
+import { CompanyLikeButton } from "@/components/CompanyLikeButton";
 
 type CategoryJunction = { master_id: Master | null };
 type OptionJunction = { career_event_option_id: CareerEventOption | null };
@@ -302,7 +303,8 @@ export default function CompanyPage() {
         <div className="relative z-10">
       <section className="relative">
         <div className="mx-auto max-w-7xl px-4 py-8">
-          <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-6 shadow-sm">
+          <div className="relative rounded-2xl border bg-white/85 backdrop-blur-sm p-6 shadow-sm">
+            <CompanyLikeButton companyId={company.id} />
             <div className="flex items-center gap-3 sm:gap-5 flex-col sm:flex-row">
               <div className="h-16 w-16 sm:h-20 sm:w-20 shrink-0 rounded-xl border bg-neutral-50 flex items-center justify-center overflow-hidden">
                 {logoUrl ? (
@@ -597,6 +599,12 @@ function Header() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    <DropdownMenuItem asChild>
+                      <Link href="/student/liked-companies">
+                        <Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />
+                        Liked companies
+                      </Link>
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={async () => {
                         await fetch("/api/students/logout", { method: "POST" });
@@ -758,6 +766,12 @@ function Header() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuItem asChild>
+                            <Link href="/student/liked-companies" onClick={() => setMobileMenuOpen(false)}>
+                              <Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />
+                              Liked companies
+                            </Link>
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={async () => {
                               await fetch("/api/students/logout", { method: "POST" });
