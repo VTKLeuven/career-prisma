@@ -229,39 +229,24 @@ export async function fetchMatchScoresAction(
 }
 
 /** Re-run company matching for the current user's response. Only recomputes if last run was >24h ago.
- * Syncs affected companies (old + new matches) so their top 50 stays up to date. */
+ * Company matches are synced daily at 0:00 or via admin manual "Update matches" button. */
 export async function recomputeCompanyMatchesForCurrentUserAction(matchingSoftwareId: string) {
   const { getStudentFromCookies } = await import("@/lib/auth-student");
-  const { getMatchedCompanyIdsForResponse } = await import("@/lib/repos/matching-software");
   const student = await getStudentFromCookies();
   if (!student?.id) return null;
   const resp = await getStudentMatchingResponse(student.id, matchingSoftwareId);
   if (!resp?.id || !resp.riasec) return null;
   const needsRecompute = await shouldRecomputeMatches(resp.id);
   if (!needsRecompute) return resp;
-  const previousCompanyIds = await getMatchedCompanyIdsForResponse(resp.id);
   const generalInfo = (resp as { general_info_answers?: import("@/lib/matching-general-info").GeneralInfoAnswers }).general_info_answers;
-  const newCompanyIds = await computeAndStoreCompanyMatches(
+  await computeAndStoreCompanyMatches(
     resp.id,
     matchingSoftwareId,
     resp.riasec as Record<import("@/lib/schema").RIASECType, number>,
     resp.prerequisite_form_response ?? undefined,
     generalInfo ?? undefined
   );
-  const affectedCompanyIds = [...new Set([...previousCompanyIds, ...newCompanyIds])];
-  const refreshed = await getStudentMatchingResponse(student.id, matchingSoftwareId);
-  if (affectedCompanyIds.length > 0) {
-    void (async () => {
-      for (const companyId of affectedCompanyIds) {
-        try {
-          await syncCompanyMatchedStudents(companyId, matchingSoftwareId);
-        } catch (syncErr) {
-          console.error("[recomputeCompanyMatchesForCurrentUserAction] Background sync company", companyId, "failed:", syncErr);
-        }
-      }
-    })();
-  }
-  return refreshed;
+  return getStudentMatchingResponse(student.id, matchingSoftwareId);
 }
 
 /** Returns student's form response if they have filled the prerequisite form. Any version of the form counts as complete. */
