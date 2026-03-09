@@ -8,14 +8,15 @@ import { fetchEventsAction } from "@/app/actions/events";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { motion } from 'framer-motion'
-import { Calendar } from "lucide-react";
+import { Calendar, FileText, CheckCircle2 } from "lucide-react";
 import type { CareerEvent, Company } from "@/lib/schema";
 import { useUser } from "@/providers/UserProvider";
 import Link from "next/link";
-import { getUpcomingEventsWithFallback, type EventWithStatus } from '@/lib/utils/events';
+import { getUpcomingEventsWithFallback, isDuringEvent, type EventWithStatus } from '@/lib/utils/events';
 import { fetchCompanyFormsForEventAction, checkCompanyFormCompletionBatchWithCompulsoryAction } from '@/app/actions/forms';
 import { getMatchingSoftwareForEventAction } from '@/app/actions/matching-software';
-import { FileText, CheckCircle2 } from 'lucide-react';
+import { hasSchedulesForEventAction } from '@/app/actions/schedules';
+import { getCompanySubOptionAnyStatus } from '@/lib/utils/company-access';
 import { formatDateTimeBE } from '@/lib/date-utils';
 
 function MyEventsSection() {
@@ -27,7 +28,7 @@ function MyEventsSection() {
   React.useEffect(() => {
     if (!user?.company?.id) return;
 
-    fetchCompanyByIdAction(user.company.id).then((c) => {
+    fetchCompanyByIdAction(user.company.id, false, true).then((c) => {
       if (c) {
         setCompany(c as Company);
       } else {
@@ -232,6 +233,8 @@ function ManageEventCard({ event, company }: { event: CareerEvent; company: Comp
   const [completedFormIds, setCompletedFormIds] = React.useState<Set<string>>(new Set());
   const [hasMatchingSoftware, setHasMatchingSoftware] = React.useState(false);
   const [matchingSoftwareCompleted, setMatchingSoftwareCompleted] = React.useState(false);
+  const [hasSchedules, setHasSchedules] = React.useState(false);
+  const [hasStudentSchedulesAccess, setHasStudentSchedulesAccess] = React.useState(false);
 
   // Get company option IDs
   const companyOptionIds = React.useMemo(() => {
@@ -308,6 +311,14 @@ function ManageEventCard({ event, company }: { event: CareerEvent; company: Comp
       });
   }, [event.id, company?.id]);
 
+  // Check if company has Student Schedules sub-option (use AnyStatus to catch sub-options that may be inactive or in different structure)
+  React.useEffect(() => {
+    setHasStudentSchedulesAccess(!!company && getCompanySubOptionAnyStatus(company, "Student Schedules") !== null);
+    hasSchedulesForEventAction(event.id)
+      .then(setHasSchedules)
+      .catch(() => setHasSchedules(false));
+  }, [event.id, company]);
+
   return (
     <Card className="border rounded-lg shadow-sm">
       <CardHeader>
@@ -377,6 +388,21 @@ function ManageEventCard({ event, company }: { event: CareerEvent; company: Comp
                 <Link href={`/dashboard/matching-software/event/${encodeURIComponent(event.id)}`} className="flex items-center justify-center gap-2">
                   Matching Software
                   {matchingSoftwareCompleted && <CheckCircle2 className="h-4 w-4 text-green-600" />}
+                </Link>
+              </Button>
+            )}
+
+            {/* Student Schedules Button - only when company has sub-option, event has schedules, and we're during the event */}
+            {hasStudentSchedulesAccess && hasSchedules && isDuringEvent(event) && (
+              <Button
+                asChild
+                variant="outline"
+                className="w-full justify-center"
+                size="sm"
+              >
+                <Link href={`/dashboard/schedules/event/${encodeURIComponent(event.id)}`} className="flex items-center justify-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Student Schedules
                 </Link>
               </Button>
             )}

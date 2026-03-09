@@ -1,5 +1,22 @@
 import type { CareerEvent } from "@/lib/schema";
 
+/**
+ * Returns true if the current time is between the event's start and end (inclusive).
+ * Schedules should only be available during the event.
+ */
+export function isDuringEvent(event: CareerEvent): boolean {
+  const { date, start_hour, end_hour } = event;
+  if (!date || !start_hour || !end_hour) return false;
+  try {
+    const start = new Date(`${date}T${start_hour}`);
+    const end = new Date(`${date}T${end_hour}`);
+    const now = new Date();
+    return now >= start && now <= end;
+  } catch {
+    return false;
+  }
+}
+
 export type EventWithStatus = CareerEvent & {
   isPast?: boolean;
 };

@@ -1229,11 +1229,21 @@ function CompanySubOptionsSection({ company, allSubOptions, onSubOptionsChange }
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              {availableToAdd.map((s) => (
-                <DropdownMenuItem key={s.id} onSelect={() => handleAdd(String(s.id))}>
-                  {s.name}
-                </DropdownMenuItem>
-              ))}
+              {availableToAdd.map((s) => {
+                const subId = String(s.id);
+                return (
+                  <DropdownMenuItem
+                    key={s.id}
+                    onSelect={(e) => {
+                      const id = (e.currentTarget as HTMLElement)?.getAttribute?.("data-suboption-id") ?? subId;
+                      handleAdd(id);
+                    }}
+                    data-suboption-id={subId}
+                  >
+                    {s.name}
+                  </DropdownMenuItem>
+                );
+              })}
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -2864,6 +2874,7 @@ function EventCard({ event }: { event: CareerEvent }) {
   const [hasFloorplan, setHasFloorplan] = React.useState<boolean | null>(null);
   const [hasCompanyGuide, setHasCompanyGuide] = React.useState<boolean | null>(null);
   const [hasMatchingSoftware, setHasMatchingSoftware] = React.useState<boolean | null>(null);
+  const [hasSchedules, setHasSchedules] = React.useState<boolean | null>(null);
   const [headerButtons, setHeaderButtons] = React.useState<HeaderButtonType[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [savingHeaderButtons, setSavingHeaderButtons] = React.useState(false);
@@ -2890,11 +2901,14 @@ function EventCard({ event }: { event: CareerEvent }) {
         // Check if matching software exists for this event
         const matchingList = await listMatchingSoftwareAction({ eventId: event.id });
         setHasMatchingSoftware((matchingList?.length ?? 0) > 0);
+        const { hasSchedulesForEvent } = await import("@/lib/repos/schedule");
+        setHasSchedules(await hasSchedulesForEvent(event.id));
       } catch (error) {
         console.error("Error checking floorplan:", error);
         setHasFloorplan(false);
         setHasCompanyGuide(false);
         setHasMatchingSoftware(false);
+        setHasSchedules(false);
       } finally {
         setLoading(false);
       }
@@ -3014,6 +3028,19 @@ function EventCard({ event }: { event: CareerEvent }) {
             </Button>
           ) : (
             <AddMatchingSoftwareDialog event={event} onCreated={() => setHasMatchingSoftware(true)} />
+          ))}
+          {!loading && (hasSchedules ? (
+            <Button variant="outline" size="sm" asChild className="w-full">
+              <Link href={`/admin/schedules?eventId=${event.id}`}>
+                Edit Schedules
+              </Link>
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" asChild className="w-full">
+              <Link href={`/admin/schedules?eventId=${event.id}`}>
+                Add Schedules
+              </Link>
+            </Button>
           ))}
         </div>
       </CardContent>

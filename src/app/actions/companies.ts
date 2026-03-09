@@ -248,32 +248,39 @@ export async function fetchCompanyOptionsDebugAction(companyId: string): Promise
   }
 }
 
-/** Extract career_sub_option IDs from company (company.sub_options or nested in options) */
+/** Extract career_sub_option IDs from company (company.sub_options or nested in options).
+ * IMPORTANT: For junction rows (company.sub_options), we must ONLY use career_sub_option_id/career_sub_option.
+ * The junction row's "id" is its primary key - using it would send wrong IDs to Directus PATCH. */
 function extractSubOptionIdsFromCompany(company: Company | null): (string | number)[] {
-  const extractId = (s: unknown): string | number | null => {
+  const extractIdFromJunction = (s: unknown): string | number | null => {
     if (typeof s === "string" || typeof s === "number") return s;
     if (s && typeof s === "object") {
       if ("career_sub_option_id" in s) {
-        const ref = (s as { career_sub_option_id?: { id?: string | number } | string | null }).career_sub_option_id;
+        const ref = (s as { career_sub_option_id?: { id?: string | number } | string | number | null }).career_sub_option_id;
         if (typeof ref === "string" || typeof ref === "number") return ref;
         if (ref && typeof ref === "object" && ref.id != null) return ref.id;
       }
       if ("career_sub_option" in s) {
-        const ref = (s as { career_sub_option?: { id?: string | number } | string | null }).career_sub_option;
+        const ref = (s as { career_sub_option?: { id?: string | number } | string | number | null }).career_sub_option;
         if (typeof ref === "string" || typeof ref === "number") return ref;
         if (ref && typeof ref === "object" && ref.id != null) return ref.id;
       }
-      if ("id" in s) return (s as { id: string | number }).id;
     }
+    return null;
+  };
+  const extractIdFromOption = (s: unknown): string | number | null => {
+    const fromJunction = extractIdFromJunction(s);
+    if (fromJunction != null) return fromJunction;
+    if (s && typeof s === "object" && "id" in s) return (s as { id: string | number }).id;
     return null;
   };
   const ids = new Set<string | number>();
 
-  // Company-level sub_options (company_career_sub_option junction)
+  // Company-level sub_options (company_career_sub_option junction) - NEVER use junction row "id"
   const companySubs = (company as { sub_options?: unknown[] })?.sub_options;
   if (Array.isArray(companySubs)) {
     for (const s of companySubs) {
-      const id = extractId(s);
+      const id = extractIdFromJunction(s);
       if (id != null) ids.add(id);
     }
   }
@@ -286,7 +293,7 @@ function extractSubOptionIdsFromCompany(company: Company | null): (string | numb
     const topLevel = option.sub_options;
     if (Array.isArray(topLevel)) {
       for (const s of topLevel) {
-        const id = extractId(s);
+        const id = extractIdFromOption(s);
         if (id != null) ids.add(id);
       }
     }
@@ -296,7 +303,7 @@ function extractSubOptionIdsFromCompany(company: Company | null): (string | numb
         const nested = ev?.career_event_option_id?.sub_options;
         if (Array.isArray(nested)) {
           for (const s of nested) {
-            const id = extractId(s);
+            const id = extractIdFromOption(s);
             if (id != null) ids.add(id);
           }
         }
@@ -940,11 +947,15 @@ export async function addSubOptionToCompanyAction(companyId: string, optionId: s
   const existingIds = extractSubOptionIdsFromCompany(company);
   if (existingIds.some((id) => String(id) === subIdStr)) return company; // Already has it
 
-  // Try 1: PATCH company.sub_options (array of IDs)
+  // Try 1: PATCH company.sub_options - use junction objects so Directus links correct career_sub_option
+  // (raw IDs [1,2,3] can be misinterpreted as junction row IDs; objects { career_sub_option_id: X } are explicit)
   try {
-    const newIds = [...existingIds.map(String), subIdStr];
+    const payload = [
+      ...existingIds.map((id) => ({ career_sub_option_id: id })),
+      { career_sub_option_id: subIdStr },
+    ];
     const viaCompany = await updateCompanyAction(companyId, {
-      sub_options: newIds,
+      sub_options: payload,
     } as Partial<Company>);
     if (viaCompany) {
       console.log("[addSubOptionToCompanyAction] Success via company PATCH");
@@ -972,12 +983,13 @@ export async function removeSubOptionFromCompanyAction(companyId: string, option
   const existingIds = extractSubOptionIdsFromCompany(company);
   if (!existingIds.some((id) => String(id) === subIdStr)) return company; // Already doesn't have it
 
-  const newIds = existingIds.filter((id) => String(id) !== subIdStr).map(String);
+  const remainingIds = existingIds.filter((id) => String(id) !== subIdStr);
 
-  // Try 1: PATCH company.sub_options
+  // Try 1: PATCH company.sub_options - use junction objects for correct Directus interpretation
   try {
+    const payload = remainingIds.map((id) => ({ career_sub_option_id: id }));
     const viaCompany = await updateCompanyAction(companyId, {
-      sub_options: newIds,
+      sub_options: payload,
     } as Partial<Company>);
     if (viaCompany) return viaCompany;
   } catch {

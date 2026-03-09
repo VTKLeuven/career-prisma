@@ -123,6 +123,14 @@ export type CareerEventOption = {
 /** Header button types that can be shown on the event page header */
 export type HeaderButtonType = 'floorplan' | 'company_guide' | 'cv_upload' | 'matching_software';
 
+/** Schedule for an event - PDF per master (student timetables). Companies with "Student Schedules" sub-option see schedules for masters in their company.category. */
+export type Schedule = {
+  id: string;
+  event: string | CareerEvent;
+  master: string | Master;
+  pdf: string | { id?: string }; // Directus file
+};
+
 /** RIASEC types for student matching (Holland codes) */
 export type RIASECType = 'R' | 'I' | 'A' | 'S' | 'E' | 'C';
 
@@ -142,6 +150,8 @@ export type MatchingSoftware = {
   /** When set, company "interested categories" come from these form fields instead of company.category. Add JSON field "category_form_fields" to Matching_Software in Directus. */
   category_form_fields?: MatchingCategoryFormField[];
   active: boolean;
+  /** When true, companies can view their matched students. Add boolean field "companies_can_view_matches" to Matching_Software in Directus. */
+  companies_can_view_matches?: boolean;
 };
 
 /** Student's RIASEC matching response - one per student per matching software */
@@ -167,6 +177,7 @@ export type CompanyMatchingResponse = {
   ocia_answers: Record<string, string>; // { "1": "A", "2": "B", ... }
   ocia: Record<OCIAType, number>; // percentages
   general_info_answers?: { work_preference: string[]; company_type?: string[]; work_options?: string[] }; // General info multiselect
+  students?: string[] | Array<{ id: string; first_name: string | null; last_name: string | null; email: string }>; // M2M – students who matched with this company
 };
 
 export type CareerEventPage = {

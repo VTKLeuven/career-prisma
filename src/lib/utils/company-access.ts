@@ -256,6 +256,47 @@ export function hasCVBookAccess(company: Company | null | undefined): boolean {
 /** Minimal company shape for access checks (options, sub_options, status) */
 type CompanyLike = { options?: unknown[]; sub_options?: unknown[]; status?: string } | null | undefined;
 
+/** Suboption name variants for Matching Software (Directus may use different casing). */
+const MATCHING_SOFTWARE_SUBOPTION_NAMES = ["Matching Software", "Matching software", "matching software", "MatchingSoftware"];
+
+/** Check if a suboption name matches "Matching Software" (flexible: contains both words). */
+function isMatchingSoftwareSubOptionName(name: string | null | undefined): boolean {
+  if (!name || typeof name !== "string") return false;
+  const lower = name.toLowerCase().trim();
+  return lower.includes("matching") && lower.includes("software");
+}
+
+/**
+ * Check if company has the Matching Software suboption (for viewing matched students).
+ * Tries exact name variants first, then checks all company suboptions for names containing "matching" and "software".
+ */
+export function hasMatchingSoftwareSubOption(company: Company | null | undefined, allSubOptions?: CareerSubOption[]): boolean {
+  if (!company) return false;
+  for (const name of MATCHING_SOFTWARE_SUBOPTION_NAMES) {
+    if (getCompanySubOptionAnyStatus(company, name, allSubOptions) !== null) return true;
+  }
+  // Fallback: scan all suboptions for name containing "matching" and "software"
+  const companySubs = (company as { sub_options?: unknown[] })?.sub_options;
+  if (Array.isArray(companySubs)) {
+    const resolved = resolveSubOptionsArray(companySubs, allSubOptions);
+    if (resolved.some((s) => isMatchingSoftwareSubOptionName(s?.name))) return true;
+  }
+  if (company?.options && Array.isArray(company.options)) {
+    for (const opt of company.options) {
+      if (!opt) continue;
+      let option: CareerEventOption | null = null;
+      if (typeof opt === "object" && "career_event_option_id" in opt) {
+        option = (opt as { career_event_option_id: CareerEventOption }).career_event_option_id;
+      } else if (typeof opt === "object" && "id" in opt) {
+        option = opt as CareerEventOption;
+      }
+      const subOpts = getSubOptionsToCheck(opt, option, allSubOptions);
+      if (subOpts.some((s) => isMatchingSoftwareSubOptionName(s?.name))) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Check if a company has access to view their company page (public profile)
  * Requires: published status AND the "Company Page On Platform" sub-option (company.sub_options or in options).

@@ -575,6 +575,42 @@ export async function getLatestFormResponse(formVersionId: string) {
   }
 }
 
+/** Batch: get latest form response data for multiple students. Returns Map<studentId, data>.
+ * Uses server client. Fetches all responses for form versions once, then groups by data._student_id. */
+export async function getStudentFormResponsesBatchForForm(
+  formId: string,
+  studentIds: string[]
+): Promise<Map<string, Record<string, unknown>>> {
+  if (studentIds.length === 0) return new Map();
+  const idSet = new Set(studentIds.map(String));
+  try {
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const client = await getServerDirectusClient();
+    const versions = await listFormVersionsForServer(formId);
+    const versionIds = versions.map((v) => v.id);
+    if (versionIds.length === 0) return new Map();
+    const responses = await client.request(
+      readItems("form_responses" as any, {
+        fields: ["id", "form_version_id", "data"],
+        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
+        limit: -1,
+        sort: "-submitted_at",
+      })
+    ) as unknown as Array<{ id: string; form_version_id: string; data?: Record<string, unknown> }>;
+    const byStudent = new Map<string, Record<string, unknown>>();
+    for (const r of responses) {
+      const sid = (r.data as Record<string, unknown>)?._student_id;
+      if (sid != null && idSet.has(String(sid)) && !byStudent.has(String(sid))) {
+        byStudent.set(String(sid), r.data ?? {});
+      }
+    }
+    return byStudent;
+  } catch (error) {
+    console.error("[getStudentFormResponsesBatchForForm] Error:", error);
+    return new Map();
+  }
+}
+
 /** Get a student's latest form response across any of the given form versions. Uses server client.
  * Matches by data._student_id (stored in form data JSON) since form_responses may not have a student_id column.
  * Fetches all responses (limit: -1) so early submitters are not missed when the form has many responses. */
