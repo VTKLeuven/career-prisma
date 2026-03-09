@@ -18,6 +18,31 @@ function riasecToOcia(riasec: Record<RIASECType, number>): Record<OCIAType, numb
   };
 }
 
+/** Convert riasec_answers (e.g. { "1": "A", "2": "B" }) to RIASEC percentages. */
+function computeRiasecFromAnswers(answers: Record<string, string>): Record<RIASECType, number> {
+  const RIASEC_QUESTIONS: { id: number; A: RIASECType; B: RIASECType }[] = [
+    { id: 1, A: "R", B: "I" }, { id: 2, A: "A", B: "E" }, { id: 3, A: "I", B: "S" },
+    { id: 4, A: "R", B: "C" }, { id: 5, A: "E", B: "C" }, { id: 6, A: "A", B: "C" },
+    { id: 7, A: "S", B: "E" }, { id: 8, A: "C", B: "A" }, { id: 9, A: "R", B: "I" },
+    { id: 10, A: "S", B: "I" }, { id: 11, A: "C", B: "A" }, { id: 12, A: "S", B: "I" },
+  ];
+  const counts: Record<RIASECType, number> = { R: 0, I: 0, A: 0, S: 0, E: 0, C: 0 };
+  for (const q of RIASEC_QUESTIONS) {
+    const ans = answers[q.id.toString()];
+    if (ans === "A") counts[q.A]++;
+    else if (ans === "B") counts[q.B]++;
+  }
+  const total = RIASEC_QUESTIONS.length;
+  return {
+    R: Math.round((counts.R / total) * 100 * 100) / 100,
+    I: Math.round((counts.I / total) * 100 * 100) / 100,
+    A: Math.round((counts.A / total) * 100 * 100) / 100,
+    S: Math.round((counts.S / total) * 100 * 100) / 100,
+    E: Math.round((counts.E / total) * 100 * 100) / 100,
+    C: Math.round((counts.C / total) * 100 * 100) / 100,
+  };
+}
+
 /** Sum of absolute differences between OCIA profiles (lower = more similar). Both inputs are 0–100; returns 0–1. */
 function ociaSimilarityScore(studentOcia: Record<OCIAType, number>, companyOcia: Record<OCIAType, number>): number {
   const types: OCIAType[] = ["Clan", "Adhocracy", "Market", "Hierarchy"];
@@ -26,9 +51,10 @@ function ociaSimilarityScore(studentOcia: Record<OCIAType, number>, companyOcia:
 }
 
 const STUDY_FIELD_KEYS = [
+  "study_field",     // Primary: e.g. "Civil Engineering"
   "course_of_study", // e.g. "Artificial Intelligence"
-  "faculty",         // e.g. "Engineering Technology"
-  "study_field",
+  "faculty",         // e.g. "Faculty of Engineering Science"
+  "specialisation_optional", // e.g. "Structural"
   "study",
   "master",
   "program",
@@ -37,13 +63,34 @@ const STUDY_FIELD_KEYS = [
   "master_degrees",
 ];
 
+/** Unwrap form data - handles { data: {...} }, JSON string, or direct {...}. */
+function unwrapFormData(data: unknown): Record<string, unknown> | null | undefined {
+  if (data == null) return null;
+  if (typeof data === "string") {
+    try {
+      const parsed = JSON.parse(data) as Record<string, unknown>;
+      return typeof parsed === "object" && parsed ? unwrapFormData(parsed) : null;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof data !== "object" || Array.isArray(data)) return data as Record<string, unknown>;
+  const obj = data as Record<string, unknown>;
+  if ("data" in obj && obj.data && typeof obj.data === "object" && !Array.isArray(obj.data)) {
+    return obj.data as Record<string, unknown>;
+  }
+  return obj;
+}
+
 /** Extract raw study field value(s) from form data. Handles strings, objects with name, and arrays (master-degrees multiselect).
  * Collects from all STUDY_FIELD_KEYS so both course_of_study and faculty (etc.) are used for matching across form versions. */
 function extractStudyFieldRawValues(data: Record<string, unknown> | null | undefined): string[] {
-  if (!data || typeof data !== "object") {
-    console.log("[Matching] extractStudyFieldRawValues: no data or not object");
+  const unwrapped = unwrapFormData(data);
+  if (!unwrapped || typeof unwrapped !== "object") {
+    if (!data) console.log("[Matching] extractStudyFieldRawValues: no data or not object");
     return [];
   }
+  data = unwrapped;
   const extractOne = (val: unknown): string | null => {
     if (val == null) return null;
     if (typeof val === "string" && val.trim()) return val.trim();
@@ -377,14 +424,139 @@ export async function getCompanyMatchingResponseCompletedIds(
   return result;
 }
 
-/** Get company's OCIA matching response. */
+/** Extract student ID from a junction row value (handles string, number, or { id } object). */
+function extractStudentIdFromValue(v: unknown): string | null {
+  if (v == null) return null;
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return String(v);
+  if (typeof v === "object" && v !== null && "id" in v) return String((v as { id: string | number }).id);
+  return null;
+}
+
+/** Fetch students for a company_matching_response from junction table (bypasses Directus M2M limit). */
+async function fetchStudentsForCompanyMatchingResponse(
+  client: Awaited<ReturnType<typeof getServerDirectusClient>>,
+  cmrId: string | number
+): Promise<Array<{ id: string; first_name: string | null; last_name: string | null; email: string }>> {
+  const idVariants: (string | number)[] = [cmrId];
+  if (/^\d+$/.test(String(cmrId))) idVariants.push(Number(cmrId));
+  const studentFieldVariants = ["students_id", "student_id", "students", "student"] as const;
+  const cmrFieldVariants = ["company_matching_response_id", "company_matching_response"] as const;
+  let studentIds: string[] = [];
+  for (const junction of COMPANY_STUDENTS_JUNCTION) {
+    for (const cmrField of cmrFieldVariants) {
+      for (const studentField of studentFieldVariants) {
+        try {
+          const raw = await client.request(
+            readItems(junction as any, {
+              fields: [studentField],
+              filter: { [cmrField]: { _in: idVariants } },
+              limit: -1,
+            })
+          );
+          const items = raw as unknown[];
+          for (const row of items) {
+            const v = (row as Record<string, unknown>)[studentField];
+            const id = extractStudentIdFromValue(v);
+            if (id && !studentIds.includes(id)) studentIds.push(id);
+          }
+          if (studentIds.length > 0) {
+            console.log("[Matching] fetchStudentsForCompanyMatchingResponse: found via", junction, cmrField, studentField, "| count:", studentIds.length);
+            break;
+          }
+        } catch {
+          continue;
+        }
+      }
+      if (studentIds.length > 0) break;
+    }
+    if (studentIds.length > 0) break;
+  }
+  // Fallback: read junction with * to discover actual field names (try all non-cmr keys as potential student refs)
+  if (studentIds.length === 0) {
+    const skipKeys = new Set([...cmrFieldVariants, "id", "date_created", "date_updated", "sort"]);
+    for (const junction of COMPANY_STUDENTS_JUNCTION) {
+      for (const cmrField of cmrFieldVariants) {
+        try {
+          const raw = await client.request(
+            readItems(junction as any, {
+              fields: ["*"],
+              filter: { [cmrField]: { _in: idVariants } },
+              limit: -1,
+            })
+          );
+          const items = raw as unknown[];
+          for (const row of items) {
+            const r = row as Record<string, unknown>;
+            for (const key of Object.keys(r)) {
+              if (skipKeys.has(key)) continue;
+              const id = extractStudentIdFromValue(r[key]);
+              if (id && !studentIds.includes(id)) studentIds.push(id);
+            }
+          }
+          if (studentIds.length > 0) {
+            console.log("[Matching] fetchStudentsForCompanyMatchingResponse: found via * fallback", junction, "| count:", studentIds.length);
+            break;
+          }
+        } catch {
+          continue;
+        }
+      }
+      if (studentIds.length > 0) break;
+    }
+  }
+  if (studentIds.length === 0) {
+    console.log("[Matching] fetchStudentsForCompanyMatchingResponse: no junction rows for cmrId", cmrId, "| tried junctions:", COMPANY_STUDENTS_JUNCTION.join(", "));
+    return [];
+  }
+  const STUDENT_COLLECTIONS = ["students", "Students", "student"] as const;
+  for (const coll of STUDENT_COLLECTIONS) {
+    try {
+      const raw = await client.request(
+        readItems(coll as any, {
+          fields: ["id", "first_name", "last_name", "email"],
+          filter: { id: { _in: studentIds } },
+          limit: -1,
+        })
+      );
+      type StudentRow = { id: string | number; first_name?: string | null; last_name?: string | null; email?: string };
+      const items = Array.isArray(raw) ? raw : (raw && typeof raw === "object" && "data" in raw && Array.isArray((raw as { data: unknown[] }).data) ? (raw as { data: unknown[] }).data : []) as StudentRow[];
+      const result = items.map((s) => ({
+        id: String(s.id),
+        first_name: s.first_name ?? null,
+        last_name: s.last_name ?? null,
+        email: typeof s.email === "string" ? s.email : "",
+      }));
+      if (result.length > 0) return result;
+    } catch (err) {
+      console.warn("[Matching] fetchStudentsForCompanyMatchingResponse: students collection", coll, "failed:", err instanceof Error ? err.message : err);
+      continue;
+    }
+  }
+  // Fallback: return minimal objects with IDs when students fetch fails or returns 0 (permissions, wrong collection name, ID format mismatch)
+  console.warn("[Matching] fetchStudentsForCompanyMatchingResponse: could not fetch student details, returning", studentIds.length, "IDs only. Check 'students' collection name and Read permission.");
+  return studentIds.map((id) => ({ id, first_name: null, last_name: null, email: "" }));
+}
+
+/** Get company's OCIA matching response, including students who matched with this company. */
 export async function getCompanyMatchingResponse(
   companyId: string,
   matchingSoftwareId: string
 ): Promise<CompanyMatchingResponse | null> {
   try {
     const client = await getServerDirectusClient();
-    const fields = ["id", "company", "matching_software", "ocia_answers", "ocia", "general_info_answers"];
+    const fields = [
+      "id",
+      "company",
+      "matching_software",
+      "ocia_answers",
+      "ocia",
+      "general_info_answers",
+      "students.id",
+      "students.first_name",
+      "students.last_name",
+      "students.email",
+    ];
     const filter = { company: { _eq: companyId }, matching_software: { _eq: matchingSoftwareId } };
 
     for (const collection of COMPANY_MATCHING_RESPONSE_COLLECTIONS) {
@@ -392,9 +564,33 @@ export async function getCompanyMatchingResponse(
         const items = await client.request(
           readItems(collection as any, { fields, filter, limit: 1, sort: ["-id"] })
         ) as unknown as CompanyMatchingResponse[];
-        if (items.length > 0) return items[0];
+        if (items.length > 0) {
+          const item = items[0];
+          const rawStudents = (item as { students?: unknown }).students;
+          const fromRelation = Array.isArray(rawStudents) && rawStudents.length > 0;
+          if (!fromRelation && item.id) {
+            const fromJunction = await fetchStudentsForCompanyMatchingResponse(client, item.id);
+            if (fromJunction.length > 0) {
+              return { ...item, students: fromJunction } as CompanyMatchingResponse;
+            }
+          }
+          return item;
+        }
       } catch {
-        // Try next collection name
+        // Try without students (field may not exist in older schemas)
+        const fallbackFields = ["id", "company", "matching_software", "ocia_answers", "ocia", "general_info_answers"];
+        try {
+          const items = await client.request(
+            readItems(collection as any, { fields: fallbackFields, filter, limit: 1, sort: ["-id"] })
+          ) as unknown as CompanyMatchingResponse[];
+          if (items.length > 0) {
+            const item = items[0];
+            const fromJunction = await fetchStudentsForCompanyMatchingResponse(client, item.id);
+            return { ...item, students: fromJunction } as CompanyMatchingResponse;
+          }
+        } catch {
+          // continue to next collection
+        }
       }
     }
     return null;
@@ -402,6 +598,633 @@ export async function getCompanyMatchingResponse(
     console.error("[getCompanyMatchingResponse] Error:", error);
     return null;
   }
+}
+
+/** Find all students who matched with this company (student has company in their matches).
+ * Updates company_matching_response.students with those student IDs. */
+export async function syncCompanyMatchedStudents(
+  companyId: string,
+  matchingSoftwareId: string
+): Promise<CompanyMatchingResponse | null> {
+  const existing = await getCompanyMatchingResponse(companyId, matchingSoftwareId);
+  if (!existing?.id) return null;
+
+  const client = await getServerDirectusClient();
+  let studentIds: string[] = [];
+  let responseIds: string[] = [];
+
+  // Method 1 (primary): Query junction table - this is where student->company matches are stored
+  const companyFieldVariants = ["company_id", "company"] as const;
+  const companyFilterVariants: Array<Record<string, unknown>> = [
+    { company_id: { _eq: companyId } },
+    { company: { _eq: companyId } },
+    { company: { id: { _eq: companyId } } },
+  ];
+  const respFieldVariants = ["student_matching_response_id", "student_matching_response"] as const;
+  junctionLoop: for (const junction of JUNCTION_COLLECTIONS) {
+    for (const respField of respFieldVariants) {
+      for (const filter of companyFilterVariants) {
+        const filterKey = Object.keys(filter)[0];
+        try {
+          const items = (await client.request(
+            readItems(junction as any, {
+              fields: [respField],
+              filter,
+              limit: -1,
+            })
+          )) as unknown as Array<Record<string, unknown>>;
+          for (const r of items) {
+            const v = r[respField];
+            const id = typeof v === "string" ? v : (v as { id?: string })?.id;
+            if (id) responseIds.push(String(id));
+          }
+          if (responseIds.length > 0) {
+            console.log("[Matching] syncCompanyMatchedStudents: found via junction", junction, filterKey, "| responses:", responseIds.length);
+            break junctionLoop;
+          }
+        } catch {
+          continue;
+        }
+      }
+    }
+  }
+
+  // Method 2 (fallback): Relational filter when junction returns nothing (e.g. wrong junction name)
+  if (responseIds.length === 0) {
+    const relationalFilters: Array<Record<string, unknown>> = [
+      { companies: { company_id: { _eq: companyId } } },
+      { companies: { company: { _eq: companyId } } },
+      { companies: { _some: { company_id: { _eq: companyId } } } },
+    ];
+    for (const collection of STUDENT_MATCHING_RESPONSE_COLLECTIONS) {
+      for (const relFilter of relationalFilters) {
+        try {
+          const items = (await client.request(
+            readItems(collection as any, {
+              fields: ["id"],
+              filter: { matching_software: { _eq: matchingSoftwareId }, ...relFilter },
+              limit: -1,
+            })
+          )) as unknown as Array<{ id: string }>;
+          if (items.length > 0) {
+            responseIds = items.map((i) => i.id);
+            console.log("[Matching] syncCompanyMatchedStudents: found via relational filter", collection, "| responses:", responseIds.length);
+            break;
+          }
+        } catch {
+          continue;
+        }
+      }
+      if (responseIds.length > 0) break;
+    }
+  }
+
+  // Fetch student responses with riasec and general_info for score computation
+  type StudentResponseRow = { id: string; student?: unknown; student_id?: unknown; students?: unknown; riasec?: Record<string, number>; general_info_answers?: GeneralInfoAnswers };
+  let studentResponses: StudentResponseRow[] = [];
+  if (responseIds.length > 0) {
+    const filterVariants = [
+      { id: { _in: responseIds }, matching_software: { _eq: matchingSoftwareId } },
+      { id: { _in: responseIds }, matching_software_id: { _eq: matchingSoftwareId } },
+    ];
+    const fieldsWithScore = ["id", "student", "student.id", "student_id", "riasec", "general_info_answers"];
+    fetchLoop: for (const collection of STUDENT_MATCHING_RESPONSE_COLLECTIONS) {
+      for (const filter of filterVariants) {
+        try {
+          const items = (await client.request(
+            readItems(collection as any, {
+              fields: fieldsWithScore,
+              filter,
+              limit: -1,
+            })
+          )) as unknown as Array<Record<string, unknown>>;
+          if (items.length > 0) {
+            studentResponses = items as StudentResponseRow[];
+            console.log("[Matching] syncCompanyMatchedStudents: fetched", studentResponses.length, "responses with riasec/general_info");
+            break fetchLoop;
+          }
+        } catch {
+          continue;
+        }
+      }
+      if (studentResponses.length > 0) break;
+    }
+    // Fallback: fetch without riasec if schema differs
+    if (studentResponses.length === 0) {
+      const fieldVariants = [
+        ["id", "student", "student.id", "student_id", "riasec_answers", "general_info_answers"],
+        ["id", "student", "student_id", "riasec", "general_info_answers"],
+        ["id", "student", "student_id"],
+        ["*"],
+      ];
+      fallbackLoop: for (const collection of STUDENT_MATCHING_RESPONSE_COLLECTIONS) {
+        for (const fields of fieldVariants) {
+          for (const filter of filterVariants) {
+            try {
+              const items = (await client.request(
+                readItems(collection as any, { fields, filter, limit: -1 })
+              )) as unknown as Array<Record<string, unknown>>;
+              if (items.length > 0) {
+                studentResponses = items as StudentResponseRow[];
+                break fallbackLoop;
+              }
+            } catch {
+              continue;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const companyOcia = (existing as { ocia?: Record<OCIAType, number> }).ocia ?? { Clan: 0, Adhocracy: 0, Market: 0, Hierarchy: 0 };
+  const companyGi: GeneralInfoAnswers = (existing as { general_info_answers?: GeneralInfoAnswers }).general_info_answers ?? {
+    work_preference: [],
+    company_type: [],
+    work_options: [],
+  };
+
+  const withScores: Array<{ studentId: string; score: number }> = [];
+  for (const item of studentResponses) {
+    const s = item.student ?? item.student_id ?? item.students;
+    let sid: string | null = null;
+    if (typeof s === "string") sid = s;
+    else if (typeof s === "number") sid = String(s);
+    else if (s && typeof s === "object" && "id" in s) sid = String((s as { id: string | number }).id);
+    else if (Array.isArray(s) && s.length > 0) {
+      const first = s[0];
+      sid = typeof first === "string" ? first : typeof first === "number" ? String(first) : (first && typeof first === "object" && "id" in first) ? String((first as { id: string | number }).id) : null;
+    }
+    if (!sid) continue;
+
+    let riasec: Record<RIASECType, number> = (item.riasec as Record<RIASECType, number>) ?? {};
+    const riasecAnswers = (item as { riasec_answers?: Record<string, string> }).riasec_answers;
+    if (Object.keys(riasec).length === 0 && riasecAnswers && typeof riasecAnswers === "object") {
+      riasec = computeRiasecFromAnswers(riasecAnswers);
+    }
+    const studentOcia = riasecToOcia(riasec);
+    const studentGi: GeneralInfoAnswers = item.general_info_answers ?? {
+      work_preference: [],
+      company_preference: [],
+      options_preference: [],
+    };
+    const ociaScore = ociaSimilarityScore(studentOcia, companyOcia);
+    const generalInfoOverlap = countGeneralInfoOverlap(studentGi, companyGi);
+    const combinedScore = (ociaScore - generalInfoOverlap * GENERAL_INFO_WEIGHT) / (GENERAL_INFO_WEIGHT + 1);
+    withScores.push({ studentId: sid, score: combinedScore });
+  }
+
+  withScores.sort((a, b) => a.score - b.score);
+  let topStudentIds = withScores.slice(0, MAX_COMPANY_MATCHES).map((x) => x.studentId);
+  const alreadyHave = new Set(topStudentIds);
+
+  // If fewer than 50 matches, fill with eligible students (correct study field) ranked by score
+  if (alreadyHave.size < MAX_COMPANY_MATCHES) {
+    const msConfig = await getMatchingSoftwareById(matchingSoftwareId);
+    const categoryFormFields = (msConfig as { category_form_fields?: Array<{ formId: string; formVersionId: string; fieldName: string }> })?.category_form_fields;
+    const prerequisiteFormId = (msConfig as { prerequisite_form?: string | { id: string } })?.prerequisite_form
+      ? (typeof (msConfig as { prerequisite_form: string | { id: string } }).prerequisite_form === "string"
+        ? (msConfig as { prerequisite_form: string }).prerequisite_form
+        : (msConfig as { prerequisite_form: { id: string } }).prerequisite_form?.id)
+      : null;
+    const companyResponses = await getCompanyMatchingResponsesForMatchingSoftware(matchingSoftwareId, categoryFormFields);
+    const companyInfo = companyResponses.find((cr) => String(cr.companyId) === String(companyId));
+    const categoryNames = companyInfo?.categoryNames ?? [];
+    const hasOther = companyInfo?.hasOther ?? false;
+    if (!companyInfo) {
+      console.warn("[Matching] syncCompanyMatchedStudents fill-up: companyId", companyId, "not found in companyResponses (", companyResponses.length, "companies)");
+    }
+
+    type FullStudentRow = StudentResponseRow & { prerequisite_form_response?: Record<string, unknown> };
+    let allStudentResponses: FullStudentRow[] = [];
+    const allFields = ["id", "student", "student.id", "student_id", "riasec", "riasec_answers", "general_info_answers", "prerequisite_form_response"];
+    const fallbackFields = ["id", "student", "student_id", "riasec", "riasec_answers", "general_info_answers"];
+    const msFilterVariants = [
+      { matching_software: { _eq: matchingSoftwareId } },
+      { matching_software_id: { _eq: matchingSoftwareId } },
+    ];
+    fetchAllLoop: for (const collection of STUDENT_MATCHING_RESPONSE_COLLECTIONS) {
+      for (const filter of msFilterVariants) {
+        for (const fields of [allFields, fallbackFields]) {
+          try {
+            const items = (await client.request(
+              readItems(collection as any, {
+                fields,
+                filter,
+                limit: -1,
+              })
+            )) as unknown as Array<Record<string, unknown>>;
+            if (items.length > 0) {
+              allStudentResponses = items as FullStudentRow[];
+              break fetchAllLoop;
+            }
+          } catch {
+            continue;
+          }
+        }
+      }
+    }
+
+    const candidateStudentIds = allStudentResponses
+      .map((item) => {
+        const s = item.student ?? item.student_id ?? item.students;
+        if (typeof s === "string") return s;
+        if (typeof s === "number") return String(s);
+        if (s && typeof s === "object" && "id" in s) return String((s as { id: string | number }).id);
+        if (Array.isArray(s) && s.length > 0) {
+          const first = s[0];
+          return typeof first === "string" ? first : typeof first === "number" ? String(first) : (first && typeof first === "object" && "id" in first) ? String((first as { id: string | number }).id) : null;
+        }
+        return null;
+      })
+      .filter((id): id is string => !!id && !alreadyHave.has(id));
+    const formDataByStudent = prerequisiteFormId && candidateStudentIds.length > 0
+      ? await (await import("./forms")).getStudentFormResponsesBatchForForm(prerequisiteFormId, candidateStudentIds)
+      : new Map<string, Record<string, unknown>>();
+
+    console.log("[Matching] syncCompanyMatchedStudents fill-up: companyId:", companyId, "| candidates:", candidateStudentIds.length, "| formDataFromBatch:", formDataByStudent.size, "| categoryNames:", categoryNames.slice(0, 5).join(", "), categoryNames.length > 5 ? "..." : "");
+
+    const extraWithScores: Array<{ studentId: string; score: number }> = [];
+    for (const item of allStudentResponses) {
+      const s = item.student ?? item.student_id ?? item.students;
+      let sid: string | null = null;
+      if (typeof s === "string") sid = s;
+      else if (typeof s === "number") sid = String(s);
+      else if (s && typeof s === "object" && "id" in s) sid = String((s as { id: string | number }).id);
+      else if (Array.isArray(s) && s.length > 0) {
+        const first = s[0];
+        sid = typeof first === "string" ? first : typeof first === "number" ? String(first) : (first && typeof first === "object" && "id" in first) ? String((first as { id: string | number }).id) : null;
+      }
+      if (!sid || alreadyHave.has(sid)) continue;
+
+      let formDataForStudy: Record<string, unknown> | undefined = item.prerequisite_form_response ?? undefined;
+      let studentStudyFields = await resolveStudyFieldForMatching(formDataForStudy);
+      if (studentStudyFields.length === 0 && formDataByStudent.has(sid)) {
+        formDataForStudy = formDataByStudent.get(sid);
+        studentStudyFields = await resolveStudyFieldForMatching(formDataForStudy);
+      }
+      if (!studyFieldMatches(studentStudyFields, categoryNames, hasOther, companyId)) continue;
+
+      let riasec: Record<RIASECType, number> = (item.riasec as Record<RIASECType, number>) ?? {};
+      const riasecAnswers = (item as { riasec_answers?: Record<string, string> }).riasec_answers;
+      if (Object.keys(riasec).length === 0 && riasecAnswers && typeof riasecAnswers === "object") {
+        riasec = computeRiasecFromAnswers(riasecAnswers);
+      }
+      const studentOcia = riasecToOcia(riasec);
+      const studentGi: GeneralInfoAnswers = item.general_info_answers ?? {
+        work_preference: [],
+        company_preference: [],
+        options_preference: [],
+      };
+      const ociaScore = ociaSimilarityScore(studentOcia, companyOcia);
+      const generalInfoOverlap = countGeneralInfoOverlap(studentGi, companyGi);
+      const combinedScore = (ociaScore - generalInfoOverlap * GENERAL_INFO_WEIGHT) / (GENERAL_INFO_WEIGHT + 1);
+      extraWithScores.push({ studentId: sid, score: combinedScore });
+    }
+
+    extraWithScores.sort((a, b) => a.score - b.score);
+    const needed = MAX_COMPANY_MATCHES - alreadyHave.size;
+    const extraIds = extraWithScores.slice(0, needed).map((x) => x.studentId);
+    topStudentIds = [...topStudentIds, ...extraIds];
+    console.log("[Matching] syncCompanyMatchedStudents: companyId:", companyId, "| eligible candidates:", extraWithScores.length, "| filled with:", extraIds.length, "| total:", topStudentIds.length);
+  }
+
+  const uniqueStudentIds = [...new Set(topStudentIds)];
+
+  console.log("[Matching] syncCompanyMatchedStudents: companyId:", companyId, "| total matches:", withScores.length, "| final:", uniqueStudentIds.length);
+
+  if (uniqueStudentIds.length === 0) {
+    return updateCompanyMatchingResponseStudents(existing.id, [], companyId, matchingSoftwareId);
+  }
+  return updateCompanyMatchingResponseStudents(existing.id, uniqueStudentIds, companyId, matchingSoftwareId);
+}
+
+/** Get match counts per company for admin overview. Uses junction table for accurate counts (Directus M2M limits to 100). */
+export async function getCompanyMatchCounts(
+  matchingSoftwareId: string
+): Promise<Array<{ companyId: string; companyName: string; matchCount: number }>> {
+  const client = await getServerDirectusClient();
+
+  // 1. Fetch company_matching_response with id, company (no students - we count via junction)
+  type CmrItem = { id: string | number; company: string | number | { id: string | number; name?: string } };
+  let cmrItems: CmrItem[] = [];
+  for (const collection of COMPANY_MATCHING_RESPONSE_COLLECTIONS) {
+    try {
+      const items = (await client.request(
+        readItems(collection as any, {
+          fields: ["id", "company", "company.id", "company.name"],
+          filter: {
+            matching_software: { _eq: matchingSoftwareId },
+            ocia_answers: { _nnull: true },
+          },
+          limit: -1,
+        })
+      )) as unknown as CmrItem[];
+      cmrItems = items;
+      break;
+    } catch {
+      continue;
+    }
+  }
+  if (cmrItems.length === 0) return [];
+
+  const cmrIdToCompany = new Map<string, { companyId: string; companyName: string }>();
+  for (const item of cmrItems) {
+    const cmrId = String(item.id);
+    const companyId = typeof item.company === "string" || typeof item.company === "number"
+      ? String(item.company)
+      : (item.company && typeof item.company === "object" && "id" in item.company)
+        ? String((item.company as { id: string | number }).id)
+        : "";
+    const companyName = typeof item.company === "object" && item.company !== null && "name" in item.company && item.company.name != null
+      ? String(item.company.name)
+      : "";
+    cmrIdToCompany.set(cmrId, { companyId, companyName });
+  }
+
+  // 2. Count students per CMR via junction table (no 100-item limit)
+  const cmrIds = Array.from(cmrIdToCompany.keys());
+  const countByCmrId = new Map<string, number>();
+  for (const id of cmrIds) countByCmrId.set(id, 0);
+
+  const cmrFieldVariants = ["company_matching_response_id", "company_matching_response"] as const;
+  junctionLoop: for (const junction of COMPANY_STUDENTS_JUNCTION) {
+    for (const cmrField of cmrFieldVariants) {
+      try {
+        const items = (await client.request(
+          readItems(junction as any, {
+            fields: [cmrField],
+            filter: { [cmrField]: { _in: cmrIds } },
+            limit: -1,
+          })
+        )) as unknown as Array<Record<string, unknown>>;
+        for (const row of items) {
+          const v = row[cmrField];
+          const id = typeof v === "string" ? v : typeof v === "number" ? String(v) : (v && typeof v === "object" && "id" in v) ? String((v as { id: string | number }).id) : null;
+          if (id && countByCmrId.has(id)) {
+            countByCmrId.set(id, (countByCmrId.get(id) ?? 0) + 1);
+          }
+        }
+        if (items.length > 0) break junctionLoop;
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  // 3. Build result
+  const result = cmrIds.map((cmrId) => {
+    const { companyId, companyName } = cmrIdToCompany.get(cmrId) ?? { companyId: "", companyName: "" };
+    return { companyId, companyName, matchCount: countByCmrId.get(cmrId) ?? 0 };
+  });
+
+  // Fill in missing names
+  const missingNames = result.filter((r) => !r.companyName && r.companyId);
+  if (missingNames.length > 0) {
+    const companies = await getCompaniesByIds(missingNames.map((r) => r.companyId));
+    const nameMap = new Map(companies.map((c) => [String(c.id), c.name ?? ""]));
+    for (const r of result) {
+      if (!r.companyName && nameMap.has(r.companyId)) {
+        r.companyName = nameMap.get(r.companyId) ?? "";
+      }
+    }
+  }
+  return result;
+}
+
+/** Clear ALL company_matching_response_students junction rows for this matching_software before sync. */
+async function clearAllCompanyMatchingResponseStudentsJunction(
+  matchingSoftwareId: string,
+  log?: (msg: string) => void
+): Promise<void> {
+  const client = await getServerDirectusClient();
+  type CmrItem = { id: string | number };
+  let cmrItems: CmrItem[] = [];
+  for (const collection of COMPANY_MATCHING_RESPONSE_COLLECTIONS) {
+    try {
+      const items = (await client.request(
+        readItems(collection as any, {
+          fields: ["id"],
+          filter: { matching_software: { _eq: matchingSoftwareId }, ocia_answers: { _nnull: true } },
+          limit: -1,
+        })
+      )) as unknown as CmrItem[];
+      cmrItems = items;
+      break;
+    } catch {
+      continue;
+    }
+  }
+  if (cmrItems.length === 0) {
+    log?.("No company matching responses to clear");
+    return;
+  }
+  const cmrIds: (string | number)[] = [];
+  for (const item of cmrItems) {
+    cmrIds.push(item.id);
+    const str = String(item.id);
+    if (/^\d+$/.test(str)) cmrIds.push(Number(str));
+  }
+  const uniqueIds = [...new Set(cmrIds)] as (string | number)[];
+  const cmrFieldVariants = ["company_matching_response_id", "company_matching_response"] as const;
+  let cleared = 0;
+  for (const junction of COMPANY_STUDENTS_JUNCTION) {
+    for (const cmrField of cmrFieldVariants) {
+      try {
+        await client.request(deleteItems(junction as any, { filter: { [cmrField]: { _in: uniqueIds } } }));
+        cleared++;
+        log?.(`Cleared junction ${junction} (${cmrItems.length} CMRs)`);
+      } catch (err) {
+        if (cleared === 0) {
+          const msg = err instanceof Error ? err.message : (err && typeof err === "object" && "message" in err) ? String((err as { message: unknown }).message) : String(err);
+          log?.(`Clear junction ${junction}.${cmrField} failed: ${msg}`);
+        }
+      }
+    }
+  }
+  if (cleared === 0) log?.("Warning: no junction table could be cleared – check Directus schema");
+
+  // Also PATCH each company_matching_response to explicitly clear the students field (Directus may cache/sync separately)
+  const payloads = [{ students: [] }, { students: null }];
+  for (const collection of COMPANY_MATCHING_RESPONSE_COLLECTIONS) {
+    for (const payload of payloads) {
+      try {
+        for (const item of cmrItems) {
+          await client.request(updateItem(collection as any, item.id, payload));
+        }
+        log?.(`Cleared students field on ${cmrItems.length} company_matching_response rows`);
+        return;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log?.(`PATCH clear students (${collection}) failed: ${msg}`);
+      }
+    }
+  }
+}
+
+/** Sync matched students for ALL companies that have a matching response for this matching software. */
+export async function syncAllCompanyMatchedStudents(
+  matchingSoftwareId: string,
+  log?: (msg: string) => void
+): Promise<{ synced: number; errors: string[] }> {
+  await clearAllCompanyMatchingResponseStudentsJunction(matchingSoftwareId, log);
+  const companyIds = await getCompanyMatchingResponseCompletedIds(matchingSoftwareId, []);
+  const ids = Array.from(companyIds);
+  log?.(`Syncing company matches: ${ids.length} companies`);
+  const errors: string[] = [];
+  let synced = 0;
+  for (const companyId of ids) {
+    try {
+      const result = await syncCompanyMatchedStudents(companyId, matchingSoftwareId);
+      if (result) synced++;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`${companyId}: ${msg}`);
+      log?.(`Error company ${companyId}: ${msg}`);
+    }
+  }
+  log?.(`Company sync done: ${synced} synced, ${errors.length} errors`);
+  return { synced, errors };
+}
+
+/** Recompute matches for ALL students, then sync company matches. Full update. Returns logs for admin display. */
+export async function fullUpdateAllMatches(
+  matchingSoftwareId: string
+): Promise<{ studentsUpdated: number; companiesSynced: number; errors: string[]; logs: string[] }> {
+  const logs: string[] = [];
+  const log = (msg: string) => {
+    logs.push(`[${new Date().toISOString().slice(11, 19)}] ${msg}`);
+    console.log("[Matching]", msg);
+  };
+
+  log("Starting full update: 1) Recompute all student matches, 2) Sync company matches");
+
+  const client = await getServerDirectusClient();
+  const fields = ["id", "riasec", "prerequisite_form_response", "general_info_answers"];
+  let studentResponses: Array<{ id: string | number; riasec?: Record<RIASECType, number>; prerequisite_form_response?: Record<string, unknown>; general_info_answers?: GeneralInfoAnswers }> = [];
+
+  for (const collection of STUDENT_MATCHING_RESPONSE_COLLECTIONS) {
+    try {
+      const items = (await client.request(
+        readItems(collection as any, {
+          fields,
+          filter: { matching_software: { _eq: matchingSoftwareId } },
+          limit: -1,
+        })
+      )) as unknown as typeof studentResponses;
+      studentResponses = items;
+      break;
+    } catch {
+      continue;
+    }
+  }
+
+  log(`Found ${studentResponses.length} student responses to recompute`);
+
+  let studentsUpdated = 0;
+  const errors: string[] = [];
+
+  for (let i = 0; i < studentResponses.length; i++) {
+    const resp = studentResponses[i];
+    const respId = String(resp.id);
+    const riasec = resp.riasec ?? { R: 0, I: 0, A: 0, S: 0, E: 0, C: 0 };
+    try {
+      await computeAndStoreCompanyMatches(
+        respId,
+        matchingSoftwareId,
+        riasec,
+        resp.prerequisite_form_response ?? undefined,
+        resp.general_info_answers ?? undefined
+      );
+      studentsUpdated++;
+      if ((i + 1) % 50 === 0 || i === studentResponses.length - 1) {
+        log(`Student matches: ${i + 1}/${studentResponses.length} recomputed`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`Student ${respId}: ${msg}`);
+      log(`Error student ${respId}: ${msg}`);
+    }
+  }
+
+  log(`Student recompute done: ${studentsUpdated}/${studentResponses.length} updated, ${errors.length} errors`);
+
+  const { synced } = await syncAllCompanyMatchedStudents(matchingSoftwareId, log);
+
+  log(`Full update complete. Students: ${studentsUpdated}, Companies: ${synced}`);
+
+  // Truncate to avoid exceeding server action response size limit (~1MB)
+  const maxLogs = 800;
+  const truncatedLogs = logs.length > maxLogs
+    ? [...logs.slice(0, 50), `... (${logs.length - maxLogs} lines omitted) ...`, ...logs.slice(-maxLogs + 50)]
+    : logs;
+  const truncatedErrors = errors.length > 100
+    ? [...errors.slice(0, 100), `... and ${errors.length - 100} more errors`]
+    : errors;
+
+  return { studentsUpdated, companiesSynced: synced, errors: truncatedErrors, logs: truncatedLogs };
+}
+
+/** Field variants for company_matching_response ↔ students junction. */
+const COMPANY_STUDENTS_JUNCTION_FIELD_VARIANTS: { cmr: string; student: string }[] = [
+  { cmr: "company_matching_response_id", student: "students_id" },
+  { cmr: "company_matching_response", student: "students" },
+  { cmr: "company_matching_response_id", student: "student_id" },
+  { cmr: "company_matching_response", student: "student" },
+];
+
+/** Update company_matching_response.students via junction table (primary) or Directus PATCH. */
+async function updateCompanyMatchingResponseStudents(
+  companyResponseId: string | number,
+  studentIds: string[],
+  companyId: string,
+  matchingSoftwareId: string
+): Promise<CompanyMatchingResponse | null> {
+  const client = await getServerDirectusClient();
+
+  // ID variants for delete filter: junction may store integer FK, so string filter can match 0 rows
+  const idForDelete: (string | number)[] = [companyResponseId];
+  const strId = String(companyResponseId);
+  if (/^\d+$/.test(strId)) idForDelete.push(Number(strId));
+
+  // Primary: junction table directly (same approach as student_matching_response_company)
+  for (const junction of COMPANY_STUDENTS_JUNCTION) {
+    for (const { cmr: cmrField, student: studentField } of COMPANY_STUDENTS_JUNCTION_FIELD_VARIANTS) {
+      try {
+        // Delete existing rows (try both string/number so we actually empty the junction and avoid duplicates)
+        await client.request(deleteItems(junction as any, { filter: { [cmrField]: { _in: idForDelete } } }));
+        for (const studentId of studentIds) {
+          await client.request(createItem(junction as any, { [cmrField]: companyResponseId, [studentField]: studentId }));
+        }
+        console.log("[Matching] updateCompanyMatchingResponseStudents: success via junction", junction, "fields:", cmrField, studentField, "| students:", studentIds.length);
+        return getCompanyMatchingResponse(companyId, matchingSoftwareId);
+      } catch (err) {
+        console.log("[Matching] updateCompanyMatchingResponseStudents: junction failed", junction, cmrField, studentField, "|", err);
+      }
+    }
+  }
+
+  // Fallback: Directus PATCH with M2M field (various formats Directus may accept)
+  const payloads = [
+    { students: studentIds },
+    { students: studentIds.map((id) => ({ id })) },
+    { students: studentIds.map((id) => ({ students_id: id })) },
+    { students: studentIds.map((id) => ({ student_id: id })) },
+  ];
+  for (const collection of COMPANY_MATCHING_RESPONSE_COLLECTIONS) {
+    for (const payload of payloads) {
+      try {
+        await client.request(updateItem(collection as any, companyResponseId, payload));
+        console.log("[Matching] updateCompanyMatchingResponseStudents: success via PATCH", collection, "| students:", studentIds.length);
+        return getCompanyMatchingResponse(companyId, matchingSoftwareId);
+      } catch (err) {
+        console.log("[Matching] updateCompanyMatchingResponseStudents: PATCH failed", collection, "|", err);
+      }
+    }
+  }
+
+  console.error("[updateCompanyMatchingResponseStudents] Failed for all methods");
+  return null;
 }
 
 /** Get general_info_answers for multiple companies. Returns map of companyId -> GeneralInfoAnswers. */
@@ -513,14 +1336,15 @@ export async function createMatchingSoftware(data: {
   throw lastError;
 }
 
-/** Update matching software (e.g. toggle active). */
+/** Update matching software (e.g. toggle active, companies_can_view_matches). */
 export async function updateMatchingSoftware(
   id: string,
-  data: { active?: boolean }
+  data: { active?: boolean; companies_can_view_matches?: boolean }
 ): Promise<MatchingSoftware | null> {
   const client = await getAuthedDirectusOrThrow();
   const payload: Record<string, unknown> = {};
   if (data.active !== undefined) payload.active = data.active;
+  if (data.companies_can_view_matches !== undefined) payload.companies_can_view_matches = data.companies_can_view_matches;
 
   if (Object.keys(payload).length === 0) return null;
 
@@ -603,8 +1427,9 @@ export async function createStudentMatchingResponse(data: {
       const result = (await client.request(createItem(collection as any, payload))) as unknown as StudentMatchingResponse;
       console.log("[createStudentMatchingResponse] Created in", collection, "result id:", result?.id);
 
+      let matchedCompanyIds: string[] = [];
       try {
-        await computeAndStoreCompanyMatches(
+        matchedCompanyIds = await computeAndStoreCompanyMatches(
           result.id,
           data.matching_software,
           data.riasec,
@@ -613,6 +1438,15 @@ export async function createStudentMatchingResponse(data: {
         );
       } catch (matchErr) {
         console.error("[createStudentMatchingResponse] Matching failed (non-fatal):", matchErr);
+      }
+
+      // Sync company matches for each company this student matched with (so companies see the new student)
+      for (const companyId of matchedCompanyIds) {
+        try {
+          await syncCompanyMatchedStudents(companyId, data.matching_software);
+        } catch (syncErr) {
+          console.error("[createStudentMatchingResponse] Sync company", companyId, "failed (non-fatal):", syncErr);
+        }
       }
 
       const refetched = await getStudentMatchingResponse(data.student, data.matching_software);
@@ -714,7 +1548,8 @@ async function getCompanyMatchingResponsesForMatchingSoftware(
   return [];
 }
 
-const TARGET_MATCH_COUNT = 30;
+const TARGET_MATCH_COUNT = 30; // Per student: top 30 companies
+const MAX_COMPANY_MATCHES = 50; // Per company: top 50 students by score
 
 const GENERAL_INFO_WEIGHT = 3; // Each overlapping general-info option reduces score by this much (lower score = better match)
 
@@ -831,7 +1666,21 @@ export async function getMatchScoresForResponse(
   return result;
 }
 
-const JUNCTION_COLLECTIONS = ["student_matching_response_company", "Student_Matching_Response_Company"] as const;
+/** Junction for student_matching_response.companies M2M. Directus may use field name (companies) or collection (company). */
+const JUNCTION_COLLECTIONS = [
+  "student_matching_response_company",
+  "Student_Matching_Response_Company",
+  "student_matching_response_companies",
+  "Student_Matching_Response_Companies",
+] as const;
+
+/** Junction for company_matching_response M2M students. Directus may use different naming. */
+const COMPANY_STUDENTS_JUNCTION = [
+  "company_matching_response_students",
+  "Company_Matching_Response_Students",
+  "students_company_matching_response",
+  "Students_Company_Matching_Response",
+] as const;
 
 const MATCHES_RECOMPUTE_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -870,10 +1719,8 @@ export async function shouldRecomputeMatches(responseId: string): Promise<boolea
   return Date.now() - lastAt.getTime() > MATCHES_RECOMPUTE_INTERVAL_MS;
 }
 
-/** Fetch matched companies for a student response by reading the junction table directly. */
-export async function getMatchedCompaniesForResponse(
-  responseId: string
-): Promise<MatchedCompany[]> {
+/** Get company IDs matched to a student response (from junction). Lightweight, no company fetch. */
+export async function getMatchedCompanyIdsForResponse(responseId: string): Promise<string[]> {
   const client = await getServerDirectusClient();
   const companyFieldVariants = ["company_id", "company"] as const;
   const respFieldVariants = ["student_matching_response_id", "student_matching_response"] as const;
@@ -895,9 +1742,7 @@ export async function getMatchedCompaniesForResponse(
               return typeof v === "string" ? v : (v as { id?: string })?.id ?? "";
             })
             .filter(Boolean);
-          if (ids.length > 0) {
-            return getCompaniesByIds(ids);
-          }
+          if (ids.length > 0) return ids;
         } catch {
           // Try next variant
         }
@@ -905,6 +1750,14 @@ export async function getMatchedCompaniesForResponse(
     }
   }
   return [];
+}
+
+/** Fetch matched companies for a student response by reading the junction table directly. */
+export async function getMatchedCompaniesForResponse(
+  responseId: string
+): Promise<MatchedCompany[]> {
+  const ids = await getMatchedCompanyIdsForResponse(responseId);
+  return ids.length > 0 ? getCompaniesByIds(ids) : [];
 }
 
 export type MatchedCompany = { id: string; name?: string; logo?: string; status?: string; options?: unknown[] };

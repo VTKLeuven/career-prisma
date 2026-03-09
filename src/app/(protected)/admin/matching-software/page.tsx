@@ -7,6 +7,7 @@ import {
   listMatchingSoftwareAction,
   createMatchingSoftwareAction,
   updateMatchingSoftwareAction,
+  getCompanyMatchCountsAction,
 } from "@/app/actions/matching-software";
 import { fetchAcademicYearsAction } from "@/app/actions/cv-book";
 import { fetchFormsAction } from "@/app/actions/forms";
@@ -30,7 +31,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus } from "lucide-react";
+import { Plus, RefreshCw, Loader2, BarChart3, ArrowUp, ArrowDown } from "lucide-react";
 import { useUser } from "@/providers/UserProvider";
 import type { MatchingSoftware, AcademicYear, Form, CareerEvent } from "@/lib/schema";
 
@@ -70,6 +71,11 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [togglingViewId, setTogglingViewId] = useState<string | null>(null);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const [updateLogs, setUpdateLogs] = useState<string[]>([]);
+  const [updateResult, setUpdateResult] = useState<{ studentsUpdated: number; companiesSynced: number; errors: string[] } | null>(null);
 
   const loadItems = React.useCallback(() => {
     setError(null);
@@ -110,6 +116,58 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
     }
   };
 
+  const handleToggleCompaniesCanViewMatches = async (item: MatchingSoftwareRow) => {
+    setTogglingViewId(item.id);
+    try {
+      const next = !(item.companies_can_view_matches ?? false);
+      await updateMatchingSoftwareAction(item.id, { companies_can_view_matches: next });
+      setItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, companies_can_view_matches: next } : i))
+      );
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update. Please try again.");
+    } finally {
+      setTogglingViewId(null);
+    }
+  };
+
+  const handleFullUpdate = async (item: MatchingSoftwareRow) => {
+    setSyncingId(item.id);
+    setUpdateDialogOpen(true);
+    setUpdateLogs(["Syncing company matches… Please wait."]);
+    setUpdateResult(null);
+    try {
+      const id = String(item.id);
+      const res = await fetch(`/api/admin/matching-software/full-update?matchingSoftwareId=${encodeURIComponent(id)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchingSoftwareId: id }),
+      });
+      const result = await res.json();
+      setUpdateLogs(result.logs ?? []);
+      setUpdateResult({
+        studentsUpdated: result.studentsUpdated ?? 0,
+        companiesSynced: result.companiesSynced ?? 0,
+        errors: result.errors ?? [],
+      });
+      if (!res.ok) {
+        setUpdateLogs((prev) => [...prev, `[HTTP ${res.status}] ${result.error ?? "Request failed"}`]);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(err);
+      setUpdateLogs((prev) => [...prev, `[Error] ${msg}`]);
+      setUpdateResult({
+        studentsUpdated: 0,
+        companiesSynced: 0,
+        errors: [`Request failed: ${msg}`],
+      });
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
   if (loading) {
     return (
       <Card>
@@ -135,6 +193,7 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
   }
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle>Matching Software Configurations</CardTitle>
@@ -163,7 +222,21 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
                     {(item.prerequisite_form as Form)?.name || "None"}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
+                  <ViewMatchesDialog item={item} />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleFullUpdate(item)}
+                    disabled={syncingId === item.id}
+                  >
+                    {syncingId === item.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    <span className="ml-1.5">{syncingId === item.id ? "Syncing…" : "Sync company matches"}</span>
+                  </Button>
                   <Checkbox
                     id={`active-${item.id}`}
                     checked={item.active ?? true}
@@ -180,6 +253,22 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
                       <span className="text-muted-foreground">Inactive</span>
                     )}
                   </Label>
+                  <Checkbox
+                    id={`view-${item.id}`}
+                    checked={item.companies_can_view_matches ?? false}
+                    onCheckedChange={() => handleToggleCompaniesCanViewMatches(item)}
+                    disabled={togglingViewId === item.id}
+                  />
+                  <Label
+                    htmlFor={`view-${item.id}`}
+                    className="text-sm cursor-pointer select-none"
+                  >
+                    {item.companies_can_view_matches ? (
+                      <span className="text-green-600">Companies can view matches</span>
+                    ) : (
+                      <span className="text-muted-foreground">Companies can view matches</span>
+                    )}
+                  </Label>
                 </div>
               </div>
             ))}
@@ -187,6 +276,148 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
         )}
       </CardContent>
     </Card>
+
+    <Dialog open={updateDialogOpen} onOpenChange={setUpdateDialogOpen}>
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Sync company matches – log</DialogTitle>
+          <DialogDescription>
+            {updateResult ? (
+              <span>
+                Companies: {updateResult.companiesSynced} synced
+                {updateResult.errors.length > 0 && ` • ${updateResult.errors.length} errors`}
+              </span>
+            ) : (
+              "Sync company_matching_response.students from student matches. Clear students manually in Directus first if needed."
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex-1 min-h-0 overflow-auto">
+          <pre className="text-xs font-mono bg-muted/50 p-3 rounded-md whitespace-pre-wrap break-words">
+            {updateLogs.length > 0 ? updateLogs.join("\n") : "No logs yet."}
+          </pre>
+          {updateResult && updateResult.errors.length > 0 && (
+            <div className="mt-3 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+              <p className="font-medium">Errors:</p>
+              <ul className="list-disc list-inside mt-1">
+                {updateResult.errors.slice(0, 10).map((e, i) => (
+                  <li key={i}>{e}</li>
+                ))}
+                {updateResult.errors.length > 10 && (
+                  <li>… and {updateResult.errors.length - 10} more</li>
+                )}
+              </ul>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
+  );
+}
+
+type MatchCountRow = { companyId: string; companyName: string; matchCount: number };
+
+function ViewMatchesDialog({ item }: { item: MatchingSoftwareRow }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<MatchCountRow[]>([]);
+  const [sortBy, setSortBy] = useState<"name" | "matches">("matches");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  useEffect(() => {
+    if (open && item.id) {
+      setLoading(true);
+      getCompanyMatchCountsAction(item.id)
+        .then((rows) => setData(rows ?? []))
+        .catch(() => setData([]))
+        .finally(() => setLoading(false));
+    }
+  }, [open, item.id]);
+
+  const sorted = React.useMemo(() => {
+    const arr = [...data];
+    arr.sort((a, b) => {
+      if (sortBy === "name") {
+        const cmp = (a.companyName || a.companyId).localeCompare(b.companyName || b.companyId, undefined, { sensitivity: "base" });
+        return sortDir === "asc" ? cmp : -cmp;
+      }
+      const cmp = a.matchCount - b.matchCount;
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return arr;
+  }, [data, sortBy, sortDir]);
+
+  const toggleSort = (field: "name" | "matches") => {
+    if (sortBy === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(field);
+      setSortDir(field === "matches" ? "desc" : "asc");
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <BarChart3 className="h-4 w-4" />
+          <span className="ml-1.5">View matches</span>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Match counts per company</DialogTitle>
+          <DialogDescription>
+            {(item.event as CareerEvent)?.name || "Event"} – {(item.year as AcademicYear)?.name || "Year"}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm text-muted-foreground">Sort by:</span>
+          <Button
+            variant={sortBy === "name" ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => toggleSort("name")}
+          >
+            Name {sortBy === "name" && (sortDir === "asc" ? <ArrowUp className="ml-1 h-3 w-3" /> : <ArrowDown className="ml-1 h-3 w-3" />)}
+          </Button>
+          <Button
+            variant={sortBy === "matches" ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => toggleSort("matches")}
+          >
+            Matches {sortBy === "matches" && (sortDir === "asc" ? <ArrowUp className="ml-1 h-3 w-3" /> : <ArrowDown className="ml-1 h-3 w-3" />)}
+          </Button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-auto border rounded-md">
+          {loading ? (
+            <div className="py-12 text-center text-muted-foreground">Loading…</div>
+          ) : sorted.length === 0 ? (
+            <div className="py-12 text-center text-muted-foreground">No companies with completed matching.</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 sticky top-0">
+                <tr>
+                  <th className="text-left p-3 font-medium">Company</th>
+                  <th className="text-right p-3 font-medium">Matches</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((row) => (
+                  <tr key={row.companyId} className="border-t">
+                    <td className="p-3">{row.companyName || row.companyId || "—"}</td>
+                    <td className="p-3 text-right font-medium">{row.matchCount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {sorted.length} companies • Total: {sorted.reduce((s, r) => s + r.matchCount, 0)} matches
+        </p>
+      </DialogContent>
+    </Dialog>
   );
 }
 

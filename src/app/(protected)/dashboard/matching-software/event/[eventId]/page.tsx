@@ -6,30 +6,38 @@ import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { CompanyMatchingForm } from "@/components/CompanyMatchingForm";
 import { getMatchingSoftwareForEventAction } from "@/app/actions/matching-software";
+import { fetchCompanyByIdAction } from "@/app/actions/companies";
 import { useUser } from "@/providers/UserProvider";
+import { hasMatchingSoftwareSubOption } from "@/lib/utils/company-access";
+import type { Company } from "@/lib/schema";
 
 export default function EventMatchingSoftwarePage() {
   const { user } = useUser();
   const params = useParams();
   const eventId = (Array.isArray(params?.eventId) ? params.eventId?.[0] : params?.eventId) as string | undefined;
-  const [matchingSoftware, setMatchingSoftware] = useState<{ id: string } | null>(null);
+  const [matchingSoftware, setMatchingSoftware] = useState<{ id: string; companies_can_view_matches?: boolean } | null>(null);
   const [eventName, setEventName] = useState<string>("");
+  const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!eventId) {
+    if (!eventId || !user?.company?.id) {
       setLoading(false);
       return;
     }
-    getMatchingSoftwareForEventAction(eventId)
-      .then((ms) => {
-        setMatchingSoftware(ms ? { id: ms.id } : null);
+    Promise.all([
+      getMatchingSoftwareForEventAction(eventId),
+      fetchCompanyByIdAction(user.company.id, false, true),
+    ])
+      .then(([ms, c]) => {
+        setMatchingSoftware(ms ? { id: ms.id, companies_can_view_matches: ms.companies_can_view_matches } : null);
         const ev = ms?.event;
         setEventName(typeof ev === "object" && ev && "name" in ev ? (ev as { name: string }).name : "");
+        setCompany((c as Company) ?? null);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [eventId]);
+  }, [eventId, user?.company?.id]);
 
   if (!eventId) {
     return (
@@ -77,6 +85,10 @@ export default function EventMatchingSoftwarePage() {
         companyId={user.company.id}
         matchingSoftwareId={matchingSoftware.id}
         eventName={eventName || undefined}
+        companiesCanViewMatches={
+          (matchingSoftware.companies_can_view_matches ?? false) &&
+          hasMatchingSoftwareSubOption(company)
+        }
       />
     </div>
   );

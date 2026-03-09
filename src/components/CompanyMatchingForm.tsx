@@ -5,9 +5,9 @@ import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { IconCheck, IconRefresh } from "@tabler/icons-react";
+import { IconCheck, IconRefresh, IconUsers, IconList } from "@tabler/icons-react";
 import {
-  getCompanyMatchingResponseAction,
+  getCompanyMatchingResponseForCompanyViewAction,
   saveCompanyMatchingResponseAction,
 } from "@/app/actions/matching-software";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -26,6 +26,9 @@ import {
   GENERAL_INFO_WORK_OPTIONS,
   type GeneralInfoAnswers,
 } from "@/lib/matching-general-info";
+import { cn } from "@/lib/utils";
+
+type MatchedStudent = { id: string; first_name: string | null; last_name: string | null; email: string };
 
 type Question = {
   id: number;
@@ -155,13 +158,37 @@ function calculateCulturePercentages(answers: Record<string, string>): Record<st
   };
 }
 
+function normalizeStudents(raw: unknown): MatchedStudent[] {
+  if (!raw) return [];
+  let arr: unknown[] = [];
+  if (Array.isArray(raw)) arr = raw;
+  else if (typeof raw === "object" && raw !== null && "data" in raw && Array.isArray((raw as { data: unknown }).data)) {
+    arr = (raw as { data: unknown[] }).data;
+  } else return [];
+  return arr
+    .map((item): MatchedStudent | null => {
+      if (item == null) return null;
+      if (typeof item === "string") return { id: item, first_name: null, last_name: null, email: "" };
+      if (typeof item !== "object") return null;
+      const o = item as Record<string, unknown>;
+      const id = typeof o.id === "string" ? o.id : typeof o.id === "number" ? String(o.id) : null;
+      if (!id) return null;
+      const first_name = o.first_name != null ? String(o.first_name) : null;
+      const last_name = o.last_name != null ? String(o.last_name) : null;
+      const email = typeof o.email === "string" ? o.email : "";
+      return { id, first_name, last_name, email };
+    })
+    .filter((s): s is MatchedStudent => s !== null);
+}
+
 type Props = {
   companyId: string;
   matchingSoftwareId: string;
   eventName?: string;
+  companiesCanViewMatches?: boolean;
 };
 
-export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName }: Props) {
+export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName, companiesCanViewMatches = false }: Props) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [generalInfo, setGeneralInfo] = useState<GeneralInfoAnswers>({
     work_preference: [],
@@ -170,26 +197,39 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName }
   });
   const [savedSnapshot, setSavedSnapshot] = useState<Record<string, string> | null>(null);
   const [savedGeneralInfoSnapshot, setSavedGeneralInfoSnapshot] = useState<GeneralInfoAnswers | null>(null);
+  const [students, setStudents] = useState<MatchedStudent[]>([]);
   const [loading, setLoading] = useState(true);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [activeTab, setActiveTab] = useState<"questions" | "matches">("questions");
+
+  async function loadResponse() {
+    const existing = await getCompanyMatchingResponseForCompanyViewAction(companyId, matchingSoftwareId);
+    if (existing) {
+      const existingAnswers = existing.ocia_answers ? { ...existing.ocia_answers } : {};
+      setAnswers(existingAnswers);
+      setSavedSnapshot(existingAnswers);
+      const gi = (existing as { general_info_answers?: GeneralInfoAnswers })?.general_info_answers ?? {
+        work_preference: [],
+        company_type: [],
+        work_options: [],
+      };
+      setGeneralInfo(gi);
+      setSavedGeneralInfoSnapshot(gi);
+      const rawStudents = (existing as { students?: unknown }).students;
+      setStudents(normalizeStudents(rawStudents));
+      // Default to Matches tab when company has access and has completed questions
+      if (companiesCanViewMatches && existingAnswers && Object.keys(existingAnswers).length >= 13) {
+        setActiveTab("matches");
+      }
+    }
+    return existing;
+  }
 
   useEffect(() => {
-    getCompanyMatchingResponseAction(companyId, matchingSoftwareId)
-      .then((existing) => {
-        const existingAnswers = existing?.ocia_answers ? { ...existing.ocia_answers } : {};
-        setAnswers(existingAnswers);
-        setSavedSnapshot(existingAnswers);
-        const gi = (existing as { general_info_answers?: GeneralInfoAnswers })?.general_info_answers ?? {
-          work_preference: [],
-          company_type: [],
-          work_options: [],
-        };
-        setGeneralInfo(gi);
-        setSavedGeneralInfoSnapshot(gi);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    loadResponse().catch(console.error).finally(() => setLoading(false));
   }, [companyId, matchingSoftwareId]);
+
+  const hasCompletedQuestions = savedSnapshot && Object.keys(savedSnapshot).length >= 13;
 
   const isDirty = useMemo(() => {
     if (!savedSnapshot) return false;
@@ -222,16 +262,87 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName }
     <>
     <Card className="rounded-2xl shadow-md">
       <CardHeader>
-        <CardTitle className="text-xl">Matching Software{eventName ? ` – ${eventName}` : ""}</CardTitle>
-        <CardDescription>
-          Complete these questions to refine your student matches. Your preferred student study programs (e.g. Mechanical Engineering, Electrical Engineering,…) are already synced from your{" "}
-          <Link href="/dashboard/settings/information" className="underline font-medium text-foreground hover:no-underline">
-            Settings → Company Information
-          </Link>
-          {" "}and can be adjusted there at any time.
-        </CardDescription>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <CardTitle className="text-xl">Matching Software{eventName ? ` – ${eventName}` : ""}</CardTitle>
+            <CardDescription>
+              Complete these questions to refine your student matches. Your preferred student study programs (e.g. Mechanical Engineering, Electrical Engineering,…) are already synced from your{" "}
+              <Link href="/dashboard/settings/information" className="underline font-medium text-foreground hover:no-underline">
+                Settings → Company Information
+              </Link>
+              {" "}and can be adjusted there at any time.
+            </CardDescription>
+          </div>
+          {hasCompletedQuestions && (
+            <div className="flex rounded-lg border border-border bg-muted/30 p-0.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setActiveTab("questions")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  activeTab === "questions"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <IconList size={16} /> Questions
+              </button>
+              {companiesCanViewMatches && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("matches")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                    activeTab === "matches"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <IconUsers size={16} /> {students.length > 0 ? `View matches (${students.length})` : "Matches"}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
+        {hasCompletedQuestions && companiesCanViewMatches && activeTab === "matches" ? (
+          <div className="space-y-6">
+            {eventName && (
+              <p className="text-sm font-medium text-muted-foreground">
+                Matching software: {eventName}
+              </p>
+            )}
+            <p className="text-sm text-muted-foreground">
+              Students who matched with your company. An admin can update matches for all companies from the admin matching software page.
+            </p>
+            {students.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border p-8 text-center">
+                <IconUsers className="mx-auto h-12 w-12 text-muted-foreground/50 mb-3" />
+                <p className="text-muted-foreground">No matches yet. An admin can run &quot;Update matches&quot; to sync student matches.</p>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {students.map((s) => (
+                  <div
+                    key={s.id}
+                    className="rounded-lg border border-border bg-card p-4 shadow-sm"
+                  >
+                    <p className="font-medium">
+                      {[s.first_name, s.last_name].filter(Boolean).join(" ") || "—"}
+                    </p>
+                    <a
+                      href={`mailto:${s.email}`}
+                      className="text-sm text-muted-foreground hover:text-foreground hover:underline"
+                    >
+                      {s.email}
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-8">
           {QUESTIONS.map((question) => {
             const options = getOptions(question);
@@ -331,6 +442,7 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName }
             </Button>
           </div>
         </form>
+        )}
       </CardContent>
     </Card>
 
