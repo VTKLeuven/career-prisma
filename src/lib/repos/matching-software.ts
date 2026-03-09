@@ -1045,12 +1045,12 @@ async function clearAllCompanyMatchingResponseStudentsJunction(
   if (cleared === 0) log?.("Warning: no junction table could be cleared – check Directus schema");
 
   // Also PATCH each company_matching_response to explicitly clear the students field (Directus may cache/sync separately)
-  const payloads = [{ students: [] }, { students: null }];
+  const payloads: Array<Record<string, unknown>> = [{ students: [] }, { students: null }];
   for (const collection of COMPANY_MATCHING_RESPONSE_COLLECTIONS) {
     for (const payload of payloads) {
       try {
         for (const item of cmrItems) {
-          await client.request(updateItem(collection as any, item.id, payload));
+          await client.request(updateItem(collection as any, item.id, payload as any));
         }
         log?.(`Cleared students field on ${cmrItems.length} company_matching_response rows`);
         return;
@@ -1214,7 +1214,7 @@ async function updateCompanyMatchingResponseStudents(
   for (const collection of COMPANY_MATCHING_RESPONSE_COLLECTIONS) {
     for (const payload of payloads) {
       try {
-        await client.request(updateItem(collection as any, companyResponseId, payload));
+        await client.request(updateItem(collection as any, companyResponseId, payload as any));
         console.log("[Matching] updateCompanyMatchingResponseStudents: success via PATCH", collection, "| students:", studentIds.length);
         return getCompanyMatchingResponse(companyId, matchingSoftwareId);
       } catch (err) {

@@ -1229,11 +1229,21 @@ function CompanySubOptionsSection({ company, allSubOptions, onSubOptionsChange }
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              {availableToAdd.map((s) => (
-                <DropdownMenuItem key={s.id} onSelect={() => handleAdd(String(s.id))}>
-                  {s.name}
-                </DropdownMenuItem>
-              ))}
+              {availableToAdd.map((s) => {
+                const subId = String(s.id);
+                return (
+                  <DropdownMenuItem
+                    key={s.id}
+                    onSelect={(e) => {
+                      const id = (e.currentTarget as HTMLElement)?.getAttribute?.("data-suboption-id") ?? subId;
+                      handleAdd(id);
+                    }}
+                    data-suboption-id={subId}
+                  >
+                    {s.name}
+                  </DropdownMenuItem>
+                );
+              })}
             </DropdownMenuContent>
           </DropdownMenu>
         )}
