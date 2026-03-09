@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readItems, updateItem } from "@directus/sdk";
+import { readItems, updateItem, deleteItem } from "@directus/sdk";
 import { getAdminDirectusClient } from "@/lib/directus";
 import { getUserFromRequestWithRefresh } from "@/lib/auth-server";
 
@@ -244,5 +244,79 @@ export async function PATCH(
 
   // Return updated scan payload
   return GET(request, context);
+}
+
+export async function DELETE(
+  request: NextRequest,
+  context: { params: Promise<{ scanId: string }> }
+) {
+  const { scanId } = await context.params;
+
+  const { user, cookiesToSet } = await getUserFromRequestWithRefresh(request);
+  if (!user) {
+    const res = NextResponse.json(
+      { error: "Unauthorized. Please log in as a company representative." },
+      { status: 401 }
+    );
+    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
+    return res;
+  }
+  if (!user.company) {
+    const res = NextResponse.json(
+      { error: "Your account is signed in, but it is not linked to a company." },
+      { status: 403 }
+    );
+    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
+    return res;
+  }
+
+  const companyId = extractCompanyId(user.company);
+  if (!companyId) {
+    const res = NextResponse.json({ error: "Company ID not found." }, { status: 400 });
+    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
+    return res;
+  }
+
+  const client = getAdminDirectusClient();
+  if (!client) {
+    const res = NextResponse.json(
+      { error: "Failed to connect to database. Please try again later." },
+      { status: 500 }
+    );
+    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
+    return res;
+  }
+
+  const existing = (await client.request(
+    readItems("attendant_scans", {
+      fields: ["id", { company_id: ["id"] }, { scanned_by: ["id"] }],
+      filter: { id: { _eq: scanId } },
+      limit: 1,
+    })
+  )) as unknown as Array<{ id: string; company_id?: unknown; scanned_by?: unknown }>;
+
+  if (!existing.length) {
+    const res = NextResponse.json({ error: "Scan not found" }, { status: 404 });
+    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
+    return res;
+  }
+
+  const belongs = await scanBelongsToCompany({
+    client,
+    scan: existing[0],
+    companyId,
+    userId: user.id,
+  });
+  if (!belongs) {
+    const res = NextResponse.json({ error: "Scan not found" }, { status: 404 });
+    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
+    return res;
+  }
+
+  await client.request(deleteItem("attendant_scans", scanId));
+
+  const res = NextResponse.json({ success: true });
+  for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
+  return res;
 }
 
