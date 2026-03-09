@@ -8,7 +8,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { validateExistingPageImage } from "@/lib/utils/image-validation";
 import { Calendar } from "lucide-react";
-import { fetchCompanyBySlugWithSubOptionsAction } from "@/app/actions/companies";
 import { slugifyCompanyName, slugifyEventName } from "@/lib/utils/slugify";
 import { fetchEventsAction } from "@/app/actions/events";
 import { Button } from "@/components/ui/button";
@@ -81,10 +80,15 @@ export default function CompanyPage() {
 
     async function loadCompany() {
       try {
-        const [{ company: fetched, allSubOptions }, { hasCompanyPageAccess }] = await Promise.all([
-          fetchCompanyBySlugWithSubOptionsAction(companyName ?? ""),
-          import("@/lib/utils/company-access"),
-        ]);
+        const res = await fetch(`/api/company/${encodeURIComponent(companyName ?? "")}`);
+        const { hasCompanyPageAccess } = await import("@/lib/utils/company-access");
+        let fetched: Company | null = null;
+        let allSubOptions: import("@/lib/schema").CareerSubOption[] = [];
+        if (res.ok) {
+          const data = await res.json();
+          fetched = data.company ?? null;
+          allSubOptions = data.allSubOptions ?? [];
+        }
         if (fetched) {
           // Check if company has access to company page (sub-option + published)
           if (!hasCompanyPageAccess(fetched, allSubOptions ?? [])) {
@@ -580,7 +584,7 @@ function Header() {
             {!student && !companyRep && (
               <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/student-login">Student login</Link></Button>
             )}
-            {companyRep && (
+            {!student && companyRep && (
               <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>
             )}
             {student && (
@@ -735,7 +739,7 @@ function Header() {
                       <Link href="/student-login">Student login</Link>
                     </Button>
                   )}
-                  {companyRep && (
+                  {!student && companyRep && (
                     <Button 
                       asChild
                       className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"

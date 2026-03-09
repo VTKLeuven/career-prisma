@@ -137,8 +137,8 @@ export default function BoothClient({
                     </p>
                     <p className="text-xs text-muted-foreground mt-4">
                         {isPreparing
-                            ? 'A shifter is now preparing your order. It will arrive soon!'
-                            : 'Please wait until a shifter picks up your order.'}
+                            ? 'Your order is being prepared. It wil arrive soon!'
+                            : 'Your order is being picked up soon.'}
                     </p>
 
                     {!isPreparing && (
@@ -224,7 +224,7 @@ export default function BoothClient({
             )}
 
             {totalItems > 0 && (
-                <div className="fixed bottom-4 left-4 right-4 max-w-md mx-auto">
+                <div className="sticky bottom-4 z-50 mt-4">
                     <Button size="lg" className="w-full shadow-lg text-lg" onClick={handlePlaceOrder} disabled={submitting}>
                         {submitting ? <Loader2 className="mr-2 animate-spin" /> : <ShoppingCart className="mr-2" />}
                         Place Order ({totalItems} items)

@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { updateBoothCompany, getBoothsForFloorplan } from "@/lib/repos/floorplan";
+import { invalidateFloorplanCache } from "@/lib/floorplan-cache";
 import { getCompanyById } from "@/lib/repos/company";
 import { getCompanySubOptionAnyStatus } from "@/lib/utils/company-access";
 import { readItems } from "@directus/sdk";
@@ -83,6 +84,9 @@ export async function POST(req: Request) {
         { status: 500 }
       );
     }
+
+    // Invalidate floorplan cache so public floorplan shows updated booth assignments
+    invalidateFloorplanCache();
 
     return NextResponse.json({
       success: true,

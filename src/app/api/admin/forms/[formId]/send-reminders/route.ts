@@ -3,14 +3,17 @@ import { getServerDirectusClient } from "@/lib/directus";
 import { readItems, readItem } from "@directus/sdk";
 import { sendEmail } from "@/lib/repos/directus";
 import { getUserFromCookies } from "@/lib/auth-server";
-import { cookies } from "next/headers";
+import {
+  emailJobManager,
+  type EmailTask,
+  type EmailTaskResult,
+} from "@/lib/email-job-manager";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ formId: string }> }
 ) {
   try {
-    // Check authentication
     const user = await getUserFromCookies();
     if (!user?.admin) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -42,15 +45,17 @@ export async function POST(
       );
     }
 
-    // Get form version details
-    const formVersion = await client.request(
+    const formVersion = (await client.request(
       readItem("form_versions" as any, formVersionId, {
         fields: ["*", { form_id: ["id", "name", "slug"] }, "metadata"],
       })
-    ) as any;
+    )) as any;
 
     if (!formVersion) {
-      return NextResponse.json({ error: "Form version not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Form version not found" },
+        { status: 404 }
+      );
     }
 
     const form = formVersion.form_id;
@@ -64,63 +69,64 @@ export async function POST(
       );
     }
 
-    // Build form URL
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_FORM_DOMAIN || "http://localhost:3000";
+    const baseUrl =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.NEXT_PUBLIC_FORM_DOMAIN ||
+      "http://localhost:3000";
     const formUrl = `${baseUrl}/forms/company/${eventId}/${form.slug}`;
 
-    // Get company details for placeholders
-    const companyIds = [...new Set(recipients.map((r: any) => r.companyId))];
-    const companies = await client.request(
+    const companyIds = [
+      ...new Set(recipients.map((r: any) => r.companyId)),
+    ];
+    const companies = (await client.request(
       readItems("company" as any, {
         fields: ["id", "name"],
-        filter: {
-          id: { _in: companyIds },
-        },
+        filter: { id: { _in: companyIds } },
         limit: -1,
       })
-    ) as any[];
+    )) as any[];
 
-    const companyMap = new Map(companies.map((c: any) => [c.id, c.name]));
+    const companyMap = new Map(
+      companies.map((c: any) => [c.id, c.name])
+    );
 
-    // Get representative details
     const repIds = recipients.map((r: any) => r.repId);
-    const representatives = await client.request(
+    const representatives = (await client.request(
       readItems("directus_users" as any, {
         fields: ["id", "first_name", "last_name", "email"] as any,
-        filter: {
-          id: { _in: repIds },
-        },
+        filter: { id: { _in: repIds } },
         limit: -1,
       })
-    ) as any[];
+    )) as any[];
 
-    const repMap = new Map(representatives.map((r: any) => [r.id, r]));
+    const repMap = new Map(
+      representatives.map((r: any) => [r.id, r])
+    );
 
-    // Send emails to selected recipients
-    let sent = 0;
-    let failed = 0;
-    const errors: string[] = [];
+    const tasks: EmailTask[] = [];
+    let preSkipped = 0;
 
     for (const recipient of recipients) {
       const rep = repMap.get(recipient.repId);
-      const companyName = companyMap.get(recipient.companyId) || "Unknown Company";
+      const companyName =
+        companyMap.get(recipient.companyId) || "Unknown Company";
 
       if (!rep || !rep.email) {
-        failed++;
-        errors.push(`${companyName} - ${recipient.email || 'Unknown'}: No email address`);
+        preSkipped++;
         continue;
       }
 
-      try {
-        const repName = [rep.first_name, rep.last_name].filter(Boolean).join(" ") || "there";
+      // Capture for closure
+      const repEmail = rep.email;
+      const repName =
+        [rep.first_name, rep.last_name].filter(Boolean).join(" ") || "there";
 
-        // Replace placeholders in subject and content
+      tasks.push(async (): Promise<EmailTaskResult> => {
         let emailSubject = subject
           .replace(/{name}/g, repName)
           .replace(/{company}/g, companyName)
           .replace(/{form_name}/g, form.name);
 
-        // Create clickable link HTML for form_link placeholder
         const formLinkHtml = `<a href="${formUrl}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: 500;">Complete Form</a><br><br><p style="word-break: break-all; color: #2563eb;">${formUrl}</p>`;
 
         let emailContent = content
@@ -129,17 +135,17 @@ export async function POST(
           .replace(/{form_name}/g, form.name)
           .replace(/{form_link}/g, formLinkHtml);
 
-        // Convert newlines to <br> if content doesn't appear to be HTML
-        if (!emailContent.includes('<') || !emailContent.includes('>')) {
-          emailContent = emailContent.replace(/\n/g, '<br>');
+        if (!emailContent.includes("<") || !emailContent.includes(">")) {
+          emailContent = emailContent.replace(/\n/g, "<br>");
         }
 
-        // Wrap in basic HTML structure if not already HTML
-        if (!emailContent.includes('<p>') && !emailContent.includes('<div>')) {
-          emailContent = `<p>${emailContent.replace(/<br>/g, '</p><p>')}</p>`;
+        if (
+          !emailContent.includes("<p>") &&
+          !emailContent.includes("<div>")
+        ) {
+          emailContent = `<p>${emailContent.replace(/<br>/g, "</p><p>")}</p>`;
         }
 
-        // Wrap in full HTML email template
         emailContent = `
           <!DOCTYPE html>
           <html>
@@ -172,24 +178,53 @@ export async function POST(
         `;
 
         await sendEmail({
-          to: rep.email,
+          to: repEmail,
           subject: emailSubject,
           html: emailContent,
         });
 
-        sent++;
-      } catch (error) {
-        failed++;
-        errors.push(`${companyName} - ${rep.email}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        console.error(`Error sending reminder to ${rep.email}:`, error);
+        return "sent";
+      });
+    }
+
+    if (tasks.length === 0) {
+      return NextResponse.json({
+        success: true,
+        jobId: null,
+        total: recipients.length,
+        toSend: 0,
+        preSkipped,
+        message: "No emails to send",
+      });
+    }
+
+    const jobId = `reminder-${formId}-${Date.now()}`;
+    const scope = `reminders-${formId}`;
+
+    try {
+      emailJobManager.startJob(jobId, scope, tasks);
+    } catch (err) {
+      if (
+        err instanceof Error &&
+        err.message.includes("already running")
+      ) {
+        return NextResponse.json(
+          {
+            error: "A reminder job is already running for this form",
+            activeJobs: emailJobManager.getJobsForScope(scope),
+          },
+          { status: 409 }
+        );
       }
+      throw err;
     }
 
     return NextResponse.json({
       success: true,
-      sent,
-      failed,
-      errors: errors.length > 0 ? errors : undefined,
+      jobId,
+      total: recipients.length,
+      toSend: tasks.length,
+      preSkipped,
     });
   } catch (error) {
     console.error("Error in send-reminders route:", error);
@@ -202,4 +237,3 @@ export async function POST(
     );
   }
 }
-

@@ -45,8 +45,8 @@ type PublicForm = {
   requiresLogin?: boolean;
   isAuthenticated?: boolean;
   studentEmail?: string;
-  /** Student's latest response (any version) - for version-upgrade: show only new fields */
-  existingResponse?: { form_version_id: string; data: Record<string, unknown> } | null;
+  /** Student's latest response (any version) - for version-upgrade or editing */
+  existingResponse?: { id: string; form_version_id: string; data: Record<string, unknown>; attendant_uuid?: string } | null;
 };
 
 export default function PublicFormPage() {
@@ -62,8 +62,8 @@ export default function PublicFormPage() {
   const [submitted, setSubmitted] = useState(false);
   const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
-  /** When student filled old version: fields that need new input (not in old response) */
-  const [fieldsToShowForUpgrade, setFieldsToShowForUpgrade] = useState<Set<string> | null>(null);
+  /** True when the student is editing an existing response (same version) */
+  const [isEditing, setIsEditing] = useState(false);
 
   const loadForm = React.useCallback(async () => {
     setLoading(true);
@@ -74,42 +74,35 @@ export default function PublicFormPage() {
       } else {
         setForm(fetched);
 
-        // Prefill from existing response (any version - old or latest)
-        const isOldVersion = fetched.existingResponse && fetched.existingResponse.form_version_id !== fetched.activeVersion.id;
-        const oldData = fetched.existingResponse?.data ?? {};
-        const merged: Record<string, unknown> = {};
-        const fieldsToShow: string[] = [];
-        for (const field of fetched.activeVersion?.schema?.fields ?? []) {
-          const val = oldData[field.name];
-          const hasOld = val !== undefined && val !== null && val !== "" && (!Array.isArray(val) || val.length > 0);
-          merged[field.name] = hasOld ? val : undefined;
-          if (!hasOld) fieldsToShow.push(field.name);
+        const isSameVersion = fetched.existingResponse && fetched.existingResponse.form_version_id === fetched.activeVersion.id;
+
+        if (isSameVersion) {
+          // Same version: prefill all fields from existing response (editing mode)
+          const oldData = fetched.existingResponse?.data ?? {};
+          const merged: Record<string, unknown> = {};
+          for (const field of fetched.activeVersion?.schema?.fields ?? []) {
+            const val = oldData[field.name];
+            const hasOld = val !== undefined && val !== null && val !== "" && (!Array.isArray(val) || val.length > 0);
+            merged[field.name] = hasOld ? val : undefined;
+          }
+          setFormData(merged);
+          setIsEditing(true);
+        } else {
+          // New version or no existing response: start fresh
+          setFormData({});
+          setIsEditing(false);
         }
-        setFormData(merged);
 
         // Pre-fill email from student account if not already set
         if (fetched.studentEmail && fetched.activeVersion?.schema?.fields) {
           const emailField = fetched.activeVersion.schema.fields.find(f => f.name === 'email' && f.type === 'email');
-          if (emailField && merged[emailField.name] == null) {
-            setFormData((prev) => ({ ...prev, [emailField.name]: fetched.studentEmail }));
-          }
-        }
-
-        setFieldsToShowForUpgrade(isOldVersion ? new Set(fieldsToShow) : null);
-
-        // If old version response and all fields already filled → auto-submit new response
-        if (isOldVersion && fieldsToShow.length === 0) {
-          setSubmitting(true);
-          try {
-            await submitFormResponseAction({
-              form_version_id: fetched.activeVersion.id,
-              data: merged,
+          if (emailField) {
+            setFormData((prev) => {
+              if (prev[emailField.name] == null) {
+                return { ...prev, [emailField.name]: fetched.studentEmail };
+              }
+              return prev;
             });
-            setSubmitted(true);
-          } catch (e) {
-            console.error("Auto-submit version upgrade failed:", e);
-          } finally {
-            setSubmitting(false);
           }
         }
       }
@@ -318,7 +311,9 @@ export default function PublicFormPage() {
               <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
               <h2 className="text-2xl font-bold mb-2">Thank You!</h2>
               <p className="text-muted-foreground mb-4">
-                Your response has been submitted successfully.
+                {isEditing
+                  ? "Your response has been updated successfully."
+                  : "Your response has been submitted successfully."}
               </p>
               {redirectTo ? (
                 <Button onClick={() => router.push(redirectTo)}>Continue</Button>
@@ -368,13 +363,13 @@ export default function PublicFormPage() {
               </p>
             </div>
           )}
-          {fieldsToShowForUpgrade !== null && (
-            <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md">
-              <p className="text-sm text-blue-800 dark:text-blue-200">
-                This form was updated. Your previous answers have been prefilled. Please review and complete any new questions.
+          {/* {isEditing && (
+            <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md">
+              <p className="text-sm text-amber-800 dark:text-amber-200">
+                You have already submitted a response. You can update your answers below.
               </p>
             </div>
-          )}
+          )} */}
           <form onSubmit={handleSubmit} className="space-y-6">
             {(() => {
               // Group fields by layout rows
@@ -468,10 +463,10 @@ export default function PublicFormPage() {
                 {submitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Submitting...
+                    {isEditing ? "Updating..." : "Submitting..."}
                   </>
                 ) : (
-                  "Submit"
+                  isEditing ? "Update Response" : "Submit"
                 )}
               </Button>
             </div>

@@ -49,6 +49,15 @@ const nextConfig: NextConfig = {
   turbopack: {
     resolveAlias: { "node:inspector": "inspector" },
   },
+  // Reduce log spam: ignore polling endpoints (email-job-status, email-queue)
+  logging: {
+    incomingRequests: {
+      ignore: [
+        /\/api\/admin\/email-queue$/,
+        /\/api\/admin\/forms\/[^/]+\/email-job-status/,
+      ],
+    },
+  },
 };
 
 export default withSentryConfig(nextConfig, {

@@ -434,6 +434,7 @@ export type Zone = {
   id: string;
   name: string;
   booths: string[] | Booth[]; // M2M
+  dot_color?: string | null; // Hex color for shifter dashboard zone indicator (e.g. #ff0000)
 }
 
 export type Order = {

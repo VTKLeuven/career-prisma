@@ -103,7 +103,32 @@ export default function FormResponsesPage() {
     }>;
   }>>([]);
   const [loadingRecipients, setLoadingRecipients] = useState(false);
+  const [reminderJobId, setReminderJobId] = useState<string | null>(null);
+  const [reminderJobStatus, setReminderJobStatus] = useState<{
+    status: string;
+    sent: number;
+    failed: number;
+    skipped: number;
+    total: number;
+    errors: string[];
+    completedAt?: number;
+  } | null>(null);
   const [downloadingAllFiles, setDownloadingAllFiles] = useState(false);
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [sendingQrEmails, setSendingQrEmails] = useState(false);
+  const [qrEmailStats, setQrEmailStats] = useState<{ total: number; sent: number; unsent: number } | null>(null);
+  const [loadingQrStats, setLoadingQrStats] = useState(false);
+  const [qrSendOnlyUnsent, setQrSendOnlyUnsent] = useState(true);
+  const [qrJobId, setQrJobId] = useState<string | null>(null);
+  const [qrJobStatus, setQrJobStatus] = useState<{
+    status: string;
+    sent: number;
+    failed: number;
+    skipped: number;
+    total: number;
+    errors: string[];
+    completedAt?: number;
+  } | null>(null);
   const pageSize = 25; // Constant page size
 
   const loadFormData = useCallback(async () => {
@@ -618,6 +643,145 @@ export default function FormResponsesPage() {
     loadReminderRecipients();
   };
 
+  const loadQrEmailStats = async () => {
+    setLoadingQrStats(true);
+    try {
+      const versionToUse = isAllVersions
+        ? versions.find(v => v.metadata?.is_event_registration)
+        : versions.find(v => v.id === selectedVersionId);
+
+      if (!versionToUse) return;
+
+      const allResponses = isAllVersions
+        ? await fetchAllFormResponsesForAllVersionsAction(formId)
+        : await fetchAllFormResponsesAction(versionToUse.id);
+
+      const withUuid = allResponses.filter((r: FormResponse) => r.attendant_uuid && !r.archived);
+      const sentCount = withUuid.filter((r: FormResponse) => r.data?._qr_email_sent_at).length;
+      setQrEmailStats({
+        total: withUuid.length,
+        sent: sentCount,
+        unsent: withUuid.length - sentCount,
+      });
+    } catch (error) {
+      console.error("Error loading QR email stats:", error);
+    } finally {
+      setLoadingQrStats(false);
+    }
+  };
+
+  const handleOpenQrDialog = async () => {
+    setQrDialogOpen(true);
+    setQrSendOnlyUnsent(true);
+    setQrJobId(null);
+    setQrJobStatus(null);
+    await loadQrEmailStats();
+  };
+
+  // Poll job status while a QR email job is active
+  useEffect(() => {
+    if (!qrJobId) return;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/forms/${formId}/email-job-status?jobId=${encodeURIComponent(qrJobId)}`
+        );
+        if (!res.ok) return;
+        const { job } = await res.json();
+        if (cancelled) return;
+        setQrJobStatus(job);
+
+        if (job.status === "completed" || job.status === "failed" || job.status === "cancelled") {
+          setSendingQrEmails(false);
+          // Refresh stats so the dialog shows updated sent/unsent counts
+          loadQrEmailStats();
+          if (selectedVersionId || isAllVersions) {
+            loadResponses(selectedVersionId || null, currentPage, isAllVersions);
+          }
+        }
+      } catch {
+        // Polling failure is non-fatal
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qrJobId, formId]);
+
+  const handleSendQrEmails = async () => {
+    if (!form) return;
+
+    const versionToUse = isAllVersions
+      ? versions.find(v => v.metadata?.is_event_registration)
+      : versions.find(v => v.id === selectedVersionId);
+
+    if (!versionToUse) return;
+
+    const targetCount = qrSendOnlyUnsent
+      ? (qrEmailStats?.unsent ?? 0)
+      : (qrEmailStats?.total ?? 0);
+    if (targetCount === 0) {
+      alert("No attendees to send QR code emails to.");
+      return;
+    }
+
+    setSendingQrEmails(true);
+    setQrJobStatus(null);
+    try {
+      const response = await fetch(`/api/admin/forms/${formId}/send-qr-emails`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          formVersionId: versionToUse.id,
+          onlyUnsent: qrSendOnlyUnsent,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        if (response.status === 409) {
+          alert("A QR email job is already running for this form. Please wait for it to finish.");
+          setSendingQrEmails(false);
+          return;
+        }
+        throw new Error(error.message || error.error || "Failed to start QR email job");
+      }
+
+      const result = await response.json();
+      if (!result.jobId) {
+        alert(result.message || "No emails to send.");
+        setSendingQrEmails(false);
+        return;
+      }
+
+      setQrJobId(result.jobId);
+    } catch (error) {
+      console.error("Error starting QR email job:", error);
+      alert(`Failed to start QR email job: ${error instanceof Error ? error.message : "Unknown error"}`);
+      setSendingQrEmails(false);
+    }
+  };
+
+  const handleCancelQrJob = async () => {
+    if (!qrJobId) return;
+    try {
+      await fetch(`/api/admin/forms/${formId}/email-job-status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel", jobId: qrJobId }),
+      });
+    } catch {
+      // Best-effort cancellation
+    }
+  };
+
   const toggleRecipientSelection = (companyId: string, repId: string) => {
     setReminderRecipients(prev => prev.map(company => {
       if (company.companyId === companyId) {
@@ -648,10 +812,41 @@ export default function FormResponsesPage() {
     }));
   };
 
+  // Poll job status while a reminder email job is active
+  useEffect(() => {
+    if (!reminderJobId) return;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/forms/${formId}/email-job-status?jobId=${encodeURIComponent(reminderJobId)}`
+        );
+        if (!res.ok) return;
+        const { job } = await res.json();
+        if (cancelled) return;
+        setReminderJobStatus(job);
+
+        if (job.status === "completed" || job.status === "failed" || job.status === "cancelled") {
+          setSendingReminders(false);
+        }
+      } catch {
+        // Polling failure is non-fatal
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reminderJobId, formId]);
+
   const handleSendReminders = async () => {
     if (!form) return;
     
-    // Find the version to use for sending reminders
     let versionToUse: FormVersion | undefined;
     if (isAllVersions) {
       versionToUse = versions.find(v => {
@@ -664,7 +859,6 @@ export default function FormResponsesPage() {
     
     if (!versionToUse) return;
 
-    // Get selected recipients
     const selectedRecipients: Array<{ companyId: string; repId: string; email: string }> = [];
     reminderRecipients.forEach(company => {
       company.representatives.forEach(rep => {
@@ -684,12 +878,11 @@ export default function FormResponsesPage() {
     }
 
     setSendingReminders(true);
+    setReminderJobStatus(null);
     try {
       const response = await fetch(`/api/admin/forms/${formId}/send-reminders`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           formVersionId: versionToUse.id,
           recipients: selectedRecipients,
@@ -700,17 +893,39 @@ export default function FormResponsesPage() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || 'Failed to send reminders');
+        if (response.status === 409) {
+          alert("A reminder job is already running for this form. Please wait for it to finish.");
+          setSendingReminders(false);
+          return;
+        }
+        throw new Error(error.message || error.error || 'Failed to start reminder job');
       }
 
       const result = await response.json();
-      alert(`Successfully sent ${result.sent} reminder email(s). ${result.failed > 0 ? `${result.failed} failed.` : ''}`);
-      setReminderDialogOpen(false);
+      if (!result.jobId) {
+        alert(result.message || "No emails to send.");
+        setSendingReminders(false);
+        return;
+      }
+
+      setReminderJobId(result.jobId);
     } catch (error) {
-      console.error("Error sending reminders:", error);
-      alert(`Failed to send reminders: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
+      console.error("Error starting reminder job:", error);
+      alert(`Failed to start reminder job: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setSendingReminders(false);
+    }
+  };
+
+  const handleCancelReminderJob = async () => {
+    if (!reminderJobId) return;
+    try {
+      await fetch(`/api/admin/forms/${formId}/email-job-status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel", jobId: reminderJobId }),
+      });
+    } catch {
+      // Best-effort cancellation
     }
   };
 
@@ -1308,6 +1523,16 @@ export default function FormResponsesPage() {
                       Initialize UUIDs
                     </>
                   )}
+                </Button>
+              )}
+              {versions.some(v => v.metadata?.is_event_registration) && totalCount > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={handleOpenQrDialog}
+                  title="Send QR code emails to event attendees"
+                >
+                  <Mail className="h-4 w-4 mr-2" />
+                  Send QR Emails
                 </Button>
               )}
               {viewMode === "incomplete" && versions.some(v => v.metadata?.is_company_form) && incompleteCompanies.length > 0 && (
@@ -1926,8 +2151,216 @@ export default function FormResponsesPage() {
         </CardContent>
       </Card>
 
+      {/* Send QR Emails Dialog */}
+      <Dialog open={qrDialogOpen} onOpenChange={(open) => {
+        if (!open && sendingQrEmails) return; // Prevent closing while sending
+        if (!open) {
+          setQrJobId(null);
+          setQrJobStatus(null);
+        }
+        setQrDialogOpen(open);
+      }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Send QR Code Emails</DialogTitle>
+            <DialogDescription>
+              Send the event confirmation email with QR code to registered attendees.
+            </DialogDescription>
+          </DialogHeader>
+
+          {sendingQrEmails && qrJobStatus ? (
+            // Active job progress view
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    {qrJobStatus.status === "processing" ? "Sending emails..." :
+                     qrJobStatus.status === "completed" ? "Completed" :
+                     qrJobStatus.status === "cancelled" ? "Cancelled" :
+                     qrJobStatus.status === "failed" ? "Failed" : "Starting..."}
+                  </span>
+                  <span className="font-medium tabular-nums">
+                    {qrJobStatus.sent + qrJobStatus.failed + qrJobStatus.skipped} / {qrJobStatus.total}
+                  </span>
+                </div>
+                <div className="w-full bg-muted rounded-full h-3 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      qrJobStatus.status === "failed" ? "bg-red-500" :
+                      qrJobStatus.status === "cancelled" ? "bg-amber-500" :
+                      qrJobStatus.status === "completed" ? "bg-green-500" :
+                      "bg-primary"
+                    }`}
+                    style={{
+                      width: `${qrJobStatus.total > 0
+                        ? ((qrJobStatus.sent + qrJobStatus.failed + qrJobStatus.skipped) / qrJobStatus.total) * 100
+                        : 0}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-lg border p-3 text-center">
+                  <div className="text-2xl font-bold text-green-600 tabular-nums">{qrJobStatus.sent}</div>
+                  <div className="text-xs text-muted-foreground">Sent</div>
+                </div>
+                <div className="rounded-lg border p-3 text-center">
+                  <div className="text-2xl font-bold text-red-600 tabular-nums">{qrJobStatus.failed}</div>
+                  <div className="text-xs text-muted-foreground">Failed</div>
+                </div>
+                <div className="rounded-lg border p-3 text-center">
+                  <div className="text-2xl font-bold text-muted-foreground tabular-nums">{qrJobStatus.skipped}</div>
+                  <div className="text-xs text-muted-foreground">Skipped</div>
+                </div>
+              </div>
+
+              {qrJobStatus.status === "processing" && (
+                <p className="text-xs text-muted-foreground text-center">
+                  Emails are being sent in batches. You can close this page and they will continue sending in the background.
+                </p>
+              )}
+
+              {qrJobStatus.errors.length > 0 && (
+                <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900 p-3 max-h-32 overflow-y-auto">
+                  <p className="text-xs font-medium text-red-700 dark:text-red-400 mb-1">Errors:</p>
+                  {qrJobStatus.errors.slice(0, 10).map((err, i) => (
+                    <p key={i} className="text-xs text-red-600 dark:text-red-400 truncate">{err}</p>
+                  ))}
+                  {qrJobStatus.errors.length > 10 && (
+                    <p className="text-xs text-red-500 mt-1">...and {qrJobStatus.errors.length - 10} more</p>
+                  )}
+                </div>
+              )}
+
+              {(qrJobStatus.status === "completed" || qrJobStatus.status === "cancelled" || qrJobStatus.status === "failed") && (
+                <div className={`rounded-lg border p-3 text-center text-sm ${
+                  qrJobStatus.status === "completed" && qrJobStatus.failed === 0
+                    ? "border-green-200 bg-green-50 text-green-700 dark:bg-green-950/20 dark:border-green-900 dark:text-green-400"
+                    : qrJobStatus.status === "cancelled"
+                    ? "border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:border-amber-900 dark:text-amber-400"
+                    : "border-red-200 bg-red-50 text-red-700 dark:bg-red-950/20 dark:border-red-900 dark:text-red-400"
+                }`}>
+                  {qrJobStatus.status === "completed" && qrJobStatus.failed === 0 && (
+                    <><Check className="h-4 w-4 inline mr-1" />All emails sent successfully</>
+                  )}
+                  {qrJobStatus.status === "completed" && qrJobStatus.failed > 0 && (
+                    <>Completed with {qrJobStatus.failed} error(s). You can retry the failed ones by sending again with &quot;only unsent&quot;.</>
+                  )}
+                  {qrJobStatus.status === "cancelled" && (
+                    <><X className="h-4 w-4 inline mr-1" />Job was cancelled. {qrJobStatus.sent} email(s) were already sent.</>
+                  )}
+                  {qrJobStatus.status === "failed" && (
+                    <>Job failed. {qrJobStatus.sent} email(s) were sent before the failure.</>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : loadingQrStats ? (
+            <div className="text-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">Loading attendee data...</p>
+            </div>
+          ) : qrEmailStats && qrEmailStats.total > 0 ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-lg border p-3 text-center">
+                  <div className="text-2xl font-bold">{qrEmailStats.total}</div>
+                  <div className="text-xs text-muted-foreground">Total attendees</div>
+                </div>
+                <div className="rounded-lg border p-3 text-center">
+                  <div className="text-2xl font-bold text-green-600">{qrEmailStats.sent}</div>
+                  <div className="text-xs text-muted-foreground">Already sent</div>
+                </div>
+                <div className="rounded-lg border p-3 text-center">
+                  <div className="text-2xl font-bold text-amber-600">{qrEmailStats.unsent}</div>
+                  <div className="text-xs text-muted-foreground">Not yet sent</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="qr-only-unsent"
+                  checked={qrSendOnlyUnsent}
+                  onCheckedChange={(checked) => setQrSendOnlyUnsent(!!checked)}
+                />
+                <Label htmlFor="qr-only-unsent" className="text-sm cursor-pointer">
+                  Only send to attendees who haven&apos;t received it yet ({qrEmailStats.unsent})
+                </Label>
+              </div>
+
+              {!qrSendOnlyUnsent && qrEmailStats.sent > 0 && (
+                <p className="text-xs text-amber-600">
+                  This will resend QR code emails to {qrEmailStats.sent} attendee(s) who already received one.
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No attendees with a QR code found. Make sure UUIDs have been initialized.</p>
+          )}
+
+          <DialogFooter>
+            {sendingQrEmails && qrJobStatus?.status === "processing" ? (
+              <Button
+                variant="destructive"
+                onClick={handleCancelQrJob}
+              >
+                <X className="h-4 w-4 mr-2" />
+                Cancel Sending
+              </Button>
+            ) : qrJobStatus && (qrJobStatus.status === "completed" || qrJobStatus.status === "cancelled" || qrJobStatus.status === "failed") ? (
+              <Button onClick={() => {
+                setQrJobId(null);
+                setQrJobStatus(null);
+                setQrDialogOpen(false);
+              }}>
+                Close
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setQrDialogOpen(false)}
+                  disabled={sendingQrEmails}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSendQrEmails}
+                  disabled={
+                    sendingQrEmails ||
+                    loadingQrStats ||
+                    !qrEmailStats ||
+                    (qrSendOnlyUnsent ? qrEmailStats?.unsent === 0 : qrEmailStats?.total === 0)
+                  }
+                >
+                  {sendingQrEmails ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Starting...
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="h-4 w-4 mr-2" />
+                      Send to {qrSendOnlyUnsent ? qrEmailStats?.unsent ?? 0 : qrEmailStats?.total ?? 0} attendee(s)
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Send Reminders Dialog */}
-      <Dialog open={reminderDialogOpen} onOpenChange={setReminderDialogOpen}>
+      <Dialog open={reminderDialogOpen} onOpenChange={(open) => {
+        if (!open && sendingReminders) return;
+        if (!open) {
+          setReminderJobId(null);
+          setReminderJobStatus(null);
+        }
+        setReminderDialogOpen(open);
+      }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Send Reminder Emails</DialogTitle>
@@ -1936,7 +2369,88 @@ export default function FormResponsesPage() {
             </DialogDescription>
           </DialogHeader>
           
-          {loadingRecipients ? (
+          {sendingReminders && reminderJobStatus ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    {reminderJobStatus.status === "processing" ? "Sending reminders..." :
+                     reminderJobStatus.status === "completed" ? "Completed" :
+                     reminderJobStatus.status === "cancelled" ? "Cancelled" :
+                     reminderJobStatus.status === "failed" ? "Failed" : "Starting..."}
+                  </span>
+                  <span className="font-medium tabular-nums">
+                    {reminderJobStatus.sent + reminderJobStatus.failed + reminderJobStatus.skipped} / {reminderJobStatus.total}
+                  </span>
+                </div>
+                <div className="w-full bg-muted rounded-full h-3 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      reminderJobStatus.status === "failed" ? "bg-red-500" :
+                      reminderJobStatus.status === "cancelled" ? "bg-amber-500" :
+                      reminderJobStatus.status === "completed" ? "bg-green-500" :
+                      "bg-primary"
+                    }`}
+                    style={{
+                      width: `${reminderJobStatus.total > 0
+                        ? ((reminderJobStatus.sent + reminderJobStatus.failed + reminderJobStatus.skipped) / reminderJobStatus.total) * 100
+                        : 0}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-lg border p-3 text-center">
+                  <div className="text-2xl font-bold text-green-600 tabular-nums">{reminderJobStatus.sent}</div>
+                  <div className="text-xs text-muted-foreground">Sent</div>
+                </div>
+                <div className="rounded-lg border p-3 text-center">
+                  <div className="text-2xl font-bold text-red-600 tabular-nums">{reminderJobStatus.failed}</div>
+                  <div className="text-xs text-muted-foreground">Failed</div>
+                </div>
+                <div className="rounded-lg border p-3 text-center">
+                  <div className="text-2xl font-bold text-muted-foreground tabular-nums">{reminderJobStatus.skipped}</div>
+                  <div className="text-xs text-muted-foreground">Skipped</div>
+                </div>
+              </div>
+
+              {reminderJobStatus.errors.length > 0 && (
+                <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900 p-3 max-h-32 overflow-y-auto">
+                  <p className="text-xs font-medium text-red-700 dark:text-red-400 mb-1">Errors:</p>
+                  {reminderJobStatus.errors.slice(0, 10).map((err, i) => (
+                    <p key={i} className="text-xs text-red-600 dark:text-red-400 truncate">{err}</p>
+                  ))}
+                  {reminderJobStatus.errors.length > 10 && (
+                    <p className="text-xs text-red-500 mt-1">...and {reminderJobStatus.errors.length - 10} more</p>
+                  )}
+                </div>
+              )}
+
+              {(reminderJobStatus.status === "completed" || reminderJobStatus.status === "cancelled" || reminderJobStatus.status === "failed") && (
+                <div className={`rounded-lg border p-3 text-center text-sm ${
+                  reminderJobStatus.status === "completed" && reminderJobStatus.failed === 0
+                    ? "border-green-200 bg-green-50 text-green-700 dark:bg-green-950/20 dark:border-green-900 dark:text-green-400"
+                    : reminderJobStatus.status === "cancelled"
+                    ? "border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:border-amber-900 dark:text-amber-400"
+                    : "border-red-200 bg-red-50 text-red-700 dark:bg-red-950/20 dark:border-red-900 dark:text-red-400"
+                }`}>
+                  {reminderJobStatus.status === "completed" && reminderJobStatus.failed === 0 && (
+                    <><Check className="h-4 w-4 inline mr-1" />All reminders sent successfully</>
+                  )}
+                  {reminderJobStatus.status === "completed" && reminderJobStatus.failed > 0 && (
+                    <>Completed with {reminderJobStatus.failed} error(s)</>
+                  )}
+                  {reminderJobStatus.status === "cancelled" && (
+                    <><X className="h-4 w-4 inline mr-1" />Job was cancelled. {reminderJobStatus.sent} reminder(s) were already sent.</>
+                  )}
+                  {reminderJobStatus.status === "failed" && (
+                    <>Job failed. {reminderJobStatus.sent} reminder(s) were sent before the failure.</>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : loadingRecipients ? (
             <div className="text-center py-8">
               <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
               <p className="text-sm text-muted-foreground">Loading recipients...</p>
@@ -1982,7 +2496,6 @@ export default function FormResponsesPage() {
                       {reminderRecipients.map((company) => {
                         const selectedCount = company.representatives.filter(r => r.selected).length;
                         const anySelected = selectedCount > 0;
-                        const allSelected = company.representatives.length > 0 && selectedCount === company.representatives.length;
                         return (
                           <div key={company.companyId} className="p-4">
                             <div className="flex items-center gap-2 mb-2">
@@ -2025,29 +2538,49 @@ export default function FormResponsesPage() {
           )}
 
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setReminderDialogOpen(false)}
-              disabled={sendingReminders}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSendReminders}
-              disabled={sendingReminders || loadingRecipients || reminderRecipients.reduce((sum, c) => sum + c.representatives.filter(r => r.selected).length, 0) === 0}
-            >
-              {sendingReminders ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Sending...
-                </>
-              ) : (
-                <>
-                  <Mail className="h-4 w-4 mr-2" />
-                  Send
-                </>
-              )}
-            </Button>
+            {sendingReminders && reminderJobStatus?.status === "processing" ? (
+              <Button
+                variant="destructive"
+                onClick={handleCancelReminderJob}
+              >
+                <X className="h-4 w-4 mr-2" />
+                Cancel Sending
+              </Button>
+            ) : reminderJobStatus && (reminderJobStatus.status === "completed" || reminderJobStatus.status === "cancelled" || reminderJobStatus.status === "failed") ? (
+              <Button onClick={() => {
+                setReminderJobId(null);
+                setReminderJobStatus(null);
+                setReminderDialogOpen(false);
+              }}>
+                Close
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setReminderDialogOpen(false)}
+                  disabled={sendingReminders}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSendReminders}
+                  disabled={sendingReminders || loadingRecipients || reminderRecipients.reduce((sum, c) => sum + c.representatives.filter(r => r.selected).length, 0) === 0}
+                >
+                  {sendingReminders ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Starting...
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="h-4 w-4 mr-2" />
+                      Send
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

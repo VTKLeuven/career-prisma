@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { uploadDirectusFile } from "@/lib/repos/directus";
 import { createFloorplan, linkFloorplanToEventPage, getOrCreateEventPage, createBooths } from "@/lib/repos/floorplan";
+import { invalidateFloorplanCache } from "@/lib/floorplan-cache";
+import { invalidateEventPageCache } from "@/lib/event-page-cache";
 import { extractBoothsFromSVG } from "@/lib/utils/svg-booth-extractor";
 
 export async function POST(req: Request) {
@@ -163,6 +165,9 @@ export async function POST(req: Request) {
       console.error("Error stack:", boothError instanceof Error ? boothError.stack : "No stack trace");
       // Continue even if booth extraction fails
     }
+
+    invalidateFloorplanCache();
+    invalidateEventPageCache();
 
     return NextResponse.json({
       success: true,

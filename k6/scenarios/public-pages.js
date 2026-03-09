@@ -69,7 +69,7 @@ export default function () {
 
   // 3) Event page (the main jobfair event page — heavily cached)
   group("Event page API", () => {
-    const slug = TEST_EVENT_SLUG || "jobfair-2026";
+    const slug = TEST_EVENT_SLUG || "vtk-jobfair";
     const res = http.get(`${BASE_URL}/api/events/${slug}`);
     apiDuration.add(res.timings.duration);
     check(res, { "event api ok": (r) => r.status === 200 || r.status === 404 }) || errors.add(1);
@@ -79,7 +79,7 @@ export default function () {
 
   // 4) Event SSR page
   group("Event SSR page", () => {
-    const slug = TEST_EVENT_SLUG || "jobfair-2026";
+    const slug = TEST_EVENT_SLUG || "vtk-jobfair";
     const res = http.get(`${BASE_URL}/event/${slug}`);
     pageDuration.add(res.timings.duration);
     check(res, { "event page ok": (r) => r.status === 200 || r.status === 404 }) || errors.add(1);

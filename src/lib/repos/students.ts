@@ -29,7 +29,7 @@ export async function findStudentByEmail(email: string): Promise<Student | null>
     }
 
     const res = await fetch(
-      `${normalizedBase}items/${STUDENT_COLLECTION}?filter[email][_eq]=${encodeURIComponent(email)}&limit=1`,
+      `${normalizedBase}items/${STUDENT_COLLECTION}?filter[email][_eq]=${encodeURIComponent(email)}&fields=*,is_shifter&limit=1`,
       {
         headers: {
           "Authorization": `Bearer ${authToken}`,

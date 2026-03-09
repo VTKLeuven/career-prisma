@@ -524,48 +524,49 @@ export async function submitFormResponseAction(data: {
       }
     }
 
-    // Generate UUID for event registration forms
     let attendantUuid: string | undefined;
-    if (isEventRegistration) {
-      // Generate a UUID v4
-      attendantUuid = crypto.randomUUID();
-    }
 
     // Extract company/submitter info from data if present (for company forms)
     // Do this before the try block so formData is available for email extraction later
     const { _company_id, _submitter_first_name, _submitter_last_name, _submitter_email, ...formData } = data.data;
 
-    // For student forms: archive previous responses before creating the new one (keeps only one active per student)
+    // Check if this student already has a non-archived response for this form.
+    // If so, we UPDATE the existing response instead of creating a new one to preserve the attendant_uuid.
+    let existingResponseId: string | null = null;
+    let existingAttendantUuid: string | null = null;
     if (student) {
       const formId = typeof formVersion.form_id === "string" ? formVersion.form_id : (formVersion.form_id as { id: string }).id;
-      const { archivePreviousStudentResponsesForForm } = await import("@/lib/repos/forms");
-      await archivePreviousStudentResponsesForForm(student.id, formId);
+      const { getStudentLatestFormResponseForForm, listFormVersionsForServer } = await import("@/lib/repos/forms");
+      const allVersions = await listFormVersionsForServer(formId);
+      const versionIds = allVersions.map((v) => v.id);
+      if (versionIds.length > 0) {
+        const existing = await getStudentLatestFormResponseForForm(student.id, versionIds);
+        if (existing) {
+          existingResponseId = existing.id;
+          existingAttendantUuid = existing.attendant_uuid ?? null;
+        }
+      }
     }
 
-    // For company forms: archive previous responses before creating the new one (keeps only one active per company)
-    const companyId = data.company_id || _company_id;
-    if (companyId && isCompanyForm) {
-      const formId = typeof formVersion.form_id === "string" ? formVersion.form_id : (formVersion.form_id as { id: string }).id;
-      const { archivePreviousCompanyResponsesForForm } = await import("@/lib/repos/forms");
-      await archivePreviousCompanyResponsesForForm(companyId as string, formId);
+    const isUpdate = !!existingResponseId;
+
+    // Only generate a new attendant UUID if creating a new response for an event registration form
+    if (isEventRegistration && !isUpdate) {
+      attendantUuid = crypto.randomUUID();
+    } else if (isEventRegistration && isUpdate) {
+      // Reuse the existing attendant UUID
+      attendantUuid = existingAttendantUuid ?? undefined;
     }
 
-    // Create form response using server client to ensure it works for both logged-in and non-logged-in users
-    // The server client has elevated permissions needed for public form submissions
-    const { createItem } = await import("@directus/sdk");
+    const { createItem, updateItem } = await import("@directus/sdk");
     let response: FormResponse | null = null;
     try {
       // Include student info in the form data if student is logged in
       const enhancedFormData = { ...formData };
       if (student) {
-        // For event registration forms, don't add name/surname/email/r-number to metadata
-        // They will fill these in the form itself (except university which is a form field)
         if (isEventRegistration) {
-          // Only add minimal student metadata for event registration forms
-          // University and full_name come from account data for reference
           enhancedFormData._student_id = student.id;
           enhancedFormData._student_username = student.username;
-          // Store full_name in metadata for display purposes (even though it's not a form field)
           enhancedFormData._student_full_name = student.full_name || `${student.first_name || ''} ${student.last_name || ''}`.trim() || student.username;
           if (student.university) {
             enhancedFormData._student_university = student.university;
@@ -580,7 +581,6 @@ export async function submitFormResponseAction(data: {
             enhancedFormData._student_in_workinggroup = student.in_workinggroup;
           }
         } else {
-          // For non-event registration forms, add all student info as before
           enhancedFormData._student_id = student.id;
           enhancedFormData._student_username = student.username;
           enhancedFormData._student_email = student.email;
@@ -600,24 +600,38 @@ export async function submitFormResponseAction(data: {
         }
       }
 
-      const responseData = {
-        form_version_id: data.form_version_id,
-        user_id: data.user_id,
-        // student_id column may not exist; student is stored in data._student_id
-        data: enhancedFormData, // Include student info in form data (_student_id, etc.)
-        attachments: data.attachments,
-        ...(attendantUuid ? { attendant_uuid: attendantUuid } : {}),
-        ...(data.company_id || _company_id ? { company_id: (data.company_id || _company_id) as string } : {}),
-        ...(data.submitter_first_name || _submitter_first_name ? { submitter_first_name: (data.submitter_first_name || _submitter_first_name) as string } : {}),
-        ...(data.submitter_last_name || _submitter_last_name ? { submitter_last_name: (data.submitter_last_name || _submitter_last_name) as string } : {}),
-        ...(data.submitter_email || _submitter_email ? { submitter_email: (data.submitter_email || _submitter_email) as string } : {}),
-      };
-      response = await serverClient.request(
-        createItem("form_responses" as any, responseData)
-      ) as unknown as FormResponse;
+      if (isUpdate && existingResponseId) {
+        const updateData: Record<string, unknown> = {
+          form_version_id: data.form_version_id,
+          data: enhancedFormData,
+          ...(data.attachments ? { attachments: data.attachments } : {}),
+          ...(data.company_id || _company_id ? { company_id: (data.company_id || _company_id) as string } : {}),
+          ...(data.submitter_first_name || _submitter_first_name ? { submitter_first_name: (data.submitter_first_name || _submitter_first_name) as string } : {}),
+          ...(data.submitter_last_name || _submitter_last_name ? { submitter_last_name: (data.submitter_last_name || _submitter_last_name) as string } : {}),
+          ...(data.submitter_email || _submitter_email ? { submitter_email: (data.submitter_email || _submitter_email) as string } : {}),
+        };
+        response = await serverClient.request(
+          updateItem("form_responses" as any, existingResponseId, updateData)
+        ) as unknown as FormResponse;
+      } else {
+        // Create a new response
+        const responseData = {
+          form_version_id: data.form_version_id,
+          user_id: data.user_id,
+          data: enhancedFormData,
+          attachments: data.attachments,
+          ...(attendantUuid ? { attendant_uuid: attendantUuid } : {}),
+          ...(data.company_id || _company_id ? { company_id: (data.company_id || _company_id) as string } : {}),
+          ...(data.submitter_first_name || _submitter_first_name ? { submitter_first_name: (data.submitter_first_name || _submitter_first_name) as string } : {}),
+          ...(data.submitter_last_name || _submitter_last_name ? { submitter_last_name: (data.submitter_last_name || _submitter_last_name) as string } : {}),
+          ...(data.submitter_email || _submitter_email ? { submitter_email: (data.submitter_email || _submitter_email) as string } : {}),
+        };
+        response = await serverClient.request(
+          createItem("form_responses" as any, responseData)
+        ) as unknown as FormResponse;
+      }
     } catch (error) {
-      console.error('[submitFormResponseAction] Error creating form response:', error);
-      // Re-throw to let the caller handle it
+      console.error('[submitFormResponseAction] Error saving form response:', error);
       throw error;
     }
 
@@ -643,8 +657,8 @@ export async function submitFormResponseAction(data: {
       }
     }
 
-    // If this is an event registration form, send confirmation email
-    if (response && emailValue && isEventRegistration) {
+    // If this is an event registration form, send confirmation email (only for new submissions, not updates)
+    if (response && emailValue && isEventRegistration && !isUpdate) {
       // Get form name - prefer from loaded relation, otherwise fetch it using server client
       let formName: string;
       if (typeof formVersion.form_id !== 'string' && formVersion.form_id?.name) {
@@ -677,15 +691,42 @@ export async function submitFormResponseAction(data: {
           eventDate: versionMetadata?.event_date as string | undefined,
           eventEndDate: versionMetadata?.event_end_date as string | undefined,
           eventLocation: versionMetadata?.event_location as string | undefined,
+          attendantUuid,
         });
+        if (response?.id) {
+          try {
+            const existingData = (response as any).data || {};
+            await serverClient.request(
+              updateItem("form_responses" as any, response.id, {
+                data: { ...existingData, _qr_email_sent_at: new Date().toISOString() },
+              })
+            );
+          } catch {
+            // Non-critical: tracking update shouldn't affect anything
+          }
+        }
       } catch (emailError) {
         console.error("Error sending event confirmation email:", emailError);
         // Don't throw - email failure shouldn't prevent form submission
       }
     }
 
-    // If this is a company form, send confirmation email (if enabled)
-    if (response && emailValue && isCompanyForm && sendCompanyFormEmail) {
+    // EventSight integration (only for new registrations, fail silently like emails)
+    if (response && isEventRegistration && !isUpdate) {
+      try {
+        const { sendEventSightSubscription } = await import("@/lib/eventsight");
+        await sendEventSightSubscription(versionMetadata?.event_id as string | undefined, {
+          formData: cleanFormData,
+          attendantUuid,
+          student,
+        });
+      } catch (eventsightError) {
+        console.error("Error sending EventSight subscription:", eventsightError);
+      }
+    }
+
+    // If this is a company form, send confirmation email (if enabled, only for new submissions)
+    if (response && emailValue && isCompanyForm && sendCompanyFormEmail && !isUpdate) {
       let formName: string;
       if (typeof formVersion.form_id !== 'string' && formVersion.form_id?.name) {
         formName = formVersion.form_id.name;
@@ -843,6 +884,7 @@ async function sendEventConfirmationEmail({
   eventDate,
   eventEndDate,
   eventLocation,
+  attendantUuid,
 }: {
   to: string;
   firstname: string;
@@ -853,6 +895,7 @@ async function sendEventConfirmationEmail({
   eventDate?: string;
   eventEndDate?: string;
   eventLocation?: string;
+  attendantUuid?: string;
 }) {
   try {
     const { sendEmail } = await import("@/lib/repos/directus");
@@ -872,6 +915,9 @@ async function sendEventConfirmationEmail({
       personalizedContent = personalizedContent.replace(/\n/g, '<br>');
     }
 
+    const formDomain = process.env.NEXT_PUBLIC_FORM_DOMAIN || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const attendantLink = attendantUuid ? `${formDomain}/attendant/${attendantUuid}` : undefined;
+
     const emailHtml = generateEventConfirmationEmailHtml({
       subject,
       fullName,
@@ -880,6 +926,7 @@ async function sendEventConfirmationEmail({
       eventEndDate: eventEndDate || undefined,
       eventLocation: eventLocation || undefined,
       formName,
+      attendantLink,
     });
 
     await sendEmail({
@@ -1249,7 +1296,7 @@ export async function fetchPublicFormBySlugAction(slug: string) {
     }
 
     // If student is logged in, fetch their existing response (any version) for prefill/version-upgrade
-    let existingResponse: { form_version_id: string; data: Record<string, unknown> } | null = null;
+    let existingResponse: { id: string; form_version_id: string; data: Record<string, unknown>; attendant_uuid?: string } | null = null;
     if (studentId) {
       try {
         const { getStudentLatestFormResponseForForm } = await import("@/lib/repos/forms");
@@ -1270,7 +1317,7 @@ export async function fetchPublicFormBySlugAction(slug: string) {
         if (versionIds.length > 0) {
           const resp = await getStudentLatestFormResponseForForm(studentId, versionIds);
           if (resp) {
-            existingResponse = { form_version_id: resp.form_version_id, data: resp.data ?? {} };
+            existingResponse = { id: resp.id, form_version_id: resp.form_version_id, data: resp.data ?? {}, attendant_uuid: resp.attendant_uuid };
           }
         }
       } catch (error) {
