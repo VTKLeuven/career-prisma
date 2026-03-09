@@ -23,7 +23,8 @@ import dynamic from "next/dynamic"
 import { ChevronDown, MapPin, Car, ExternalLink, LogOut, User } from 'lucide-react'
 import { useBannerPage } from '@/hooks/use-banner-page'
 import { usePageLayout } from '../../layout'
-import { getUpcomingEventsWithFallback } from '@/lib/utils/events';
+import { getUpcomingEventsWithFallback } from '@/lib/utils/events'
+import { groupSpeakersByTimeSlot } from '@/lib/utils/speakers'
 
 const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.EventMap), {
   ssr: false,
@@ -1725,33 +1726,6 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
 }
 
 const KU_LEUVEN_LOGO_ID = "d93c21e6-1145-4d4e-96d2-7e8daa640b9f"
-
-/** Parse "HH:mm" or "HH:mm:ss" to minutes since midnight for chronological sort. */
-function parseTimeToMinutes(t: string | undefined): number {
-  if (!t) return Infinity
-  const [h, m] = t.split(':').map(Number)
-  return (h ?? 0) * 60 + (m ?? 0)
-}
-
-/** Group speakers by time slot. Same time = one group. Returns array of groups in chronological order. */
-function groupSpeakersByTimeSlot(speakers: Speaker[]): Speaker[][] {
-  const byKey = new Map<string, Speaker[]>()
-  for (const s of speakers) {
-    const key = s.time?.id ?? (s.time ? `${s.time.start_time ?? ''}-${s.time.end_time ?? ''}` : `no-time-${s.id}`)
-    const list = byKey.get(key) ?? []
-    list.push(s)
-    byKey.set(key, list)
-  }
-  const groups = Array.from(byKey.values())
-  groups.sort((a, b) => {
-    const startA = a[0]?.time?.start_time
-    const startB = b[0]?.time?.start_time
-    const minA = parseTimeToMinutes(startA)
-    const minB = parseTimeToMinutes(startB)
-    return minA - minB
-  })
-  return groups
-}
 
 // ---------------- SpeakerCard ----------------
 function SpeakerCard({ speaker, eventSlug, allSpeakers }: { speaker: Speaker; eventSlug: string; allSpeakers: Speaker[] }) {
