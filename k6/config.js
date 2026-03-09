@@ -12,17 +12,24 @@ export const AUTH_COOKIE_PREFIX = __ENV.AUTH_COOKIE_PREFIX || "directus";
 // ---------------------------------------------------------------------------
 // Test credentials – create dedicated load-test accounts in Directus first!
 // NEVER use real production credentials here.
+// Supports both COMPANY_REP_* and K6_COMPANY_REP_* (matches .env naming).
+// k6 does NOT load .env – run with: set -a && source .env && set +a && k6 run ...
+// or use: ./k6/run-stress-test.sh
 // ---------------------------------------------------------------------------
-export const COMPANY_REP_EMAIL = __ENV.COMPANY_REP_EMAIL || "loadtest-company@example.com";
-export const COMPANY_REP_PASSWORD = __ENV.COMPANY_REP_PASSWORD || "loadtest123";
+export const COMPANY_REP_EMAIL =
+  __ENV.COMPANY_REP_EMAIL || __ENV.K6_COMPANY_REP_EMAIL || "loadtest-company@example.com";
+export const COMPANY_REP_PASSWORD =
+  __ENV.COMPANY_REP_PASSWORD || __ENV.K6_COMPANY_REP_PASSWORD || "loadtest123";
 
-export const STUDENT_EMAIL = __ENV.STUDENT_EMAIL || "loadtest-student@example.com";
-export const STUDENT_PASSWORD = __ENV.STUDENT_PASSWORD || "loadtest123";
+export const STUDENT_EMAIL =
+  __ENV.STUDENT_EMAIL || __ENV.K6_STUDENT_EMAIL || "loadtest-student@example.com";
+export const STUDENT_PASSWORD =
+  __ENV.STUDENT_PASSWORD || __ENV.K6_STUDENT_PASSWORD || "loadtest123";
 
 // ---------------------------------------------------------------------------
 // Test data IDs – replace these with real IDs from your Directus instance
 // ---------------------------------------------------------------------------
-export const TEST_EVENT_SLUG = __ENV.TEST_EVENT_SLUG || "jobfair-2026";
+export const TEST_EVENT_SLUG = __ENV.TEST_EVENT_SLUG || "vtk-jobfair";
 export const TEST_ATTENDANT_UUIDS = (__ENV.TEST_ATTENDANT_UUIDS || "").split(",").filter(Boolean);
 export const TEST_BOOTH_IDS = (__ENV.TEST_BOOTH_IDS || "").split(",").filter(Boolean);
 export const TEST_DRINK_IDS = (__ENV.TEST_DRINK_IDS || "").split(",").filter(Boolean);

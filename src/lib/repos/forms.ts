@@ -617,25 +617,23 @@ export async function getStudentFormResponsesBatchForForm(
 export async function getStudentLatestFormResponseForForm(
   studentId: string,
   versionIds: string[]
-): Promise<{ id: string; form_version_id: string; data: Record<string, unknown> } | null> {
+): Promise<{ id: string; form_version_id: string; data: Record<string, unknown>; attendant_uuid?: string } | null> {
   if (versionIds.length === 0) return null;
   try {
     const { getServerDirectusClient } = await import("@/lib/directus");
     const client = await getServerDirectusClient();
-    // Fetch all responses for these versions and match by data._student_id (no student_id column).
-    // Use limit: -1 so early submitters are included even when the form has 1000+ responses.
     const responses = await client.request(
       readItems("form_responses" as any, {
-        fields: ["id", "form_version_id", "data"],
+        fields: ["id", "form_version_id", "data", "attendant_uuid"],
         filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
         limit: -1,
         sort: "-submitted_at",
       })
-    ) as unknown as Array<{ id: string; form_version_id: string; data?: Record<string, unknown> }>;
+    ) as unknown as Array<{ id: string; form_version_id: string; data?: Record<string, unknown>; attendant_uuid?: string }>;
     const match = responses.find(
       (r) => (r.data as Record<string, unknown>)?._student_id === studentId
     );
-    return match ? { id: match.id, form_version_id: match.form_version_id, data: match.data ?? {} } : null;
+    return match ? { id: match.id, form_version_id: match.form_version_id, data: match.data ?? {}, attendant_uuid: match.attendant_uuid ?? undefined } : null;
   } catch (error) {
     console.error("[getStudentLatestFormResponseForForm] Error:", error);
     return null;

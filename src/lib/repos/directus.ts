@@ -302,6 +302,7 @@ interface EmailQueueItem {
   subject: string;
   html: string;
   from: string;
+  logId: number;
   resolve: () => void;
   reject: (error: Error) => void;
 }
@@ -464,6 +465,9 @@ function shouldDelayDueToRateLimit(): { shouldDelay: boolean; delayMs: number; r
 
 // Process email queue with rate limiting
 async function processEmailQueue() {
+  // Lazy import to avoid circular dependency at module load
+  const { emailJobManager } = await import("@/lib/email-job-manager");
+
   if (isProcessingQueue || emailQueue.length === 0) {
     return;
   }
@@ -473,6 +477,8 @@ async function processEmailQueue() {
   while (emailQueue.length > 0) {
     const item = emailQueue.shift();
     if (!item) break;
+
+    emailJobManager.logEmailSending(item.logId);
 
     try {
       // Check if we need to delay due to rate limits (per-minute/per-hour)
@@ -495,9 +501,14 @@ async function processEmailQueue() {
       await sendEmailWithRetry(item.to, item.subject, item.html, item.from);
       lastEmailSentAt = Date.now();
       recordEmailSent();
+      emailJobManager.logEmailSent(item.logId);
       item.resolve();
     } catch (error) {
       const err = error as Error & { responseCode?: number; code?: string };
+      emailJobManager.logEmailFailed(
+        item.logId,
+        err.message || "Unknown error"
+      );
       // Record rate limit errors
       if (isRateLimitError(err)) {
         emailMetrics.rateLimitErrors++;
@@ -655,6 +666,18 @@ export async function getEmailMetrics(): Promise<EmailMetrics & { currentRate: {
   };
 }
 
+/** Live SMTP queue stats for the admin dashboard */
+export async function getSmtpQueueStats() {
+  const { perMinute, perHour } = getCurrentEmailRate();
+  return {
+    queueLength: emailQueue.length,
+    totalSent: emailMetrics.totalSent,
+    ratePerMinute: perMinute,
+    ratePerHour: perHour,
+    rateLimitErrors: emailMetrics.rateLimitErrors,
+  };
+}
+
 export async function sendEmail({
   to,
   subject,
@@ -701,6 +724,10 @@ export async function sendEmail({
     );
   }
 
+  // Log to global email tracker (lazy import to avoid circular dependency)
+  const { emailJobManager } = await import("@/lib/email-job-manager");
+  const logId = emailJobManager.logEmailQueued(to, subject, fromEmail);
+
   // Queue the email to prevent concurrent sends and respect rate limits
   return new Promise<void>((resolve, reject) => {
     emailQueue.push({
@@ -708,6 +735,7 @@ export async function sendEmail({
       subject,
       html,
       from: fromEmail,
+      logId,
       resolve,
       reject,
     });

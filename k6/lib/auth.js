@@ -18,6 +18,7 @@ export function loginAsCompanyRep(jar, email, password) {
     {
       headers: { "Content-Type": "application/json" },
       jar,
+      responseType: "text", // needed when discardResponseBodies is true
     }
   );
 
@@ -45,6 +46,7 @@ export function loginAsStudent(jar, email, password) {
     {
       headers: { "Content-Type": "application/json" },
       jar,
+      responseType: "text", // needed when discardResponseBodies is true
     }
   );
 

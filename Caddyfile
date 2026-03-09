@@ -1,0 +1,22 @@
+# Caddy reverse proxy for Next.js app - tuned for 2000+ concurrent users
+# See: https://caddyserver.com/docs/caddyfile/directives/reverse_proxy
+
+:80 {
+    reverse_proxy app:3000 {
+        # Health check to quickly detect and exclude unhealthy backends
+        health_uri /api/health
+        health_interval 10s
+        health_timeout 5s
+
+        # Fail fast - don't hold connections to slow/dead backends
+        fail_duration 30s
+
+        # Allow more concurrent connections per backend (default can be conservative)
+        # Caddy uses connection pooling; this helps under burst load
+        flush_interval -1
+
+        # Headers for proper proxying
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}

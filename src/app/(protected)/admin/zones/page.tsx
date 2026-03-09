@@ -13,6 +13,7 @@ async function getBooths() {
     return client.request(readItems("Booths", {
         fields: ["id", "booth_number", "Floorplan.name", "Floorplan.id", "company.name"] as any,
         sort: ["Floorplan.name", "booth_number"] as any,
+        limit: -1,
     })) as unknown as Promise<Booth[]>;
 }
 

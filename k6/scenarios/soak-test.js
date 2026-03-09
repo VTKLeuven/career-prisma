@@ -54,7 +54,7 @@ export default function () {
     const pages = [
       `${BASE_URL}/`,
       `${BASE_URL}/api/homepage`,
-      `${BASE_URL}/api/events/${TEST_EVENT_SLUG || "jobfair-2026"}`,
+      `${BASE_URL}/api/events/${TEST_EVENT_SLUG || "vtk-jobfair"}`,
       `${BASE_URL}/vacancies`,
       `${BASE_URL}/contact`,
     ];

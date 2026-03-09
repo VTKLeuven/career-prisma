@@ -51,28 +51,32 @@ type CompletedOrder = ExtendedOrder & {
     durationFormatted: string;
 };
 
-// Zone colors for visual identification
-const ZONE_COLORS: Record<string, string> = {
-    default: "bg-gray-400",
-};
+// Fallback Tailwind classes when no custom dot_color is set
+const ZONE_COLOR_CLASSES = [
+    "bg-red-500",
+    "bg-blue-500",
+    "bg-green-500",
+    "bg-yellow-500",
+    "bg-purple-500",
+    "bg-pink-500",
+    "bg-indigo-500",
+    "bg-orange-500",
+    "bg-teal-500",
+    "bg-cyan-500",
+];
+const DEFAULT_ZONE_CLASS = "bg-gray-400";
 
-// Generate consistent color from zone ID
-const getZoneColor = (zoneId: string, zones: Zone[]): string => {
-    const colors = [
-        "bg-red-500",
-        "bg-blue-500",
-        "bg-green-500",
-        "bg-yellow-500",
-        "bg-purple-500",
-        "bg-pink-500",
-        "bg-indigo-500",
-        "bg-orange-500",
-        "bg-teal-500",
-        "bg-cyan-500",
-    ];
+// Get zone color: use custom dot_color (hex) if set, else fallback Tailwind class
+function getZoneColor(zoneId: string, zones: Zone[]): { className?: string; style?: React.CSSProperties } {
+    const zone = zones.find(z => z.id === zoneId);
+    const customColor = (zone as { dot_color?: string | null })?.dot_color?.trim();
+    if (customColor) {
+        return { style: { backgroundColor: customColor } };
+    }
     const index = zones.findIndex(z => z.id === zoneId);
-    return index >= 0 ? colors[index % colors.length] : ZONE_COLORS.default;
-};
+    const className = index >= 0 ? ZONE_COLOR_CLASSES[index % ZONE_COLOR_CLASSES.length] : DEFAULT_ZONE_CLASS;
+    return { className };
+}
 
 export default function ShifterDashboardClient({ initialZones, currentUserId }: { initialZones: Zone[], currentUserId: string }) {
     const [orders, setOrders] = useState<ExtendedOrder[]>([]);
@@ -207,14 +211,17 @@ export default function ShifterDashboardClient({ initialZones, currentUserId }: 
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">All Zones</SelectItem>
-                            {initialZones.map(z => (
-                                <SelectItem key={z.id} value={z.id}>
-                                    <div className="flex items-center gap-2">
-                                        <span className={`w-3 h-3 rounded-full ${getZoneColor(z.id, initialZones)}`} />
-                                        {z.name}
-                                    </div>
-                                </SelectItem>
-                            ))}
+                            {initialZones.map(z => {
+                                const color = getZoneColor(z.id, initialZones);
+                                return (
+                                    <SelectItem key={z.id} value={z.id}>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`w-3 h-3 rounded-full ${color.className ?? ""}`} style={color.style} />
+                                            {z.name}
+                                        </div>
+                                    </SelectItem>
+                                );
+                            })}
                         </SelectContent>
                     </Select>
 
@@ -316,12 +323,15 @@ export default function ShifterDashboardClient({ initialZones, currentUserId }: 
                                                         {order.booth?.company?.name || "—"}
                                                     </TableCell>
                                                     <TableCell>
-                                                        {zone ? (
-                                                            <div className="flex items-center gap-2">
-                                                                <span className={`w-2 h-2 rounded-full ${getZoneColor(zone.id, initialZones)}`} />
-                                                                <span className="text-sm">{zone.name}</span>
-                                                            </div>
-                                                        ) : "—"}
+                                                        {zone ? (() => {
+                                                            const color = getZoneColor(zone.id, initialZones);
+                                                            return (
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className={`w-2 h-2 rounded-full ${color.className ?? ""}`} style={color.style} />
+                                                                    <span className="text-sm">{zone.name}</span>
+                                                                </div>
+                                                            );
+                                                        })() : "—"}
                                                     </TableCell>
                                                     <TableCell>
                                                         {(order.items || []).map((item, i) => (
@@ -415,7 +425,14 @@ export default function ShifterDashboardClient({ initialZones, currentUserId }: 
 
                                     {/* Zone indicator */}
                                     <div className="flex items-center gap-2 mt-1">
-                                        <span className={`w-3 h-3 rounded-full ${zone ? getZoneColor(zone.id, initialZones) : 'bg-gray-300'}`} />
+                                        {zone ? (() => {
+                                            const color = getZoneColor(zone.id, initialZones);
+                                            return (
+                                                <span className={`w-3 h-3 rounded-full ${color.className ?? "bg-gray-300"}`} style={color.style} />
+                                            );
+                                        })() : (
+                                            <span className="w-3 h-3 rounded-full bg-gray-300" />
+                                        )}
                                         <span className="text-sm text-muted-foreground">{zone ? zone.name : 'No Zone'}</span>
                                     </div>
 

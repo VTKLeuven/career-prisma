@@ -87,9 +87,11 @@ export default function ZonesClient({
     const [formData, setFormData] = useState<{
         name: string;
         booths: string[];
+        dot_color: string;
     }>({
         name: "",
         booths: [],
+        dot_color: "",
     });
 
     const [rangeFrom, setRangeFrom] = useState("");
@@ -98,14 +100,18 @@ export default function ZonesClient({
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        const payload = {
+            ...formData,
+            dot_color: formData.dot_color?.trim() || undefined,
+        };
         if (editingZone) {
-            await updateZoneAction(editingZone.id, formData);
+            await updateZoneAction(editingZone.id, payload);
         } else {
-            await createZoneAction(formData);
+            await createZoneAction(payload);
         }
         setIsOpen(false);
         setEditingZone(null);
-        setFormData({ name: "", booths: [] });
+        setFormData({ name: "", booths: [], dot_color: "" });
         setRanges([]);
         setRangeFrom("");
         setRangeTo("");
@@ -122,6 +128,7 @@ export default function ZonesClient({
         setFormData({
             name: zone.name,
             booths: boothIds,
+            dot_color: (zone as { dot_color?: string }).dot_color || "",
         });
         setIsOpen(true);
     };
@@ -244,7 +251,7 @@ export default function ZonesClient({
                             <DialogTrigger asChild>
                                 <Button onClick={() => {
                                     setEditingZone(null);
-                                    setFormData({ name: "", booths: [] });
+                                    setFormData({ name: "", booths: [], dot_color: "" });
                                     setRanges([]);
                                     setRangeFrom("");
                                     setRangeTo("");
@@ -265,6 +272,30 @@ export default function ZonesClient({
                                             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                             required
                                         />
+                                    </div>
+
+                                    <div className="grid w-full gap-2">
+                                        <Label htmlFor="dot_color">Zone Dot Color (Shifter Dashboard)</Label>
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                id="dot_color"
+                                                type="text"
+                                                placeholder="e.g. #ff0000 or #3b82f6"
+                                                value={formData.dot_color}
+                                                onChange={(e) => setFormData({ ...formData, dot_color: e.target.value })}
+                                                className="max-w-[140px] font-mono"
+                                            />
+                                            {formData.dot_color && (
+                                                <span
+                                                    className="w-6 h-6 rounded-full border shrink-0"
+                                                    style={{ backgroundColor: formData.dot_color }}
+                                                    title={formData.dot_color}
+                                                />
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                            Hex color for the zone indicator dot on the shifter platform. Leave empty for default.
+                                        </p>
                                     </div>
 
                                     <div className="space-y-3">
