@@ -188,16 +188,23 @@ function getCompanyCategoryNames(company: { category?: unknown }): string[] {
 
 /** Check if any of the student's study fields match the company's interested categories.
  * - Students with a specific field (e.g. Mechanical Engineering) only match companies that explicitly list it.
- * - Students with "Other" or from a faculty without masters match companies that have "Other" in their categories. */
+ * - Students with "Other" or from a faculty without masters match companies that have "Other" in their categories.
+ * - When company has no categories (fill-up fallback): any student with a study field is eligible. */
 function studyFieldMatches(
   studentStudyFields: string[],
   companyCategoryNames: string[],
   companyHasOther: boolean,
-  companyId?: string
+  companyId?: string,
+  allowAllWhenCompanyHasNoCategories?: boolean
 ): boolean {
   if (studentStudyFields.length === 0) {
     if (companyId) console.log("[Matching] studyFieldMatches: company", companyId, "NO MATCH (no student study field)");
     return false;
+  }
+  // Fallback: when company has no categories, consider all students with any study field as eligible (for fill-up)
+  if (allowAllWhenCompanyHasNoCategories && companyCategoryNames.length === 0 && !companyHasOther) {
+    if (companyId) console.log("[Matching] studyFieldMatches: company", companyId, "MATCH (fill-up fallback: company has no categories, student has study field)");
+    return true;
   }
   const studentHasOther = studentStudyFields.some((s) => /^others?$/i.test(s.trim()));
   if (studentHasOther && companyHasOther) {
@@ -433,6 +440,22 @@ function extractStudentIdFromValue(v: unknown): string | null {
   return null;
 }
 
+/** Extract student ID from a student_matching_response row. Handles various Directus field shapes. */
+function extractStudentIdFromResponse(item: Record<string, unknown>): string | null {
+  const tryFields = ["student", "student_id", "students", "students_id"] as const;
+  for (const key of tryFields) {
+    const v = item[key];
+    const id = extractStudentIdFromValue(v);
+    if (id) return id;
+    if (Array.isArray(v) && v.length > 0) {
+      const first = v[0];
+      const fid = extractStudentIdFromValue(first);
+      if (fid) return fid;
+    }
+  }
+  return null;
+}
+
 /** Fetch students for a company_matching_response from junction table (bypasses Directus M2M limit). */
 async function fetchStudentsForCompanyMatchingResponse(
   client: Awaited<ReturnType<typeof getServerDirectusClient>>,
@@ -601,10 +624,12 @@ export async function getCompanyMatchingResponse(
 }
 
 /** Find all students who matched with this company (student has company in their matches).
- * Updates company_matching_response.students with those student IDs. */
+ * Updates company_matching_response.students with those student IDs.
+ * When allStudentResponsesPreFetch is provided (from syncAllCompanyMatchedStudents), uses it for fill-up instead of fetching per-company. */
 export async function syncCompanyMatchedStudents(
   companyId: string,
-  matchingSoftwareId: string
+  matchingSoftwareId: string,
+  allStudentResponsesPreFetch?: Array<Record<string, unknown>>
 ): Promise<CompanyMatchingResponse | null> {
   const existing = await getCompanyMatchingResponse(companyId, matchingSoftwareId);
   if (!existing?.id) return null;
@@ -775,10 +800,11 @@ export async function syncCompanyMatchedStudents(
   }
 
   withScores.sort((a, b) => a.score - b.score);
+  // Always keep original "real" matches first (students who matched with this company), ranked by score
   let topStudentIds = withScores.slice(0, MAX_COMPANY_MATCHES).map((x) => x.studentId);
   const alreadyHave = new Set(topStudentIds);
 
-  // If fewer than 50 matches, fill with eligible students (correct study field) ranked by score
+  // If fewer than 50 matches, fill with eligible students (correct study field) ranked by score. Originals stay first.
   if (alreadyHave.size < MAX_COMPANY_MATCHES) {
     const msConfig = await getMatchingSoftwareById(matchingSoftwareId);
     const categoryFormFields = (msConfig as { category_form_fields?: Array<{ formId: string; formVersionId: string; fieldName: string }> })?.category_form_fields;
@@ -789,34 +815,90 @@ export async function syncCompanyMatchedStudents(
       : null;
     const companyResponses = await getCompanyMatchingResponsesForMatchingSoftware(matchingSoftwareId, categoryFormFields);
     const companyInfo = companyResponses.find((cr) => String(cr.companyId) === String(companyId));
-    const categoryNames = companyInfo?.categoryNames ?? [];
-    const hasOther = companyInfo?.hasOther ?? false;
-    if (!companyInfo) {
-      console.warn("[Matching] syncCompanyMatchedStudents fill-up: companyId", companyId, "not found in companyResponses (", companyResponses.length, "companies)");
+    let categoryNames = companyInfo?.categoryNames ?? [];
+    let hasOther = companyInfo?.hasOther ?? false;
+    // Fallback: fetch company directly when not in companyResponses or has no categories
+    if (categoryNames.length === 0) {
+      try {
+        const companyItems = (await client.request(
+          readItems("company" as any, {
+            fields: ["id", "category", "category.master_id", "category.master_id.name", "category.category_id", "category.category_id.name"],
+            filter: { id: { _eq: companyId } },
+            limit: 1,
+          })
+        )) as unknown as Array<{ category?: unknown }>;
+        if (companyItems.length > 0) {
+          const fromProfile = getCompanyCategoryNames(companyItems[0]);
+          if (fromProfile.length > 0) {
+            categoryNames = fromProfile;
+            hasOther = categoryNames.some((n) => n.toLowerCase() === "other");
+            console.log("[Matching] syncCompanyMatchedStudents fill-up: fetched company categories from profile:", categoryNames.slice(0, 5).join(", "));
+          }
+        }
+      } catch (err) {
+        console.warn("[Matching] syncCompanyMatchedStudents fill-up: could not fetch company categories:", err);
+      }
+    }
+    if (!companyInfo && categoryNames.length === 0) {
+      console.warn("[Matching] syncCompanyMatchedStudents fill-up: companyId", companyId, "no categories (profile or form). Using fill-up fallback: any student with study field is eligible.");
     }
 
     type FullStudentRow = StudentResponseRow & { prerequisite_form_response?: Record<string, unknown> };
     let allStudentResponses: FullStudentRow[] = [];
-    const allFields = ["id", "student", "student.id", "student_id", "riasec", "riasec_answers", "general_info_answers", "prerequisite_form_response"];
-    const fallbackFields = ["id", "student", "student_id", "riasec", "riasec_answers", "general_info_answers"];
-    const msFilterVariants = [
-      { matching_software: { _eq: matchingSoftwareId } },
-      { matching_software_id: { _eq: matchingSoftwareId } },
-    ];
-    fetchAllLoop: for (const collection of STUDENT_MATCHING_RESPONSE_COLLECTIONS) {
-      for (const filter of msFilterVariants) {
-        for (const fields of [allFields, fallbackFields]) {
+    if (allStudentResponsesPreFetch && allStudentResponsesPreFetch.length > 0) {
+      allStudentResponses = allStudentResponsesPreFetch as FullStudentRow[];
+      console.log("[Matching] syncCompanyMatchedStudents fill-up: using pre-fetched data | count:", allStudentResponses.length);
+    } else {
+      console.log("[Matching] syncCompanyMatchedStudents fill-up: pre-fetch empty, trying per-company fetch | companyId:", companyId);
+      const allFields = ["id", "student", "student.id", "student_id", "students", "students_id", "riasec", "riasec_answers", "general_info_answers", "prerequisite_form_response"];
+      const fallbackFields = ["id", "student", "student.id", "student_id", "students", "students_id", "riasec", "riasec_answers", "general_info_answers", "prerequisite_form_response"];
+      const msFilterVariants = [
+        { matching_software: { _eq: matchingSoftwareId } },
+        { matching_software_id: { _eq: matchingSoftwareId } },
+        { matching_software: { id: { _eq: matchingSoftwareId } } },
+      ];
+      fetchAllLoop: for (const collection of STUDENT_MATCHING_RESPONSE_COLLECTIONS) {
+        for (const filter of msFilterVariants) {
+          for (const fields of [allFields, fallbackFields]) {
+            try {
+              const items = (await client.request(
+                readItems(collection as any, {
+                  fields,
+                  filter,
+                  limit: -1,
+                })
+              )) as unknown as Array<Record<string, unknown>>;
+              if (items.length > 0) {
+                allStudentResponses = items as FullStudentRow[];
+                break fetchAllLoop;
+              }
+            } catch {
+              continue;
+            }
+          }
+        }
+      }
+      if (allStudentResponses.length === 0 && responseIds.length > 0) {
+        const fieldsForFallback = ["id", "student", "student.id", "student_id", "students", "students_id", "riasec", "riasec_answers", "general_info_answers", "prerequisite_form_response", "matching_software"];
+        for (const collection of STUDENT_MATCHING_RESPONSE_COLLECTIONS) {
           try {
             const items = (await client.request(
               readItems(collection as any, {
-                fields,
-                filter,
-                limit: -1,
+                fields: fieldsForFallback,
+                limit: 5000,
               })
-            )) as unknown as Array<Record<string, unknown>>;
-            if (items.length > 0) {
-              allStudentResponses = items as FullStudentRow[];
-              break fetchAllLoop;
+            )) as unknown as Array<Record<string, unknown> & { matching_software?: string | number | { id?: string | number } }>;
+            const msIdStr = String(matchingSoftwareId);
+            const matchesMs = (ms: unknown) => {
+              if (ms == null) return false;
+              const id = typeof ms === "object" && ms !== null && "id" in ms ? (ms as { id: unknown }).id : ms;
+              return String(id) === msIdStr;
+            };
+            const filtered = items.filter((r) => matchesMs(r.matching_software));
+            if (filtered.length > 0) {
+              allStudentResponses = filtered as FullStudentRow[];
+              console.log("[Matching] syncCompanyMatchedStudents fill-up: fallback fetch-all worked | total:", items.length, "| filtered by matching_software:", allStudentResponses.length);
+              break;
             }
           } catch {
             continue;
@@ -825,36 +907,19 @@ export async function syncCompanyMatchedStudents(
       }
     }
 
-    const candidateStudentIds = allStudentResponses
-      .map((item) => {
-        const s = item.student ?? item.student_id ?? item.students;
-        if (typeof s === "string") return s;
-        if (typeof s === "number") return String(s);
-        if (s && typeof s === "object" && "id" in s) return String((s as { id: string | number }).id);
-        if (Array.isArray(s) && s.length > 0) {
-          const first = s[0];
-          return typeof first === "string" ? first : typeof first === "number" ? String(first) : (first && typeof first === "object" && "id" in first) ? String((first as { id: string | number }).id) : null;
-        }
-        return null;
-      })
-      .filter((id): id is string => !!id && !alreadyHave.has(id));
-    const formDataByStudent = prerequisiteFormId && candidateStudentIds.length > 0
-      ? await (await import("./forms")).getStudentFormResponsesBatchForForm(prerequisiteFormId, candidateStudentIds)
+    const allExtractedIds = allStudentResponses
+      .map((item) => extractStudentIdFromResponse(item as Record<string, unknown>))
+      .filter((id): id is string => !!id);
+    const candidateStudentIds = allExtractedIds.filter((id) => !alreadyHave.has(id));
+    const formDataByStudent = prerequisiteFormId && allExtractedIds.length > 0
+      ? await (await import("./forms")).getStudentFormResponsesBatchForForm(prerequisiteFormId, allExtractedIds)
       : new Map<string, Record<string, unknown>>();
 
-    console.log("[Matching] syncCompanyMatchedStudents fill-up: companyId:", companyId, "| candidates:", candidateStudentIds.length, "| formDataFromBatch:", formDataByStudent.size, "| categoryNames:", categoryNames.slice(0, 5).join(", "), categoryNames.length > 5 ? "..." : "");
+    console.log("[Matching] syncCompanyMatchedStudents fill-up: companyId:", companyId, "| allStudents:", allStudentResponses.length, "| extracted:", allExtractedIds.length, "| candidates:", candidateStudentIds.length, "| formDataFromBatch:", formDataByStudent.size, "| categoryNames:", categoryNames.slice(0, 3).join(", "), categoryNames.length > 3 ? "..." : "");
 
     const extraWithScores: Array<{ studentId: string; score: number }> = [];
     for (const item of allStudentResponses) {
-      const s = item.student ?? item.student_id ?? item.students;
-      let sid: string | null = null;
-      if (typeof s === "string") sid = s;
-      else if (typeof s === "number") sid = String(s);
-      else if (s && typeof s === "object" && "id" in s) sid = String((s as { id: string | number }).id);
-      else if (Array.isArray(s) && s.length > 0) {
-        const first = s[0];
-        sid = typeof first === "string" ? first : typeof first === "number" ? String(first) : (first && typeof first === "object" && "id" in first) ? String((first as { id: string | number }).id) : null;
-      }
+      const sid = extractStudentIdFromResponse(item as Record<string, unknown>);
       if (!sid || alreadyHave.has(sid)) continue;
 
       let formDataForStudy: Record<string, unknown> | undefined = item.prerequisite_form_response ?? undefined;
@@ -863,7 +928,7 @@ export async function syncCompanyMatchedStudents(
         formDataForStudy = formDataByStudent.get(sid);
         studentStudyFields = await resolveStudyFieldForMatching(formDataForStudy);
       }
-      if (!studyFieldMatches(studentStudyFields, categoryNames, hasOther, companyId)) continue;
+      if (!studyFieldMatches(studentStudyFields, categoryNames, hasOther, companyId, true)) continue;
 
       let riasec: Record<RIASECType, number> = (item.riasec as Record<RIASECType, number>) ?? {};
       const riasecAnswers = (item as { riasec_answers?: Record<string, string> }).riasec_answers;
@@ -1062,6 +1127,83 @@ async function clearAllCompanyMatchingResponseStudentsJunction(
   }
 }
 
+/** Pre-fetch all student_matching_response for fill-up. Uses the junction table (which works) to get response IDs, then fetches by ID. */
+async function fetchAllStudentResponsesForMatchingSoftware(
+  client: Awaited<ReturnType<typeof getServerDirectusClient>>,
+  matchingSoftwareId: string,
+  companyIds: string[],
+  log?: (msg: string) => void
+): Promise<Array<Record<string, unknown>>> {
+  const responseIdSet = new Set<string>();
+  const companyFilterVariants = [
+    { company_id: { _in: companyIds } },
+    { company: { _in: companyIds } },
+  ];
+  const respFieldVariants = ["student_matching_response_id", "student_matching_response"] as const;
+  for (const junction of JUNCTION_COLLECTIONS) {
+    for (const filter of companyFilterVariants) {
+      for (const respField of respFieldVariants) {
+        try {
+          const items = (await client.request(
+            readItems(junction as any, {
+              fields: [respField],
+              filter,
+              limit: -1,
+            })
+          )) as unknown as Array<Record<string, unknown>>;
+          for (const r of items) {
+            const v = r[respField];
+            const id = typeof v === "string" ? v : (v as { id?: string })?.id;
+            if (id) responseIdSet.add(String(id));
+          }
+          if (responseIdSet.size > 0) {
+            log?.(`Pre-fetch: junction ${junction} → ${responseIdSet.size} unique response IDs`);
+            break;
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : JSON.stringify(err);
+          log?.(`Pre-fetch: junction ${junction} failed: ${msg}`);
+        }
+      }
+      if (responseIdSet.size > 0) break;
+    }
+    if (responseIdSet.size > 0) break;
+  }
+  const responseIds = Array.from(responseIdSet);
+  if (responseIds.length === 0) {
+    log?.(`Pre-fetch: no response IDs from junction`);
+    return [];
+  }
+  const fields = ["id", "student", "student.id", "student_id", "students", "students_id", "riasec", "riasec_answers", "general_info_answers", "prerequisite_form_response", "matching_software"];
+  const msIdStr = String(matchingSoftwareId);
+  const matchesMs = (ms: unknown) => {
+    if (ms == null) return false;
+    const id = typeof ms === "object" && ms !== null && "id" in ms ? (ms as { id: unknown }).id : ms;
+    return String(id) === msIdStr;
+  };
+  for (const collection of STUDENT_MATCHING_RESPONSE_COLLECTIONS) {
+    try {
+      const items = (await client.request(
+        readItems(collection as any, {
+          fields,
+          filter: { id: { _in: responseIds } },
+          limit: -1,
+        })
+      )) as unknown as Array<Record<string, unknown> & { matching_software?: unknown }>;
+      const filtered = items.filter((r) => matchesMs(r.matching_software));
+      if (filtered.length > 0) {
+        log?.(`Pre-fetch: fetched by ID (${collection}) → ${filtered.length} responses for matching_software=${matchingSoftwareId}`);
+        return filtered;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : JSON.stringify(err);
+      log?.(`Pre-fetch: fetch by ID ${collection} failed: ${msg}`);
+    }
+  }
+  log?.(`Pre-fetch: fetch by ID returned 0 for ${responseIds.length} IDs`);
+  return [];
+}
+
 /** Sync matched students for ALL companies that have a matching response for this matching software. */
 export async function syncAllCompanyMatchedStudents(
   matchingSoftwareId: string,
@@ -1071,11 +1213,16 @@ export async function syncAllCompanyMatchedStudents(
   const companyIds = await getCompanyMatchingResponseCompletedIds(matchingSoftwareId, []);
   const ids = Array.from(companyIds);
   log?.(`Syncing company matches: ${ids.length} companies`);
+
+  const client = await getServerDirectusClient();
+  const allStudentResponsesPreFetch = await fetchAllStudentResponsesForMatchingSoftware(client, matchingSoftwareId, ids, log);
+  log?.(`Pre-fetch result: ${allStudentResponsesPreFetch.length} student responses for fill-up`);
+
   const errors: string[] = [];
   let synced = 0;
   for (const companyId of ids) {
     try {
-      const result = await syncCompanyMatchedStudents(companyId, matchingSoftwareId);
+      const result = await syncCompanyMatchedStudents(companyId, matchingSoftwareId, allStudentResponsesPreFetch);
       if (result) synced++;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
