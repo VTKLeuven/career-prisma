@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { fetchEventPageBySlugAction } from "@/app/actions/events"
 import { getSpeakerSlug } from "@/lib/utils/slugify"
+import { getSpeakersInSameTimeSlot } from '@/lib/utils/speakers'
 import SpeakerPageClient from './page-client'
 
 export const revalidate = 30
@@ -18,19 +19,21 @@ export default async function SpeakerPage({
     notFound();
   }
 
-  const speakers = page.speakers ?? [];
-  let speaker = speakers.find((s) => getSpeakerSlug(s, speakers) === speakerSlug);
+  const allSpeakers = page.speakers ?? [];
+  let speaker = allSpeakers.find((s) => getSpeakerSlug(s, allSpeakers) === speakerSlug);
   if (!speaker) {
-    speaker = speakers.find((s) => s.id === speakerSlug);
+    speaker = allSpeakers.find((s) => s.id === speakerSlug);
   }
   if (!speaker) {
     notFound();
   }
 
+  const speakersInSlot = getSpeakersInSameTimeSlot(speaker, allSpeakers);
+
   return (
     <SpeakerPageClient
       page={page}
-      speaker={speaker}
+      speakers={speakersInSlot}
       eventName={eventName}
     />
   );

@@ -589,19 +589,39 @@ export async function getStudentFormResponsesBatchForForm(
     const versions = await listFormVersionsForServer(formId);
     const versionIds = versions.map((v) => v.id);
     if (versionIds.length === 0) return new Map();
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id", "form_version_id", "data"],
-        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
-        limit: -1,
-        sort: "-submitted_at",
-      })
-    ) as unknown as Array<{ id: string; form_version_id: string; data?: Record<string, unknown> }>;
+    type FormResponseRow = { id: string; form_version_id: string; data?: Record<string, unknown>; student_id?: string | number | { id: string | number } };
+    let responses: FormResponseRow[];
+    try {
+      responses = (await client.request(
+        readItems("form_responses" as any, {
+          fields: ["id", "form_version_id", "data", "student_id"],
+          filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
+          limit: -1,
+          sort: "-submitted_at",
+        })
+      )) as unknown as FormResponseRow[];
+    } catch {
+      responses = (await client.request(
+        readItems("form_responses" as any, {
+          fields: ["id", "form_version_id", "data"],
+          filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
+          limit: -1,
+          sort: "-submitted_at",
+        })
+      )) as unknown as FormResponseRow[];
+    }
     const byStudent = new Map<string, Record<string, unknown>>();
     for (const r of responses) {
-      const sid = (r.data as Record<string, unknown>)?._student_id;
-      if (sid != null && idSet.has(String(sid)) && !byStudent.has(String(sid))) {
-        byStudent.set(String(sid), r.data ?? {});
+      let sid: string | null = null;
+      const fromData = (r.data as Record<string, unknown>)?._student_id ?? (r.data as Record<string, unknown>)?.student_id;
+      if (fromData != null) sid = String(fromData);
+      else if (r.student_id != null) {
+        sid = typeof r.student_id === "object" && r.student_id && "id" in r.student_id
+          ? String((r.student_id as { id: string | number }).id)
+          : String(r.student_id);
+      }
+      if (sid != null && idSet.has(sid) && !byStudent.has(sid)) {
+        byStudent.set(sid, r.data ?? {});
       }
     }
     return byStudent;

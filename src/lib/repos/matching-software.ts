@@ -775,120 +775,7 @@ export async function syncCompanyMatchedStudents(
   }
 
   withScores.sort((a, b) => a.score - b.score);
-  let topStudentIds = withScores.slice(0, MAX_COMPANY_MATCHES).map((x) => x.studentId);
-  const alreadyHave = new Set(topStudentIds);
-
-  // If fewer than 50 matches, fill with eligible students (correct study field) ranked by score
-  if (alreadyHave.size < MAX_COMPANY_MATCHES) {
-    const msConfig = await getMatchingSoftwareById(matchingSoftwareId);
-    const categoryFormFields = (msConfig as { category_form_fields?: Array<{ formId: string; formVersionId: string; fieldName: string }> })?.category_form_fields;
-    const prerequisiteFormId = (msConfig as { prerequisite_form?: string | { id: string } })?.prerequisite_form
-      ? (typeof (msConfig as { prerequisite_form: string | { id: string } }).prerequisite_form === "string"
-        ? (msConfig as { prerequisite_form: string }).prerequisite_form
-        : (msConfig as { prerequisite_form: { id: string } }).prerequisite_form?.id)
-      : null;
-    const companyResponses = await getCompanyMatchingResponsesForMatchingSoftware(matchingSoftwareId, categoryFormFields);
-    const companyInfo = companyResponses.find((cr) => String(cr.companyId) === String(companyId));
-    const categoryNames = companyInfo?.categoryNames ?? [];
-    const hasOther = companyInfo?.hasOther ?? false;
-    if (!companyInfo) {
-      console.warn("[Matching] syncCompanyMatchedStudents fill-up: companyId", companyId, "not found in companyResponses (", companyResponses.length, "companies)");
-    }
-
-    type FullStudentRow = StudentResponseRow & { prerequisite_form_response?: Record<string, unknown> };
-    let allStudentResponses: FullStudentRow[] = [];
-    const allFields = ["id", "student", "student.id", "student_id", "riasec", "riasec_answers", "general_info_answers", "prerequisite_form_response"];
-    const fallbackFields = ["id", "student", "student_id", "riasec", "riasec_answers", "general_info_answers"];
-    const msFilterVariants = [
-      { matching_software: { _eq: matchingSoftwareId } },
-      { matching_software_id: { _eq: matchingSoftwareId } },
-    ];
-    fetchAllLoop: for (const collection of STUDENT_MATCHING_RESPONSE_COLLECTIONS) {
-      for (const filter of msFilterVariants) {
-        for (const fields of [allFields, fallbackFields]) {
-          try {
-            const items = (await client.request(
-              readItems(collection as any, {
-                fields,
-                filter,
-                limit: -1,
-              })
-            )) as unknown as Array<Record<string, unknown>>;
-            if (items.length > 0) {
-              allStudentResponses = items as FullStudentRow[];
-              break fetchAllLoop;
-            }
-          } catch {
-            continue;
-          }
-        }
-      }
-    }
-
-    const candidateStudentIds = allStudentResponses
-      .map((item) => {
-        const s = item.student ?? item.student_id ?? item.students;
-        if (typeof s === "string") return s;
-        if (typeof s === "number") return String(s);
-        if (s && typeof s === "object" && "id" in s) return String((s as { id: string | number }).id);
-        if (Array.isArray(s) && s.length > 0) {
-          const first = s[0];
-          return typeof first === "string" ? first : typeof first === "number" ? String(first) : (first && typeof first === "object" && "id" in first) ? String((first as { id: string | number }).id) : null;
-        }
-        return null;
-      })
-      .filter((id): id is string => !!id && !alreadyHave.has(id));
-    const formDataByStudent = prerequisiteFormId && candidateStudentIds.length > 0
-      ? await (await import("./forms")).getStudentFormResponsesBatchForForm(prerequisiteFormId, candidateStudentIds)
-      : new Map<string, Record<string, unknown>>();
-
-    console.log("[Matching] syncCompanyMatchedStudents fill-up: companyId:", companyId, "| candidates:", candidateStudentIds.length, "| formDataFromBatch:", formDataByStudent.size, "| categoryNames:", categoryNames.slice(0, 5).join(", "), categoryNames.length > 5 ? "..." : "");
-
-    const extraWithScores: Array<{ studentId: string; score: number }> = [];
-    for (const item of allStudentResponses) {
-      const s = item.student ?? item.student_id ?? item.students;
-      let sid: string | null = null;
-      if (typeof s === "string") sid = s;
-      else if (typeof s === "number") sid = String(s);
-      else if (s && typeof s === "object" && "id" in s) sid = String((s as { id: string | number }).id);
-      else if (Array.isArray(s) && s.length > 0) {
-        const first = s[0];
-        sid = typeof first === "string" ? first : typeof first === "number" ? String(first) : (first && typeof first === "object" && "id" in first) ? String((first as { id: string | number }).id) : null;
-      }
-      if (!sid || alreadyHave.has(sid)) continue;
-
-      let formDataForStudy: Record<string, unknown> | undefined = item.prerequisite_form_response ?? undefined;
-      let studentStudyFields = await resolveStudyFieldForMatching(formDataForStudy);
-      if (studentStudyFields.length === 0 && formDataByStudent.has(sid)) {
-        formDataForStudy = formDataByStudent.get(sid);
-        studentStudyFields = await resolveStudyFieldForMatching(formDataForStudy);
-      }
-      if (!studyFieldMatches(studentStudyFields, categoryNames, hasOther, companyId)) continue;
-
-      let riasec: Record<RIASECType, number> = (item.riasec as Record<RIASECType, number>) ?? {};
-      const riasecAnswers = (item as { riasec_answers?: Record<string, string> }).riasec_answers;
-      if (Object.keys(riasec).length === 0 && riasecAnswers && typeof riasecAnswers === "object") {
-        riasec = computeRiasecFromAnswers(riasecAnswers);
-      }
-      const studentOcia = riasecToOcia(riasec);
-      const studentGi: GeneralInfoAnswers = item.general_info_answers ?? {
-        work_preference: [],
-        company_preference: [],
-        options_preference: [],
-      };
-      const ociaScore = ociaSimilarityScore(studentOcia, companyOcia);
-      const generalInfoOverlap = countGeneralInfoOverlap(studentGi, companyGi);
-      const combinedScore = (ociaScore - generalInfoOverlap * GENERAL_INFO_WEIGHT) / (GENERAL_INFO_WEIGHT + 1);
-      extraWithScores.push({ studentId: sid, score: combinedScore });
-    }
-
-    extraWithScores.sort((a, b) => a.score - b.score);
-    const needed = MAX_COMPANY_MATCHES - alreadyHave.size;
-    const extraIds = extraWithScores.slice(0, needed).map((x) => x.studentId);
-    topStudentIds = [...topStudentIds, ...extraIds];
-    console.log("[Matching] syncCompanyMatchedStudents: companyId:", companyId, "| eligible candidates:", extraWithScores.length, "| filled with:", extraIds.length, "| total:", topStudentIds.length);
-  }
-
+  const topStudentIds = withScores.slice(0, MAX_COMPANY_MATCHES).map((x) => x.studentId);
   const uniqueStudentIds = [...new Set(topStudentIds)];
 
   console.log("[Matching] syncCompanyMatchedStudents: companyId:", companyId, "| total matches:", withScores.length, "| final:", uniqueStudentIds.length);
@@ -1071,6 +958,7 @@ export async function syncAllCompanyMatchedStudents(
   const companyIds = await getCompanyMatchingResponseCompletedIds(matchingSoftwareId, []);
   const ids = Array.from(companyIds);
   log?.(`Syncing company matches: ${ids.length} companies`);
+
   const errors: string[] = [];
   let synced = 0;
   for (const companyId of ids) {
@@ -1440,17 +1328,22 @@ export async function createStudentMatchingResponse(data: {
         console.error("[createStudentMatchingResponse] Matching failed (non-fatal):", matchErr);
       }
 
-      // Sync company matches for each company this student matched with (so companies see the new student)
-      for (const companyId of matchedCompanyIds) {
-        try {
-          await syncCompanyMatchedStudents(companyId, data.matching_software);
-        } catch (syncErr) {
-          console.error("[createStudentMatchingResponse] Sync company", companyId, "failed (non-fatal):", syncErr);
-        }
-      }
-
       const refetched = await getStudentMatchingResponse(data.student, data.matching_software);
       console.log("[createStudentMatchingResponse] Refetch after create:", refetched ? "found" : "null");
+
+      // Sync company matches in background (after student sees their matches). Don't await.
+      if (matchedCompanyIds.length > 0) {
+        void (async () => {
+          for (const companyId of matchedCompanyIds) {
+            try {
+              await syncCompanyMatchedStudents(companyId, data.matching_software);
+            } catch (syncErr) {
+              console.error("[createStudentMatchingResponse] Background sync company", companyId, "failed:", syncErr);
+            }
+          }
+        })();
+      }
+
       return refetched ?? result;
     } catch (err) {
       console.log("[createStudentMatchingResponse] collection:", collection, "ERROR:", err);

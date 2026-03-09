@@ -249,14 +249,19 @@ export async function recomputeCompanyMatchesForCurrentUserAction(matchingSoftwa
     generalInfo ?? undefined
   );
   const affectedCompanyIds = [...new Set([...previousCompanyIds, ...newCompanyIds])];
-  for (const companyId of affectedCompanyIds) {
-    try {
-      await syncCompanyMatchedStudents(companyId, matchingSoftwareId);
-    } catch (syncErr) {
-      console.error("[recomputeCompanyMatchesForCurrentUserAction] Sync company", companyId, "failed (non-fatal):", syncErr);
-    }
+  const refreshed = await getStudentMatchingResponse(student.id, matchingSoftwareId);
+  if (affectedCompanyIds.length > 0) {
+    void (async () => {
+      for (const companyId of affectedCompanyIds) {
+        try {
+          await syncCompanyMatchedStudents(companyId, matchingSoftwareId);
+        } catch (syncErr) {
+          console.error("[recomputeCompanyMatchesForCurrentUserAction] Background sync company", companyId, "failed:", syncErr);
+        }
+      }
+    })();
   }
-  return getStudentMatchingResponse(student.id, matchingSoftwareId);
+  return refreshed;
 }
 
 /** Returns student's form response if they have filled the prerequisite form. Any version of the form counts as complete. */
