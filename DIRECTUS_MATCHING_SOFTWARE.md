@@ -44,7 +44,7 @@ The API uses `Matching_Software` (PascalCase). If your Directus collection key d
 | ocia_answers | JSON | | { "1": "A", "2": "B", ... } |
 | ocia | JSON | | { "Clan": 25, "Adhocracy": 16.67, ... } |
 | general_info_answers | JSON | | { work_preference: string[], company_type: string[], work_options: string[] } – multiselect options |
-| students | M2M → students | | Students who matched with this company. **Top 50 by score** – when syncing: (1) Students who matched with the company are ranked by score and the top 50 are kept. (2) If fewer than 50, eligible students (correct study field) are scored the same way and added until the company has 50 matches. **Dynamic updates** – when a student submits or recomputes their matches, affected companies are synced so their top 50 stays up to date. |
+| students | M2M → students | | Students who matched with this company. **Top 50 by score** – when syncing: (1) Students who matched with the company are ranked by score and the top 50 are kept. (2) If fewer than 50, eligible students (correct study field) are scored the same way and added until the company has 50 matches. **Sync schedule** – company matches are updated daily at 0:00 UTC (cron) or when an admin clicks "Update matches" in Admin → Matching Software. Student submit/recompute does not trigger company sync. |
 
 **Unique constraint**: (company, matching_software) - one response per company per matching software.
 
@@ -110,6 +110,10 @@ If the Matches tab is visible but shows no students:
 
 4. **Check `companies_can_view_matches`** on Matching_Software: Admin → Matching Software → toggle "Companies can view matches" on.
 
-## 8. Header buttons
+## 8. Daily cron (company sync at 0:00 UTC)
+
+Company matches are synced daily at midnight UTC via a cron job. **Vercel**: Add `CRON_SECRET` to Project → Settings → Environment Variables (e.g. `openssl rand -hex 32`). The cron is defined in `vercel.json` and calls `/api/cron/sync-company-matches`. **Self-hosted**: Call `GET /api/cron/sync-company-matches` with `Authorization: Bearer <CRON_SECRET>` at your desired schedule (e.g. via system cron or a scheduler).
+
+## 9. Header buttons
 
 Add `matching_software` to the `header_buttons` JSON field on `career_event_page` (same as floorplan, company_guide, cv_upload): `["matching_software"]`.

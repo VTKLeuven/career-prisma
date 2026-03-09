@@ -949,6 +949,29 @@ async function clearAllCompanyMatchingResponseStudentsJunction(
   }
 }
 
+/** List all active matching software IDs (server client, for cron). */
+export async function listActiveMatchingSoftwareIds(): Promise<string[]> {
+  const client = await getServerDirectusClient();
+  const ids: string[] = [];
+  for (const collection of MATCHING_SOFTWARE_COLLECTIONS) {
+    try {
+      const items = (await client.request(
+        readItems(collection as any, {
+          fields: ["id"],
+          filter: { active: { _eq: true } },
+        })
+      )) as unknown as Array<{ id: string }>;
+      for (const item of items ?? []) {
+        if (item?.id) ids.push(String(item.id));
+      }
+      if (ids.length > 0) return [...new Set(ids)];
+    } catch {
+      continue;
+    }
+  }
+  return ids;
+}
+
 /** Sync matched students for ALL companies that have a matching response for this matching software. */
 export async function syncAllCompanyMatchedStudents(
   matchingSoftwareId: string,
@@ -1315,9 +1338,8 @@ export async function createStudentMatchingResponse(data: {
       const result = (await client.request(createItem(collection as any, payload))) as unknown as StudentMatchingResponse;
       console.log("[createStudentMatchingResponse] Created in", collection, "result id:", result?.id);
 
-      let matchedCompanyIds: string[] = [];
       try {
-        matchedCompanyIds = await computeAndStoreCompanyMatches(
+        await computeAndStoreCompanyMatches(
           result.id,
           data.matching_software,
           data.riasec,
@@ -1330,20 +1352,7 @@ export async function createStudentMatchingResponse(data: {
 
       const refetched = await getStudentMatchingResponse(data.student, data.matching_software);
       console.log("[createStudentMatchingResponse] Refetch after create:", refetched ? "found" : "null");
-
-      // Sync company matches in background (after student sees their matches). Don't await.
-      if (matchedCompanyIds.length > 0) {
-        void (async () => {
-          for (const companyId of matchedCompanyIds) {
-            try {
-              await syncCompanyMatchedStudents(companyId, data.matching_software);
-            } catch (syncErr) {
-              console.error("[createStudentMatchingResponse] Background sync company", companyId, "failed:", syncErr);
-            }
-          }
-        })();
-      }
-
+      // Company matches are synced daily at 0:00 or via admin manual "Update matches" button.
       return refetched ?? result;
     } catch (err) {
       console.log("[createStudentMatchingResponse] collection:", collection, "ERROR:", err);
