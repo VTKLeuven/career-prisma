@@ -46,6 +46,29 @@ Configure these in Admin → Floorplan. When `floorplan_category_form_fields` is
 
 ---
 
+## Scanning columns for event registration forms
+
+When companies scan students at events, the scanning system can show University, Faculty, Master, and Year of study. Configure these in **Admin → Forms → [Form] → View Responses → Scanning columns**. Column options come from all form versions (grouped view). When viewing all versions, config is saved to all event registration versions—each version is resolved by matching field label or name, so different field names across versions (e.g. `study_field` vs `master_degree`) map correctly. When viewing a single version, it is saved to that version only.
+
+The form version metadata stores `scanning_columns`:
+
+```json
+{
+  "university": "field_name",
+  "faculty": "field_name",
+  "master": "field_name",
+  "year_of_study": "field_name"
+}
+```
+
+Each field maps to a form field name (e.g. "university", "faculty", "master_degree", "year"). If no mapping is set, the scanning views fall back to hardcoded field names. Multiple event registration forms can have their own scanning column config; each scan uses its form version's config.
+
+**Where it's used:**
+- Company dashboard: event scans list and all scans list – show University, Faculty, Master, Year of study columns when configured
+- Attendant scan page: when a company rep scans a student, the display uses these fields instead of hardcoded ones
+
+---
+
 ## form_responses collection – archived field
 
 For student forms, when a student submits a new response, their previous responses are automatically archived. Only the most recent response per student is shown in the UI and counts.

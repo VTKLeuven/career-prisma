@@ -444,76 +444,60 @@ function extractStudentIdFromValue(v: unknown): string | null {
   if (v == null) return null;
   if (typeof v === "string") return v;
   if (typeof v === "number") return String(v);
-  if (typeof v === "object" && v !== null && "id" in v) return String((v as { id: string | number }).id);
-  if (typeof v === "object" && v !== null && "ID" in v) return String((v as { ID: string | number }).ID);
+  if (typeof v === "object" && v !== null) {
+    const o = v as Record<string, unknown>;
+    if ("id" in o && o.id != null) return String(o.id);
+    if ("ID" in o && o.ID != null) return String(o.ID);
+    if ("students_id" in o && o.students_id != null) return String(o.students_id);
+    if ("student_id" in o && o.student_id != null) return String(o.student_id);
+  }
   return null;
 }
 
-/** Fetch students from company_matching_response_students junction (source of truth for display – same as sync writes to). */
+/** Fetch students from company_matching_response_students junction.
+ * Uses company_matching_response_id + students_id (per DIRECTUS_MATCHING_SOFTWARE.md).
+ * Fallbacks for Directus variants: company_matching_response (filter), student_id (field). */
 async function fetchStudentsFromCompanyJunction(
   client: Awaited<ReturnType<typeof getServerDirectusClient>>,
   companyResponseId: string | number
 ): Promise<Array<{ id: string; first_name: string | null; last_name: string | null; email: string }>> {
-  const idVariants: (string | number)[] = [companyResponseId];
-  if (typeof companyResponseId === "number") idVariants.push(String(companyResponseId));
-  else if (/^\d+$/.test(String(companyResponseId))) idVariants.push(Number(companyResponseId));
+  const idVal = typeof companyResponseId === "number" ? companyResponseId : (/^\d+$/.test(String(companyResponseId)) ? Number(companyResponseId) : companyResponseId);
+
+  const filterVariants: Array<Record<string, unknown>> = [
+    { company_matching_response_id: { _eq: idVal } },
+    { company_matching_response: { _eq: idVal } },
+  ];
+  const studentFieldVariants = ["students_id", "student_id"] as const;
 
   let studentIds: string[] = [];
-  for (const junction of COMPANY_STUDENTS_JUNCTION) {
-    for (const { cmr: cmrField, student: studentField } of COMPANY_STUDENTS_JUNCTION_FIELD_VARIANTS) {
-      for (const idVal of idVariants) {
-        try {
-          const filter = { [cmrField]: { _eq: idVal } };
-          const fields = [studentField, "students_id", "student_id"].filter((f, i, a) => a.indexOf(f) === i);
-          const items = (await client.request(
-            readItems(junction as any, { fields, filter, limit: -1 })
-          )) as unknown as Array<Record<string, unknown>>;
-          for (const r of items) {
-            const v = r[studentField] ?? r.students_id ?? r.student_id;
-            const id = extractStudentIdFromValue(v);
-            if (id && !studentIds.includes(id)) studentIds.push(id);
-          }
-          if (studentIds.length > 0) {
-            console.log("[Matching] fetchStudentsFromCompanyJunction: found via", junction, cmrField, studentField, "| students:", studentIds.length);
-            break;
-          }
-        } catch {
-          continue;
+  for (const filter of filterVariants) {
+    for (const field of studentFieldVariants) {
+      try {
+        const items = (await client.request(
+          readItems("company_matching_response_students" as any, {
+            fields: [field],
+            filter,
+            limit: -1,
+          })
+        )) as unknown as Array<Record<string, unknown>>;
+        for (const r of items) {
+          const id = extractStudentIdFromValue(r[field]);
+          if (id && !studentIds.includes(id)) studentIds.push(id);
         }
+        if (studentIds.length > 0) break;
+      } catch {
+        continue;
       }
-      if (studentIds.length > 0) break;
     }
     if (studentIds.length > 0) break;
   }
+
   if (studentIds.length === 0) return [];
 
-  const STUDENT_COLLECTIONS = ["students", "Students", "student"] as const;
-  for (const coll of STUDENT_COLLECTIONS) {
-    try {
-      const raw = await client.request(
-        readItems(coll as any, {
-          fields: ["id", "first_name", "last_name", "email"],
-          filter: { id: { _in: studentIds } },
-          limit: -1,
-        })
-      );
-      type StudentRow = { id: string | number; first_name?: string | null; last_name?: string | null; email?: string };
-      const items = Array.isArray(raw) ? raw : (raw && typeof raw === "object" && "data" in raw && Array.isArray((raw as { data: unknown[] }).data) ? (raw as { data: unknown[] }).data : []) as StudentRow[];
-      const orderMap = new Map(studentIds.map((id, i) => [id, i]));
-      const result = items
-        .map((s) => ({
-          id: String(s.id),
-          first_name: s.first_name ?? null,
-          last_name: s.last_name ?? null,
-          email: typeof s.email === "string" ? s.email : "",
-        }))
-        .sort((a, b) => (orderMap.get(a.id) ?? 999) - (orderMap.get(b.id) ?? 999));
-      if (result.length > 0) return result;
-    } catch (err) {
-      console.warn("[Matching] fetchStudentsFromCompanyJunction: students collection", coll, "failed:", err instanceof Error ? err.message : err);
-      continue;
-    }
-  }
+  const fetched = await fetchStudentsByIds(client, studentIds);
+  const orderMap = new Map(studentIds.map((id, i) => [id, i]));
+  const result = fetched.sort((a, b) => (orderMap.get(a.id) ?? 999) - (orderMap.get(b.id) ?? 999));
+  if (result.length > 0) return result;
   return studentIds.map((id) => ({ id, first_name: null, last_name: null, email: "" }));
 }
 
@@ -548,7 +532,6 @@ async function fetchStudentsForCompanyMatchingResponse(
           }
           if (responseIds.length > 0) {
             responseIds = [...new Set(responseIds)];
-            console.log("[Matching] fetchStudentsForCompanyMatchingResponse: found via", junction, "| responses:", responseIds.length);
             break;
           }
         } catch {
@@ -595,33 +578,88 @@ async function fetchStudentsForCompanyMatchingResponse(
   }
   if (studentIds.length === 0) return [];
 
-  const STUDENT_COLLECTIONS = ["students", "Students", "student"] as const;
-  for (const coll of STUDENT_COLLECTIONS) {
+  const studentClient = getAdminDirectusClient() ?? client;
+  const fields = ["id", "first_name", "last_name", "email", "full_name"];
+  const allItems: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < studentIds.length; i += DIRECTUS_IN_FILTER_BATCH_SIZE) {
+    const chunk = studentIds.slice(i, i + DIRECTUS_IN_FILTER_BATCH_SIZE);
+    const idFilter = chunk.every((id) => /^\d+$/.test(id))
+      ? { id: { _in: chunk.map(Number) } }
+      : { id: { _in: chunk } };
     try {
-      const raw = await client.request(
-        readItems(coll as any, {
-          fields: ["id", "first_name", "last_name", "email"],
-          filter: { id: { _in: studentIds } },
-          limit: -1,
-        })
+      const raw = await studentClient.request(
+        readItems("students" as any, { fields, filter: idFilter, limit: -1 })
       );
-      type StudentRow = { id: string | number; first_name?: string | null; last_name?: string | null; email?: string };
-      const items = Array.isArray(raw) ? raw : (raw && typeof raw === "object" && "data" in raw && Array.isArray((raw as { data: unknown[] }).data) ? (raw as { data: unknown[] }).data : []) as StudentRow[];
-      const result = items.map((s) => ({
-        id: String(s.id),
-        first_name: s.first_name ?? null,
-        last_name: s.last_name ?? null,
-        email: typeof s.email === "string" ? s.email : "",
-      }));
-      if (result.length > 0) return result;
+      const batchItems = Array.isArray(raw) ? raw : (raw && typeof raw === "object" && "data" in raw && Array.isArray((raw as { data: unknown[] }).data) ? (raw as { data: unknown[] }).data : []) as Array<Record<string, unknown>>;
+      for (const s of batchItems) allItems.push(s);
     } catch (err) {
-      console.warn("[Matching] fetchStudentsForCompanyMatchingResponse: students collection", coll, "failed:", err instanceof Error ? err.message : err);
-      continue;
+      console.error("[Matching] fetchStudentsForCompanyMatchingResponse: batch error:", err instanceof Error ? err.message : err);
     }
   }
-  // Fallback: return minimal objects with IDs when students fetch fails or returns 0 (permissions, wrong collection name, ID format mismatch)
-  console.warn("[Matching] fetchStudentsForCompanyMatchingResponse: could not fetch student details, returning", studentIds.length, "IDs only. Check 'students' collection name and Read permission.");
+  const result = allItems.map((s) => {
+    const id = String(s.id);
+    const { first_name, last_name, email } = extractStudentDisplayFromRow(s);
+    return { id, first_name, last_name, email };
+  });
+  if (result.length > 0) return result;
   return studentIds.map((id) => ({ id, first_name: null, last_name: null, email: "" }));
+}
+
+/** Extract first_name, last_name, email from a student row. */
+function extractStudentDisplayFromRow(row: Record<string, unknown>): { first_name: string | null; last_name: string | null; email: string } {
+  const first = row.first_name ?? row.firstName ?? null;
+  const last = row.last_name ?? row.lastName ?? null;
+  const full = row.full_name ?? row.fullName ?? row.name ?? null;
+  const email = row.email ?? null;
+  const first_name = first != null ? String(first) : (full != null ? String(full).split(/\s+/)[0] ?? null : null);
+  const last_name = last != null ? String(last) : (full != null ? String(full).split(/\s+/).slice(1).join(" ") || null : null);
+  const result = {
+    first_name: first_name ?? null,
+    last_name: last_name ?? null,
+    email: typeof email === "string" ? email : "",
+  };
+  return result;
+}
+
+/** Directus REST API uses QS parser with arrayLimit 20 – _in with >20 items gets truncated. Batch to avoid. */
+const DIRECTUS_IN_FILTER_BATCH_SIZE = 20;
+
+/** Use student IDs to fetch first_name, last_name, email from the students collection. Only uses 'students' collection.
+ * Batches requests (max 20 IDs per _in) because Directus QS parser truncates larger arrays. */
+async function fetchStudentsByIds(
+  client: Awaited<ReturnType<typeof getServerDirectusClient>>,
+  studentIds: string[]
+): Promise<Array<{ id: string; first_name: string | null; last_name: string | null; email: string }>> {
+  if (studentIds.length === 0) return [];
+  const fields = ["id", "first_name", "last_name", "email", "full_name"];
+  const studentClient = getAdminDirectusClient() ?? client;
+  const orderMap = new Map(studentIds.map((id, i) => [id, i]));
+  const allItems: Array<Record<string, unknown>> = [];
+
+  for (let i = 0; i < studentIds.length; i += DIRECTUS_IN_FILTER_BATCH_SIZE) {
+    const chunk = studentIds.slice(i, i + DIRECTUS_IN_FILTER_BATCH_SIZE);
+    const idFilter = chunk.every((id) => /^\d+$/.test(id))
+      ? { id: { _in: chunk.map(Number) } }
+      : { id: { _in: chunk } };
+    try {
+      const raw = await studentClient.request(
+        readItems("students" as any, { fields, filter: idFilter, limit: -1 })
+      );
+      const items = Array.isArray(raw) ? raw : (raw && typeof raw === "object" && "data" in raw && Array.isArray((raw as { data: unknown[] }).data) ? (raw as { data: unknown[] }).data : []) as Array<Record<string, unknown>>;
+      for (const s of items) allItems.push(s);
+    } catch (err) {
+      console.error("[Matching] fetchStudentsByIds: error:", err instanceof Error ? err.message : err);
+    }
+  }
+
+  const result = allItems
+    .map((s) => {
+      const id = String(s.id);
+      const { first_name, last_name, email } = extractStudentDisplayFromRow(s);
+      return { id, first_name, last_name, email };
+    })
+    .sort((a, b) => (orderMap.get(a.id) ?? 999) - (orderMap.get(b.id) ?? 999));
+  return result;
 }
 
 /** Get company's OCIA matching response, including students who matched with this company. */
@@ -631,64 +669,42 @@ export async function getCompanyMatchingResponse(
 ): Promise<CompanyMatchingResponse | null> {
   try {
     const client = await getServerDirectusClient();
-    const fields = [
-      "id",
-      "company",
-      "matching_software",
-      "ocia_answers",
-      "ocia",
-      "general_info_answers",
-      "students.id",
-      "students.first_name",
-      "students.last_name",
-      "students.email",
-    ];
-    const filter = { company: { _eq: companyId }, matching_software: { _eq: matchingSoftwareId } };
+    const fields = ["id", "company", "matching_software", "ocia_answers", "ocia", "general_info_answers"];
+    const msIdNum = /^\d+$/.test(String(matchingSoftwareId)) ? Number(matchingSoftwareId) : null;
+    const filterVariants = [
+      { company: { _eq: companyId }, matching_software: { _eq: matchingSoftwareId } },
+      { company: { _eq: companyId }, matching_software: { _eq: msIdNum ?? matchingSoftwareId } },
+      { company: { id: { _eq: companyId } }, matching_software: { _eq: matchingSoftwareId } },
+      { company: { id: { _eq: companyId } }, matching_software: { _eq: msIdNum ?? matchingSoftwareId } },
+      { company_id: { _eq: companyId }, matching_software_id: { _eq: matchingSoftwareId } },
+      { company_id: { _eq: companyId }, matching_software_id: { _eq: msIdNum ?? matchingSoftwareId } },
+    ] as const;
 
     for (const collection of COMPANY_MATCHING_RESPONSE_COLLECTIONS) {
-      try {
-        const items = await client.request(
-          readItems(collection as any, { fields, filter, limit: 1, sort: ["-id"] })
-        ) as unknown as CompanyMatchingResponse[];
-        if (items.length > 0) {
-          const item = items[0];
-          const rawStudents = (item as { students?: unknown }).students;
-          const arr = Array.isArray(rawStudents) ? rawStudents : [];
-          const hasValidStudents = arr.some((s) => s != null && typeof s === "object" && ("id" in s || "ID" in s));
-          if (!hasValidStudents) {
-            // Relation empty or junction-style rows without expanded student – use company_matching_response_students (matches Directus)
-            const fromCompanyJunction = await fetchStudentsFromCompanyJunction(client, item.id);
-            if (fromCompanyJunction.length > 0) {
-              return { ...item, students: fromCompanyJunction } as CompanyMatchingResponse;
+      for (const filter of filterVariants) {
+        try {
+          const items = await client.request(
+            readItems(collection as any, { fields, filter, limit: 1, sort: ["-id"] })
+          ) as unknown as CompanyMatchingResponse[];
+          if (items.length > 0) {
+            const item = items[0];
+            const students = await fetchStudentsFromCompanyJunction(client, item.id);
+            if (students.length > 0) {
+              return { ...item, students } as CompanyMatchingResponse;
             }
             const fromStudentJunction = await fetchStudentsForCompanyMatchingResponse(client, companyId, matchingSoftwareId);
             if (fromStudentJunction.length > 0) {
               return { ...item, students: fromStudentJunction } as CompanyMatchingResponse;
             }
-          }
-          return item;
-        }
-      } catch {
-        // Try without students (field may not exist in older schemas)
-        const fallbackFields = ["id", "company", "matching_software", "ocia_answers", "ocia", "general_info_answers"];
-        try {
-          const items = await client.request(
-            readItems(collection as any, { fields: fallbackFields, filter, limit: 1, sort: ["-id"] })
-          ) as unknown as CompanyMatchingResponse[];
-          if (items.length > 0) {
-            const item = items[0];
-            const fromCompanyJunction = await fetchStudentsFromCompanyJunction(client, item.id);
-            if (fromCompanyJunction.length > 0) {
-              return { ...item, students: fromCompanyJunction } as CompanyMatchingResponse;
-            }
-            const fromStudentJunction = await fetchStudentsForCompanyMatchingResponse(client, companyId, matchingSoftwareId);
-            return { ...item, students: fromStudentJunction } as CompanyMatchingResponse;
+            return { ...item, students: [] } as CompanyMatchingResponse;
           }
         } catch {
-          // continue to next collection
+          continue;
         }
       }
+
     }
+    console.log("[Matching] getCompanyMatchingResponse: no company_matching_response found for companyId:", companyId, "matchingSoftwareId:", matchingSoftwareId);
     return null;
   } catch (error) {
     console.error("[getCompanyMatchingResponse] Error:", error);
@@ -1090,23 +1106,13 @@ async function clearAllCompanyMatchingResponseStudentsJunction(
     if (/^\d+$/.test(str)) cmrIds.push(Number(str));
   }
   const uniqueIds = [...new Set(cmrIds)] as (string | number)[];
-  const cmrFieldVariants = ["company_matching_response_id", "company_matching_response"] as const;
-  let cleared = 0;
-  for (const junction of COMPANY_STUDENTS_JUNCTION) {
-    for (const cmrField of cmrFieldVariants) {
-      try {
-        await client.request(deleteItems(junction as any, { filter: { [cmrField]: { _in: uniqueIds } } }));
-        cleared++;
-        log?.(`Cleared junction ${junction} (${cmrItems.length} CMRs)`);
-      } catch (err) {
-        if (cleared === 0) {
-          const msg = err instanceof Error ? err.message : (err && typeof err === "object" && "message" in err) ? String((err as { message: unknown }).message) : String(err);
-          log?.(`Clear junction ${junction}.${cmrField} failed: ${msg}`);
-        }
-      }
-    }
+  try {
+    await client.request(deleteItems("company_matching_response_students" as any, { filter: { company_matching_response_id: { _in: uniqueIds } } }));
+    log?.(`Cleared company_matching_response_students (${cmrItems.length} CMRs)`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log?.(`Clear company_matching_response_students failed: ${msg}`);
   }
-  if (cleared === 0) log?.("Warning: no junction table could be cleared – check Directus schema");
 
   // Also PATCH each company_matching_response to explicitly clear the students field (Directus may cache/sync separately)
   const payloads: Array<Record<string, unknown>> = [{ students: [] }, { students: null }];
@@ -1253,15 +1259,7 @@ export async function fullUpdateAllMatches(
   return { studentsUpdated, companiesSynced: synced, errors: truncatedErrors, logs: truncatedLogs };
 }
 
-/** Field variants for company_matching_response ↔ students junction. */
-const COMPANY_STUDENTS_JUNCTION_FIELD_VARIANTS: { cmr: string; student: string }[] = [
-  { cmr: "company_matching_response_id", student: "students_id" },
-  { cmr: "company_matching_response", student: "students" },
-  { cmr: "company_matching_response_id", student: "student_id" },
-  { cmr: "company_matching_response", student: "student" },
-];
-
-/** Update company_matching_response.students via junction table (primary) or Directus PATCH. */
+/** Update company_matching_response.students via junction table company_matching_response_students. */
 async function updateCompanyMatchingResponseStudents(
   companyResponseId: string | number,
   studentIds: string[],
@@ -1270,29 +1268,21 @@ async function updateCompanyMatchingResponseStudents(
 ): Promise<CompanyMatchingResponse | null> {
   const client = await getServerDirectusClient();
 
-  // ID variants for delete/filter: junction may store integer or string FK
   const idForDelete: (string | number)[] = [companyResponseId];
   if (typeof companyResponseId === "number") idForDelete.push(String(companyResponseId));
   else if (/^\d+$/.test(String(companyResponseId))) idForDelete.push(Number(companyResponseId));
 
-  // Primary: junction table directly (same approach as student_matching_response_company)
-  for (const junction of COMPANY_STUDENTS_JUNCTION) {
-    for (const { cmr: cmrField, student: studentField } of COMPANY_STUDENTS_JUNCTION_FIELD_VARIANTS) {
-      try {
-        // Delete existing rows (try both string/number so we actually empty the junction and avoid duplicates)
-        await client.request(deleteItems(junction as any, { filter: { [cmrField]: { _in: idForDelete } } }));
-        for (const studentId of studentIds) {
-          await client.request(createItem(junction as any, { [cmrField]: companyResponseId, [studentField]: studentId }));
-        }
-        console.log("[Matching] updateCompanyMatchingResponseStudents: success via junction", junction, "fields:", cmrField, studentField, "| students:", studentIds.length);
-        return getCompanyMatchingResponse(companyId, matchingSoftwareId);
-      } catch (err) {
-        console.log("[Matching] updateCompanyMatchingResponseStudents: junction failed", junction, cmrField, studentField, "|", err);
-      }
+  try {
+    await client.request(deleteItems("company_matching_response_students" as any, { filter: { company_matching_response_id: { _in: idForDelete } } }));
+    for (const studentId of studentIds) {
+      await client.request(createItem("company_matching_response_students" as any, { company_matching_response_id: companyResponseId, students_id: studentId }));
     }
+    return getCompanyMatchingResponse(companyId, matchingSoftwareId);
+  } catch (err) {
+    console.error("[Matching] updateCompanyMatchingResponseStudents: error:", err instanceof Error ? err.message : err);
   }
 
-  // Fallback: Directus PATCH with M2M field (various formats Directus may accept)
+  // Fallback: Directus PATCH with M2M field
   const payloads = [
     { students: studentIds },
     { students: studentIds.map((id) => ({ id })) },
@@ -1751,14 +1741,6 @@ const JUNCTION_COLLECTIONS = [
   "Student_Matching_Response_Company",
   "student_matching_response_companies",
   "Student_Matching_Response_Companies",
-] as const;
-
-/** Junction for company_matching_response M2M students. Directus may use different naming. */
-const COMPANY_STUDENTS_JUNCTION = [
-  "company_matching_response_students",
-  "Company_Matching_Response_Students",
-  "students_company_matching_response",
-  "Students_Company_Matching_Response",
 ] as const;
 
 const MATCHES_RECOMPUTE_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours

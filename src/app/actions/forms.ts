@@ -1230,6 +1230,16 @@ export async function checkCompanyFormCompletionBatchWithCompulsoryAction(
   }
 }
 
+export async function getStudentFormResponseDataForEventAction(eventId: string, studentIds: string[]) {
+  try {
+    const { getStudentFormResponseDataForEvent } = await import("@/lib/repos/forms");
+    return await getStudentFormResponseDataForEvent(eventId, studentIds);
+  } catch (error) {
+    console.error("[getStudentFormResponseDataForEventAction] Error:", error);
+    return new Map();
+  }
+}
+
 export async function fetchPublicFormBySlugAction(slug: string) {
   try {
     // Use dedicated public form fetcher that always uses public client

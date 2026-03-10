@@ -102,12 +102,14 @@ If the Matches tab is visible but shows no students:
 
 1. **Check server logs** when a company loads the Matches tab:
    - `[Matching] getCompanyMatchingResponseForCompanyViewAction: stripping students (no suboption)` → Company lacks the "Matching Software" suboption. Add it in Directus (company options/sub_options).
-   - `[Matching] getCompanyMatchingResponseForCompanyViewAction: returning 0 students` → Junction returned empty. See next steps.
-   - `[Matching] fetchStudentsForCompanyMatchingResponse: no junction rows for cmrId` → No rows in the company↔students junction for this company. Run "Update matches" in admin.
+   - `[Matching] getCompanyMatchingResponseForCompanyViewAction: returning 0 students` → Students not found. Check the next log lines.
+   - `[Matching] getCompanyMatchingResponse: found cmr X ... rawStudents type: ...` → Shows what the API returns for the students field. If `length: 0` or empty, the relation may not be expanded or uses a different structure.
+   - `[Matching] fetchStudentsFromCompanyJunction: no junction rows for cmrId X` → Junction table empty or wrong name. Run "Update matches" or add your junction name to `COMPANY_STUDENTS_JUNCTION`.
+   - `[Matching] getCompanyMatchingResponse: no company_matching_response found` → Filter didn't match. Check that `company` and `matching_software` (or `company_id` / `matching_software_id`) match your schema.
 
-2. **Run "Update matches"** in Admin → Matching Software. This syncs student matches into the `company_matching_response_students` junction. If you haven't run it, companies will see 0 matches.
+2. **Run "Update matches"** in Admin → Matching Software. This syncs student matches into the junction. If you haven't run it, companies will see 0 matches.
 
-3. **Verify junction table** for `company_matching_response.students`: Settings → Data Model → `company_matching_response` → `students` field. Note the exact junction name and its columns. Add it to `COMPANY_STUDENTS_JUNCTION` in `src/lib/repos/matching-software.ts` if different.
+3. **Verify junction table** for `company_matching_response.students`: Settings → Data Model → `company_matching_response` → click the `students` field. The "Junction Collection" shows the exact table name (e.g. `company_matching_response_students`). If your junction name is not in `COMPANY_STUDENTS_JUNCTION` in `src/lib/repos/matching-software.ts`, add it. Also check the junction's field names (e.g. `company_matching_response_id` + `students_id`) – add variants to `COMPANY_STUDENTS_JUNCTION_FIELD_VARIANTS` if different.
 
 4. **Check `companies_can_view_matches`** on Matching_Software: Admin → Matching Software → toggle "Companies can view matches" on.
 

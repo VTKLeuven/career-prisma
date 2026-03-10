@@ -84,6 +84,7 @@ export default function EventMatchingSoftwarePage() {
       <CompanyMatchingForm
         companyId={user.company.id}
         matchingSoftwareId={matchingSoftware.id}
+        eventId={eventId}
         eventName={eventName || undefined}
         companiesCanViewMatches={
           (matchingSoftware.companies_can_view_matches ?? false) &&

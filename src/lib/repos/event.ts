@@ -236,7 +236,7 @@ export async function getSpeakersForCompany(companyId: string): Promise<SpeakerW
       for (const item of speakers) {
         const speaker = item.speaker_id ?? item;
         if (!speaker || typeof speaker !== "object") continue;
-        const companyIdFromSpeaker = (speaker.representative as { company?: { id?: string } })?.company?.id;
+        const companyIdFromSpeaker = (speaker as { representative?: { company?: { id?: string } } }).representative?.company?.id;
         if (companyIdFromSpeaker === companyId) {
           result.push({
             ...speaker,

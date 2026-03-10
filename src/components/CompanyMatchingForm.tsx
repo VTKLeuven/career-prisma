@@ -10,6 +10,7 @@ import {
   getCompanyMatchingResponseForCompanyViewAction,
   saveCompanyMatchingResponseAction,
 } from "@/app/actions/matching-software";
+import { getStudentFormResponseDataForEventAction } from "@/app/actions/forms";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -27,6 +28,7 @@ import {
   type GeneralInfoAnswers,
 } from "@/lib/matching-general-info";
 import { cn } from "@/lib/utils";
+import { getScanningDisplayValues, hasScanningColumns } from "@/lib/utils/scanning-columns";
 
 type MatchedStudent = { id: string; first_name: string | null; last_name: string | null; email: string };
 
@@ -184,11 +186,12 @@ function normalizeStudents(raw: unknown): MatchedStudent[] {
 type Props = {
   companyId: string;
   matchingSoftwareId: string;
+  eventId?: string;
   eventName?: string;
   companiesCanViewMatches?: boolean;
 };
 
-export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName, companiesCanViewMatches = false }: Props) {
+export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventId, eventName, companiesCanViewMatches = false }: Props) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [generalInfo, setGeneralInfo] = useState<GeneralInfoAnswers>({
     work_preference: [],
@@ -198,6 +201,7 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName, 
   const [savedSnapshot, setSavedSnapshot] = useState<Record<string, string> | null>(null);
   const [savedGeneralInfoSnapshot, setSavedGeneralInfoSnapshot] = useState<GeneralInfoAnswers | null>(null);
   const [students, setStudents] = useState<MatchedStudent[]>([]);
+  const [studentFormData, setStudentFormData] = useState<Map<string, { data: Record<string, unknown>; scanning_columns?: { university?: string; faculty?: string; master?: string; year_of_study?: string } }>>(new Map());
   const [loading, setLoading] = useState(true);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [activeTab, setActiveTab] = useState<"questions" | "matches">("questions");
@@ -216,7 +220,15 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName, 
       setGeneralInfo(gi);
       setSavedGeneralInfoSnapshot(gi);
       const rawStudents = (existing as { students?: unknown }).students;
-      setStudents(normalizeStudents(rawStudents));
+      const normalized = normalizeStudents(rawStudents);
+      setStudents(normalized);
+      if (eventId && normalized.length > 0) {
+        getStudentFormResponseDataForEventAction(eventId, normalized.map((s) => s.id))
+          .then(setStudentFormData)
+          .catch(console.error);
+      } else {
+        setStudentFormData(new Map());
+      }
       // Default to Matches tab when company has access and has completed questions
       if (companiesCanViewMatches && existingAnswers && Object.keys(existingAnswers).length >= 13) {
         setActiveTab("matches");
@@ -227,7 +239,7 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName, 
 
   useEffect(() => {
     loadResponse().catch(console.error).finally(() => setLoading(false));
-  }, [companyId, matchingSoftwareId]);
+  }, [companyId, matchingSoftwareId, eventId]);
 
   const hasCompletedQuestions = savedSnapshot && Object.keys(savedSnapshot).length >= 13;
 
@@ -323,22 +335,54 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName, 
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {students.map((s) => (
-                  <div
-                    key={s.id}
-                    className="rounded-lg border border-border bg-card p-4 shadow-sm"
-                  >
-                    <p className="font-medium">
-                      {[s.first_name, s.last_name].filter(Boolean).join(" ") || "—"}
-                    </p>
-                    <a
-                      href={`mailto:${s.email}`}
-                      className="text-sm text-muted-foreground hover:text-foreground hover:underline"
-                    >
-                      {s.email}
-                    </a>
-                  </div>
-                ))}
+                {students.map((s) => {
+                    const formEntry = studentFormData.get(s.id);
+                    const scanCols = formEntry
+                      ? getScanningDisplayValues(formEntry.data, formEntry.scanning_columns)
+                      : { university: "", faculty: "", master: "", yearOfStudy: "" };
+                    const hasScanCols = formEntry && hasScanningColumns(formEntry.scanning_columns) &&
+                      (scanCols.university || scanCols.faculty || scanCols.master || scanCols.yearOfStudy);
+
+                    // Name: from students collection, or form data (_student_full_name) as fallback
+                    const displayName = [s.first_name, s.last_name].filter(Boolean).join(" ") ||
+                      (formEntry?.data?._student_full_name as string) || "—";
+                    // Email: from students collection, or form data (email / _student_email) as fallback
+                    const displayEmail = s.email ||
+                      (formEntry?.data?.email as string) ||
+                      (formEntry?.data?._student_email as string) ||
+                      "";
+
+                    return (
+                      <div
+                        key={s.id}
+                        className="flex min-h-[180px] flex-col rounded-lg border border-border bg-card p-4 shadow-sm"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-foreground">
+                            {displayName}
+                          </p>
+                          {displayEmail ? (
+                            <a
+                              href={`mailto:${displayEmail}`}
+                              className="text-sm text-muted-foreground hover:text-foreground hover:underline break-all"
+                            >
+                              {displayEmail}
+                            </a>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">—</span>
+                          )}
+                        </div>
+                        {hasScanCols && (
+                          <div className="mt-3 space-y-1 text-sm text-muted-foreground">
+                            {scanCols.university && <p><span className="font-medium text-foreground/80">University:</span> {scanCols.university}</p>}
+                            {scanCols.faculty && <p><span className="font-medium text-foreground/80">Faculty:</span> {scanCols.faculty}</p>}
+                            {scanCols.master && <p><span className="font-medium text-foreground/80">Master:</span> {scanCols.master}</p>}
+                            {scanCols.yearOfStudy && <p><span className="font-medium text-foreground/80">Year:</span> {scanCols.yearOfStudy}</p>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
               </div>
             )}
           </div>

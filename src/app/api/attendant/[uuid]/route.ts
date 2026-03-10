@@ -32,7 +32,7 @@ export async function GET(
           "id",
           "data",
           "submitted_at",
-          { form_version_id: { form_id: ["name"] } } as any,
+          { form_version_id: ["metadata", { form_id: ["name"] }] } as any,
           { student_id: ["first_name", "last_name", "full_name"] } as any,
         ],
         filter: {
@@ -47,6 +47,15 @@ export async function GET(
       form_version_id: {
         form_id: {
           name: string;
+        };
+        metadata?: {
+          scanning_columns?: {
+            university?: string;
+            faculty?: string;
+            master?: string;
+            year_of_study?: string;
+          };
+          [key: string]: unknown;
         };
       };
       student_id?: {

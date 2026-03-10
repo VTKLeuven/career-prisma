@@ -67,22 +67,18 @@ export async function getCompanyMatchingResponseForCompanyViewAction(companyId: 
   const { hasMatchingSoftwareSubOption } = await import("@/lib/utils/company-access");
   const response = await getCompanyMatchingResponse(companyId, matchingSoftwareId);
   if (!response) return null;
-  const studentCount = Array.isArray((response as { students?: unknown }).students) ? (response as { students: unknown[] }).students.length : 0;
 
   const ms = await getMatchingSoftwareById(matchingSoftwareId);
   const companiesCanViewMatches = ms?.companies_can_view_matches ?? false;
   if (!companiesCanViewMatches) {
-    console.log("[Matching] getCompanyMatchingResponseForCompanyViewAction: stripping students (not open to companies) | companyId:", companyId, "| had:", studentCount);
     return { ...response, students: [] };
   }
 
   const company = await fetchCompanyByIdAction(companyId, false, true);
   const hasSubOption = hasMatchingSoftwareSubOption(company);
   if (!hasSubOption) {
-    console.log("[Matching] getCompanyMatchingResponseForCompanyViewAction: stripping students (no suboption) | companyId:", companyId, "| had:", studentCount);
     return { ...response, students: [] };
   }
-  console.log("[Matching] getCompanyMatchingResponseForCompanyViewAction: returning", studentCount, "students for companyId:", companyId);
   return response;
 }
 
