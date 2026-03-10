@@ -44,7 +44,6 @@ export default function NoSidebarLayout({ children }: { children: React.ReactNod
   const [hasBanner, setHasBanner] = useState(false)
   const [hideLayoutHeader, setHideLayoutHeader] = useState(false)
   const [darkHeaderFooter, setDarkHeaderFooter] = useState(false)
-
   // simple shell without sidebar/header
   // Apply padding only if page doesn't have a banner and layout header is shown
   return (
