@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { IconCheck, IconRefresh, IconUsers, IconList } from "@tabler/icons-react";
+import { Download } from "lucide-react";
 import {
   getCompanyMatchingResponseForCompanyViewAction,
   saveCompanyMatchingResponseAction,
@@ -29,6 +30,7 @@ import {
 } from "@/lib/matching-general-info";
 import { cn } from "@/lib/utils";
 import { getScanningDisplayValues, hasScanningColumns } from "@/lib/utils/scanning-columns";
+import { CSV_UTF8_BOM } from "@/lib/utils/slugify";
 
 type MatchedStudent = { id: string; first_name: string | null; last_name: string | null; email: string };
 
@@ -325,9 +327,58 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventId, ev
                 Matching software: {eventName}
               </p>
             )}
-            <p className="text-sm text-muted-foreground">
-              Students who matched with your company. An admin can update matches for all companies from the admin matching software page.
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <p className="text-sm text-muted-foreground">
+                These are your {students.length} best matches according to our software.
+              </p>
+              {students.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const hasScanCols = students.some((s) => {
+                      const formEntry = studentFormData.get(s.id);
+                      return formEntry && hasScanningColumns(formEntry.scanning_columns);
+                    });
+                    const headerRow = ["Name", "Email", ...(hasScanCols ? ["University", "Faculty", "Master", "Year"] : [])];
+                    const dataRows = students.map((s) => {
+                      const formEntry = studentFormData.get(s.id);
+                      const scanCols = formEntry
+                        ? getScanningDisplayValues(formEntry.data, formEntry.scanning_columns)
+                        : { university: "", faculty: "", master: "", yearOfStudy: "" };
+                      const displayName = [s.first_name, s.last_name].filter(Boolean).join(" ") ||
+                        (formEntry?.data?._student_full_name as string) || "—";
+                      const displayEmail = s.email ||
+                        (formEntry?.data?.email as string) ||
+                        (formEntry?.data?._student_email as string) ||
+                        "";
+                      return [
+                        displayName,
+                        displayEmail,
+                        ...(hasScanCols ? [scanCols.university, scanCols.faculty, scanCols.master, scanCols.yearOfStudy] : []),
+                      ];
+                    });
+                    const escapeCsv = (value: unknown) => {
+                      const s = value === null || value === undefined ? "" : String(value);
+                      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+                    };
+                    const csv = CSV_UTF8_BOM + [headerRow, ...dataRows]
+                      .map((row) => row.map(escapeCsv).join(","))
+                      .join("\r\n");
+                    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `matches-${eventName ? eventName.replace(/[^a-z0-9]/gi, "-").toLowerCase() : "export"}-${new Date().toISOString().split("T")[0]}.csv`;
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                  }}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Export CSV
+                </Button>
+              )}
+            </div>
             {students.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border p-8 text-center">
                 <IconUsers className="mx-auto h-12 w-12 text-muted-foreground/50 mb-3" />
