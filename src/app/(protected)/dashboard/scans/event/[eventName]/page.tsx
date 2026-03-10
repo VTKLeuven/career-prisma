@@ -199,66 +199,27 @@ export default function EventScansPage() {
       return;
     }
 
-    const allFieldKeys = new Set<string>();
-    scans.forEach(scan => {
-      Object.keys(scan.form_response_id.data).forEach(key => {
-        if (!key.startsWith('_')) {
-          allFieldKeys.add(key);
-        }
-      });
-    });
-
-    const fieldKeys = Array.from(allFieldKeys);
-    const fieldNames = fieldKeys.map(key => {
-      return key
-        .replace(/([A-Z])/g, ' $1')
-        .replace(/^./, str => str.toUpperCase())
-        .trim();
-    });
-
-    const hasFirstNameField = fieldKeys.includes('firstname') || fieldKeys.includes('name');
-    const hasLastNameField = fieldKeys.includes('lastname') || fieldKeys.includes('surname');
-    const shouldCombineName = hasFirstNameField && hasLastNameField;
-
-    const finalFieldNames: string[] = [];
-    const finalFieldKeys: string[] = [];
-
-    fieldKeys.forEach(key => {
-      if (shouldCombineName && (key === 'lastname' || key === 'surname')) return;
-      if (shouldCombineName && (key === 'firstname' || key === 'name')) {
-        finalFieldNames.push('Name');
-        finalFieldKeys.push(fieldKeys.includes('firstname') ? 'firstname' : 'name');
-      } else {
-        finalFieldNames.push(
-          key
-            .replace(/([A-Z])/g, ' $1')
-            .replace(/^./, str => str.toUpperCase())
-            .trim()
-        );
-        finalFieldKeys.push(key);
-      }
-    });
-
     const useScanningCols = scans.some(scan =>
       hasScanningColumns(scan.form_response_id?.form_version_id?.metadata?.scanning_columns)
     );
 
     const headerRow = [
+      'Name',
+      'Email',
+      ...(useScanningCols ? ['University', 'Faculty', 'Master', 'Year of study'] : []),
       'Scanned At',
       'Scanned By',
       'Liked',
       'Comment',
-      'Registration Date',
-      ...(useScanningCols ? ['University', 'Faculty', 'Master', 'Year of study'] : []),
-      ...finalFieldNames
     ];
 
     const dataRows = scans.map(scan => {
       const response = scan.form_response_id;
+      const displayName = getDisplayName(scan);
+      const email = (response.data.email as string) || (response.data._student_email as string) || "";
       const scannedBy = typeof scan.scanned_by === 'object'
         ? scan.scanned_by.name || scan.scanned_by.email
         : 'Unknown';
-
       const liked = scan.liked ? "Yes" : "";
       const comment = typeof scan.comment === "string" ? scan.comment : "";
 
@@ -269,27 +230,14 @@ export default function EventScansPage() {
         ? [scanDisplay.university, scanDisplay.faculty, scanDisplay.master, scanDisplay.yearOfStudy]
         : [];
 
-      const values = finalFieldKeys.map(key => {
-        if (shouldCombineName && key === 'firstname') {
-          const firstName = response.data['firstname'] || response.data['name'] || '';
-          const lastName = response.data['lastname'] || response.data['surname'] || '';
-          const fullName = `${firstName} ${lastName}`.trim();
-          return fullName;
-        }
-        const value = response.data[key];
-        if (value === null || value === undefined) return '';
-        if (Array.isArray(value)) return value.join('; ');
-        return String(value);
-      });
-
       return [
+        displayName,
+        email,
+        ...scanningFields,
         formatDateTimeBE(scan.scanned_at),
         scannedBy,
         liked,
         comment,
-        formatDateTimeBE(response.submitted_at),
-        ...scanningFields,
-        ...values
       ];
     });
 
