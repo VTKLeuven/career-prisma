@@ -435,6 +435,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             title: "Email Queue",
             url: "/admin/email-queue",
           },
+          {
+            title: "Check-ins",
+            url: "/admin/checkins",
+          },
         ],
       });
     }
