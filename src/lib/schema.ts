@@ -460,6 +460,14 @@ export type CompanyUserRequest = {
   invite_token_created?: string;
 }
 
+export type EventCheckin = {
+  id: string;
+  barcode: string;
+  event_id: string;
+  checked_in_at: string;
+  date_created?: string;
+};
+
 // Optional: Full Directus Schema map (only collections you use)
 export type Schema = {
   directus_users: DirectusUser[];
@@ -488,4 +496,5 @@ export type Schema = {
   Floorplan: Floorplan[];
   company_user_requests: CompanyUserRequest[];
   ordering_settings: { id?: string; company_ordering_enabled?: boolean }[];
+  event_checkins: EventCheckin[];
 };
