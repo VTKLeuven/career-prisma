@@ -246,7 +246,15 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventId, ev
   const hasCompletedQuestions = savedSnapshot && Object.keys(savedSnapshot).length >= 13;
 
   const isDirty = useMemo(() => {
-    if (!savedSnapshot) return false;
+    // No existing response: form is dirty if user has entered any data (so they can submit)
+    if (!savedSnapshot) {
+      return (
+        Object.keys(answers).length > 0 ||
+        (generalInfo.work_preference?.length ?? 0) > 0 ||
+        (generalInfo.company_type?.length ?? 0) > 0 ||
+        (generalInfo.work_options?.length ?? 0) > 0
+      );
+    }
     const answersDirty = JSON.stringify(answers) !== JSON.stringify(savedSnapshot);
     const generalInfoDirty = savedGeneralInfoSnapshot
       ? JSON.stringify(generalInfo) !== JSON.stringify(savedGeneralInfoSnapshot)
