@@ -1,15 +1,18 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { getAdminDirectusClient } from "@/lib/directus";
 import { readItems } from "@directus/sdk";
 import type { FormVersion, FormResponse, EventCheckin } from "@/lib/schema";
 
-const EVENT_ID = "4a1b38c1-83f4-418e-b4c3-9e1ec680f832";
-
-export async function GET() {
+export async function GET(request: NextRequest) {
   const user = await getUserFromCookies();
   if (!user?.admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const eventId = request.nextUrl.searchParams.get("event_id");
+  if (!eventId) {
+    return NextResponse.json({ error: "event_id query parameter is required" }, { status: 400 });
   }
 
   const client = getAdminDirectusClient();
@@ -21,7 +24,7 @@ export async function GET() {
   const formVersions = (await client.request(
     readItems("form_versions" as any, {
       fields: ["id", "metadata"],
-      filter: { metadata: { event_id: { _eq: EVENT_ID } } } as any,
+      filter: { metadata: { event_id: { _eq: eventId } } } as any,
       limit: -1,
     })
   )) as unknown as FormVersion[];
@@ -60,7 +63,7 @@ export async function GET() {
   const checkins = (await client.request(
     readItems("event_checkins" as any, {
       fields: ["id", "barcode", "checked_in_at"],
-      filter: { event_id: { _eq: EVENT_ID } },
+      filter: { event_id: { _eq: eventId } },
       sort: "checked_in_at",
       limit: -1,
     })

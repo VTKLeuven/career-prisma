@@ -52,7 +52,7 @@ function formatDateTime(isoString: string) {
   });
 }
 
-export default function CheckinsClient() {
+export default function CheckinsClient({ eventId }: { eventId: string }) {
   const [data, setData] = useState<CheckinData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +60,7 @@ export default function CheckinsClient() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/checkins");
+      const res = await fetch(`/api/admin/checkins?event_id=${encodeURIComponent(eventId)}`);
       if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
       const json = await res.json();
       setData(json);
@@ -71,7 +71,7 @@ export default function CheckinsClient() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [eventId]);
 
   useEffect(() => {
     fetchData();
@@ -109,7 +109,6 @@ export default function CheckinsClient() {
 
   return (
     <div className="space-y-6">
-      {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <CardHeader>
@@ -137,7 +136,6 @@ export default function CheckinsClient() {
         </Card>
       </div>
 
-      {/* Progress bar */}
       <Card>
         <CardHeader>
           <CardTitle>Check-in Progress</CardTitle>
@@ -156,7 +154,6 @@ export default function CheckinsClient() {
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Area chart */}
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Check-ins Over Time</CardTitle>
@@ -204,7 +201,6 @@ export default function CheckinsClient() {
           </CardContent>
         </Card>
 
-        {/* Pie chart */}
         <Card>
           <CardHeader>
             <CardTitle>Attendance</CardTitle>
@@ -238,7 +234,6 @@ export default function CheckinsClient() {
         </Card>
       </div>
 
-      {/* Recent check-ins */}
       <Card>
         <CardHeader>
           <CardTitle>Recent Check-ins</CardTitle>

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDirectusClient } from "@/lib/directus";
 import { readItems, createItem } from "@directus/sdk";
 
-const EVENT_ID = "4a1b38c1-83f4-418e-b4c3-9e1ec680f832";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function barcodeToUuid(barcode: string): string {
   const h = barcode.replace(/-/g, "").toLowerCase();
@@ -27,6 +27,14 @@ export async function POST(request: NextRequest) {
 
   if (!expectedKey || apiKey !== expectedKey) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const eventId = request.nextUrl.searchParams.get("event_id");
+  if (!eventId || !UUID_RE.test(eventId)) {
+    return NextResponse.json(
+      { error: "event_id query parameter is required (UUID format)" },
+      { status: 400 },
+    );
   }
 
   let body: unknown;
@@ -88,7 +96,7 @@ export async function POST(request: NextRequest) {
         fields: ["id"],
         filter: {
           barcode: { _eq: entry.barcode },
-          event_id: { _eq: EVENT_ID },
+          event_id: { _eq: eventId },
         },
         limit: 1,
       })
@@ -102,7 +110,7 @@ export async function POST(request: NextRequest) {
     await client.request(
       createItem("event_checkins" as any, {
         barcode: entry.barcode,
-        event_id: EVENT_ID,
+        event_id: eventId,
         checked_in_at: new Date(entry.checked_in_at).toISOString(),
       })
     );
