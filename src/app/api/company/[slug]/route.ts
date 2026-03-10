@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchCompanyBySlugWithSubOptionsAction } from "@/app/actions/companies";
+import { fetchCompanyBySlugWithSubOptionsAction, fetchSpeakersForCompanyAction } from "@/app/actions/companies";
 import { getCachedCompanyPage, setCachedCompanyPage } from "@/lib/company-page-cache";
 
 const CACHE_HEADERS = {
@@ -31,10 +31,14 @@ export async function GET(
       );
     }
 
-    // Cache the result
-    setCachedCompanyPage(slug, result);
+    // Fetch speakers for this company
+    const speakers = await fetchSpeakersForCompanyAction(result.company.id);
+    const response = { ...result, speakers };
 
-    return NextResponse.json(result, { headers: CACHE_HEADERS });
+    // Cache the result
+    setCachedCompanyPage(slug, response);
+
+    return NextResponse.json(response, { headers: CACHE_HEADERS });
   } catch (error) {
     console.error("[company API] Error fetching company:", error);
     return NextResponse.json(

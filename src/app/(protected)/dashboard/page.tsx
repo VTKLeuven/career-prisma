@@ -8,14 +8,16 @@ import { fetchEventsAction } from "@/app/actions/events";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { motion } from 'framer-motion'
-import { Calendar } from "lucide-react";
+import { Calendar, FileText, CheckCircle2, Wine } from "lucide-react";
 import type { CareerEvent, Company } from "@/lib/schema";
 import { useUser } from "@/providers/UserProvider";
 import Link from "next/link";
-import { getUpcomingEventsWithFallback, type EventWithStatus } from '@/lib/utils/events';
+import { getUpcomingEventsWithFallback, isDuringEvent, type EventWithStatus } from '@/lib/utils/events';
 import { fetchCompanyFormsForEventAction, checkCompanyFormCompletionBatchWithCompulsoryAction } from '@/app/actions/forms';
 import { getMatchingSoftwareForEventAction } from '@/app/actions/matching-software';
-import { FileText, CheckCircle2 } from 'lucide-react';
+import { hasSchedulesForEventAction } from '@/app/actions/schedules';
+import { getCompanyOrderingTabInfo } from '@/app/actions/ordering';
+import { getCompanySubOptionAnyStatus } from '@/lib/utils/company-access';
 import { formatDateTimeBE } from '@/lib/date-utils';
 
 function MyEventsSection() {
@@ -23,17 +25,28 @@ function MyEventsSection() {
   const [allEvents, setAllEvents] = React.useState<CareerEvent[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [company, setCompany] = React.useState<Company | null>(null);
+  const [orderingEnabled, setOrderingEnabled] = React.useState(false);
 
   React.useEffect(() => {
     if (!user?.company?.id) return;
 
-    fetchCompanyByIdAction(user.company.id).then((c) => {
+    fetchCompanyByIdAction(user.company.id, false, true).then((c) => {
       if (c) {
         setCompany(c as Company);
       } else {
         setCompany(null);
       }
     });
+  }, [user?.company?.id]);
+
+  React.useEffect(() => {
+    if (!user?.company?.id) {
+      setOrderingEnabled(false);
+      return;
+    }
+    getCompanyOrderingTabInfo(user.company.id)
+      .then(({ enabled, boothId }) => setOrderingEnabled(!!enabled && !!boothId))
+      .catch(() => setOrderingEnabled(false));
   }, [user?.company?.id]);
 
 
@@ -184,7 +197,7 @@ function MyEventsSection() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {companyEvents.map((event) => (
-            <ManageEventCard key={event.id ?? event.name} event={event} company={company} />
+            <ManageEventCard key={event.id ?? event.name} event={event} company={company} orderingEnabled={orderingEnabled} />
           ))}
         </div>
       )}
@@ -218,7 +231,7 @@ function MyEventsSection() {
   );
 }
 
-function ManageEventCard({ event, company }: { event: CareerEvent; company: Company | null }) {
+function ManageEventCard({ event, company, orderingEnabled }: { event: CareerEvent; company: Company | null; orderingEnabled?: boolean }) {
   const hours = [event.start_hour, event.end_hour].filter(Boolean).join(" – ");
   const scansUrl = `/dashboard/scans/event/${encodeURIComponent(event.name)}`;
   const [forms, setForms] = React.useState<Array<{
@@ -232,6 +245,10 @@ function ManageEventCard({ event, company }: { event: CareerEvent; company: Comp
   const [completedFormIds, setCompletedFormIds] = React.useState<Set<string>>(new Set());
   const [hasMatchingSoftware, setHasMatchingSoftware] = React.useState(false);
   const [matchingSoftwareCompleted, setMatchingSoftwareCompleted] = React.useState(false);
+  const [hasSchedules, setHasSchedules] = React.useState(false);
+  const [hasStudentSchedulesAccess, setHasStudentSchedulesAccess] = React.useState(false);
+  const [orderingEnabledLocal, setOrderingEnabledLocal] = React.useState(false);
+  const hasOrdering = orderingEnabled ?? orderingEnabledLocal;
 
   // Get company option IDs
   const companyOptionIds = React.useMemo(() => {
@@ -308,6 +325,26 @@ function ManageEventCard({ event, company }: { event: CareerEvent; company: Comp
       });
   }, [event.id, company?.id]);
 
+  // Check if company has Student Schedules sub-option (use AnyStatus to catch sub-options that may be inactive or in different structure)
+  React.useEffect(() => {
+    setHasStudentSchedulesAccess(!!company && getCompanySubOptionAnyStatus(company, "Student Schedules") !== null);
+    hasSchedulesForEventAction(event.id)
+      .then(setHasSchedules)
+      .catch(() => setHasSchedules(false));
+  }, [event.id, company]);
+
+  // Fallback: check order system when not passed from parent (e.g. if parent doesn't fetch it)
+  React.useEffect(() => {
+    if (orderingEnabled !== undefined) return;
+    if (!company?.id) {
+      setOrderingEnabledLocal(false);
+      return;
+    }
+    getCompanyOrderingTabInfo(company.id)
+      .then(({ enabled, boothId }) => setOrderingEnabledLocal(!!enabled && !!boothId))
+      .catch(() => setOrderingEnabledLocal(false));
+  }, [company?.id, orderingEnabled]);
+
   return (
     <Card className="border rounded-lg shadow-sm">
       <CardHeader>
@@ -327,44 +364,46 @@ function ManageEventCard({ event, company }: { event: CareerEvent; company: Comp
           </div>
           
           <div className="space-y-2">
-            {/* Company Forms */}
-            {loadingForms ? (
-              <div className="text-xs text-muted-foreground">Loading forms...</div>
-            ) : forms.length > 0 ? (
-              <div className="space-y-2">
-                {forms.map((form) => {
-                  const isCompleted = completedFormIds.has(form.id);
-                  const formUrl = `/forms/company/${event.id}/${form.slug}`;
-                  const metadata = (form as { metadata?: { deadline?: string } }).metadata;
-                  const hasDeadline = !!metadata?.deadline;
-                  const deadline = metadata?.deadline ? new Date(metadata.deadline) : null;
-                  const isDeadlinePassed = deadline ? deadline < new Date() : false;
-                  
-                  return (
-                    <div key={form.id} className="space-y-1">
-                      <Button
-                        asChild
-                        variant={isCompleted ? "outline" : "default"}
-                        className={hasDeadline ? "w-full justify-start" : "w-full justify-center"}
-                        size="sm"
-                      >
-                        <Link href={formUrl}>
-                          {hasDeadline && <FileText className="h-4 w-4 mr-2" />}
-                          {form.name}
-                          {isCompleted && hasDeadline && <CheckCircle2 className="h-4 w-4 ml-auto text-green-600" />}
-                          {isCompleted && !hasDeadline && <CheckCircle2 className="h-4 w-4 ml-2 text-green-600" />}
-                        </Link>
-                      </Button>
-                      {hasDeadline && (
-                        <p className={`text-xs ${isDeadlinePassed ? 'text-red-600' : 'text-red-500'} font-medium`}>
-                          Deadline: {formatDateTimeBE(metadata.deadline as string)}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
+            {/* Company Forms - hidden during the event */}
+            {!isDuringEvent(event) && (
+              loadingForms ? (
+                <div className="text-xs text-muted-foreground">Loading forms...</div>
+              ) : forms.length > 0 ? (
+                <div className="space-y-2">
+                  {forms.map((form) => {
+                    const isCompleted = completedFormIds.has(form.id);
+                    const formUrl = `/forms/company/${event.id}/${form.slug}`;
+                    const metadata = (form as { metadata?: { deadline?: string } }).metadata;
+                    const hasDeadline = !!metadata?.deadline;
+                    const deadline = metadata?.deadline ? new Date(metadata.deadline) : null;
+                    const isDeadlinePassed = deadline ? deadline < new Date() : false;
+                    
+                    return (
+                      <div key={form.id} className="space-y-1">
+                        <Button
+                          asChild
+                          variant={isCompleted ? "outline" : "default"}
+                          className={hasDeadline ? "w-full justify-start" : "w-full justify-center"}
+                          size="sm"
+                        >
+                          <Link href={formUrl}>
+                            {hasDeadline && <FileText className="h-4 w-4 mr-2" />}
+                            {form.name}
+                            {isCompleted && hasDeadline && <CheckCircle2 className="h-4 w-4 ml-auto text-green-600" />}
+                            {isCompleted && !hasDeadline && <CheckCircle2 className="h-4 w-4 ml-2 text-green-600" />}
+                          </Link>
+                        </Button>
+                        {hasDeadline && (
+                          <p className={`text-xs ${isDeadlinePassed ? 'text-red-600' : 'text-red-500'} font-medium`}>
+                            Deadline: {formatDateTimeBE(metadata.deadline as string)}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null
+            )}
 
             {/* Matching Software Button - only when event has it configured */}
             {hasMatchingSoftware && (
@@ -377,6 +416,31 @@ function ManageEventCard({ event, company }: { event: CareerEvent; company: Comp
                 <Link href={`/dashboard/matching-software/event/${encodeURIComponent(event.id)}`} className="flex items-center justify-center gap-2">
                   Matching Software
                   {matchingSoftwareCompleted && <CheckCircle2 className="h-4 w-4 text-green-600" />}
+                </Link>
+              </Button>
+            )}
+
+            {/* Student Schedules Button - only when company has sub-option, event has schedules, and we're during the event */}
+            {hasStudentSchedulesAccess && hasSchedules && isDuringEvent(event) && (
+              <Button
+                asChild
+                variant="outline"
+                className="w-full justify-center"
+                size="sm"
+              >
+                <Link href={`/dashboard/schedules/event/${encodeURIComponent(event.id)}`} className="flex items-center justify-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Student Schedules
+                </Link>
+              </Button>
+            )}
+
+            {/* Order Drinks Button - only for event 4a1b38c1 (Career Day) when order system is open */}
+            {event.id === "4a1b38c1-83f4-418e-b4c3-9e1ec680f832" && hasOrdering && (
+              <Button asChild variant="outline" className="w-full justify-center" size="sm">
+                <Link href="/dashboard/order-drinks" className="flex items-center gap-2">
+                  <Wine className="h-4 w-4" />
+                  Order Drinks
                 </Link>
               </Button>
             )}

@@ -321,8 +321,8 @@ export default function CompanyFormPage() {
             setSubmitterEmail(response.submitter_email);
           }
           
-          // When compulsory, open editor immediately; otherwise start in read-only mode
-          setIsEditing(form.metadata?.is_compulsory === true);
+          // When form has existing data, open in edit mode (like student forms)
+          setIsEditing(true);
           console.log("[CompanyFormPage] loadExistingResponse - Completed successfully, form data set");
         } else {
           console.log("[CompanyFormPage] loadExistingResponse - No existing response found");
@@ -656,10 +656,10 @@ export default function CompanyFormPage() {
           {!authCompanyId && existingResponse && !loadingResponse && (
             <div className="mb-4 p-6 bg-muted/50 border border-border rounded-md text-center">
               <p className="text-muted-foreground mb-4">
-                Your company has already submitted this form. Please log in to view or edit your response.
+                Please log in to view or edit your response.
               </p>
               <Button asChild>
-                <Link href="/login">Log in</Link>
+                <Link href={`/login?redirectTo=${encodeURIComponent(`/forms/company/${eventId}/${slug}`)}`}>Log in</Link>
               </Button>
             </div>
           )}

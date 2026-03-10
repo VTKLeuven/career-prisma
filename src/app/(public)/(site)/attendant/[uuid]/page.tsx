@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle2, Save, Star } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { getScanningDisplayValues, hasScanningColumns } from "@/lib/utils/scanning-columns";
 
 type AttendantInfo = {
   id: string;
@@ -17,6 +18,15 @@ type AttendantInfo = {
     form_id: {
       name: string;
     };
+    metadata?: {
+      scanning_columns?: {
+        university?: string;
+        faculty?: string;
+        master?: string;
+        year_of_study?: string;
+      };
+      [key: string]: unknown;
+    };
   };
   student_id?: {
     first_name: string | null;
@@ -25,9 +35,11 @@ type AttendantInfo = {
   } | null;
 };
 
-/** Extract display values for scan confirmation. Student name from student who filled the form. */
+/** Extract display values for scan confirmation. Uses scanning_columns when configured, else fallback to hardcoded fields. */
 function getScanDisplayInfo(attendant: AttendantInfo) {
   const data = attendant.data;
+  const scanningColumns = attendant.form_version_id?.metadata?.scanning_columns;
+  const useScanningCols = hasScanningColumns(scanningColumns);
 
   // Student name: from student who filled the form (_student_full_name or student_id relation)
   let name = "";
@@ -50,38 +62,46 @@ function getScanDisplayInfo(attendant: AttendantInfo) {
     name = `${first} ${last}`.trim() || "Unknown";
   }
 
-  const yearKeys = ["year_of_study", "year", "academic_year", "study_year", "_student_year"];
   let yearOfStudy = "";
-  for (const k of yearKeys) {
-    const v = data[k];
-    if (v != null && String(v).trim()) {
-      yearOfStudy = String(v).trim();
-      break;
-    }
-  }
-
-  // Use study_field only
-  const extractOne = (val: unknown): string | null => {
-    if (val == null) return null;
-    if (typeof val === "string" && val.trim()) return val.trim();
-    if (typeof val === "object" && val !== null && "name" in (val as object))
-      return String((val as { name: string }).name).trim() || null;
-    if (typeof val === "object" && val !== null) {
-      const o = val as Record<string, unknown>;
-      const v = o.name ?? o.label ?? o.value ?? o.id;
-      if (v != null && String(v).trim()) return String(v).trim();
-    }
-    return null;
-  };
   let studyField = "";
-  const studyFieldVal = data.study_field;
-  if (studyFieldVal != null) {
-    if (Array.isArray(studyFieldVal)) {
-      const first = studyFieldVal.map(extractOne).find(Boolean);
-      if (first) studyField = first;
-    } else {
-      const s = extractOne(studyFieldVal);
-      if (s) studyField = s;
+
+  if (useScanningCols && scanningColumns) {
+    const scanValues = getScanningDisplayValues(data, scanningColumns);
+    yearOfStudy = scanValues.yearOfStudy;
+    const parts = [scanValues.university, scanValues.faculty, scanValues.master].filter(Boolean);
+    studyField = parts.join(" – ");
+  } else {
+    // Fallback to hardcoded fields
+    const yearKeys = ["year_of_study", "year", "academic_year", "study_year", "_student_year"];
+    for (const k of yearKeys) {
+      const v = data[k];
+      if (v != null && String(v).trim()) {
+        yearOfStudy = String(v).trim();
+        break;
+      }
+    }
+
+    const extractOne = (val: unknown): string | null => {
+      if (val == null) return null;
+      if (typeof val === "string" && val.trim()) return val.trim();
+      if (typeof val === "object" && val !== null && "name" in (val as object))
+        return String((val as { name: string }).name).trim() || null;
+      if (typeof val === "object" && val !== null) {
+        const o = val as Record<string, unknown>;
+        const v = o.name ?? o.label ?? o.value ?? o.id;
+        if (v != null && String(v).trim()) return String(v).trim();
+      }
+      return null;
+    };
+    const studyFieldVal = data.study_field;
+    if (studyFieldVal != null) {
+      if (Array.isArray(studyFieldVal)) {
+        const first = studyFieldVal.map(extractOne).find(Boolean);
+        if (first) studyField = first;
+      } else {
+        const s = extractOne(studyFieldVal);
+        if (s) studyField = s;
+      }
     }
   }
 

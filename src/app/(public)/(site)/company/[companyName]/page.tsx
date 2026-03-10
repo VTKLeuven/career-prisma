@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Company, Master, CareerEventOption, CareerEvent } from "@/lib/schema";
+import { Company, Master, CareerEventOption, CareerEvent, Speaker } from "@/lib/schema";
 import { getDirectusImageUrl } from "@/components/Images";
 import Image from "next/image";
 import Link from "next/link";
@@ -17,11 +17,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, LogOut, User } from "lucide-react";
+import { ChevronDown, LogOut, User, Star } from "lucide-react";
 import { usePageLayout } from '../../layout';
-import { usePathname } from 'next/navigation';
-import { getUpcomingEventsWithFallback } from '@/lib/utils/events';
+import { CompanyLikeButton } from "@/components/CompanyLikeButton";
+import { groupSpeakersByTimeSlot } from "@/lib/utils/speakers";
+import { getSpeakerSlug } from "@/lib/utils/slugify";
 
 type CategoryJunction = { master_id: Master | null };
 type OptionJunction = { career_event_option_id: CareerEventOption | null };
@@ -48,6 +48,7 @@ export default function CompanyPage() {
   const router = useRouter();
   const companyName = Array.isArray(params.companyName) ? params.companyName[0] : params.companyName;
   const [company, setCompany] = useState<Company | null>(null);
+  const [speakers, setSpeakers] = useState<Array<Speaker & { eventName: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [pageImageValid, setPageImageValid] = useState<boolean | null>(null);
   const [allEvents, setAllEvents] = useState<CareerEvent[]>([]);
@@ -88,6 +89,7 @@ export default function CompanyPage() {
           const data = await res.json();
           fetched = data.company ?? null;
           allSubOptions = data.allSubOptions ?? [];
+          setSpeakers(data.speakers ?? []);
         }
         if (fetched) {
           // Check if company has access to company page (sub-option + published)
@@ -121,10 +123,12 @@ export default function CompanyPage() {
           });
         } else {
           setCompany(null);
+          setSpeakers([]);
         }
       } catch (error) {
         console.error("Error fetching company:", error);
         setCompany(null);
+        setSpeakers([]);
       } finally {
         setLoading(false);
       }
@@ -292,7 +296,7 @@ export default function CompanyPage() {
 
   return (
     <main className="relative min-h-svh bg-vtk-bg text-neutral-900">
-      <Header />
+      <Header hasSpeakers={speakers.length > 0} />
       <div className="pt-24 md:pt-28">
         {validBgUrl && (
           <div className="absolute inset-0 z-0">
@@ -302,7 +306,8 @@ export default function CompanyPage() {
         <div className="relative z-10">
       <section className="relative">
         <div className="mx-auto max-w-7xl px-4 py-8">
-          <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-6 shadow-sm">
+          <div className="relative rounded-2xl border bg-white/85 backdrop-blur-sm p-6 shadow-sm">
+            <CompanyLikeButton companyId={company.id} />
             <div className="flex items-center gap-3 sm:gap-5 flex-col sm:flex-row">
               <div className="h-16 w-16 sm:h-20 sm:w-20 shrink-0 rounded-xl border bg-neutral-50 flex items-center justify-center overflow-hidden">
                 {logoUrl ? (
@@ -350,6 +355,13 @@ export default function CompanyPage() {
                 <div className="rounded-2xl border bg-white/85 backdrop-blur-sm p-6 shadow-sm">
                   <h2 className="text-xl font-semibold text-neutral-900">More details</h2>
                   <div className="prose max-w-none mt-3" dangerouslySetInnerHTML={{ __html: company.long_description || "" }} />
+                </div>
+              )}
+
+              {speakers.length > 0 && (
+                <div id="discovery-stage" className="rounded-2xl border bg-white/85 backdrop-blur-sm p-4 sm:p-6 shadow-sm scroll-mt-28">
+                  <h2 className="text-lg sm:text-xl font-semibold text-neutral-900 mb-4 sm:mb-6">Discovery Stage</h2>
+                  <CompanySpeakersSection speakers={speakers} />
                 </div>
               )}
 
@@ -427,459 +439,255 @@ export default function CompanyPage() {
   );
 }
 
+// ---------------- CompanySpeakersSection ----------------
+const KU_LEUVEN_LOGO_ID = "d93c21e6-1145-4d4e-96d2-7e8daa640b9f";
+
+function CompanySpeakersSection({ speakers }: { speakers: Array<Speaker & { eventName: string }> }) {
+  const byEvent = new Map<string, Speaker[]>();
+  for (const s of speakers) {
+    const eventName = s.eventName ?? "Event";
+    const list = byEvent.get(eventName) ?? [];
+    list.push(s);
+    byEvent.set(eventName, list);
+  }
+
+  return (
+    <div className="space-y-8">
+      {Array.from(byEvent.entries()).map(([eventName, eventSpeakers]) => {
+        const eventSlug = slugifyEventName(eventName);
+        const grouped = groupSpeakersByTimeSlot(eventSpeakers);
+        return (
+          <div key={eventName}>
+            <h3 className="text-base font-semibold text-neutral-700 mb-3">{eventName}</h3>
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+              {grouped.map((group) =>
+                group.length === 1 ? (
+                  <CompanySpeakerCard key={group[0].id} speaker={group[0]} eventSlug={eventSlug} allSpeakers={eventSpeakers} />
+                ) : (
+                  <CompanySpeakerCardMulti key={group[0].id} speakers={group} eventSlug={eventSlug} allSpeakers={eventSpeakers} />
+                )
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CompanySpeakerCard({ speaker, eventSlug, allSpeakers }: { speaker: Speaker; eventSlug: string; allSpeakers: Speaker[] }) {
+  const rep = speaker.representative;
+  const avatarUrl = rep?.avatar ? getDirectusImageUrl(rep.avatar) : undefined;
+  const company = rep?.company;
+  const displayCompany = company ?? { name: "KU Leuven", logo: KU_LEUVEN_LOGO_ID };
+  const companyLogoUrl = displayCompany.logo ? getDirectusImageUrl(displayCompany.logo) : undefined;
+  const startHour = speaker.time?.start_time;
+  const endHour = speaker.time?.end_time;
+  const timeLabel = startHour && endHour ? `${startHour} - ${endHour}` : startHour ?? endHour ?? null;
+
+  return (
+    <Link
+      href={`/event/${eventSlug}/speakers/${getSpeakerSlug(speaker, allSpeakers)}`}
+      className="flex w-full flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition-shadow"
+    >
+      <div className="relative aspect-square w-full">
+        {avatarUrl ? (
+          <Image src={avatarUrl} alt="" fill className="object-cover" sizes="160px" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-neutral-100 text-2xl font-semibold text-neutral-400">
+            {(rep?.first_name?.[0] ?? rep?.last_name?.[0] ?? "?")}
+          </div>
+        )}
+        {timeLabel && (
+          <div className="absolute top-1.5 right-1.5 rounded bg-white/90 px-1.5 py-0.5 text-xs font-medium text-vtk-blue shadow-sm">
+            {timeLabel}
+          </div>
+        )}
+      </div>
+      <div className="p-2 text-center">
+        <div className="text-sm font-semibold text-neutral-900">{(rep?.first_name ?? "")} {rep?.last_name}</div>
+        <div className="mt-1 flex items-center justify-center gap-1.5">
+          {companyLogoUrl && (
+            <div className="h-4 w-4 shrink-0 overflow-hidden rounded">
+              <Image src={companyLogoUrl} alt={displayCompany.name} width={16} height={16} className="h-full w-full object-contain" />
+            </div>
+          )}
+          <span className="text-xs text-neutral-600 truncate">{displayCompany.name}</span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function CompanySpeakerCardMulti({ speakers, eventSlug, allSpeakers }: { speakers: Speaker[]; eventSlug: string; allSpeakers: Speaker[] }) {
+  const t = speakers[0]?.time;
+  const timeLabel = t ? (t.start_time && t.end_time ? `${t.start_time} - ${t.end_time}` : t.start_time ?? t.end_time ?? null) : null;
+
+  return (
+    <div className="flex w-full flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition-shadow">
+      <div className="relative aspect-square w-full flex">
+        {speakers.map((speaker) => {
+          const rep = speaker.representative;
+          const avatarUrl = rep?.avatar ? getDirectusImageUrl(rep.avatar) : undefined;
+          return (
+            <Link
+              key={speaker.id}
+              href={`/event/${eventSlug}/speakers/${getSpeakerSlug(speaker, allSpeakers)}`}
+              className="relative flex-1 min-w-0"
+            >
+              {avatarUrl ? (
+                <Image src={avatarUrl} alt="" fill className="object-cover" sizes="160px" />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center bg-neutral-100 text-2xl font-semibold text-neutral-400">
+                  {(rep?.first_name?.[0] ?? rep?.last_name?.[0] ?? "?")}
+                </div>
+              )}
+            </Link>
+          );
+        })}
+        {timeLabel && (
+          <div className="absolute top-1.5 right-1.5 rounded bg-white/90 px-1.5 py-0.5 text-xs font-medium text-vtk-blue shadow-sm">
+            {timeLabel}
+          </div>
+        )}
+      </div>
+      <div className="p-2 space-y-2">
+        {speakers.map((speaker) => {
+          const rep = speaker.representative;
+          const company = rep?.company;
+          const displayCompany = company ?? { name: "KU Leuven", logo: KU_LEUVEN_LOGO_ID };
+          const companyLogoUrl = displayCompany.logo ? getDirectusImageUrl(displayCompany.logo) : undefined;
+          return (
+            <Link
+              key={speaker.id}
+              href={`/event/${eventSlug}/speakers/${getSpeakerSlug(speaker, allSpeakers)}`}
+              className="block text-center hover:bg-neutral-50 -mx-1 px-1 py-0.5 rounded transition-colors"
+            >
+              <div className="text-sm font-semibold text-neutral-900">{(rep?.first_name ?? "")} {rep?.last_name}</div>
+              <div className="mt-1 flex items-center justify-center gap-1.5">
+                {companyLogoUrl && (
+                  <div className="h-4 w-4 shrink-0 overflow-hidden rounded">
+                    <Image src={companyLogoUrl} alt={displayCompany.name} width={16} height={16} className="h-full w-full object-contain" />
+                  </div>
+                )}
+                <span className="text-xs text-neutral-600 truncate">{displayCompany.name}</span>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ---------------- Header ----------------
-function Header() {
-  const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [companyRep, setCompanyRep] = useState<{ authenticated: boolean; name: string } | null>(null)
-  const [student, setStudent] = useState<{ authenticated: boolean; firstName: string | null; lastName: string | null } | null>(null)
-  const router = useRouter()
+function Header({ hasSpeakers = false }: { hasSpeakers?: boolean }) {
+  const [openMenu, setOpenMenu] = useState<null | 'events'>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [companyRep, setCompanyRep] = useState<{ authenticated: boolean; name: string } | null>(null);
+  const [student, setStudent] = useState<{ authenticated: boolean; firstName: string | null; lastName: string | null } | null>(null);
+  const router = useRouter();
   const [EVENTS, setEvents] = useState<CareerEvent[]>([]);
-  const menuRef = useRef<HTMLDivElement>(null)
-  const mobileMenuRef = useRef<HTMLDivElement>(null)
-  const eventsMenuRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const eventsMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-      let cancelled = false
-      fetchEventsAction()
-        .then((events) => {
-          if (!cancelled) setEvents(events)
-        })
-        .catch(() => {
-          // Ignore: non-critical header data
-        })
-      return () => {
-        cancelled = true
-      }
+    let cancelled = false;
+    fetchEventsAction()
+      .then((events) => { if (!cancelled) setEvents(events ?? []); })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   const checkAuthStatus = () => {
-    fetch('/api/user/check?' + Date.now(), { 
-      cache: 'no-store',
-      credentials: 'include',
-    })
-      .then(res => {
-        if (!res.ok) {
-          throw new Error('Failed to check auth status');
-        }
-        return res.json();
-      })
+    fetch('/api/user/check?' + Date.now(), { cache: 'no-store', credentials: 'include' })
+      .then((res) => res.ok ? res.json() : Promise.reject(new Error('Failed')))
       .then((data) => {
-        // Explicitly handle null/undefined - ensure we set null if API returns null or undefined
-        if (data.companyRep && data.companyRep.authenticated === true) {
-          setCompanyRep(data.companyRep);
-        } else {
-          setCompanyRep(null);
-        }
-        if (data.student && data.student.authenticated === true) {
-          setStudent(data.student);
-        } else {
-          setStudent(null);
-        }
+        setCompanyRep(data?.companyRep?.authenticated ? data.companyRep : null);
+        setStudent(data?.student?.authenticated ? data.student : null);
       })
-      .catch(() => {
-        // User not authenticated - clear state
-        setCompanyRep(null);
-        setStudent(null);
-      });
+      .catch(() => { setCompanyRep(null); setStudent(null); });
   };
 
   useEffect(() => {
-    // Check user authentication status on mount
     checkAuthStatus();
-
-    // Listen for focus event (user might have logged in in another tab)
     window.addEventListener('focus', checkAuthStatus);
-
-    return () => {
-      window.removeEventListener('focus', checkAuthStatus);
-    };
+    return () => window.removeEventListener('focus', checkAuthStatus);
   }, []);
 
-  // Close menus when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target as Node) &&
-          !(event.target as HTMLElement).closest('button[aria-expanded]')) {
-        setMobileMenuOpen(false)
-      }
-      if (eventsMenuRef.current && !eventsMenuRef.current.contains(event.target as Node) &&
-          !(event.target as HTMLElement).closest('button[aria-controls="mega-events"]')) {
-        setOpenMenu(null)
-      }
-    }
-
+    const handleClickOutside = (e: MouseEvent) => {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node) &&
+          !(e.target as HTMLElement).closest('button[aria-expanded]')) setMobileMenuOpen(false);
+      if (eventsMenuRef.current && !eventsMenuRef.current.contains(e.target as Node) &&
+          !(e.target as HTMLElement).closest('button[aria-controls="mega-events"]')) setOpenMenu(null);
+    };
     if (mobileMenuOpen || openMenu === 'events') {
-      document.addEventListener('mousedown', handleClickOutside)
-      return () => document.removeEventListener('mousedown', handleClickOutside)
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [mobileMenuOpen, openMenu])
+  }, [mobileMenuOpen, openMenu]);
 
   return (
-    <header
-      ref={menuRef}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') {
-          setOpenMenu(null);
-          setMobileMenuOpen(false);
-        }
-      }}
-      className="fixed top-2 sm:top-4 inset-x-0 z-50 w-full px-2 sm:px-0"
-      aria-label="Site navigation"
-    >
+    <header ref={menuRef} className="fixed top-2 sm:top-4 inset-x-0 z-50 w-full px-2 sm:px-0" aria-label="Site navigation">
       <div className="mx-auto max-w-7xl px-2 sm:px-4">
         <div className="flex items-center justify-between gap-2 sm:gap-3 rounded-xl sm:rounded-2xl border bg-white/85 px-2 sm:px-3 md:px-5 py-1.5 sm:py-2 md:py-3 shadow-[0_12px_40px_rgba(0,0,0,0.10)] ring-1 ring-black/5 backdrop-blur-md">
           <Link href="/" className="flex shrink-0 items-center gap-1 sm:gap-2 rounded-full px-1 sm:px-2">
-            <Image 
-              src="/career_blue.png" 
-              alt="VTK Career" 
-              width={120} 
-              height={40} 
-              className="h-6 sm:h-8 w-auto self-center"
-              priority
-            />
+            <Image src="/career_blue.png" alt="VTK Career" width={120} height={40} className="h-6 sm:h-8 w-auto self-center" priority />
           </Link>
-
           <nav className="hidden items-center gap-2 md:flex">
             <Link href="/" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">Home</Link>
-
             <div className="relative">
-              <button
-                type="button"
-                onMouseEnter={() => setOpenMenu('events')}
-                onFocus={() => setOpenMenu('events')}
-                onClick={() => setOpenMenu((s) => (s === 'events' ? null : 'events'))}
-                className="inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
-                aria-expanded={openMenu === 'events'}
-                aria-controls="mega-events"
-              >
+              <button type="button" onMouseEnter={() => setOpenMenu('events')} onFocus={() => setOpenMenu('events')} onClick={() => setOpenMenu((s) => (s === 'events' ? null : 'events'))}
+                className="inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100" aria-expanded={openMenu === 'events'} aria-controls="mega-events">
                 Events <ChevronDown className="h-4 w-4" />
               </button>
             </div>
-
             <Link href="/our-students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
             <Link href="/vacancies" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
+            {hasSpeakers && (
+              <a href="#discovery-stage" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
+                onClick={(e) => { e.preventDefault(); document.getElementById("discovery-stage")?.scrollIntoView({ behavior: "smooth" }); }}>Discovery Stage</a>
+            )}
           </nav>
-
-          {/* Mobile nav - Events as simple button */}
           <nav className="md:hidden flex items-center gap-2">
             <Link href="/" className="rounded-full bg-vtk-blue px-3 py-1.5 text-xs font-medium text-white">Home</Link>
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100"
-            >
-              Events
-            </button>
+            <button type="button" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Events</button>
             <Link href="/our-students" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
             <Link href="/vacancies" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
+            {hasSpeakers && (
+              <a href="#discovery-stage" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100"
+                onClick={(e) => { e.preventDefault(); document.getElementById("discovery-stage")?.scrollIntoView({ behavior: "smooth" }); }}>Discovery Stage</a>
+            )}
           </nav>
-
           <div className="ml-auto flex items-center gap-2">
-            {!student && (
-              <Button asChild variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex">
-                <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>
-              </Button>
-            )}
-            {!student && !companyRep && (
-              <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/student-login">Student login</Link></Button>
-            )}
-            {!student && companyRep && (
-              <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>
-            )}
+            {!student && <Button asChild variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex"><Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link></Button>}
+            {!student && !companyRep && <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/student-login">Student login</Link></Button>}
+            {!student && companyRep && <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>}
             {student && (
               <>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex">
-                      <User className="h-4 w-4 mr-2" />
-                      {student.firstName} {student.lastName}
+                      <User className="h-4 w-4 mr-2" />{student.firstName} {student.lastName}
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={async () => {
-                        await fetch("/api/students/logout", { method: "POST" });
-                        router.refresh();
-                        window.location.href = "/";
-                      }}
-                    >
-                      <LogOut className="mr-2 h-4 w-4" />
-                      Log out
+                    <DropdownMenuItem asChild><Link href="/student/liked-companies"><Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />Liked companies</Link></DropdownMenuItem>
+                    <DropdownMenuItem onClick={async () => { await fetch("/api/students/logout", { method: "POST" }); router.refresh(); window.location.href = "/"; }}>
+                      <LogOut className="mr-2 h-4 w-4" />Log out
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
                 <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>
               </>
             )}
-            
-            {/* Mobile menu button - only show if menu is closed (Events button handles opening) */}
-            {!mobileMenuOpen && (
-              <button
-                type="button"
-                onClick={() => setMobileMenuOpen(true)}
-                className="md:hidden inline-flex items-center justify-center rounded-md p-2 text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-vtk-blue"
-                aria-expanded={mobileMenuOpen}
-                aria-label="Open menu"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              </button>
-            )}
-            {mobileMenuOpen && (
-              <button
-                type="button"
-                onClick={() => setMobileMenuOpen(false)}
-                className="md:hidden inline-flex items-center justify-center rounded-md p-2 text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-vtk-blue"
-                aria-expanded={mobileMenuOpen}
-                aria-label="Close menu"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
+            {!mobileMenuOpen && <button type="button" onClick={() => setMobileMenuOpen(true)} className="md:hidden inline-flex items-center justify-center rounded-md p-2 text-neutral-700 hover:bg-neutral-100" aria-expanded={mobileMenuOpen} aria-label="Open menu"><svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button>}
+            {mobileMenuOpen && <button type="button" onClick={() => setMobileMenuOpen(false)} className="md:hidden inline-flex items-center justify-center rounded-md p-2 text-neutral-700 hover:bg-neutral-100" aria-expanded={mobileMenuOpen} aria-label="Close menu"><svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>}
           </div>
         </div>
       </div>
-
-      {/* Mobile Menu */}
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.div
-            ref={mobileMenuRef}
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18 }}
-            className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 md:hidden"
-          >
-            <div className="mx-auto max-w-7xl px-2 sm:px-4">
-              <div className="rounded-xl sm:rounded-2xl border bg-white/95 backdrop-blur-md shadow-xl p-4">
-                {/* Events Section */}
-                <div className="mb-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-neutral-900">Upcoming events</h3>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5 text-xs px-3"
-                      onClick={() => {
-                        setMobileMenuOpen(false);
-                        // Check if we're on the homepage
-                        if (window.location.pathname === '/') {
-                          // Dispatch custom event that homepage can listen to
-                          window.dispatchEvent(new CustomEvent('viewAllEvents'));
-                          // Also set hash for URL consistency
-                          window.location.hash = '#all-events';
-                        } else {
-                          // Navigate to homepage with hash
-                          window.location.href = '/#all-events';
-                        }
-                      }}
-                    >
-                      View all
-                    </Button>
-                  </div>
-                  <ul className="space-y-2 max-h-[50vh] overflow-y-auto">
-                    {EVENTS
-                      .filter((e) => {
-                        try {
-                          const eventDate = new Date(e.date);
-                          const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
-                          const now = new Date();
-                          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                          return eventDay >= today; // Include today and future events
-                        } catch {
-                          return false;
-                        }
-                      })
-                      .sort((a, b) => {
-                        try {
-                          return new Date(a.date).getTime() - new Date(b.date).getTime();
-                        } catch {
-                          return 0;
-                        }
-                      })
-                      .slice(0, 6)
-                      .map((event) => (
-                        <li key={event.name}>
-                          <Link 
-                            href={event.href ?? '#'} 
-                            className="block rounded-lg border bg-neutral-50 p-3 hover:bg-vtk-light/40 transition"
-                            onClick={() => setMobileMenuOpen(false)}
-                          >
-                            <div className="text-sm font-medium text-neutral-900">{event.name}</div>
-                            <div className="mt-1 text-xs text-neutral-600">{event.date} · {event.location}</div>
-                          </Link>
-                        </li>
-                      ))}
-                  </ul>
-                </div>
-
-                {/* Other Links */}
-                <div className="border-t pt-4 space-y-2">
-                  {!student && (
-                    <Button 
-                      asChild
-                      variant="outline" 
-                      className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>
-                    </Button>
-                  )}
-                  {!student && !companyRep && (
-                    <Button 
-                      asChild
-                      className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      <Link href="/student-login">Student login</Link>
-                    </Button>
-                  )}
-                  {!student && companyRep && (
-                    <Button 
-                      asChild
-                      className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      <Link href="/contact">Contact Us</Link>
-                    </Button>
-                  )}
-                  {student && (
-                    <>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="outline" className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full">
-                            <User className="h-4 w-4 mr-2" />
-                            {student.firstName} {student.lastName}
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-56">
-                          <DropdownMenuItem
-                            onClick={async () => {
-                              await fetch("/api/students/logout", { method: "POST" });
-                              router.refresh();
-                              window.location.href = "/";
-                            }}
-                          >
-                            <LogOut className="mr-2 h-4 w-4" />
-                            Log out
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      <Button 
-                        asChild
-                        className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
-                        onClick={() => setMobileMenuOpen(false)}
-                      >
-                        <Link href="/contact">Contact Us</Link>
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Desktop Events Menu */}
-      <AnimatePresence>
-        {openMenu === 'events' && (
-          <motion.div
-            ref={eventsMenuRef}
-            id="mega-events"
-            key="mega"
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18 }}
-            className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 hidden md:block"
-            onMouseEnter={() => setOpenMenu('events')}
-            onMouseLeave={() => setOpenMenu(null)}
-          >
-            <div className="mx-auto max-w-7xl px-4">
-              <div className="rounded-2xl border bg-white/85 backdrop-blur-md shadow-xl -mx-8">
-                <div className="grid grid-cols-1 gap-8 px-4 py-8 md:grid-cols-3">
-                  <div className="md:col-span-2">
-                    <div className="mb-4 flex items-center justify-between">
-                      <h3 className="text-sm font-medium text-neutral-900">Upcoming events</h3>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5"
-                        onClick={() => {
-                          setOpenMenu(null);
-                          // Check if we're on the homepage
-                          if (window.location.pathname === '/') {
-                            // Dispatch custom event that homepage can listen to
-                            window.dispatchEvent(new CustomEvent('viewAllEvents'));
-                            // Also set hash for URL consistency
-                            window.location.hash = '#all-events';
-                          } else {
-                            // Navigate to homepage with hash
-                            window.location.href = '/#all-events';
-                          }
-                        }}
-                      >
-                        View all
-                      </Button>
-                    </div>
-                    <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {EVENTS
-                        .filter((e) => {
-                          try {
-                            const eventDate = new Date(e.date);
-                            const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
-                            const now = new Date();
-                            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                            return eventDay >= today; // Include today and future events
-                          } catch {
-                            return false;
-                          }
-                        })
-                        .sort((a, b) => {
-                          try {
-                            return new Date(a.date).getTime() - new Date(b.date).getTime();
-                          } catch {
-                            return 0;
-                          }
-                        })
-                        .slice(0, 8)
-                        .map((event) => (
-                          <li key={event.name} className="rounded-xl border p-3 hover:bg-vtk-light/40">
-                            <Link href={event.href ?? '#'} className="block">
-                              <div className="text-sm font-medium text-neutral-900">{event.name}</div>
-                              <div className="mt-0.5 text-xs text-neutral-600">{event.date} · {event.location}</div>
-                            </Link>
-                          </li>
-                        ))}
-                    </ul>
-                  </div>
-
-                  <div className="hidden md:block">
-                    <div className="h-full rounded-2xl border bg-vtk-light p-5">
-                      <div className="text-sm font-medium text-neutral-900">Featured</div>
-                      <p className="mt-1 text-sm text-neutral-700">Meet 200+ companies at our flagship jobfair in Leuven.</p>
-                      <div className="mt-4">
-                        <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">
-                          <Link href="/event/vtk-jobfair">Explore jobfair</Link>
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
     </header>
-  )
+  );
 }
-
-

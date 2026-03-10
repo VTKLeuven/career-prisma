@@ -575,6 +575,57 @@ export async function getLatestFormResponse(formVersionId: string) {
   }
 }
 
+/** Batch: get latest form response data for multiple students. Returns Map<studentId, data>.
+ * Uses server client. Fetches all responses for form versions once, then groups by data._student_id. */
+export async function getStudentFormResponsesBatchForForm(
+  formId: string,
+  studentIds: string[]
+): Promise<Map<string, Record<string, unknown>>> {
+  if (studentIds.length === 0) return new Map();
+  const idSet = new Set(studentIds.map(String));
+  try {
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const client = await getServerDirectusClient();
+    const versions = await listFormVersionsForServer(formId);
+    const versionIds = versions.map((v) => v.id);
+    if (versionIds.length === 0) return new Map();
+    type FormResponseRow = { id: string; form_version_id: string; data?: Record<string, unknown> };
+    let responses: FormResponseRow[];
+    try {
+      responses = (await client.request(
+        readItems("form_responses" as any, {
+          fields: ["id", "form_version_id", "data"],
+          filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
+          limit: -1,
+          sort: "-submitted_at",
+        })
+      )) as unknown as FormResponseRow[];
+    } catch {
+      responses = (await client.request(
+        readItems("form_responses" as any, {
+          fields: ["id", "form_version_id", "data"],
+          filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
+          limit: -1,
+          sort: "-submitted_at",
+        })
+      )) as unknown as FormResponseRow[];
+    }
+    const byStudent = new Map<string, Record<string, unknown>>();
+    for (const r of responses) {
+      const dataObj = r.data as Record<string, unknown> | undefined;
+      const fromData = dataObj?._student_id ?? dataObj?.student_id;
+      const sid = fromData != null ? String(fromData) : null;
+      if (sid != null && idSet.has(sid) && !byStudent.has(sid)) {
+        byStudent.set(sid, r.data ?? {});
+      }
+    }
+    return byStudent;
+  } catch (error) {
+    console.error("[getStudentFormResponsesBatchForForm] Error:", error);
+    return new Map();
+  }
+}
+
 /** Get a student's latest form response across any of the given form versions. Uses server client.
  * Matches by data._student_id (stored in form data JSON) since form_responses may not have a student_id column.
  * Fetches all responses (limit: -1) so early submitters are not missed when the form has many responses. */
@@ -601,6 +652,77 @@ export async function getStudentLatestFormResponseForForm(
   } catch (error) {
     console.error("[getStudentLatestFormResponseForForm] Error:", error);
     return null;
+  }
+}
+
+export type ScanningColumns = {
+  university?: string;
+  faculty?: string;
+  master?: string;
+  year_of_study?: string;
+};
+
+/** Get event registration form response data for students. Returns Map<studentId, { data, scanning_columns }>.
+ * Uses server client. Fetches from event registration forms linked to the event. */
+export async function getStudentFormResponseDataForEvent(
+  eventId: string,
+  studentIds: string[]
+): Promise<Map<string, { data: Record<string, unknown>; scanning_columns?: ScanningColumns }>> {
+  if (studentIds.length === 0) return new Map();
+  const idSet = new Set(studentIds.map(String));
+  try {
+    const { getServerDirectusClient } = await import("@/lib/directus");
+    const client = await getServerDirectusClient();
+    const forms = await client.request(
+      readItems("forms" as any, {
+        fields: ["id", { form_versions: ["id", "metadata"] } as any],
+        limit: -1,
+      })
+    ) as unknown as Array<{
+      id: string;
+      form_versions?: Array<{
+        id: string;
+        metadata?: { is_event_registration?: boolean; event_id?: string; scanning_columns?: ScanningColumns };
+      }>;
+    }>;
+
+    const versionIds: string[] = [];
+    const versionToScanningColumns = new Map<string, ScanningColumns>();
+    for (const form of forms) {
+      for (const v of form.form_versions ?? []) {
+        const meta = v.metadata;
+        if (meta?.is_event_registration && String(meta.event_id) === String(eventId)) {
+          versionIds.push(v.id);
+          if (meta.scanning_columns) versionToScanningColumns.set(v.id, meta.scanning_columns);
+        }
+      }
+    }
+    if (versionIds.length === 0) return new Map();
+
+    type Row = { id: string; form_version_id: string; data?: Record<string, unknown>; submitted_at?: string };
+    const responses = (await client.request(
+      readItems("form_responses" as any, {
+        fields: ["id", "form_version_id", "data", "submitted_at"],
+        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
+        limit: -1,
+        sort: "-submitted_at",
+      })
+    )) as unknown as Row[];
+
+    const byStudent = new Map<string, { data: Record<string, unknown>; scanning_columns?: ScanningColumns }>();
+    for (const r of responses) {
+      const dataObj = r.data as Record<string, unknown> | undefined;
+      const fromData = dataObj?._student_id ?? dataObj?.student_id;
+      const sid = fromData != null ? String(fromData) : null;
+      if (sid != null && idSet.has(sid) && !byStudent.has(sid)) {
+        const scanningColumns = versionToScanningColumns.get(r.form_version_id);
+        byStudent.set(sid, { data: r.data ?? {}, scanning_columns: scanningColumns });
+      }
+    }
+    return byStudent;
+  } catch (error) {
+    console.error("[Forms] getStudentFormResponseDataForEvent Error:", error);
+    return new Map();
   }
 }
 

@@ -25,6 +25,8 @@ declare module '@tabler/icons-react' {
   export const IconEye: TablerIcon;
   export const IconPhone: TablerIcon;
   export const IconUser: TablerIcon;
+  export const IconUsers: TablerIcon;
+  export const IconList: TablerIcon;
   export const IconTie: TablerIcon;
   export const IconAlertTriangle: TablerIcon;
   export const IconGlassCocktail: TablerIcon;

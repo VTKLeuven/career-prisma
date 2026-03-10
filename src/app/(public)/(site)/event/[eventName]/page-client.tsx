@@ -18,12 +18,14 @@ import { fetchEventPageBySlugAction, fetchEventsAction } from "@/app/actions/eve
 import { getDirectusImageUrl } from "@/components/Images";
 import { slugifyCompanyName, slugifyEventName, getSpeakerSlug } from "@/lib/utils/slugify";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
+import { CompanyLikeButton } from "@/components/CompanyLikeButton";
 import { CareerEventPage, Company, CareerEvent, HeaderButtonType, Speaker, TimetableType } from '@/lib/schema'
 import dynamic from "next/dynamic"
-import { ChevronDown, MapPin, Car, ExternalLink, LogOut, User } from 'lucide-react'
+import { ChevronDown, MapPin, Car, ExternalLink, LogOut, User, Star } from 'lucide-react'
 import { useBannerPage } from '@/hooks/use-banner-page'
 import { usePageLayout } from '../../layout'
-import { getUpcomingEventsWithFallback } from '@/lib/utils/events';
+import { getUpcomingEventsWithFallback } from '@/lib/utils/events'
+import { groupSpeakersByTimeSlot } from '@/lib/utils/speakers'
 
 const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.EventMap), {
   ssr: false,
@@ -402,6 +404,12 @@ function HomepageHeader() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    <DropdownMenuItem asChild>
+                      <Link href="/student/liked-companies">
+                        <Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />
+                        Liked companies
+                      </Link>
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={async () => {
                         await fetch("/api/students/logout", { method: "POST" });
@@ -560,6 +568,12 @@ function HomepageHeader() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuItem asChild>
+                            <Link href="/student/liked-companies" onClick={() => setMobileMenuOpen(false)}>
+                              <Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />
+                              Liked companies
+                            </Link>
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={async () => {
                               await fetch("/api/students/logout", { method: "POST" });
@@ -824,6 +838,18 @@ function Header({ page }: { page?: CareerEventPage }) {
                     Matching Software
                   </Link>
                 )}
+                {page?.speakers && page.speakers.length > 0 && (
+                  <a
+                    href="#discovery-stage"
+                    className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      document.getElementById("discovery-stage")?.scrollIntoView({ behavior: "smooth" });
+                    }}
+                  >
+                    Discovery Stage
+                  </a>
+                )}
                 {shouldShowHeaderButton(page, "company_guide") && page.company_guide && (
                   <CompanyGuideButton 
                     companyGuide={page.company_guide} 
@@ -865,6 +891,18 @@ function Header({ page }: { page?: CareerEventPage }) {
                   >
                     Matching
                   </Link>
+                )}
+                {page?.speakers && page.speakers.length > 0 && (
+                  <a
+                    href="#discovery-stage"
+                    className="rounded-full px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 whitespace-nowrap shrink-0"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      document.getElementById("discovery-stage")?.scrollIntoView({ behavior: "smooth" });
+                    }}
+                  >
+                    Discovery Stage
+                  </a>
                 )}
                 {shouldShowHeaderButton(page, "company_guide") && page.company_guide && (
                   <CompanyGuideButton 
@@ -908,6 +946,12 @@ function Header({ page }: { page?: CareerEventPage }) {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    <DropdownMenuItem asChild>
+                      <Link href="/student/liked-companies">
+                        <Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />
+                        Liked companies
+                      </Link>
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={async () => {
                         await fetch("/api/students/logout", { method: "POST" });
@@ -1007,6 +1051,12 @@ function Header({ page }: { page?: CareerEventPage }) {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuItem asChild>
+                            <Link href="/student/liked-companies" onClick={() => setMobileMenuOpen(false)}>
+                              <Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />
+                              Liked companies
+                            </Link>
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={async () => {
                               await fetch("/api/students/logout", { method: "POST" });
@@ -1330,14 +1380,17 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <button
-          type="button"
-          className="absolute top-2 right-2 text-neutral-500 hover:text-neutral-800 p-1"
-          onClick={handleBack}
-          aria-label="Back to company list"
-        >
-          ✕
-        </button>
+        <div className="absolute top-2 right-2 flex items-center gap-2">
+          <CompanyLikeButton companyId={selectedCompany.id} inline compact />
+          <button
+            type="button"
+            className="text-neutral-500 hover:text-neutral-800 p-1"
+            onClick={handleBack}
+            aria-label="Back to company list"
+          >
+            ✕
+          </button>
+        </div>
 
         {hasMultiple && (
           <>
@@ -1407,11 +1460,12 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
           return (
             <motion.div
               key={i}
-              className="group cursor-pointer flex justify-center"
+              className="group cursor-pointer flex justify-center relative"
               whileHover={{ y: -1, scale: 1.02 }}
               onClick={(e) => handleSelectCompany(company, e.currentTarget as HTMLElement)}
             >
-              <div className="rounded-lg bg-white/90 p-2.5 shadow-[0_4px_12px_rgba(11,77,140,0.06)] ring-1 ring-black/5 hover:shadow-md transition-shadow">
+              <div className="relative rounded-lg bg-white/90 p-2.5 shadow-[0_4px_12px_rgba(11,77,140,0.06)] ring-1 ring-black/5 hover:shadow-md transition-shadow">
+                <CompanyLikeButton companyId={company.id} compact />
                 <div className="size-14 flex items-center justify-center">
                   <Image
                     src={logoUrl}
@@ -1703,7 +1757,7 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
 
           {/* Speakers - same timeslot = one card */}
           {page?.speakers && page.speakers.length > 0 && (
-            <div className="mt-12">
+            <div id="discovery-stage" className="mt-12 scroll-mt-28">
               <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-6">
                 Discovery Stage
               </h2>
@@ -1725,33 +1779,6 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
 }
 
 const KU_LEUVEN_LOGO_ID = "d93c21e6-1145-4d4e-96d2-7e8daa640b9f"
-
-/** Parse "HH:mm" or "HH:mm:ss" to minutes since midnight for chronological sort. */
-function parseTimeToMinutes(t: string | undefined): number {
-  if (!t) return Infinity
-  const [h, m] = t.split(':').map(Number)
-  return (h ?? 0) * 60 + (m ?? 0)
-}
-
-/** Group speakers by time slot. Same time = one group. Returns array of groups in chronological order. */
-function groupSpeakersByTimeSlot(speakers: Speaker[]): Speaker[][] {
-  const byKey = new Map<string, Speaker[]>()
-  for (const s of speakers) {
-    const key = s.time?.id ?? (s.time ? `${s.time.start_time ?? ''}-${s.time.end_time ?? ''}` : `no-time-${s.id}`)
-    const list = byKey.get(key) ?? []
-    list.push(s)
-    byKey.set(key, list)
-  }
-  const groups = Array.from(byKey.values())
-  groups.sort((a, b) => {
-    const startA = a[0]?.time?.start_time
-    const startB = b[0]?.time?.start_time
-    const minA = parseTimeToMinutes(startA)
-    const minB = parseTimeToMinutes(startB)
-    return minA - minB
-  })
-  return groups
-}
 
 // ---------------- SpeakerCard ----------------
 function SpeakerCard({ speaker, eventSlug, allSpeakers }: { speaker: Speaker; eventSlug: string; allSpeakers: Speaker[] }) {

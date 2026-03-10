@@ -4,14 +4,19 @@ import {
   listMatchingSoftware,
   getActiveMatchingSoftwareForEvent,
   getFirstActiveMatchingSoftware,
+  getMatchingSoftwareById,
   createMatchingSoftware,
   updateMatchingSoftware,
   getStudentMatchingResponse,
   createStudentMatchingResponse,
   getCompanyMatchingResponse,
   getCompanyMatchingResponseCompletedIds,
+  getCompanyMatchCounts,
   getCompanyGeneralInfoForCompanies,
   createOrUpdateCompanyMatchingResponse,
+  syncCompanyMatchedStudents,
+  syncAllCompanyMatchedStudents,
+  fullUpdateAllMatches,
   getStudentFormResponseForForm,
   computeAndStoreCompanyMatches,
   getCompaniesByIds,
@@ -38,7 +43,7 @@ export async function createMatchingSoftwareAction(data: {
   return createMatchingSoftware(data);
 }
 
-export async function updateMatchingSoftwareAction(id: string, data: { active?: boolean }) {
+export async function updateMatchingSoftwareAction(id: string, data: { active?: boolean; companies_can_view_matches?: boolean }) {
   return updateMatchingSoftware(id, data);
 }
 
@@ -54,11 +59,66 @@ export async function getCompanyMatchingResponseAction(companyId: string, matchi
   return getCompanyMatchingResponse(companyId, matchingSoftwareId);
 }
 
+/** Get company matching response for company view. Strips students if:
+ * - Matching_Software.companies_can_view_matches is false (not yet open to companies), or
+ * - Company lacks "Matching Software" suboption. */
+export async function getCompanyMatchingResponseForCompanyViewAction(companyId: string, matchingSoftwareId: string) {
+  const { fetchCompanyByIdAction } = await import("@/app/actions/companies");
+  const { hasMatchingSoftwareSubOption } = await import("@/lib/utils/company-access");
+  const response = await getCompanyMatchingResponse(companyId, matchingSoftwareId);
+  if (!response) return null;
+
+  const ms = await getMatchingSoftwareById(matchingSoftwareId);
+  const companiesCanViewMatches = ms?.companies_can_view_matches ?? false;
+  if (!companiesCanViewMatches) {
+    return { ...response, students: [] };
+  }
+
+  const company = await fetchCompanyByIdAction(companyId, false, true);
+  const hasSubOption = hasMatchingSoftwareSubOption(company);
+  if (!hasSubOption) {
+    return { ...response, students: [] };
+  }
+  return response;
+}
+
 export async function getCompanyMatchingResponseCompletedIdsAction(
   matchingSoftwareId: string,
   companyIds: string[]
 ) {
   return getCompanyMatchingResponseCompletedIds(matchingSoftwareId, companyIds);
+}
+
+export async function syncCompanyMatchedStudentsAction(
+  companyId: string,
+  matchingSoftwareId: string
+) {
+  return syncCompanyMatchedStudents(companyId, matchingSoftwareId);
+}
+
+/** Sync matched students for all companies with a matching response. Admin only. */
+export async function syncAllCompanyMatchedStudentsAction(matchingSoftwareId: string) {
+  return syncAllCompanyMatchedStudents(matchingSoftwareId);
+}
+
+/** Full update: recompute all student matches, then sync company matches. Returns logs for admin display. */
+export async function fullUpdateAllMatchesAction(matchingSoftwareId: string) {
+  try {
+    return await fullUpdateAllMatches(matchingSoftwareId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      studentsUpdated: 0,
+      companiesSynced: 0,
+      errors: [`Update failed: ${msg}`],
+      logs: [`[Error] ${msg}`],
+    };
+  }
+}
+
+/** Get match counts per company for admin overview. */
+export async function getCompanyMatchCountsAction(matchingSoftwareId: string) {
+  return getCompanyMatchCounts(matchingSoftwareId);
 }
 
 export async function saveCompanyMatchingResponseAction(
@@ -164,7 +224,8 @@ export async function fetchMatchScoresAction(
   return getMatchScoresForResponse(riasec, studentGeneralInfo, matchingSoftwareId, companyIds);
 }
 
-/** Re-run company matching for the current user's response. Only recomputes if last run was >24h ago. */
+/** Re-run company matching for the current user's response. Only recomputes if last run was >24h ago.
+ * Company matches are synced daily at 0:00 or via admin manual "Update matches" button. */
 export async function recomputeCompanyMatchesForCurrentUserAction(matchingSoftwareId: string) {
   const { getStudentFromCookies } = await import("@/lib/auth-student");
   const student = await getStudentFromCookies();

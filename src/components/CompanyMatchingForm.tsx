@@ -5,11 +5,13 @@ import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { IconCheck, IconRefresh } from "@tabler/icons-react";
+import { IconCheck, IconRefresh, IconUsers, IconList } from "@tabler/icons-react";
+import { Download } from "lucide-react";
 import {
-  getCompanyMatchingResponseAction,
+  getCompanyMatchingResponseForCompanyViewAction,
   saveCompanyMatchingResponseAction,
 } from "@/app/actions/matching-software";
+import { getStudentFormResponseDataForEventAction } from "@/app/actions/forms";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -26,6 +28,11 @@ import {
   GENERAL_INFO_WORK_OPTIONS,
   type GeneralInfoAnswers,
 } from "@/lib/matching-general-info";
+import { cn } from "@/lib/utils";
+import { getScanningDisplayValues, hasScanningColumns } from "@/lib/utils/scanning-columns";
+import { CSV_UTF8_BOM } from "@/lib/utils/slugify";
+
+type MatchedStudent = { id: string; first_name: string | null; last_name: string | null; email: string };
 
 type Question = {
   id: number;
@@ -155,13 +162,38 @@ function calculateCulturePercentages(answers: Record<string, string>): Record<st
   };
 }
 
+function normalizeStudents(raw: unknown): MatchedStudent[] {
+  if (!raw) return [];
+  let arr: unknown[] = [];
+  if (Array.isArray(raw)) arr = raw;
+  else if (typeof raw === "object" && raw !== null && "data" in raw && Array.isArray((raw as { data: unknown }).data)) {
+    arr = (raw as { data: unknown[] }).data;
+  } else return [];
+  return arr
+    .map((item): MatchedStudent | null => {
+      if (item == null) return null;
+      if (typeof item === "string") return { id: item, first_name: null, last_name: null, email: "" };
+      if (typeof item !== "object") return null;
+      const o = item as Record<string, unknown>;
+      const id = typeof o.id === "string" ? o.id : typeof o.id === "number" ? String(o.id) : null;
+      if (!id) return null;
+      const first_name = o.first_name != null ? String(o.first_name) : null;
+      const last_name = o.last_name != null ? String(o.last_name) : null;
+      const email = typeof o.email === "string" ? o.email : "";
+      return { id, first_name, last_name, email };
+    })
+    .filter((s): s is MatchedStudent => s !== null);
+}
+
 type Props = {
   companyId: string;
   matchingSoftwareId: string;
+  eventId?: string;
   eventName?: string;
+  companiesCanViewMatches?: boolean;
 };
 
-export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName }: Props) {
+export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventId, eventName, companiesCanViewMatches = false }: Props) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [generalInfo, setGeneralInfo] = useState<GeneralInfoAnswers>({
     work_preference: [],
@@ -170,26 +202,48 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName }
   });
   const [savedSnapshot, setSavedSnapshot] = useState<Record<string, string> | null>(null);
   const [savedGeneralInfoSnapshot, setSavedGeneralInfoSnapshot] = useState<GeneralInfoAnswers | null>(null);
+  const [students, setStudents] = useState<MatchedStudent[]>([]);
+  const [studentFormData, setStudentFormData] = useState<Map<string, { data: Record<string, unknown>; scanning_columns?: { university?: string; faculty?: string; master?: string; year_of_study?: string } }>>(new Map());
   const [loading, setLoading] = useState(true);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [activeTab, setActiveTab] = useState<"questions" | "matches">("questions");
+
+  async function loadResponse() {
+    const existing = await getCompanyMatchingResponseForCompanyViewAction(companyId, matchingSoftwareId);
+    if (existing) {
+      const existingAnswers = existing.ocia_answers ? { ...existing.ocia_answers } : {};
+      setAnswers(existingAnswers);
+      setSavedSnapshot(existingAnswers);
+      const gi = (existing as { general_info_answers?: GeneralInfoAnswers })?.general_info_answers ?? {
+        work_preference: [],
+        company_type: [],
+        work_options: [],
+      };
+      setGeneralInfo(gi);
+      setSavedGeneralInfoSnapshot(gi);
+      const rawStudents = (existing as { students?: unknown }).students;
+      const normalized = normalizeStudents(rawStudents);
+      setStudents(normalized);
+      if (eventId && normalized.length > 0) {
+        getStudentFormResponseDataForEventAction(eventId, normalized.map((s) => s.id))
+          .then(setStudentFormData)
+          .catch(console.error);
+      } else {
+        setStudentFormData(new Map());
+      }
+      // Default to Matches tab when company has access and has completed questions
+      if (companiesCanViewMatches && existingAnswers && Object.keys(existingAnswers).length >= 13) {
+        setActiveTab("matches");
+      }
+    }
+    return existing;
+  }
 
   useEffect(() => {
-    getCompanyMatchingResponseAction(companyId, matchingSoftwareId)
-      .then((existing) => {
-        const existingAnswers = existing?.ocia_answers ? { ...existing.ocia_answers } : {};
-        setAnswers(existingAnswers);
-        setSavedSnapshot(existingAnswers);
-        const gi = (existing as { general_info_answers?: GeneralInfoAnswers })?.general_info_answers ?? {
-          work_preference: [],
-          company_type: [],
-          work_options: [],
-        };
-        setGeneralInfo(gi);
-        setSavedGeneralInfoSnapshot(gi);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [companyId, matchingSoftwareId]);
+    loadResponse().catch(console.error).finally(() => setLoading(false));
+  }, [companyId, matchingSoftwareId, eventId]);
+
+  const hasCompletedQuestions = savedSnapshot && Object.keys(savedSnapshot).length >= 13;
 
   const isDirty = useMemo(() => {
     if (!savedSnapshot) return false;
@@ -222,16 +276,168 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName }
     <>
     <Card className="rounded-2xl shadow-md">
       <CardHeader>
-        <CardTitle className="text-xl">Matching Software{eventName ? ` – ${eventName}` : ""}</CardTitle>
-        <CardDescription>
-          Complete these questions to refine your student matches. Your preferred student study programs (e.g. Mechanical Engineering, Electrical Engineering,…) are already synced from your{" "}
-          <Link href="/dashboard/settings/information" className="underline font-medium text-foreground hover:no-underline">
-            Settings → Company Information
-          </Link>
-          {" "}and can be adjusted there at any time.
-        </CardDescription>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <CardTitle className="text-xl">Matching Software{eventName ? ` – ${eventName}` : ""}</CardTitle>
+            <CardDescription>
+              Complete these questions to refine your student matches. Your preferred student study programs (e.g. Mechanical Engineering, Electrical Engineering,…) are already synced from your{" "}
+              <Link href="/dashboard/settings/information" className="underline font-medium text-foreground hover:no-underline">
+                Settings → Company Information
+              </Link>
+              {" "}and can be adjusted there at any time.
+            </CardDescription>
+          </div>
+          {hasCompletedQuestions && (
+            <div className="flex rounded-lg border border-border bg-muted/30 p-0.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setActiveTab("questions")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  activeTab === "questions"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <IconList size={16} /> Questions
+              </button>
+              {companiesCanViewMatches && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("matches")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                    activeTab === "matches"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <IconUsers size={16} /> {students.length > 0 ? `View matches (${students.length})` : "Matches"}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
+        {hasCompletedQuestions && companiesCanViewMatches && activeTab === "matches" ? (
+          <div className="space-y-6">
+            {eventName && (
+              <p className="text-sm font-medium text-muted-foreground">
+                Matching software: {eventName}
+              </p>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <p className="text-sm text-muted-foreground">
+                These are your {students.length} best matches according to our software.
+              </p>
+              {students.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const hasScanCols = students.some((s) => {
+                      const formEntry = studentFormData.get(s.id);
+                      return formEntry && hasScanningColumns(formEntry.scanning_columns);
+                    });
+                    const headerRow = ["Name", "Email", ...(hasScanCols ? ["University", "Faculty", "Master", "Year"] : [])];
+                    const dataRows = students.map((s) => {
+                      const formEntry = studentFormData.get(s.id);
+                      const scanCols = formEntry
+                        ? getScanningDisplayValues(formEntry.data, formEntry.scanning_columns)
+                        : { university: "", faculty: "", master: "", yearOfStudy: "" };
+                      const displayName = [s.first_name, s.last_name].filter(Boolean).join(" ") ||
+                        (formEntry?.data?._student_full_name as string) || "—";
+                      const displayEmail = s.email ||
+                        (formEntry?.data?.email as string) ||
+                        (formEntry?.data?._student_email as string) ||
+                        "";
+                      return [
+                        displayName,
+                        displayEmail,
+                        ...(hasScanCols ? [scanCols.university, scanCols.faculty, scanCols.master, scanCols.yearOfStudy] : []),
+                      ];
+                    });
+                    const escapeCsv = (value: unknown) => {
+                      const s = value === null || value === undefined ? "" : String(value);
+                      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+                    };
+                    const csv = CSV_UTF8_BOM + [headerRow, ...dataRows]
+                      .map((row) => row.map(escapeCsv).join(","))
+                      .join("\r\n");
+                    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `matches-${eventName ? eventName.replace(/[^a-z0-9]/gi, "-").toLowerCase() : "export"}-${new Date().toISOString().split("T")[0]}.csv`;
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                  }}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Export CSV
+                </Button>
+              )}
+            </div>
+            {students.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border p-8 text-center">
+                <IconUsers className="mx-auto h-12 w-12 text-muted-foreground/50 mb-3" />
+                <p className="text-muted-foreground">No matches yet. An admin can run &quot;Update matches&quot; to sync student matches.</p>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {students.map((s) => {
+                    const formEntry = studentFormData.get(s.id);
+                    const scanCols = formEntry
+                      ? getScanningDisplayValues(formEntry.data, formEntry.scanning_columns)
+                      : { university: "", faculty: "", master: "", yearOfStudy: "" };
+                    const hasScanCols = formEntry && hasScanningColumns(formEntry.scanning_columns) &&
+                      (scanCols.university || scanCols.faculty || scanCols.master || scanCols.yearOfStudy);
+
+                    // Name: from students collection, or form data (_student_full_name) as fallback
+                    const displayName = [s.first_name, s.last_name].filter(Boolean).join(" ") ||
+                      (formEntry?.data?._student_full_name as string) || "—";
+                    // Email: from students collection, or form data (email / _student_email) as fallback
+                    const displayEmail = s.email ||
+                      (formEntry?.data?.email as string) ||
+                      (formEntry?.data?._student_email as string) ||
+                      "";
+
+                    return (
+                      <div
+                        key={s.id}
+                        className="flex min-h-[180px] flex-col rounded-lg border border-border bg-card p-4 shadow-sm"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-foreground">
+                            {displayName}
+                          </p>
+                          {displayEmail ? (
+                            <a
+                              href={`mailto:${displayEmail}`}
+                              className="text-sm text-muted-foreground hover:text-foreground hover:underline break-all"
+                            >
+                              {displayEmail}
+                            </a>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">—</span>
+                          )}
+                        </div>
+                        {hasScanCols && (
+                          <div className="mt-3 space-y-1 text-sm text-muted-foreground">
+                            {scanCols.university && <p><span className="font-medium text-foreground/80">University:</span> {scanCols.university}</p>}
+                            {scanCols.faculty && <p><span className="font-medium text-foreground/80">Faculty:</span> {scanCols.faculty}</p>}
+                            {scanCols.master && <p><span className="font-medium text-foreground/80">Master:</span> {scanCols.master}</p>}
+                            {scanCols.yearOfStudy && <p><span className="font-medium text-foreground/80">Year:</span> {scanCols.yearOfStudy}</p>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-8">
           {QUESTIONS.map((question) => {
             const options = getOptions(question);
@@ -331,6 +537,7 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventName }
             </Button>
           </div>
         </form>
+        )}
       </CardContent>
     </Card>
 

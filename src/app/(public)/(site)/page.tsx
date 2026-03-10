@@ -12,7 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Calendar, ChevronDown, Sparkles, LogOut, User } from 'lucide-react'
+import { Calendar, ChevronDown, Sparkles, LogOut, User, Star } from 'lucide-react'
 import { useRouter, usePathname } from 'next/navigation'
 import { fetchEventsAction } from "@/app/actions/events";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
@@ -292,6 +292,12 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    <DropdownMenuItem asChild>
+                      <Link href="/student/liked-companies">
+                        <Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />
+                        Liked companies
+                      </Link>
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={async () => {
                         await fetch("/api/students/logout", { method: "POST" });
@@ -465,6 +471,12 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuItem asChild>
+                            <Link href="/student/liked-companies" onClick={() => setMobileMenuOpen(false)}>
+                              <Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />
+                              Liked companies
+                            </Link>
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={async () => {
                               await fetch("/api/students/logout", { method: "POST" });
