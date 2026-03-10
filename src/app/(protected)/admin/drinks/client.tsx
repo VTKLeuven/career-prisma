@@ -208,9 +208,10 @@ export default function DrinksClient({
             const dataToSubmit = {
                 ...formData,
                 image: imageId,
+                visible_from: formData.visible_from ? (formData.visible_from.split(':').length === 2 ? formData.visible_from + ':00' : formData.visible_from) : null,
+                visible_until: formData.visible_until ? (formData.visible_until.split(':').length === 2 ? formData.visible_until + ':00' : formData.visible_until) : null,
             };
 
-            // Remove blob url if it somehow persisted without a file (shouldn't happen)
             if (typeof dataToSubmit.image === 'string' && dataToSubmit.image.startsWith('blob:')) {
                 dataToSubmit.image = undefined;
             }
@@ -243,12 +244,18 @@ export default function DrinksClient({
             imageVal = (imageVal as any).id;
         }
 
+        const parseTime = (t?: string) => {
+            if (!t) return "";
+            const parts = t.split(':');
+            return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : t;
+        };
+
         setFormData({
             name: drink.name,
             type: drink.type,
             is_active: drink.is_active,
-            visible_from: drink.visible_from,
-            visible_until: drink.visible_until,
+            visible_from: parseTime(drink.visible_from),
+            visible_until: parseTime(drink.visible_until),
             image: imageVal,
         });
         setIsOpen(true);

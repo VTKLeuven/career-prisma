@@ -78,7 +78,7 @@ export default async function BoothPage({ params }: { params: Promise<{ id: stri
             <div className="text-center mb-8">
                 <h1 className="text-2xl font-bold">{boothData.company?.name || "Booth " + boothData.booth_number}</h1>
                 <p className="text-muted-foreground">Booth #{boothData.booth_number}</p>
-                <p className="text-sm text-muted-foreground mt-3">
+                <p className="text-sm font-bold mt-3">
                     Coffee will be prepared for you by our barista in the tent. Cava will be available at the bar starting from 15h00.
                 </p>
             </div>
