@@ -4,7 +4,7 @@ import * as React from "react";
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { fetchFormByIdAction, fetchFormVersionsAction, fetchFormResponsesAction, fetchFormResponsesTotalCountAction, fetchAllFormResponsesAction, fetchFirstFormResponseAction, fetchLatestFormResponseAction, deleteFormResponseAction, updateFormResponseAction, initializeAttendantUuidsAction, archiveDuplicateFormResponsesAction, fetchFormResponsesForAllVersionsAction, fetchFormResponsesTotalCountForAllVersionsAction, fetchFirstFormResponseForAllVersionsAction, fetchLatestFormResponseForAllVersionsAction, fetchAllFormResponsesForAllVersionsAction } from "@/app/actions/forms";
+import { fetchFormByIdAction, fetchFormVersionsAction, fetchFormResponsesAction, fetchFormResponsesTotalCountAction, fetchAllFormResponsesAction, fetchFirstFormResponseAction, fetchLatestFormResponseAction, deleteFormResponseAction, updateFormResponseAction, initializeAttendantUuidsAction, archiveDuplicateFormResponsesAction, fetchFormResponsesForAllVersionsAction, fetchFormResponsesTotalCountForAllVersionsAction, fetchFirstFormResponseForAllVersionsAction, fetchLatestFormResponseForAllVersionsAction, fetchAllFormResponsesForAllVersionsAction, updateFormVersionAction } from "@/app/actions/forms";
 import { fetchCompaniesForEventAction } from "@/app/actions/companies";
 import { fetchMastersAction, fetchFacultiesAction } from "@/app/actions/features";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -37,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Download, Eye, Trash2, Pencil, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2, Mail, ArrowUpDown, ArrowUp, ArrowDown, Check, X, FileArchive, Archive } from "lucide-react";
+import { ArrowLeft, Download, Eye, Trash2, Pencil, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2, Mail, ArrowUpDown, ArrowUp, ArrowDown, Check, X, FileArchive, Archive, Scan } from "lucide-react";
 import type { FormVersion, FormResponse, FormField } from "@/lib/schema";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 import { CSV_UTF8_BOM } from "@/lib/utils/slugify";
@@ -129,6 +129,14 @@ export default function FormResponsesPage() {
     errors: string[];
     completedAt?: number;
   } | null>(null);
+  const [scanningColumnsDialogOpen, setScanningColumnsDialogOpen] = useState(false);
+  const [scanningColumns, setScanningColumns] = useState<{
+    university?: string;
+    faculty?: string;
+    master?: string;
+    year_of_study?: string;
+  }>({});
+  const [savingScanningColumns, setSavingScanningColumns] = useState(false);
   const pageSize = 25; // Constant page size
 
   const loadFormData = useCallback(async () => {
@@ -1535,6 +1543,23 @@ export default function FormResponsesPage() {
                   Send QR Emails
                 </Button>
               )}
+              {versions.some(v => v.metadata?.is_event_registration) && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const versionToUse = isAllVersions
+                      ? (versions.find(v => v.is_active) ?? versions[0])
+                      : versions.find(v => v.id === selectedVersionId) ?? versions[0];
+                    const meta = versionToUse?.metadata as { scanning_columns?: typeof scanningColumns } | undefined;
+                    setScanningColumns(meta?.scanning_columns ?? {});
+                    setScanningColumnsDialogOpen(true);
+                  }}
+                  title="Configure which form columns to show in the scanning system (University, Faculty, Master, Year of study)"
+                >
+                  <Scan className="h-4 w-4 mr-2" />
+                  Scanning columns
+                </Button>
+              )}
               {viewMode === "incomplete" && versions.some(v => v.metadata?.is_company_form) && incompleteCompanies.length > 0 && (
                 <Button
                   variant="outline"
@@ -2813,6 +2838,100 @@ export default function FormResponsesPage() {
               disabled={deleting}
             >
               {deleting ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Scanning columns config dialog */}
+      <Dialog open={scanningColumnsDialogOpen} onOpenChange={setScanningColumnsDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Scanning columns</DialogTitle>
+            <DialogDescription>
+              Select which form fields to use for the scanning system. Column options come from all versions; when grouped, each version is resolved by matching label or name. Saved to all event registration versions.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {(["university", "faculty", "master", "year_of_study"] as const).map((key) => (
+              <div key={key} className="space-y-2">
+                <Label>
+                  {key === "university" && "University"}
+                  {key === "faculty" && "Faculty"}
+                  {key === "master" && "Master"}
+                  {key === "year_of_study" && "Year of study"}
+                </Label>
+                <Select
+                  value={scanningColumns[key] ?? "__none__"}
+                  onValueChange={(v) => setScanningColumns(prev => ({ ...prev, [key]: v === "__none__" ? undefined : v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a column..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— None —</SelectItem>
+                    {allVersionsFields.filter((f: FormField) => f.name && f.name !== "__none__").map((f: FormField) => (
+                      <SelectItem key={f.id} value={f.name}>
+                        {f.label || f.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScanningColumnsDialogOpen(false)} disabled={savingScanningColumns}>
+              Cancel
+            </Button>
+            <Button
+              disabled={savingScanningColumns}
+              onClick={async () => {
+                const eventRegVersions = versions.filter(v => (v.metadata as { is_event_registration?: boolean })?.is_event_registration);
+                const versionsToUpdate = isAllVersions ? eventRegVersions : [versions.find(v => v.id === selectedVersionId) ?? versions[0]].filter(Boolean) as FormVersion[];
+
+                if (versionsToUpdate.length === 0) return;
+                setSavingScanningColumns(true);
+                try {
+                  for (const version of versionsToUpdate) {
+                    const meta = (version.metadata ?? {}) as Record<string, unknown>;
+                    const versionScanningColumns: Record<string, string> = {};
+                    for (const slot of ["university", "faculty", "master", "year_of_study"] as const) {
+                      const selectedName = scanningColumns[slot];
+                      if (!selectedName || selectedName === "__none__") continue;
+                      const selectedField = allVersionsFields.find((f: FormField) => f.name === selectedName);
+                      const selectedLabel = selectedField?.label || selectedField?.name || selectedName;
+                      const versionFields = version.schema?.fields ?? [];
+                      const byName = versionFields.find((f: FormField) => f.name === selectedName);
+                      const byLabel = versionFields.find((f: FormField) => (f.label || f.name) === selectedLabel);
+                      const resolved = byName?.name ?? byLabel?.name;
+                      if (resolved) versionScanningColumns[slot] = resolved;
+                    }
+                    await updateFormVersionAction(version.id, {
+                      metadata: { ...meta, scanning_columns: versionScanningColumns },
+                    });
+                    setVersions(prev => prev.map(v =>
+                      v.id === version.id
+                        ? { ...v, metadata: { ...meta, scanning_columns: versionScanningColumns } }
+                        : v
+                    ));
+                  }
+                  setScanningColumnsDialogOpen(false);
+                } catch (err) {
+                  console.error("Failed to save scanning columns:", err);
+                } finally {
+                  setSavingScanningColumns(false);
+                }
+              }}
+            >
+              {savingScanningColumns ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -194,3 +194,65 @@ export async function getEventPageBySlug(slug: string): Promise<CareerEventPage 
     return null;
   }
 }
+
+/** Speaker with event name for company page display */
+export type SpeakerWithEvent = import("@/lib/schema").Speaker & { eventName: string };
+
+/** Get all speakers for a company (representatives of this company who speak at events) */
+export async function getSpeakersForCompany(companyId: string): Promise<SpeakerWithEvent[]> {
+  try {
+    const client = (await getServerDirectusClient()) ?? directus;
+    const pages = await client.request(
+      readItems("career_event_page", {
+        fields: [
+          "event.name",
+          "speakers.speaker_id.*",
+          "speakers.speaker_id.personal_information",
+          "speakers.speaker_id.content",
+          "speakers.speaker_id.representative.id",
+          "speakers.speaker_id.representative.first_name",
+          "speakers.speaker_id.representative.last_name",
+          "speakers.speaker_id.representative.avatar",
+          "speakers.speaker_id.representative.company.id",
+          "speakers.speaker_id.representative.company.name",
+          "speakers.speaker_id.representative.company.logo",
+          "speakers.speaker_id.representative.company.status",
+          "speakers.speaker_id.time.id",
+          "speakers.speaker_id.time.title",
+          "speakers.speaker_id.time.start_time",
+          "speakers.speaker_id.time.end_time",
+        ] as any,
+        limit: 100,
+      })
+    ) as unknown as Array<{
+      event?: { name?: string } | null;
+      speakers?: Array<{ speaker_id?: import("@/lib/schema").Speaker }>;
+    }>;
+
+    const result: SpeakerWithEvent[] = [];
+    for (const page of pages ?? []) {
+      const eventName = page.event?.name ?? "";
+      const speakers = (page.speakers as Array<{ speaker_id?: import("@/lib/schema").Speaker }>) ?? [];
+      for (const item of speakers) {
+        const speaker = item.speaker_id ?? item;
+        if (!speaker || typeof speaker !== "object") continue;
+        const companyIdFromSpeaker = (speaker as { representative?: { company?: { id?: string } } }).representative?.company?.id;
+        if (companyIdFromSpeaker === companyId) {
+          result.push({
+            ...speaker,
+            id: (speaker as { id?: string }).id ?? "",
+            personal_information: (speaker as import("@/lib/schema").Speaker).personal_information ?? null,
+            content: (speaker as import("@/lib/schema").Speaker).content ?? null,
+            representative: (speaker as import("@/lib/schema").Speaker).representative ?? null,
+            time: (speaker as import("@/lib/schema").Speaker).time ?? null,
+            eventName,
+          });
+        }
+      }
+    }
+    return result;
+  } catch (error) {
+    console.error("Error fetching speakers for company:", error);
+    return [];
+  }
+}

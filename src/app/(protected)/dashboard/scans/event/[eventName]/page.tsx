@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Download, Search, Star, Trash2, Pencil } from "lucide-react";
+import { Loader2, Download, Search, Star, Trash2, Pencil, ChevronDown } from "lucide-react";
 import { formatDateTimeBE } from "@/lib/date-utils";
 import { useUser } from "@/providers/UserProvider";
 import {
@@ -17,6 +17,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -26,19 +31,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { fetchEventsAction } from "@/app/actions/events";
 import type { CareerEvent } from "@/lib/schema";
 import { slugifyEventName, CSV_UTF8_BOM } from "@/lib/utils/slugify";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
+import { getScanningDisplayValues, hasScanningColumns, type ScanningColumns } from "@/lib/utils/scanning-columns";
 
 type AttendantScan = {
   id: string;
@@ -61,6 +58,7 @@ type AttendantScan = {
       };
       metadata?: {
         event_id?: string;
+        scanning_columns?: ScanningColumns;
         [key: string]: unknown;
       };
     };
@@ -241,7 +239,9 @@ export default function EventScansPage() {
       }
     });
 
-    const hasStudentData = scans.some(scan => scan.form_response_id.data?._student_username || scan.form_response_id.data?._student_email);
+    const useScanningCols = scans.some(scan =>
+      hasScanningColumns(scan.form_response_id?.form_version_id?.metadata?.scanning_columns)
+    );
 
     const headerRow = [
       'Scanned At',
@@ -249,7 +249,7 @@ export default function EventScansPage() {
       'Liked',
       'Comment',
       'Registration Date',
-      ...(hasStudentData ? ['Student University'] : []),
+      ...(useScanningCols ? ['University', 'Faculty', 'Master', 'Year of study'] : []),
       ...finalFieldNames
     ];
 
@@ -262,9 +262,12 @@ export default function EventScansPage() {
       const liked = scan.liked ? "Yes" : "";
       const comment = typeof scan.comment === "string" ? scan.comment : "";
 
-      const studentFields = hasStudentData ? [
-        (typeof response.data._student_university === 'string' ? response.data._student_university : '') || '',
-      ] : [];
+      const scanDisplay = useScanningCols
+        ? getScanningDisplayValues(response.data, response.form_version_id?.metadata?.scanning_columns)
+        : null;
+      const scanningFields = useScanningCols && scanDisplay
+        ? [scanDisplay.university, scanDisplay.faculty, scanDisplay.master, scanDisplay.yearOfStudy]
+        : [];
 
       const values = finalFieldKeys.map(key => {
         if (shouldCombineName && key === 'firstname') {
@@ -285,7 +288,7 @@ export default function EventScansPage() {
         liked,
         comment,
         formatDateTimeBE(response.submitted_at),
-        ...studentFields,
+        ...scanningFields,
         ...values
       ];
     });
@@ -326,13 +329,19 @@ export default function EventScansPage() {
     return searchable.includes(lower);
   };
 
-  const filteredScans = scans.filter((scan) => {
-    if (favouritesOnly && !scan.liked) return false;
-    return matchesSearch(scan, searchQuery);
-  });
+  const filteredScans = scans
+    .filter((scan) => {
+      if (favouritesOnly && !scan.liked) return false;
+      return matchesSearch(scan, searchQuery);
+    })
+    .sort((a, b) => {
+      const nameA = getDisplayName(a).toLowerCase();
+      const nameB = getDisplayName(b).toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
 
-  const hasStudentColumns = filteredScans.some(scan =>
-    scan.form_response_id.data?._student_username || scan.form_response_id.data?._student_email
+  const scanningCols = filteredScans.some(scan =>
+    hasScanningColumns(scan.form_response_id?.form_version_id?.metadata?.scanning_columns)
   );
 
   if (loading) {
@@ -375,16 +384,14 @@ export default function EventScansPage() {
                   className="pl-9"
                 />
               </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="favourites"
-                  checked={favouritesOnly}
-                  onCheckedChange={(checked) => setFavouritesOnly(checked === true)}
-                />
-                <span className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  Favourites only
-                </span>
-              </div>
+              <Button
+                variant={favouritesOnly ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFavouritesOnly(!favouritesOnly)}
+              >
+                <Star className={`h-4 w-4 mr-2 ${favouritesOnly ? "fill-current" : ""}`} />
+                Favourites only
+              </Button>
             </div>
           )}
         </CardHeader>
@@ -417,90 +424,100 @@ export default function EventScansPage() {
               )}
             </div>
           ) : (
-            <div className="border rounded-lg overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    {hasStudentColumns && (
-                      <TableHead>Student University</TableHead>
-                    )}
-                    <TableHead>Scanned At</TableHead>
-                    <TableHead>Scanned By</TableHead>
-                    <TableHead>Comment</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredScans.map((scan) => {
-                    const response = scan.form_response_id;
-                    const displayName = getDisplayName(scan);
-                    const email = response.data.email as string || "N/A";
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredScans.map((scan) => {
+                const response = scan.form_response_id;
+                const displayName = getDisplayName(scan);
+                const email = (response.data.email as string) || "";
+                const scanCols = getScanningDisplayValues(
+                  response.data,
+                  response.form_version_id?.metadata?.scanning_columns
+                );
+                const scannedBy = typeof scan.scanned_by === "object"
+                  ? scan.scanned_by.name || scan.scanned_by.email
+                  : "Unknown";
 
-                    return (
-                      <TableRow key={scan.id}>
-                        <TableCell className="font-medium">{displayName}</TableCell>
-                        <TableCell>{email}</TableCell>
-                        {hasStudentColumns && (
-                          <TableCell>{(typeof response.data._student_university === 'string' ? response.data._student_university : '') || 'N/A'}</TableCell>
+                return (
+                  <div
+                    key={scan.id}
+                    className="flex min-h-[180px] flex-col rounded-lg border border-border bg-card p-4 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-foreground">{displayName}</p>
+                        {email ? (
+                          <a
+                            href={`mailto:${email}`}
+                            className="text-sm text-muted-foreground hover:text-foreground hover:underline break-all"
+                          >
+                            {email}
+                          </a>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">—</span>
                         )}
-                        <TableCell>{formatDateTimeBE(scan.scanned_at)}</TableCell>
-                        <TableCell>
-                          {typeof scan.scanned_by === 'object'
-                            ? scan.scanned_by.name || scan.scanned_by.email
-                            : 'Unknown'}
-                        </TableCell>
-                        <TableCell className="max-w-[260px]">
-                          {typeof scan.comment === "string" && scan.comment.trim() ? (
-                            <span className="text-sm text-muted-foreground truncate block">
-                              {scan.comment}
-                            </span>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              title={scan.liked ? "Remove from favourites" : "Add to favourites"}
-                              onClick={() => handleToggleFavourite(scan.id, scan.liked)}
-                            >
-                              <Star
-                                className={`h-4 w-4 ${scan.liked ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"}`}
-                              />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              title="Edit comment"
-                              onClick={() => {
-                                setCommentEditScanId(scan.id);
-                                setCommentDraft(scan.comment || "");
-                              }}
-                            >
-                              <Pencil className="h-4 w-4 text-muted-foreground" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              title="Delete scan"
-                              onClick={() => setDeletingScanId(scan.id)}
-                            >
-                              <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title={scan.liked ? "Remove from favourites" : "Add to favourites"}
+                          onClick={() => handleToggleFavourite(scan.id, scan.liked)}
+                        >
+                          <Star
+                            className={`h-4 w-4 ${scan.liked ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"}`}
+                          />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="Edit comment"
+                          onClick={() => {
+                            setCommentEditScanId(scan.id);
+                            setCommentDraft(scan.comment || "");
+                          }}
+                        >
+                          <Pencil className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="Delete scan"
+                          onClick={() => setDeletingScanId(scan.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                    {scanningCols && (scanCols.university || scanCols.faculty || scanCols.master || scanCols.yearOfStudy) && (
+                      <div className="mt-3 space-y-1 text-sm text-muted-foreground">
+                        {scanCols.university && <p><span className="font-medium text-foreground/80">University:</span> {scanCols.university}</p>}
+                        {scanCols.faculty && <p><span className="font-medium text-foreground/80">Faculty:</span> {scanCols.faculty}</p>}
+                        {scanCols.master && <p><span className="font-medium text-foreground/80">Master:</span> {scanCols.master}</p>}
+                        {scanCols.yearOfStudy && <p><span className="font-medium text-foreground/80">Year:</span> {scanCols.yearOfStudy}</p>}
+                      </div>
+                    )}
+                    <div className="mt-auto w-full pt-3 space-y-2">
+                      <p className="text-xs text-muted-foreground">
+                        Scanned {formatDateTimeBE(scan.scanned_at)} by {scannedBy}
+                      </p>
+                      <Collapsible className="group/collapsible w-full">
+                      <CollapsibleTrigger className="flex h-7 w-full cursor-pointer items-center justify-between rounded-md px-0 text-left text-xs text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+                        <span>Comment</span>
+                        <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <p className="mt-1 text-sm text-muted-foreground pt-1 border-t">
+                          {typeof scan.comment === "string" && scan.comment.trim() ? scan.comment : "—"}
+                        </p>
+                      </CollapsibleContent>
+                    </Collapsible>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </CardContent>

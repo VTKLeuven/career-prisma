@@ -838,6 +838,18 @@ function Header({ page }: { page?: CareerEventPage }) {
                     Matching Software
                   </Link>
                 )}
+                {page?.speakers && page.speakers.length > 0 && (
+                  <a
+                    href="#discovery-stage"
+                    className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      document.getElementById("discovery-stage")?.scrollIntoView({ behavior: "smooth" });
+                    }}
+                  >
+                    Discovery Stage
+                  </a>
+                )}
                 {shouldShowHeaderButton(page, "company_guide") && page.company_guide && (
                   <CompanyGuideButton 
                     companyGuide={page.company_guide} 
@@ -879,6 +891,18 @@ function Header({ page }: { page?: CareerEventPage }) {
                   >
                     Matching
                   </Link>
+                )}
+                {page?.speakers && page.speakers.length > 0 && (
+                  <a
+                    href="#discovery-stage"
+                    className="rounded-full px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 whitespace-nowrap shrink-0"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      document.getElementById("discovery-stage")?.scrollIntoView({ behavior: "smooth" });
+                    }}
+                  >
+                    Discovery Stage
+                  </a>
                 )}
                 {shouldShowHeaderButton(page, "company_guide") && page.company_guide && (
                   <CompanyGuideButton 
@@ -1733,7 +1757,7 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
 
           {/* Speakers - same timeslot = one card */}
           {page?.speakers && page.speakers.length > 0 && (
-            <div className="mt-12">
+            <div id="discovery-stage" className="mt-12 scroll-mt-28">
               <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-6">
                 Discovery Stage
               </h2>

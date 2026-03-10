@@ -322,6 +322,13 @@ export type FormMetadata = {
   send_company_form_email?: boolean; // Whether to send confirmation email for company forms
   requires_login?: boolean; // If true, only logged-in students can submit this form
   is_compulsory?: boolean; // If true, companies must fill in this version or newer; earlier versions do not count
+  /** Column mappings for the scanning system. Used to show University, Faculty, Master, Year of study in scan views. */
+  scanning_columns?: {
+    university?: string; // Form field name for university
+    faculty?: string; // Form field name for faculty
+    master?: string; // Form field name for master degree
+    year_of_study?: string; // Form field name for year of study
+  };
   [key: string]: unknown; // Allow other metadata fields
 };
 

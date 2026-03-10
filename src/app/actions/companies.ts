@@ -369,6 +369,12 @@ export async function fetchCompanyBySlugWithSubOptionsAction(slug: string): Prom
   return { company, allSubOptions: Array.from(byIdMap.values()) };
 }
 
+/** Fetch speakers for a company (representatives who speak at events) */
+export async function fetchSpeakersForCompanyAction(companyId: string) {
+  const { getSpeakersForCompany } = await import("@/lib/repos/event");
+  return getSpeakersForCompany(companyId);
+}
+
 export async function createCompanyAction(companyPayload: Partial<Company>, repPayload?: Partial<CompanyRep>) {
 
   if (repPayload && (repPayload.email || repPayload.first_name || repPayload.last_name)) {
