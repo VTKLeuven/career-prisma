@@ -33,6 +33,9 @@ export async function listOrders(opts?: {
                 fields: ["*", "booth.*" as any, "booth.company.*" as any, "booth.zone.*" as any, "shifter.*" as any],
                 filter,
                 sort: ["-date_created"] as any, // Newest first
+                // For statistics we want to be able to see the full history,
+                // so explicitly request all orders instead of Directus' default limit.
+                limit: -1 as any,
             })
         ) as unknown as Promise<Order[]>;
     } catch (error) {

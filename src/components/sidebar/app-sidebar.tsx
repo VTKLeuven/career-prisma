@@ -439,6 +439,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             title: "Check-ins",
             url: "/admin/checkins",
           },
+          {
+            title: "Digital Signage",
+            url: "/admin/signage",
+          },
         ],
       });
     }

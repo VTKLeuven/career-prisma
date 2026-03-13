@@ -12,27 +12,30 @@ import { getAdminDirectusClient } from "@/lib/directus";
  */
 const COLLECTION = "ordering_settings";
 
-/** Get whether company reps can see the Ordering tab in their dashboard */
-export async function getCompanyOrderingEnabled(): Promise<boolean> {
+/** Get whether company reps can see the Ordering tab in their dashboard and the active event */
+export async function getOrderingSettings(): Promise<{ enabled: boolean, activeEventId: string | null }> {
     try {
         const client = await getAdminDirectusClient();
-        if (!client) return false;
+        if (!client) return { enabled: false, activeEventId: null };
 
         const rows = await client.request(
             readItems(COLLECTION, {
-                fields: ["company_ordering_enabled"],
+                fields: ["company_ordering_enabled", "active_event_id"],
                 limit: 1,
             })
-        ) as { company_ordering_enabled?: boolean }[];
+        ) as { company_ordering_enabled?: boolean, active_event_id?: string }[];
 
-        return rows[0]?.company_ordering_enabled ?? false;
+        return {
+            enabled: rows[0]?.company_ordering_enabled ?? false,
+            activeEventId: rows[0]?.active_event_id ?? null,
+        };
     } catch {
-        return false;
+        return { enabled: false, activeEventId: null };
     }
 }
 
-/** Set whether company reps can see the Ordering tab */
-export async function setCompanyOrderingEnabled(enabled: boolean): Promise<boolean> {
+/** Set whether company reps can see the Ordering tab and the active event */
+export async function setOrderingSettings(enabled: boolean, activeEventId: string | null): Promise<boolean> {
     try {
         const client = await getAdminDirectusClient();
         if (!client) return false;
@@ -41,18 +44,23 @@ export async function setCompanyOrderingEnabled(enabled: boolean): Promise<boole
             readItems(COLLECTION, { fields: ["id"], limit: 1 })
         ) as { id: string }[];
 
+        const payload = {
+            company_ordering_enabled: enabled,
+            active_event_id: activeEventId,
+        };
+
         if (existing.length > 0) {
             await client.request(
-                updateItem(COLLECTION, existing[0].id, { company_ordering_enabled: enabled })
+                updateItem(COLLECTION, existing[0].id, payload)
             );
         } else {
             await client.request(
-                createItem(COLLECTION, { company_ordering_enabled: enabled })
+                createItem(COLLECTION, payload)
             );
         }
         return true;
     } catch (error) {
-        console.error("Failed to update company ordering setting:", error);
+        console.error("Failed to update ordering settings:", error);
         return false;
     }
 }

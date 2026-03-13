@@ -31,7 +31,7 @@ export default async function ShifterPage() {
     const zones = await listZones();
 
     return (
-        <div className="container mx-auto py-6 space-y-6">
+        <div className="container mx-auto py-6 space-y-6 min-w-0 max-w-full">
             <h1 className="text-3xl font-bold">Shifter Dashboard</h1>
             <ShifterDashboardClient
                 initialZones={zones}

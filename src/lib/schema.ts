@@ -451,6 +451,7 @@ export type Order = {
   items: OrderItem[]; // JSON field
   status: 'pending' | 'preparing' | 'finished';
   shifter?: string | DirectusUser;
+  shifter_name?: string; // Display name of the shifter (works for both Directus users and student shifters)
   date_created: string;
   date_updated: string;
   zone?: string | Zone; // Snapshot of zone at time of order? or relational.
@@ -486,6 +487,32 @@ export type EventCheckin = {
   date_created?: string;
 };
 
+/** Signage screen — each represents a physical display (Raspberry Pi) */
+export type SignageScreen = {
+  id: string;
+  name: string;
+  slug: string; // URL slug for public access: /screen/{slug}
+  status: 'published' | 'draft';
+};
+
+/** Signage media — uploaded PDF, MP4 or image for display on screens */
+export type SignageMedia = {
+  id: string;
+  name: string;
+  type: 'pdf' | 'video' | 'image';
+  file: string | { id?: string }; // Directus file reference
+};
+
+/** Signage schedule slot — maps media to a screen for a time range (Brussels TZ, 24h) */
+export type SignageScheduleSlot = {
+  id: string;
+  screen: string | SignageScreen; // M2O
+  /** Directus field is "file" (M2O to signage_media) */
+  file: string | SignageMedia | null;
+  start_time: string; // "HH:mm" (24h, Europe/Brussels)
+  end_time: string;   // "HH:mm" (24h, Europe/Brussels)
+};
+
 // Optional: Full Directus Schema map (only collections you use)
 export type Schema = {
   directus_users: DirectusUser[];
@@ -515,4 +542,7 @@ export type Schema = {
   company_user_requests: CompanyUserRequest[];
   ordering_settings: { id?: string; company_ordering_enabled?: boolean }[];
   event_checkins: EventCheckin[];
+  signage_screens: SignageScreen[];
+  signage_media: SignageMedia[];
+  signage_schedule_slots: SignageScheduleSlot[];
 };
