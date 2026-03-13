@@ -119,9 +119,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { createDrinkAction, deleteDrinkAction, updateDrinkAction, setCompanyOrderingEnabledAction } from "@/app/actions/drinks";
+import { createDrinkAction, deleteDrinkAction, updateDrinkAction, setOrderingSettingsAction } from "@/app/actions/drinks";
 import { uploadFileAction } from "@/app/actions/media";
-import type { Drink } from "@/lib/schema";
+import type { Drink, CareerEvent } from "@/lib/schema";
 import { useRouter } from "next/navigation";
 import { Trash2, Edit, Plus, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
@@ -130,29 +130,47 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 export default function DrinksClient({
     initialDrinks,
     initialCompanyOrderingEnabled = false,
+    initialActiveEventId = null,
+    events = [],
 }: {
     initialDrinks: Drink[];
     initialCompanyOrderingEnabled?: boolean;
+    initialActiveEventId?: string | null;
+    events?: CareerEvent[];
 }) {
     const [drinks, setDrinks] = useState(initialDrinks);
     const [isOpen, setIsOpen] = useState(false);
     const [editingDrink, setEditingDrink] = useState<Drink | null>(null);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [uploading, setUploading] = useState(false);
+
+    // Ordering settings state
     const [companyOrderingEnabled, setCompanyOrderingEnabled] = useState(initialCompanyOrderingEnabled);
-    const [togglingOrdering, setTogglingOrdering] = useState(false);
+    const [activeEventId, setActiveEventId] = useState<string | null>(initialActiveEventId);
+    const [updatingSettings, setUpdatingSettings] = useState(false);
+
     const router = useRouter();
 
-    const handleCompanyOrderingToggle = async (checked: boolean) => {
-        setTogglingOrdering(true);
-        const res = await setCompanyOrderingEnabledAction(checked);
-        setTogglingOrdering(false);
+    const updateOrderingSettings = async (enabled: boolean, eventId: string | null) => {
+        setUpdatingSettings(true);
+        const res = await setOrderingSettingsAction(enabled, eventId);
+        setUpdatingSettings(false);
         if (res.success) {
-            setCompanyOrderingEnabled(checked);
+            setCompanyOrderingEnabled(enabled);
+            setActiveEventId(eventId);
             router.refresh();
         } else {
             alert(res.error || "Failed to update setting");
         }
+    };
+
+    const handleCompanyOrderingToggle = (checked: boolean) => {
+        updateOrderingSettings(checked, activeEventId);
+    };
+
+    const handleActiveEventChange = (value: string) => {
+        const newEventId = value === "none" ? null : value;
+        updateOrderingSettings(companyOrderingEnabled, newEventId);
     };
 
     // Form state
@@ -278,28 +296,56 @@ export default function DrinksClient({
                         that links to their booth&apos;s drink ordering page.
                     </CardDescription>
                 </CardHeader>
-                <CardContent className="flex items-center justify-between gap-4">
-                    <div className="flex flex-col gap-1">
-                        <Label htmlFor="company-ordering" className="text-sm font-medium">
-                            Show Ordering tab for company reps
-                        </Label>
-                        <div className="flex items-center gap-1.5">
-                            {togglingOrdering ? (
-                                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                            ) : (
-                                <span className={`inline-block h-2 w-2 rounded-full ${companyOrderingEnabled ? 'bg-emerald-500' : 'bg-red-400'}`} />
-                            )}
-                            <span className={`text-xs font-medium ${companyOrderingEnabled ? 'text-emerald-600' : 'text-muted-foreground'}`}>
-                                {togglingOrdering ? 'Updating…' : companyOrderingEnabled ? 'Enabled' : 'Disabled'}
-                            </span>
+                <CardContent className="flex flex-col gap-4">
+                    <div className="flex items-center justify-between gap-4">
+                        <div className="flex flex-col gap-1">
+                            <Label htmlFor="company-ordering" className="text-sm font-medium">
+                                Show Ordering tab for company reps
+                            </Label>
+                            <div className="flex items-center gap-1.5">
+                                {updatingSettings ? (
+                                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                                ) : (
+                                    <span className={`inline-block h-2 w-2 rounded-full ${companyOrderingEnabled ? 'bg-emerald-500' : 'bg-red-400'}`} />
+                                )}
+                                <span className={`text-xs font-medium ${companyOrderingEnabled ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+                                    {updatingSettings ? 'Updating…' : companyOrderingEnabled ? 'Enabled' : 'Disabled'}
+                                </span>
+                            </div>
                         </div>
+                        <Switch
+                            id="company-ordering"
+                            checked={companyOrderingEnabled}
+                            onCheckedChange={handleCompanyOrderingToggle}
+                            disabled={updatingSettings}
+                        />
                     </div>
-                    <Switch
-                        id="company-ordering"
-                        checked={companyOrderingEnabled}
-                        onCheckedChange={handleCompanyOrderingToggle}
-                        disabled={togglingOrdering}
-                    />
+
+                    <div className="flex flex-col gap-2 pt-2 border-t mt-2">
+                        <Label htmlFor="active-event">Active Event for Ordering</Label>
+                        <Select
+                            value={activeEventId || "none"}
+                            onValueChange={handleActiveEventChange}
+                            disabled={updatingSettings}
+                        >
+                            <SelectTrigger id="active-event" className="w-full sm:w-[300px]">
+                                <SelectValue placeholder="Select active event..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">
+                                    <span className="text-muted-foreground italic">No event selected</span>
+                                </SelectItem>
+                                {events.map(event => (
+                                    <SelectItem key={event.id} value={event.id}>
+                                        {event.name} ({new Date(event.date).getFullYear()})
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-1">
+                            Orders will be linked to the booth of the selected event. If no event is selected, the fallback behavior is used.
+                        </p>
+                    </div>
                 </CardContent>
             </Card>
 

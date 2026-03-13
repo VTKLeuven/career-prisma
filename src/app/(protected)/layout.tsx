@@ -54,38 +54,38 @@ export default async function WithSidebarLayout({ children }: { children: React.
 
   return (
     <UserProvider key={user?.id ?? "anon"} initialUser={user}>
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-          <div className="px-2 sm:px-4 flex justify-between w-full items-center gap-2">
-            <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
-              <SidebarTrigger className="-ml-1" />
-              <Separator orientation="vertical" className="mr-1 sm:mr-2 data-[orientation=vertical]:h-4 hidden sm:block" />
-              {user.company && (
-                <span className="text-muted-foreground text-xs sm:text-sm truncate">
-                  You are viewing this page as a representative for{' '}
-                  <Link 
-                    href={
-                      hasCompanyPageAccess(user.company)
-                        ? `/company/${slugifyCompanyName(user.company.name)}`
-                        : "/dashboard/settings/information/request-page"
-                    }
-                    className="underline cursor-pointer hover:text-foreground transition-colors"
-                  >
-                    {user.company.name}
-                  </Link>
-                </span>
-              )}
+      <SidebarProvider>
+        <AppSidebar />
+        <SidebarInset>
+          <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+            <div className="px-2 sm:px-4 flex justify-between w-full items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
+                <SidebarTrigger className="-ml-1" />
+                <Separator orientation="vertical" className="mr-1 sm:mr-2 data-[orientation=vertical]:h-4 hidden sm:block" />
+                {user.company && (
+                  <span className="text-muted-foreground text-xs sm:text-sm truncate">
+                    You are viewing this page as a representative for{' '}
+                    <Link
+                      href={
+                        hasCompanyPageAccess(user.company)
+                          ? `/company/${slugifyCompanyName(user.company.name)}`
+                          : "/dashboard/settings/information/request-page"
+                      }
+                      className="underline cursor-pointer hover:text-foreground transition-colors"
+                    >
+                      {user.company.name}
+                    </Link>
+                  </span>
+                )}
+              </div>
+              {user.admin && <Button variant="link" className="shrink-0 text-xs sm:text-sm"><Link href="/admin">Admin</Link></Button>}
             </div>
-            {user.admin && <Button variant="link" className="shrink-0 text-xs sm:text-sm"><Link href="/admin">Admin</Link></Button>}
+          </header>
+          <div className="flex flex-col gap-4 sm:gap-6 px-2 sm:px-4 pb-4 min-w-0 w-full">
+            {children}
           </div>
-        </header>
-        <div className="flex flex-col gap-4 sm:gap-6 px-2 sm:px-4 pb-4">
-          {children}
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+        </SidebarInset>
+      </SidebarProvider>
     </UserProvider>
   );
 }

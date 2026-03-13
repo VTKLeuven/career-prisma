@@ -451,6 +451,7 @@ export type Order = {
   items: OrderItem[]; // JSON field
   status: 'pending' | 'preparing' | 'finished';
   shifter?: string | DirectusUser;
+  shifter_name?: string; // Display name of the shifter (works for both Directus users and student shifters)
   date_created: string;
   date_updated: string;
   zone?: string | Zone; // Snapshot of zone at time of order? or relational.
