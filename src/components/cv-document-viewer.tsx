@@ -11,6 +11,7 @@ interface CVDocumentViewerProps {
 export function CVDocumentViewer({ fileUrl, className = '', title }: CVDocumentViewerProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const pagesContainerRef = useRef<HTMLDivElement>(null)
+  const pdfRef = useRef<any>(null)
 
   const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -50,7 +51,9 @@ export function CVDocumentViewer({ fileUrl, className = '', title }: CVDocumentV
         if (!alive) return
 
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-        if (!alive) return
+        if (!alive) { pdf.destroy(); return }
+
+        pdfRef.current = pdf
 
         const numPages = pdf.numPages || 1
         const { w: containerWidth } = getContainerSize()
@@ -96,12 +99,20 @@ export function CVDocumentViewer({ fileUrl, className = '', title }: CVDocumentV
       }
     }
 
-    // Defer slightly so container has dimensions after layout
     const t = setTimeout(loadAndRenderAllPages, 50)
     return () => {
       alive = false
       clearTimeout(t)
+      const canvases = pagesContainer.querySelectorAll('canvas')
+      canvases.forEach((c) => {
+        c.width = 0
+        c.height = 0
+      })
       pagesContainer.innerHTML = ''
+      if (pdfRef.current) {
+        pdfRef.current.destroy()
+        pdfRef.current = null
+      }
     }
   }, [fileUrl, mounted, title])
 

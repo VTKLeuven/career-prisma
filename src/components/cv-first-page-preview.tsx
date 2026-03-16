@@ -4,115 +4,169 @@ import { useEffect, useRef, useState } from 'react'
 
 interface CVFirstPagePreviewProps {
   fileUrl: string
+  fileId?: string | null
   className?: string
   title?: string
 }
 
-/** Renders only the first page of a PDF as canvas (no iframe/PDF viewer). Used in CV Book overview. */
-export function CVFirstPagePreview({ fileUrl, className = '', title }: CVFirstPagePreviewProps) {
+const THUMBNAIL_WIDTH = 700
+const THUMBNAIL_QUALITY = 85
+
+export function CVFirstPagePreview({ fileUrl, fileId, className = '', title }: CVFirstPagePreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-
-  const [mounted, setMounted] = useState(false)
+  const [isVisible, setIsVisible] = useState(false)
+  const [imageSrc, setImageSrc] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => setMounted(true), [])
+  const [error, setError] = useState(false)
+  const blobUrlRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!mounted || !containerRef.current) return
+    const el = containerRef.current
+    if (!el) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '200px' }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!isVisible) return
 
     let alive = true
+    const abortController = new AbortController()
+    const resolvedFileId = fileId || fileUrl.split('/').pop() || null
 
-    async function loadAndRenderFirstPage() {
+    async function load() {
+      if (!resolvedFileId) {
+        setError(true)
+        setLoading(false)
+        return
+      }
+
+      // Strategy 1: Directus server-side thumbnail transform (returns small webp image)
       try {
-        setLoading(true)
-        setError(null)
+        const res = await fetch(
+          `/api/cv-file/${resolvedFileId}?w=${THUMBNAIL_WIDTH}&q=${THUMBNAIL_QUALITY}&format=webp`,
+          { credentials: 'include', signal: abortController.signal }
+        )
+        if (res.ok) {
+          const ct = res.headers.get('content-type') || ''
+          if (ct.startsWith('image/')) {
+            const blob = await res.blob()
+            if (!alive) return
+            const url = URL.createObjectURL(blob)
+            blobUrlRef.current = url
+            setImageSrc(url)
+            setLoading(false)
+            return
+          }
+        }
+      } catch (e) {
+        if ((e as Error).name === 'AbortError') return
+      }
 
+      // Strategy 2: Low-resolution pdfjs fallback (renders first page at ~400px width)
+      try {
         const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
         pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
           'pdfjs-dist/legacy/build/pdf.worker.min.mjs',
           import.meta.url
         ).toString()
 
-        const response = await fetch(fileUrl, { credentials: 'include' })
-        if (!response.ok) throw new Error(`Failed to fetch PDF: ${response.status}`)
+        const response = await fetch(fileUrl, {
+          credentials: 'include',
+          signal: abortController.signal,
+        })
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
         const arrayBuffer = await response.arrayBuffer()
         if (!alive) return
 
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-        if (!alive) return
+        if (!alive) { pdf.destroy(); return }
 
         const page = await pdf.getPage(1)
-        const containerWidth = containerRef.current?.clientWidth || 400
         const defaultViewport = page.getViewport({ scale: 1.0 })
-        const pixelRatio = typeof window !== 'undefined' ? Math.max(2, window.devicePixelRatio || 2) : 2
-        const scale = (containerWidth / defaultViewport.width) * pixelRatio
+        const scale = THUMBNAIL_WIDTH / defaultViewport.width
         const viewport = page.getViewport({ scale })
 
         const canvas = document.createElement('canvas')
         canvas.width = viewport.width
         canvas.height = viewport.height
-        canvas.style.width = '100%'
-        canvas.style.height = 'auto'
-        canvas.style.display = 'block'
-        canvas.title = title || ''
-
         const ctx = canvas.getContext('2d')
-        if (!ctx) throw new Error('Could not get canvas context')
+        if (!ctx) throw new Error('No canvas context')
 
         await page.render({ canvas, canvasContext: ctx, viewport } as any).promise
+        pdf.destroy()
         if (!alive) return
 
-        const container = containerRef.current
-        if (!container) return
-        container.innerHTML = ''
-        container.appendChild(canvas)
-        canvasRef.current = canvas
+        // Convert canvas → blob URL to free canvas GPU memory
+        const blob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob(
+            (b) => (b ? resolve(b) : reject(new Error('toBlob failed'))),
+            'image/webp',
+            0.85
+          )
+        })
+        canvas.width = 0
+        canvas.height = 0
 
-        if (alive) setLoading(false)
+        if (!alive) return
+        const url = URL.createObjectURL(blob)
+        blobUrlRef.current = url
+        setImageSrc(url)
+        setLoading(false)
       } catch (e) {
-        console.error('[CVFirstPagePreview] Error rendering PDF:', e)
+        if ((e as Error).name === 'AbortError') return
+        console.error('[CVFirstPagePreview]', e)
         if (alive) {
-          setError('Failed to load CV')
+          setError(true)
           setLoading(false)
         }
       }
     }
 
-    const t = setTimeout(loadAndRenderFirstPage, 50)
+    load()
     return () => {
       alive = false
-      clearTimeout(t)
-      if (containerRef.current) containerRef.current.innerHTML = ''
+      abortController.abort()
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current)
+        blobUrlRef.current = null
+      }
     }
-  }, [fileUrl, mounted, title])
-
-  if (!mounted) {
-    return (
-      <div className={`flex items-center justify-center bg-muted ${className}`.trim()} style={{ minHeight: 200 }}>
-        <div className="text-muted-foreground text-sm">Loading...</div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className={`flex items-center justify-center bg-muted ${className}`.trim()} style={{ minHeight: 200 }}>
-        <div className="text-muted-foreground text-sm">{error}</div>
-      </div>
-    )
-  }
+  }, [isVisible, fileUrl, fileId])
 
   return (
-    <div className={`relative ${className}`.trim()}>
-      {loading && (
+    <div ref={containerRef} className={`relative ${className}`.trim()}>
+      {loading && !error && (
         <div className="absolute inset-0 flex items-center justify-center bg-muted z-10 rounded-lg">
-          <div className="text-muted-foreground text-sm">Loading...</div>
+          <div className="text-muted-foreground text-sm">
+            {isVisible ? 'Loading CV...' : ''}
+          </div>
         </div>
       )}
-      <div ref={containerRef} className="w-full h-full min-h-[200px]" />
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-muted rounded-lg">
+          <div className="text-muted-foreground text-sm">Failed to load CV</div>
+        </div>
+      )}
+      {imageSrc && (
+        <img
+          src={imageSrc}
+          alt={title || 'CV preview'}
+          className="w-full h-auto block"
+        />
+      )}
+      {!imageSrc && !error && <div className="w-full min-h-[200px]" />}
     </div>
   )
 }

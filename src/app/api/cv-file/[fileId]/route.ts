@@ -1,4 +1,3 @@
-// app/api/cv-file/[fileId]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
@@ -22,8 +21,21 @@ export async function GET(
       return NextResponse.json({ error: "Directus URL not configured" }, { status: 500 });
     }
 
-    // Fetch the file from Directus with authentication
-    const fileUrl = `${directusUrl}/assets/${fileId}`;
+    const { searchParams } = new URL(request.url);
+    const width = searchParams.get('w');
+    const quality = searchParams.get('q');
+    const format = searchParams.get('format');
+
+    let fileUrl = `${directusUrl}/assets/${fileId}`;
+    const transformParams = new URLSearchParams();
+    if (width) transformParams.set('width', width);
+    if (quality) transformParams.set('quality', quality);
+    if (format) transformParams.set('format', format);
+    const isThumbnail = transformParams.size > 0;
+    if (isThumbnail) {
+      fileUrl += `?${transformParams.toString()}`;
+    }
+
     const fileResponse = await fetch(fileUrl, {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -37,16 +49,15 @@ export async function GET(
       );
     }
 
-    // Get the file content and content type
     const fileBuffer = await fileResponse.arrayBuffer();
     const contentType = fileResponse.headers.get("content-type") || "application/pdf";
+    const cacheMaxAge = isThumbnail ? 86400 : 3600;
 
-    // Return the file with proper headers
     return new NextResponse(fileBuffer, {
       headers: {
         "Content-Type": contentType,
-        "Content-Disposition": `inline; filename="${fileId}.pdf"`,
-        "Cache-Control": "public, max-age=3600", // Cache for 1 hour
+        ...(!isThumbnail && { "Content-Disposition": `inline; filename="${fileId}.pdf"` }),
+        "Cache-Control": `public, max-age=${cacheMaxAge}`,
       },
     });
   } catch (error) {
@@ -57,4 +68,3 @@ export async function GET(
     );
   }
 }
-

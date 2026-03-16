@@ -652,6 +652,7 @@ export default function CVBookScreeningPage() {
                                 {student.cvFileUrl ? (
                                   <CVFirstPagePreview
                                     fileUrl={student.cvFileUrl}
+                                    fileId={student.cvFileId}
                                     className="w-full h-full min-h-0"
                                     title={`CV ${student.firstName} ${student.lastName}`}
                                   />

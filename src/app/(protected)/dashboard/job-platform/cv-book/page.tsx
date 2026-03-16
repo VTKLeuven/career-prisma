@@ -1,11 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ComingSoon } from "@/components/dashboard/ComingSoon"
 import { IconFileCv, IconMail } from "@tabler/icons-react"
-import { Linkedin } from "lucide-react"
-import { Star } from "lucide-react"
+import { Linkedin, Star } from "lucide-react"
 import { CVFirstPagePreview } from "@/components/cv-first-page-preview"
 import { CVDocumentViewer } from "@/components/cv-document-viewer"
 import { useUser } from "@/providers/UserProvider"
@@ -23,7 +22,6 @@ import type { Company, CVBook, AcademicYear } from "@/lib/schema"
 import type { StudentCVGroup, StudentCVData } from "@/lib/repos/cv-book"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
@@ -42,13 +40,24 @@ export default function CVBookPage() {
   const [studentGroups, setStudentGroups] = useState<StudentCVGroup[]>([])
   const [loadingStudents, setLoadingStudents] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState<StudentCVData | null>(null)
-  const [validatedCVs, setValidatedCVs] = useState<Map<string, boolean>>(new Map())
   const [viewMode, setViewMode] = useState<"grid" | "detail">("grid")
   const [favouriteIds, setFavouriteIds] = useState<Set<string>>(new Set())
   const [togglingFavourite, setTogglingFavourite] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<"study" | "firstName" | "lastName">("study")
+  const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([])
+  const [everOpenedCategories, setEverOpenedCategories] = useState<Set<string>>(new Set())
 
-  // Flatten students in display order (depends on sortBy)
+  const handleAccordionValueChange = useCallback((values: string[]) => {
+    setOpenAccordionItems(values)
+    setEverOpenedCategories(prev => {
+      const newItems = values.filter(v => !prev.has(v))
+      if (newItems.length === 0) return prev
+      const next = new Set(prev)
+      newItems.forEach(v => next.add(v))
+      return next
+    })
+  }, [])
+
   const flatStudents = useMemo(() => {
     const all = studentGroups.flatMap((g) => g.students)
     if (sortBy === "firstName") {
@@ -93,24 +102,20 @@ export default function CVBookPage() {
 
   useEffect(() => {
     async function loadData() {
-      // Admins can view CV books without a company context
       if (!user?.admin && !user?.company?.id) {
         setLoading(false)
         return
       }
 
       try {
-        // Admin: allow viewing inactive books too
         const books = user?.admin ? await fetchCVBooksAction() : await fetchActiveCVBooksAction()
         setActiveCVBooks(books)
 
-        // If no books at all, show coming soon
         if (books.length === 0) {
           setLoading(false)
           return
         }
 
-        // If we were deep-linked to a CV book (admin "view" action), preselect its year
         if (user?.admin && cvBookIdParam && !selectedYearId) {
           const linkedBook = await fetchCVBookByIdAction(cvBookIdParam)
           if (linkedBook) {
@@ -120,14 +125,12 @@ export default function CVBookPage() {
           }
         }
 
-        // Set default to most recent year
         if (!selectedYearId) {
           const mostRecentBook = books[0]
           const yearId = typeof mostRecentBook.year === "object" ? mostRecentBook.year.id : mostRecentBook.year
           setSelectedYearId(yearId)
         }
 
-        // Non-admin users still need access via sub-option
         if (!user?.admin && user?.company?.id) {
           const fetchedCompany = await fetchCompanyByIdAction(user.company.id)
           setCompany(fetchedCompany ?? null)
@@ -153,7 +156,6 @@ export default function CVBookPage() {
     loadData()
   }, [user?.company?.id, user?.admin, router, cvBookIdParam, selectedYearId])
 
-  // Load CV Book and student data when year changes
   useEffect(() => {
     async function loadCVBookData() {
       if (!selectedYearId) {
@@ -163,10 +165,10 @@ export default function CVBookPage() {
       }
 
       setLoadingStudents(true)
+      setOpenAccordionItems([])
+      setEverOpenedCategories(new Set())
+
       try {
-        // Admin can view inactive books:
-        // - If a specific cvBookId is provided, use it.
-        // - Otherwise, pick the first CV book matching the selected year.
         let cvBook: CVBook | null = null
         if (user?.admin) {
           if (cvBookIdParam) {
@@ -187,9 +189,7 @@ export default function CVBookPage() {
 
         if (cvBook) {
           const groups = await fetchCVBookStudentDataAction(cvBook)
-          // Filter and validate PDFs
-          const validatedGroups = await validateAndFilterCVs(groups)
-          setStudentGroups(validatedGroups)
+          setStudentGroups(groups)
         } else {
           setStudentGroups([])
         }
@@ -205,7 +205,6 @@ export default function CVBookPage() {
     loadCVBookData()
   }, [selectedYearId, user?.admin, cvBookIdParam, activeCVBooks])
 
-  // Load favourites when CV book changes (company users only)
   useEffect(() => {
     async function loadFavourites() {
       if (!selectedCVBook?.id) {
@@ -227,115 +226,71 @@ export default function CVBookPage() {
         }
         const ids: (string | number)[] = await res.json()
         setFavouriteIds(new Set(ids.map((id) => String(id))))
-      } catch (error) {
+      } catch {
         setFavouriteIds(new Set())
       }
     }
     loadFavourites()
   }, [selectedCVBook?.id, user?.company?.id, user?.admin])
 
-  // Validate PDF CVs (one page, PDF format)
-  async function validateAndFilterCVs(groups: StudentCVGroup[]): Promise<StudentCVGroup[]> {
-    const validatedGroups: StudentCVGroup[] = []
-
-    // Validate all CVs in parallel for better performance
-    const validationPromises: Promise<{ student: StudentCVData; isValid: boolean }>[] = []
-
-    for (const group of groups) {
-      for (const student of group.students) {
-        if (!student.cvFileUrl || !student.cvFileId) {
-          continue // Skip if no CV file
-        }
-
-        validationPromises.push(
-          validatePDF(student.cvFileUrl, student.cvFileId)
-            .then(isValid => ({ student, isValid }))
-            .catch(error => {
-              console.error(`[CVBookPage] Error validating CV for ${student.email}:`, error)
-              return { student, isValid: false }
-            })
-        )
-      }
-    }
-
-    // Wait for all validations to complete
-    const results = await Promise.all(validationPromises)
-
-    // Group validated students back by study
-    const validatedByStudy = new Map<string, StudentCVData[]>()
-
-    for (const { student, isValid } of results) {
-      if (isValid) {
-        if (!validatedByStudy.has(student.study)) {
-          validatedByStudy.set(student.study, [])
-        }
-        validatedByStudy.get(student.study)!.push(student)
-        setValidatedCVs(prev => new Map(prev).set(student.cvFileId!, true))
-      } else {
-        setValidatedCVs(prev => new Map(prev).set(student.cvFileId!, false))
-      }
-    }
-
-    // Convert back to StudentCVGroup array
-    for (const group of groups) {
-      const validatedStudents = validatedByStudy.get(group.study) || []
-      if (validatedStudents.length > 0) {
-        validatedGroups.push({
-          study: group.study,
-          students: validatedStudents.sort((a, b) => {
-            // Sort by last name, then first name
-            const lastNameCompare = a.lastName.localeCompare(b.lastName)
-            return lastNameCompare !== 0 ? lastNameCompare : a.firstName.localeCompare(b.firstName)
-          }),
-        })
-      }
-    }
-
-    // Sort groups by study name
-    return validatedGroups.sort((a, b) => a.study.localeCompare(b.study))
-  }
-
-  // Validate PDF: check if it's PDF format
-  // Note: One-page validation would require PDF.js or server-side processing
-  // For now, we validate PDF format and trust upload validation for page count
-  async function validatePDF(fileUrl: string, fileId: string): Promise<boolean> {
-    try {
-      // Check file type - use GET instead of HEAD to avoid CORS issues
-      const response = await fetch(fileUrl, {
-        method: 'GET',
-        headers: { Range: 'bytes=0-4' }
-      })
-
-      if (!response.ok) {
-        return false
-      }
-
-      const contentType = response.headers.get('content-type')
-      if (contentType && !contentType.includes('application/pdf')) {
-        return false
-      }
-
-      // Verify PDF signature by checking first bytes
-      const arrayBuffer = await response.arrayBuffer()
-      if (arrayBuffer.byteLength < 4) {
-        return false
-      }
-
-      const bytes = new Uint8Array(arrayBuffer)
-      const pdfSignature = String.fromCharCode(...bytes.slice(0, 4))
-
-      // PDF files start with %PDF
-      if (pdfSignature !== '%PDF') {
-        return false
-      }
-
-      return true
-    } catch (error) {
-      console.error(`[CVBookPage] Error validating PDF ${fileId}:`, error)
-      // If validation fails, we'll still show the CV but it might not display properly
-      // This is better than hiding valid CVs due to network issues
-      return true // Allow CV to be shown even if validation fails
-    }
+  function renderStudentCard(student: StudentCVData) {
+    return (
+      <Card
+        key={student.id}
+        className="cursor-pointer hover:shadow-lg transition-shadow flex flex-col h-full relative"
+        onClick={() => {
+          setSelectedStudent(student)
+          setViewMode("detail")
+        }}
+      >
+        {showFavourites && (
+          <button
+            type="button"
+            onClick={(e) => handleToggleFavourite(student, e)}
+            disabled={!!togglingFavourite}
+            className="absolute top-3 right-3 z-10 p-1.5 rounded-full bg-white/90 shadow-sm hover:bg-white transition-colors disabled:opacity-50"
+            aria-label={favouriteIds.has(String(student.id)) ? "Remove from favourites" : "Add to favourites"}
+          >
+            <Star
+              className={`h-5 w-5 ${favouriteIds.has(String(student.id)) ? "fill-amber-300 text-amber-400" : "text-muted-foreground"}`}
+            />
+          </button>
+        )}
+        <CardContent className="p-4 flex flex-col h-full">
+          <div className="rounded-lg mb-3 overflow-hidden border shadow-sm aspect-[210/297]">
+            {student.cvFileUrl ? (
+              <CVFirstPagePreview
+                fileUrl={student.cvFileUrl}
+                fileId={student.cvFileId}
+                className="w-full h-full"
+                title={`CV for ${student.firstName} ${student.lastName}`}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-muted-foreground bg-muted">
+                <IconFileCv className="h-12 w-12" />
+              </div>
+            )}
+          </div>
+          <div className="text-center">
+            <p className="font-semibold">{student.firstName} {student.lastName}</p>
+            <p className="text-sm text-muted-foreground">{student.email}</p>
+            {student.linkedinUrl && (
+              <a
+                href={student.linkedinUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1 mt-1 text-vtk-blue hover:underline"
+                aria-label="View LinkedIn profile"
+              >
+                <Linkedin className="h-4 w-4" />
+                LinkedIn
+              </a>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    )
   }
 
   if (loading) {
@@ -346,7 +301,6 @@ export default function CVBookPage() {
     )
   }
 
-  // If no active CV books, show coming soon page
   if (activeCVBooks.length === 0) {
     return (
       <ComingSoon
@@ -357,13 +311,10 @@ export default function CVBookPage() {
     )
   }
 
-  // If company doesn't have CV Book access, redirect will happen
-  // This is just a fallback
   if (!hasAccess) {
     return null
   }
 
-  // Get unique years from active CV books
   const availableYears = activeCVBooks
     .map(book => typeof book.year === "object" ? book.year : null)
     .filter((year): year is AcademicYear => year !== null)
@@ -372,7 +323,6 @@ export default function CVBookPage() {
     )
     .sort((a, b) => b.start_of_year.localeCompare(a.start_of_year))
 
-  // Company has access and there are active CV books - show CV Book page
   return (
     <div className="container mx-auto p-8">
       <Card className="max-w-6xl w-full">
@@ -386,7 +336,6 @@ export default function CVBookPage() {
             Resume Book
           </CardTitle>
 
-          {/* Academic Year and Sort selectors */}
           <div className="mt-3 flex flex-wrap justify-center gap-4">
             <Select value={selectedYearId} onValueChange={setSelectedYearId}>
               <SelectTrigger id="year-select" className="w-fit px-2 gap-1">
@@ -430,7 +379,12 @@ export default function CVBookPage() {
               {selectedCVBook ? "No student CVs available for this academic year." : "Please select an academic year."}
             </div>
           ) : viewMode === "grid" ? (
-            <Accordion type="multiple" className="w-full space-y-3">
+            <Accordion
+              type="multiple"
+              className="w-full space-y-3"
+              value={openAccordionItems}
+              onValueChange={handleAccordionValueChange}
+            >
               {showFavourites && favouriteStudents.length > 0 && (
                 <AccordionItem
                   value="favourites"
@@ -439,67 +393,15 @@ export default function CVBookPage() {
                   <AccordionTrigger className="px-3 cursor-pointer hover:no-underline">
                     <div className="flex items-center justify-between w-full pr-2">
                       <span className="text-base sm:text-lg font-semibold text-neutral-900">Favourites</span>
+                      <Badge variant="secondary" className="ml-2 text-xs">{favouriteStudents.length}</Badge>
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="px-3 pb-4">
-                    <div className="grid grid-cols-2 gap-6 pt-4">
-                      {favouriteStudents.map((student) => (
-                        <Card
-                          key={student.id}
-                          className="cursor-pointer hover:shadow-lg transition-shadow flex flex-col h-full relative"
-                          onClick={() => {
-                            setSelectedStudent(student)
-                            setViewMode("detail")
-                          }}
-                        >
-                          {showFavourites && (
-                            <button
-                              type="button"
-                              onClick={(e) => handleToggleFavourite(student, e)}
-                              disabled={!!togglingFavourite}
-                              className="absolute top-3 right-3 z-10 p-1.5 rounded-full bg-white/90 shadow-sm hover:bg-white transition-colors disabled:opacity-50"
-                              aria-label={favouriteIds.has(String(student.id)) ? "Remove from favourites" : "Add to favourites"}
-                            >
-                              <Star
-                                className={`h-5 w-5 ${favouriteIds.has(String(student.id)) ? "fill-amber-300 text-amber-400" : "text-muted-foreground"}`}
-                              />
-                            </button>
-                          )}
-                          <CardContent className="p-4 flex flex-col h-full">
-                            <div className="rounded-lg mb-3 overflow-hidden border shadow-sm flex-1 min-h-[600px]">
-                              {student.cvFileUrl ? (
-                                <CVFirstPagePreview
-                                  fileUrl={student.cvFileUrl}
-                                  className="w-full h-full"
-                                  title={`CV for ${student.firstName} ${student.lastName}`}
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center text-muted-foreground bg-muted">
-                                  <IconFileCv className="h-12 w-12" />
-                                </div>
-                              )}
-                            </div>
-                            <div className="text-center">
-                              <p className="font-semibold">{student.firstName} {student.lastName}</p>
-                              <p className="text-sm text-muted-foreground">{student.email}</p>
-                              {student.linkedinUrl && (
-                                <a
-                                  href={student.linkedinUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="inline-flex items-center gap-1 mt-1 text-vtk-blue hover:underline"
-                                  aria-label="View LinkedIn profile"
-                                >
-                                  <Linkedin className="h-4 w-4" />
-                                  LinkedIn
-                                </a>
-                              )}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
+                    {everOpenedCategories.has("favourites") && (
+                      <div className="grid grid-cols-2 gap-6 pt-4">
+                        {favouriteStudents.map((student) => renderStudentCard(student))}
+                      </div>
+                    )}
                   </AccordionContent>
                 </AccordionItem>
               )}
@@ -513,67 +415,15 @@ export default function CVBookPage() {
                     <AccordionTrigger className="px-3 cursor-pointer hover:no-underline">
                       <div className="flex items-center justify-between w-full pr-2">
                         <span className="text-base sm:text-lg font-semibold text-neutral-900">{group.study}</span>
+                        <Badge variant="secondary" className="ml-2 text-xs">{group.students.length}</Badge>
                       </div>
                     </AccordionTrigger>
                     <AccordionContent className="px-3 pb-4">
-                      <div className="grid grid-cols-2 gap-6 pt-4">
-                        {group.students.map((student) => (
-                          <Card
-                            key={student.id}
-                            className="cursor-pointer hover:shadow-lg transition-shadow flex flex-col h-full relative"
-                            onClick={() => {
-                              setSelectedStudent(student)
-                              setViewMode("detail")
-                            }}
-                          >
-                            {showFavourites && (
-                              <button
-                                type="button"
-                                onClick={(e) => handleToggleFavourite(student, e)}
-                                disabled={!!togglingFavourite}
-                                className="absolute top-3 right-3 z-10 p-1.5 rounded-full bg-white/90 shadow-sm hover:bg-white transition-colors disabled:opacity-50"
-                                aria-label={favouriteIds.has(String(student.id)) ? "Remove from favourites" : "Add to favourites"}
-                              >
-                                <Star
-                                  className={`h-5 w-5 ${favouriteIds.has(String(student.id)) ? "fill-amber-300 text-amber-400" : "text-muted-foreground"}`}
-                                />
-                              </button>
-                            )}
-                            <CardContent className="p-4 flex flex-col h-full">
-                              <div className="rounded-lg mb-3 overflow-hidden border shadow-sm flex-1 min-h-[600px]">
-                                {student.cvFileUrl ? (
-                                  <CVFirstPagePreview
-                                    fileUrl={student.cvFileUrl}
-                                    className="w-full h-full"
-                                    title={`CV for ${student.firstName} ${student.lastName}`}
-                                  />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center text-muted-foreground bg-muted">
-                                    <IconFileCv className="h-12 w-12" />
-                                  </div>
-                                )}
-                              </div>
-                              <div className="text-center">
-                                <p className="font-semibold">{student.firstName} {student.lastName}</p>
-                                <p className="text-sm text-muted-foreground">{student.email}</p>
-                                {student.linkedinUrl && (
-                                  <a
-                                    href={student.linkedinUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="inline-flex items-center gap-1 mt-1 text-vtk-blue hover:underline"
-                                    aria-label="View LinkedIn profile"
-                                  >
-                                    <Linkedin className="h-4 w-4" />
-                                    LinkedIn
-                                  </a>
-                                )}
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
+                      {everOpenedCategories.has(group.study) && (
+                        <div className="grid grid-cols-2 gap-6 pt-4">
+                          {group.students.map((student) => renderStudentCard(student))}
+                        </div>
+                      )}
                     </AccordionContent>
                   </AccordionItem>
                 ))
@@ -587,70 +437,18 @@ export default function CVBookPage() {
                       <span className="text-base sm:text-lg font-semibold text-neutral-900">
                         {sortBy === "firstName" ? "Sorted by first name" : "Sorted by last name"}
                       </span>
+                      <Badge variant="secondary" className="ml-2 text-xs">{flatStudents.length}</Badge>
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="px-3 pb-4">
-                    <div className="grid grid-cols-2 gap-6 pt-4">
-                      {(showFavourites && favouriteStudents.length > 0
-                        ? flatStudents.filter((s) => !favouriteIds.has(String(s.id)))
-                        : flatStudents
-                      ).map((student) => (
-                        <Card
-                          key={student.id}
-                          className="cursor-pointer hover:shadow-lg transition-shadow flex flex-col h-full relative"
-                          onClick={() => {
-                            setSelectedStudent(student)
-                            setViewMode("detail")
-                          }}
-                        >
-                          {showFavourites && (
-                            <button
-                              type="button"
-                              onClick={(e) => handleToggleFavourite(student, e)}
-                              disabled={!!togglingFavourite}
-                              className="absolute top-3 right-3 z-10 p-1.5 rounded-full bg-white/90 shadow-sm hover:bg-white transition-colors disabled:opacity-50"
-                              aria-label={favouriteIds.has(String(student.id)) ? "Remove from favourites" : "Add to favourites"}
-                            >
-                              <Star
-                                className={`h-5 w-5 ${favouriteIds.has(String(student.id)) ? "fill-amber-300 text-amber-400" : "text-muted-foreground"}`}
-                              />
-                            </button>
-                          )}
-                          <CardContent className="p-4 flex flex-col h-full">
-                            <div className="rounded-lg mb-3 overflow-hidden border shadow-sm flex-1 min-h-[600px]">
-                              {student.cvFileUrl ? (
-                                <CVFirstPagePreview
-                                  fileUrl={student.cvFileUrl}
-                                  className="w-full h-full"
-                                  title={`CV for ${student.firstName} ${student.lastName}`}
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center text-muted-foreground bg-muted">
-                                  <IconFileCv className="h-12 w-12" />
-                                </div>
-                              )}
-                            </div>
-                            <div className="text-center">
-                              <p className="font-semibold">{student.firstName} {student.lastName}</p>
-                              <p className="text-sm text-muted-foreground">{student.email}</p>
-                              {student.linkedinUrl && (
-                                <a
-                                  href={student.linkedinUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="inline-flex items-center gap-1 mt-1 text-vtk-blue hover:underline"
-                                  aria-label="View LinkedIn profile"
-                                >
-                                  <Linkedin className="h-4 w-4" />
-                                  LinkedIn
-                                </a>
-                              )}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
+                    {everOpenedCategories.has("all") && (
+                      <div className="grid grid-cols-2 gap-6 pt-4">
+                        {(showFavourites && favouriteStudents.length > 0
+                          ? flatStudents.filter((s) => !favouriteIds.has(String(s.id)))
+                          : flatStudents
+                        ).map((student) => renderStudentCard(student))}
+                      </div>
+                    )}
                   </AccordionContent>
                 </AccordionItem>
               )}
@@ -668,7 +466,6 @@ export default function CVBookPage() {
                   ← Back to Overview
                 </Button>
 
-                {/* Prev/Next student navigation (above the student's card) */}
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
@@ -758,4 +555,3 @@ export default function CVBookPage() {
     </div>
   )
 }
-
