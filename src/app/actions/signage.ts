@@ -54,6 +54,7 @@ export async function createScreenAction(data: { name: string; slug: string }) {
             } as any)
         );
         revalidatePath("/admin/signage");
+        revalidatePath("/screen");
         return { success: true, data: created };
     } catch (error) {
         console.error("[signage] createScreen error:", error);
@@ -67,6 +68,7 @@ export async function updateScreenAction(id: string, data: Partial<SignageScreen
         const client = await getClient();
         await client.request(updateItem("signage_screens", id, data as any));
         revalidatePath("/admin/signage");
+        revalidatePath("/screen");
         return { success: true };
     } catch (error) {
         console.error("[signage] updateScreen error:", error);
@@ -91,6 +93,7 @@ export async function deleteScreenAction(id: string) {
         }
         await client.request(deleteItem("signage_screens", id));
         revalidatePath("/admin/signage");
+        revalidatePath("/screen");
         return { success: true };
     } catch (error) {
         console.error("[signage] deleteScreen error:", error);
