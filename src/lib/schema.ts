@@ -513,6 +513,46 @@ export type SignageScheduleSlot = {
   end_time: string;   // "HH:mm" (24h, Europe/Brussels)
 };
 
+export type VacancyType = {
+  id: string;
+  name: string;
+  sort?: number;
+  active: boolean;
+};
+
+export type VacancySector = {
+  id: string;
+  name: string;
+  sort?: number;
+  active: boolean;
+};
+
+export type VacancySectionConfig = {
+  id: string;
+  key: string;
+  label: string;
+  sort?: number;
+  active: boolean;
+  required: boolean;
+};
+
+export type Vacancy = {
+  id: string;
+  status: 'draft' | 'published' | 'archived';
+  date_created: string;
+  date_updated?: string;
+  company: string | Company;
+  title: string;
+  type: string | VacancyType;
+  sector: string | VacancySector;
+  location: string;
+  contact_email: string;
+  contact_name?: string;
+  contact_phone?: string;
+  sections: Record<string, string>;
+  masters?: Array<{ master_id: Master | string }>;
+};
+
 // Optional: Full Directus Schema map (only collections you use)
 export type Schema = {
   directus_users: DirectusUser[];
@@ -545,4 +585,9 @@ export type Schema = {
   signage_screens: SignageScreen[];
   signage_media: SignageMedia[];
   signage_schedule_slots: SignageScheduleSlot[];
+  vacancies: Vacancy[];
+  vacancy_types: VacancyType[];
+  vacancy_sectors: VacancySector[];
+  vacancy_section_config: VacancySectionConfig[];
+  vacancies_masters: { id: number | string; vacancies_id: string | Vacancy; master_id: string | Master }[];
 };

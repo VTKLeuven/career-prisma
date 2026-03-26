@@ -302,6 +302,8 @@ interface EmailQueueItem {
   subject: string;
   html: string;
   from: string;
+  attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>;
+  replyTo?: string;
   logId: number;
   resolve: () => void;
   reject: (error: Error) => void;
@@ -498,7 +500,7 @@ async function processEmailQueue() {
       }
 
       // Send the email with retry logic
-      await sendEmailWithRetry(item.to, item.subject, item.html, item.from);
+      await sendEmailWithRetry(item.to, item.subject, item.html, item.from, item.attachments, item.replyTo);
       lastEmailSentAt = Date.now();
       recordEmailSent();
       emailJobManager.logEmailSent(item.logId);
@@ -532,7 +534,9 @@ async function sendEmailWithRetry(
   to: string,
   subject: string,
   html: string,
-  from: string
+  from: string,
+  attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>,
+  replyTo?: string
 ): Promise<void> {
   // Retry logic for rate-limited connections
   // Google SMTP 421 errors can require 5+ minutes to recover
@@ -557,6 +561,14 @@ async function sendEmailWithRetry(
         to,
         subject,
         html,
+        ...(replyTo && { replyTo }),
+        ...(attachments?.length && {
+          attachments: attachments.map((a) => ({
+            filename: a.filename,
+            content: a.content,
+            contentType: a.contentType,
+          })),
+        }),
       });
       
       // Success - for Gmail, we don't pool connections, so we can keep the transporter
@@ -683,11 +695,15 @@ export async function sendEmail({
   subject,
   html,
   from,
+  attachments,
+  replyTo,
 }: {
   to: string;
   subject: string;
   html: string;
   from?: string;
+  attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>;
+  replyTo?: string;
 }) {
   // Determine the from email priority:
   // 1. Explicit 'from' parameter (highest priority)
@@ -735,6 +751,8 @@ export async function sendEmail({
       subject,
       html,
       from: fromEmail,
+      attachments,
+      replyTo,
       logId,
       resolve,
       reject,

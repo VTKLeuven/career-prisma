@@ -2,9 +2,45 @@
 "use server"
 
 import { readItems, readItem, createItem, updateItem } from "@directus/sdk";
-import { getDirectusWithToken, directus, getServerDirectusClient } from "@/lib/directus";
+import {
+  getDirectusWithToken,
+  directus,
+  getServerDirectusClient,
+  getAdminDirectusClient,
+} from "@/lib/directus";
 import type { Company } from "@/lib/schema";
 
+/** Minimal company shape for vacancy cards / public listing (direct `company` read, not nested from vacancies). */
+export type CompanyBasicForVacancy = Pick<Company, "id" | "name" | "logo" | "website">;
+
+/**
+ * Load companies by id with the same client order as admin Companies & Events:
+ * user JWT → server token → public client. Avoids Directus policies that block
+ * `vacancies → company.name` but allow direct `readItems("company", ...)`.
+ */
+export async function getCompaniesBasicByIds(
+  ids: string[]
+): Promise<CompanyBasicForVacancy[]> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return [];
+
+  const client =
+    (await getDirectusWithToken()) || getAdminDirectusClient() || directus;
+
+  try {
+    const items = (await client.request(
+      readItems("company" as any, {
+        fields: ["id", "name", "logo", "website"],
+        filter: { id: { _in: unique } },
+        limit: unique.length,
+      })
+    )) as unknown as CompanyBasicForVacancy[];
+    return items ?? [];
+  } catch (err) {
+    console.error("[getCompaniesBasicByIds] Error:", err);
+    return [];
+  }
+}
 
 export async function listCompanies(opts?: {
   search?: string;

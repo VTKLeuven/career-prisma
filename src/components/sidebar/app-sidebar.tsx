@@ -414,6 +414,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             url: "/admin/cv-book",
           },
           {
+            title: "Vacancies",
+            url: "/admin/vacancies",
+          },
+          {
             title: "Pending Approvals",
             url: "/admin/approvals",
             ...(pendingCount > 0 && { badge: pendingCount }),
