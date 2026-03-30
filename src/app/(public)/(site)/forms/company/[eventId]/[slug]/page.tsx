@@ -28,6 +28,7 @@ import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 import { getDirectusImageUrl } from "@/components/Images";
 import NextImage from "next/image";
 import { FormFieldRenderer } from "@/components/FormFieldRenderer";
+import { userFacingFormSubmitErrorMessage } from "@/lib/form-submit-errors";
 import type { Company, CareerEvent } from "@/lib/schema";
 
 function countWords(text: string): number {
@@ -73,6 +74,7 @@ export default function CompanyFormPage() {
   const [submitted, setSubmitted] = useState(false);
   const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitNotice, setSubmitNotice] = useState<string | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
   const [availableCompanies, setAvailableCompanies] = useState<Array<{ id: string; name: string }>>([]);
   const [companySearchTerm, setCompanySearchTerm] = useState("");
@@ -501,6 +503,7 @@ export default function CompanyFormPage() {
       }
     }
 
+    setSubmitNotice(null);
     setSubmitting(true);
     try {
       // Prepare submission data (without company/submitter info - those go as separate params)
@@ -532,14 +535,14 @@ export default function CompanyFormPage() {
       setSubmitted(true);
     } catch (error) {
       console.error("Error submitting form:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to submit form. Please try again.";
-      alert(errorMessage);
+      setSubmitNotice(userFacingFormSubmitErrorMessage(error));
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleFieldChange = (fieldName: string, value: unknown) => {
+    setSubmitNotice(null);
     setFormData((prev) => ({ ...prev, [fieldName]: value }));
     // Clear error for this field
     if (errors[fieldName]) {
@@ -650,6 +653,14 @@ export default function CompanyFormPage() {
               <p className="text-muted-foreground">
                 This form&apos;s deadline has passed. Submissions are no longer accepted. The deadline was {formatDateTimeBE(form.metadata.deadline)}.
               </p>
+            </div>
+          )}
+          {submitNotice && (
+            <div
+              role="alert"
+              className="mb-4 p-4 rounded-md border border-amber-200 bg-amber-50 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"
+            >
+              {submitNotice}
             </div>
           )}
           {/* Show message if not logged in but company has already submitted */}

@@ -62,6 +62,20 @@ export async function getServerDirectusClient() {
 }
 
 /**
+ * Prefer DIRECTUS_SERVER_TOKEN over the user cookie so long-lived form pages still submit
+ * after the user's Directus access token expires (common when the tab stays open).
+ */
+export async function getServerDirectusClientPreferStatic() {
+  const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
+  if (serverToken && serverToken.trim() !== "") {
+    return createDirectus<Schema>(DIRECTUS_URL).with(staticToken(serverToken.trim())).with(rest());
+  }
+  const userClient = await getDirectusWithToken();
+  if (userClient) return userClient;
+  return directus;
+}
+
+/**
  * Server-side client that always uses the server token for admin operations.
  * This ensures elevated permissions for operations that require access to restricted fields.
  */

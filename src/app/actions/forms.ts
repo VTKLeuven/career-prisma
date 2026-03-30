@@ -24,6 +24,10 @@ import {
 } from "@/lib/repos/forms";
 import type { Form, FormVersion, FormSchema, FormMetadata, FormResponse } from "@/lib/schema";
 import { getFormUploadsFolderId } from "@/lib/directus";
+import {
+  FORM_SUBMIT_SESSION_TIMEOUT_MESSAGE,
+  isDirectusTokenExpiredError,
+} from "@/lib/form-submit-errors";
 
 // ===================== FORM ACTIONS =====================
 
@@ -404,10 +408,9 @@ export async function submitFormResponseAction(data: {
   submitter_email?: string;
 }) {
   try {
-    // Get the form version to check metadata (including max_entries)
-    // Use server client to ensure we always have access to metadata, even for public forms
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const serverClient = await getServerDirectusClient();
+    // Prefer static server token so an expired user session cookie does not break submission
+    const { getServerDirectusClientPreferStatic } = await import("@/lib/directus");
+    const serverClient = await getServerDirectusClientPreferStatic();
     const { readItem } = await import("@directus/sdk");
 
     const formVersionsColl = "form_versions" as const;
@@ -792,6 +795,9 @@ export async function submitFormResponseAction(data: {
     return response;
   } catch (error) {
     console.error("Error submitting form response:", error);
+    if (isDirectusTokenExpiredError(error)) {
+      throw new Error(FORM_SUBMIT_SESSION_TIMEOUT_MESSAGE);
+    }
     throw error;
   }
 }

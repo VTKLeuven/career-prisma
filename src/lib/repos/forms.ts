@@ -204,8 +204,8 @@ export async function listFormVersions(formId: string) {
 /** List form versions using server client (for student/prerequisite flow). */
 export async function listFormVersionsForServer(formId: string): Promise<FormVersion[]> {
   try {
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const client = await getServerDirectusClient();
+    const { getServerDirectusClientPreferStatic } = await import("@/lib/directus");
+    const client = await getServerDirectusClientPreferStatic();
     return client.request(
       readItems("form_versions" as any, {
         fields: ["*"],
@@ -635,8 +635,8 @@ export async function getStudentLatestFormResponseForForm(
 ): Promise<{ id: string; form_version_id: string; data: Record<string, unknown>; attendant_uuid?: string } | null> {
   if (versionIds.length === 0) return null;
   try {
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const client = await getServerDirectusClient();
+    const { getServerDirectusClientPreferStatic } = await import("@/lib/directus");
+    const client = await getServerDirectusClientPreferStatic();
     const responses = await client.request(
       readItems("form_responses" as any, {
         fields: ["id", "form_version_id", "data", "attendant_uuid"],
