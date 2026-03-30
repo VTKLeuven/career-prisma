@@ -25,6 +25,7 @@ import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 import { getDirectusImageUrl } from "@/components/Images";
 import NextImage from "next/image";
 import { FormFieldRenderer } from "@/components/FormFieldRenderer";
+import { userFacingFormSubmitErrorMessage } from "@/lib/form-submit-errors";
 
 type PublicForm = {
   id: string;
@@ -62,6 +63,8 @@ export default function PublicFormPage() {
   const [submitted, setSubmitted] = useState(false);
   const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  /** Inline message after a failed submit (form values stay in state). */
+  const [submitNotice, setSubmitNotice] = useState<string | null>(null);
   /** True when the student is editing an existing response (same version) */
   const [isEditing, setIsEditing] = useState(false);
 
@@ -189,6 +192,7 @@ export default function PublicFormPage() {
     // Note: Max entries check is handled server-side in submitFormResponseAction
     // Client-side check removed since we can't count responses with public permissions
 
+    setSubmitNotice(null);
     setSubmitting(true);
     try {
       await submitFormResponseAction({
@@ -199,8 +203,7 @@ export default function PublicFormPage() {
       setSubmitted(true);
     } catch (error) {
       console.error("Error submitting form:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to submit form. Please try again.";
-      alert(errorMessage);
+      setSubmitNotice(userFacingFormSubmitErrorMessage(error));
     } finally {
       setSubmitting(false);
     }
@@ -232,6 +235,7 @@ export default function PublicFormPage() {
   }, [form?.isFull]);
 
   const handleFieldChange = (fieldName: string, value: unknown) => {
+    setSubmitNotice(null);
     setFormData((prev) => ({ ...prev, [fieldName]: value }));
     // Clear error for this field
     if (errors[fieldName]) {
@@ -361,6 +365,14 @@ export default function PublicFormPage() {
               <p className="text-muted-foreground">
                 This form has reached its maximum capacity and is no longer accepting new entries.
               </p>
+            </div>
+          )}
+          {submitNotice && (
+            <div
+              role="alert"
+              className="mb-4 p-4 rounded-md border border-amber-200 bg-amber-50 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"
+            >
+              {submitNotice}
             </div>
           )}
           {/* {isEditing && (
