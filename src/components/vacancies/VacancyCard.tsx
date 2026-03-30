@@ -34,51 +34,69 @@ export function VacancyCard({ vacancy }: VacancyCardProps) {
       .filter(Boolean) ?? [];
 
   const logoUrl = company?.logo
-    ? getDirectusImageUrl(company.logo, { width: 80, height: 80, quality: 80 })
+    ? getDirectusImageUrl(company.logo, {
+        width: 112,
+        height: 112,
+        fit: "inside",
+      })
     : undefined;
 
   return (
     <Link
       href={`/vacancies/${vacancy.id}`}
-      className="block group border rounded-xl p-5 hover:shadow-md transition-shadow bg-white"
+      className="block group rounded-2xl border border-neutral-200/90 bg-white p-5 shadow-sm transition-all duration-200 hover:border-vtk-blue/30 hover:shadow-md"
     >
       <div className="flex gap-4">
-        {/* Company logo */}
-        <div className="flex-shrink-0 w-14 h-14 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
+        {/* No bg behind logo so PNG alpha shows the card (white); muted only for empty state */}
+        <div
+          className={`relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden ${
+            logoUrl ? "bg-transparent" : "bg-muted"
+          }`}
+        >
           {logoUrl ? (
             <Image
               src={logoUrl}
               alt={company?.name ?? "Company"}
-              width={56}
-              height={56}
-              className="object-contain"
+              fill
+              className="object-contain p-1.5"
+              sizes="64px"
             />
           ) : (
-            <Building2 className="h-6 w-6 text-muted-foreground" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Building2 className="h-6 w-6 text-muted-foreground" />
+            </div>
           )}
         </div>
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-lg group-hover:text-vtk-blue transition-colors truncate">
+          <h3 className="font-semibold text-lg text-neutral-900 group-hover:text-vtk-blue transition-colors truncate">
             {vacancy.title}
           </h3>
           {company && (
-            <p className="text-sm text-muted-foreground">{company.name}</p>
+            <p className="text-sm text-neutral-600">{company.name}</p>
           )}
 
           <div className="flex flex-wrap gap-2 mt-3">
             {typeName && (
-              <Badge variant="secondary" className="bg-vtk-blue/10 text-vtk-blue">
+              <Badge
+                variant="secondary"
+                className="border border-vtk-blue/15 bg-vtk-blue/10 font-medium text-vtk-blue-dark"
+              >
                 {typeName}
               </Badge>
             )}
             {sectorName && (
-              <Badge variant="outline">{sectorName}</Badge>
+              <Badge
+                variant="outline"
+                className="border-neutral-200 text-neutral-700"
+              >
+                {sectorName}
+              </Badge>
             )}
             {vacancy.location && (
-              <Badge variant="outline" className="gap-1">
-                <MapPin className="h-3 w-3" />
+              <Badge variant="outline" className="gap-1 border-neutral-200 text-neutral-700">
+                <MapPin className="h-3 w-3 text-vtk-blue/70" />
                 {vacancy.location}
               </Badge>
             )}
@@ -89,7 +107,7 @@ export function VacancyCard({ vacancy }: VacancyCardProps) {
               {masterNames.map((name) => (
                 <span
                   key={name}
-                  className="text-xs text-muted-foreground bg-muted rounded px-1.5 py-0.5"
+                  className="rounded-md bg-vtk-light/90 px-1.5 py-0.5 text-xs font-medium text-vtk-blue-dark"
                 >
                   {name}
                 </span>
@@ -99,7 +117,7 @@ export function VacancyCard({ vacancy }: VacancyCardProps) {
         </div>
 
         {/* Date */}
-        <div className="hidden sm:block flex-shrink-0 text-xs text-muted-foreground">
+        <div className="hidden sm:block flex-shrink-0 text-xs font-medium text-vtk-blue/80">
           {new Date(vacancy.date_created).toLocaleDateString()}
         </div>
       </div>

@@ -26,7 +26,7 @@ import type {
   Master,
 } from "@/lib/schema";
 import { Search, X, SlidersHorizontal, Building2 } from "lucide-react";
-import Link from "next/link";
+import { cn } from "@/lib/utils";
 
 type SortOption = "newest" | "oldest" | "az" | "za";
 
@@ -159,41 +159,39 @@ export default function VacanciesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-vtk-blue/5 via-white to-vtk-yellow/5">
-      <div className="container mx-auto px-4 py-12">
-        {/* Header */}
-        <div className="max-w-3xl mx-auto text-center mb-10">
+    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-white to-vtk-blue/5">
+      <div className="container mx-auto px-4 py-16 sm:py-24">
+        {/* Header — same card pattern as Contact / Terms */}
+        <div className="max-w-3xl mx-auto rounded-2xl border border-neutral-200/80 bg-white p-8 shadow-sm text-center mb-10">
           <div className="flex justify-center mb-4">
-            <div className="rounded-full bg-vtk-blue/10 p-4">
+            <div className="rounded-full bg-vtk-blue/10 p-4 ring-4 ring-vtk-blue/5">
               <Building2 className="h-10 w-10 text-vtk-blue" />
             </div>
           </div>
-          <h1 className="text-4xl font-bold text-neutral-900 mb-2">
+          <h1 className="text-3xl sm:text-4xl font-bold text-neutral-900 mb-2">
             Vacancies
           </h1>
-          <p className="text-lg text-neutral-600">
+          <p className="text-lg text-neutral-700">
             Browse job opportunities, internships and more from our partner
             companies.
           </p>
         </div>
 
-        {/* Toolbar */}
-        <div className="max-w-4xl mx-auto mb-6">
+        {/* Search & filters — VTK shell */}
+        <div className="max-w-4xl mx-auto rounded-2xl border border-neutral-200/80 bg-white shadow-sm p-5 sm:p-6 mb-8">
           <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-            {/* Location search */}
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-vtk-blue/50" />
               <Input
-                className="pl-9"
+                className="pl-9 border-neutral-200 focus-visible:border-vtk-blue/40 focus-visible:ring-vtk-blue/20"
                 placeholder="Search by location..."
                 value={filterLocation}
                 onChange={(e) => setFilterLocation(e.target.value)}
               />
             </div>
 
-            {/* Sort */}
             <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-              <SelectTrigger className="w-44">
+              <SelectTrigger className="w-full sm:w-44 border-neutral-200 focus:ring-vtk-blue/25">
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
               <SelectContent>
@@ -204,30 +202,40 @@ export default function VacanciesPage() {
               </SelectContent>
             </Select>
 
-            {/* Toggle filters */}
             <Button
               variant={showFilters ? "default" : "outline"}
               onClick={() => setShowFilters(!showFilters)}
-              className="gap-2"
+              className={cn(
+                "gap-2 shrink-0",
+                showFilters
+                  ? "bg-vtk-blue hover:bg-vtk-blue-dark text-white shadow-sm"
+                  : "border-vtk-blue/25 text-vtk-blue hover:bg-vtk-blue/5 hover:text-vtk-blue-dark"
+              )}
             >
               <SlidersHorizontal className="h-4 w-4" />
               Filters
               {hasFilters && (
-                <span className="ml-1 bg-white text-vtk-blue rounded-full w-5 h-5 text-xs flex items-center justify-center">
+                <span
+                  className={cn(
+                    "ml-1 rounded-full w-5 h-5 text-xs flex items-center justify-center font-semibold",
+                    showFilters
+                      ? "bg-white/20 text-white"
+                      : "bg-vtk-yellow text-vtk-blue-dark"
+                  )}
+                >
                   !
                 </span>
               )}
             </Button>
           </div>
 
-          {/* Filter panel */}
           {showFilters && (
-            <div className="mt-4 p-4 border rounded-lg bg-white space-y-4">
+            <div className="mt-6 pt-6 border-t border-neutral-100 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">Type</label>
+                  <label className="text-sm font-medium text-neutral-800">Type</label>
                   <Select value={filterType || "all"} onValueChange={(v) => setFilterType(v === "all" ? "" : v)}>
-                    <SelectTrigger>
+                    <SelectTrigger className="border-neutral-200">
                       <SelectValue placeholder="All types" />
                     </SelectTrigger>
                     <SelectContent>
@@ -242,9 +250,9 @@ export default function VacanciesPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">Sector</label>
+                  <label className="text-sm font-medium text-neutral-800">Sector</label>
                   <Select value={filterSector || "all"} onValueChange={(v) => setFilterSector(v === "all" ? "" : v)}>
-                    <SelectTrigger>
+                    <SelectTrigger className="border-neutral-200">
                       <SelectValue placeholder="All sectors" />
                     </SelectTrigger>
                     <SelectContent>
@@ -259,9 +267,9 @@ export default function VacanciesPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">Master</label>
+                  <label className="text-sm font-medium text-neutral-800">Master</label>
                   <Select value={filterMaster || "all"} onValueChange={(v) => setFilterMaster(v === "all" ? "" : v)}>
-                    <SelectTrigger>
+                    <SelectTrigger className="border-neutral-200">
                       <SelectValue placeholder="All masters" />
                     </SelectTrigger>
                     <SelectContent>
@@ -277,14 +285,14 @@ export default function VacanciesPage() {
               </div>
 
               {hasFilters && (
-                <div className="flex items-center gap-2 pt-2 border-t">
-                  <span className="text-sm text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-neutral-100">
+                  <span className="text-sm font-medium text-vtk-blue-dark">
                     Active filters:
                   </span>
                   {filterType && (
                     <Badge
                       variant="secondary"
-                      className="gap-1 cursor-pointer"
+                      className="gap-1 cursor-pointer border-vtk-blue/15 bg-vtk-light/80 text-vtk-blue-dark hover:bg-vtk-blue/10"
                       onClick={() => setFilterType("")}
                     >
                       {types.find((t) => t.id === filterType)?.name}
@@ -294,7 +302,7 @@ export default function VacanciesPage() {
                   {filterSector && (
                     <Badge
                       variant="secondary"
-                      className="gap-1 cursor-pointer"
+                      className="gap-1 cursor-pointer border-vtk-blue/15 bg-vtk-light/80 text-vtk-blue-dark hover:bg-vtk-blue/10"
                       onClick={() => setFilterSector("")}
                     >
                       {sectors.find((s) => s.id === filterSector)?.name}
@@ -304,7 +312,7 @@ export default function VacanciesPage() {
                   {filterMaster && (
                     <Badge
                       variant="secondary"
-                      className="gap-1 cursor-pointer"
+                      className="gap-1 cursor-pointer border-vtk-blue/15 bg-vtk-light/80 text-vtk-blue-dark hover:bg-vtk-blue/10"
                       onClick={() => setFilterMaster("")}
                     >
                       {masters.find((m) => m.id === filterMaster)?.name}
@@ -315,7 +323,7 @@ export default function VacanciesPage() {
                     variant="ghost"
                     size="sm"
                     onClick={clearFilters}
-                    className="ml-auto"
+                    className="ml-auto text-vtk-blue hover:text-vtk-blue-dark hover:bg-vtk-blue/5"
                   >
                     Clear all
                   </Button>
@@ -332,14 +340,16 @@ export default function VacanciesPage() {
               {[1, 2, 3, 4].map((i) => (
                 <div
                   key={i}
-                  className="h-28 rounded-xl bg-muted animate-pulse"
+                  className="h-28 rounded-2xl bg-vtk-light/50 border border-neutral-100 animate-pulse"
                 />
               ))}
             </div>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-16 border rounded-xl bg-white">
-              <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-lg text-muted-foreground">
+            <div className="text-center py-16 rounded-2xl border border-neutral-200/80 bg-white shadow-sm">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-vtk-blue/10">
+                <Building2 className="h-7 w-7 text-vtk-blue" />
+              </div>
+              <p className="text-lg text-neutral-700">
                 {hasFilters
                   ? "No vacancies match your filters."
                   : "No vacancies available at the moment."}
@@ -347,7 +357,7 @@ export default function VacanciesPage() {
               {hasFilters && (
                 <Button
                   variant="outline"
-                  className="mt-4"
+                  className="mt-6 border-vtk-blue/30 text-vtk-blue hover:bg-vtk-blue/5"
                   onClick={clearFilters}
                 >
                   Clear filters
@@ -356,7 +366,7 @@ export default function VacanciesPage() {
             </div>
           ) : (
             <>
-              <p className="text-sm text-muted-foreground mb-4">
+              <p className="text-sm font-medium text-vtk-blue-dark mb-4">
                 {filtered.length} {filtered.length === 1 ? "vacancy" : "vacancies"} found
               </p>
               <div className="space-y-3">

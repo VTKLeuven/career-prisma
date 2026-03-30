@@ -55,11 +55,11 @@ export default function VacancyDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-vtk-blue/5 via-white to-vtk-yellow/5">
-        <div className="container mx-auto px-4 py-12 max-w-4xl space-y-6">
-          <div className="h-8 w-32 bg-muted animate-pulse rounded" />
-          <div className="h-64 bg-muted animate-pulse rounded-xl" />
-          <div className="h-96 bg-muted animate-pulse rounded-xl" />
+      <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-white to-vtk-blue/5">
+        <div className="container mx-auto max-w-4xl space-y-6 px-4 py-16 sm:py-24">
+          <div className="h-8 w-32 animate-pulse rounded-md bg-vtk-light/60" />
+          <div className="h-64 animate-pulse rounded-2xl bg-vtk-light/50" />
+          <div className="h-96 animate-pulse rounded-2xl bg-vtk-light/50" />
         </div>
       </div>
     );
@@ -67,15 +67,26 @@ export default function VacancyDetailPage() {
 
   if (!vacancy) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-vtk-blue/5 via-white to-vtk-yellow/5">
+      <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-white to-vtk-blue/5">
         <div className="container mx-auto px-4 py-24 text-center">
-          <h1 className="text-2xl font-bold mb-4">Vacancy not found</h1>
-          <Button asChild variant="outline">
-            <Link href="/vacancies">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to vacancies
-            </Link>
-          </Button>
+          <div className="mx-auto max-w-md rounded-2xl border border-neutral-200/80 bg-white p-10 shadow-sm">
+            <h1 className="mb-2 text-2xl font-bold text-neutral-900">
+              Vacancy not found
+            </h1>
+            <p className="mb-6 text-neutral-600">
+              This listing may have been removed or is no longer published.
+            </p>
+            <Button
+              asChild
+              variant="outline"
+              className="border-vtk-blue/30 text-vtk-blue hover:bg-vtk-blue/5"
+            >
+              <Link href="/vacancies">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to vacancies
+              </Link>
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -98,47 +109,56 @@ export default function VacancyDetailPage() {
 
   const logoUrl = company?.logo
     ? getDirectusImageUrl(company.logo, {
-        width: 120,
-        height: 120,
-        quality: 80,
+        width: 160,
+        height: 160,
+        fit: "inside",
       })
     : undefined;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-vtk-blue/5 via-white to-vtk-yellow/5">
-      <div className="container mx-auto px-4 py-12 max-w-4xl">
-        {/* Back link */}
-        <Button variant="ghost" size="sm" asChild className="mb-6">
+    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-white to-vtk-blue/5">
+      <div className="container mx-auto max-w-4xl px-4 py-16 sm:py-24">
+        <Button
+          variant="ghost"
+          size="sm"
+          asChild
+          className="mb-8 -ml-2 text-vtk-blue hover:bg-vtk-blue/5 hover:text-vtk-blue-dark"
+        >
           <Link href="/vacancies">
             <ArrowLeft className="mr-2 h-4 w-4" />
             All vacancies
           </Link>
         </Button>
 
-        {/* Header card */}
-        <div className="bg-white rounded-xl border shadow-sm p-6 sm:p-8 mb-6">
+        <div className="mb-6 rounded-2xl border border-neutral-200/80 bg-white p-6 shadow-sm ring-1 ring-vtk-blue/[0.04] sm:p-8">
           <div className="flex flex-col sm:flex-row gap-6">
-            {/* Logo */}
-            <div className="flex-shrink-0 w-20 h-20 rounded-xl bg-muted flex items-center justify-center overflow-hidden">
+            {/* Transparent PNGs: no fill behind image (card is white); muted only without logo */}
+            <div
+              className={`relative flex-shrink-0 w-24 h-24 sm:w-28 sm:h-28 rounded-xl overflow-hidden ${
+                logoUrl ? "bg-transparent" : "bg-muted"
+              }`}
+            >
               {logoUrl ? (
                 <Image
                   src={logoUrl}
                   alt={company?.name ?? ""}
-                  width={80}
-                  height={80}
-                  className="object-contain"
+                  fill
+                  className="object-contain p-2"
+                  sizes="(max-width: 640px) 96px, 112px"
                 />
               ) : (
-                <Building2 className="h-8 w-8 text-muted-foreground" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Building2 className="h-10 w-10 text-muted-foreground" />
+                </div>
               )}
             </div>
 
             <div className="flex-1">
-              <h1 className="text-2xl sm:text-3xl font-bold mb-1">
+              <h1 className="mb-1 text-2xl font-bold text-neutral-900 sm:text-3xl">
                 {vacancy.title}
               </h1>
               {company && (
-                <p className="text-lg text-muted-foreground mb-4">
+                <p className="mb-4 text-lg text-neutral-600">
                   {company.name}
                   {(company as any).website && (
                     <a
@@ -155,14 +175,18 @@ export default function VacancyDetailPage() {
               )}
               <div className="flex flex-wrap gap-2">
                 {typeName && (
-                  <Badge className="bg-vtk-blue/10 text-vtk-blue border-vtk-blue/20">
+                  <Badge className="border border-vtk-blue/20 bg-vtk-blue/10 font-medium text-vtk-blue-dark">
                     {typeName}
                   </Badge>
                 )}
-                {sectorName && <Badge variant="outline">{sectorName}</Badge>}
+                {sectorName && (
+                  <Badge variant="outline" className="border-neutral-200 text-neutral-700">
+                    {sectorName}
+                  </Badge>
+                )}
                 {vacancy.location && (
-                  <Badge variant="outline" className="gap-1">
-                    <MapPin className="h-3 w-3" />
+                  <Badge variant="outline" className="gap-1 border-neutral-200 text-neutral-700">
+                    <MapPin className="h-3 w-3 text-vtk-blue/70" />
                     {vacancy.location}
                   </Badge>
                 )}
@@ -172,7 +196,7 @@ export default function VacancyDetailPage() {
                   {masterNames.map((name) => (
                     <span
                       key={name}
-                      className="text-xs bg-muted rounded-full px-2.5 py-1 text-muted-foreground"
+                      className="rounded-full bg-vtk-light/90 px-2.5 py-1 text-xs font-medium text-vtk-blue-dark"
                     >
                       {name}
                     </span>
@@ -188,16 +212,20 @@ export default function VacancyDetailPage() {
           <div className="lg:col-span-2 space-y-6">
             {/* Dynamic sections */}
             {sectionConfigs.map((cfg) => {
-              const html = vacancy.sections?.[cfg.key];
+              const html =
+                vacancy.sections?.[cfg.id] ??
+                (cfg.key ? vacancy.sections?.[cfg.key] : undefined);
               if (!html || html === "<p></p>") return null;
               return (
                 <div
-                  key={cfg.key}
-                  className="bg-white rounded-xl border p-6 sm:p-8"
+                  key={cfg.id}
+                  className="rounded-2xl border border-neutral-200/80 bg-white p-6 shadow-sm sm:p-8"
                 >
-                  <h2 className="text-xl font-semibold mb-4">{cfg.label}</h2>
+                  <h2 className="mb-4 border-b border-vtk-blue/10 pb-3 text-xl font-semibold text-neutral-900">
+                    {cfg.label}
+                  </h2>
                   <div
-                    className="prose prose-sm max-w-none prose-headings:text-neutral-900 prose-p:text-neutral-700"
+                    className="prose prose-sm max-w-none prose-headings:text-neutral-900 prose-p:text-neutral-700 prose-a:text-vtk-blue prose-strong:text-neutral-900 prose-li:marker:text-vtk-blue/60"
                     dangerouslySetInnerHTML={{ __html: html }}
                   />
                 </div>
@@ -208,8 +236,11 @@ export default function VacancyDetailPage() {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Contact info */}
-            <div className="bg-white rounded-xl border p-6">
-              <h3 className="font-semibold mb-4">Contact Information</h3>
+            <div className="rounded-2xl border border-neutral-200/80 bg-white p-6 shadow-sm">
+              <h3 className="mb-4 flex items-center gap-2 font-semibold text-neutral-900">
+                <span className="h-1 w-6 rounded-full bg-vtk-yellow" aria-hidden />
+                Contact information
+              </h3>
               <div className="space-y-3 text-sm">
                 {vacancy.contact_name && (
                   <div className="flex items-center gap-2">
@@ -240,7 +271,7 @@ export default function VacancyDetailPage() {
               </div>
 
               <Button
-                className="w-full mt-4 gap-2"
+                className="mt-4 w-full gap-2 bg-vtk-blue text-white shadow-sm hover:bg-vtk-blue-dark"
                 onClick={() => setShowContactForm(!showContactForm)}
               >
                 <MessageSquare className="h-4 w-4" />
@@ -249,10 +280,10 @@ export default function VacancyDetailPage() {
             </div>
 
             {/* Posted date */}
-            <div className="bg-white rounded-xl border p-6">
-              <p className="text-sm text-muted-foreground">
+            <div className="rounded-2xl border border-neutral-200/80 bg-vtk-bg/80 p-6 shadow-sm">
+              <p className="text-sm text-neutral-600">
                 Posted on{" "}
-                <span className="font-medium text-neutral-900">
+                <span className="font-semibold text-vtk-blue-dark">
                   {new Date(vacancy.date_created).toLocaleDateString("en-GB", {
                     day: "numeric",
                     month: "long",
@@ -266,11 +297,11 @@ export default function VacancyDetailPage() {
 
         {/* Contact form (full width below) */}
         {showContactForm && (
-          <div className="mt-6 bg-white rounded-xl border p-6 sm:p-8">
-            <h2 className="text-xl font-semibold mb-2">
+          <div className="mt-8 rounded-2xl border border-neutral-200/80 bg-white p-6 shadow-sm ring-1 ring-vtk-blue/[0.06] sm:p-8">
+            <h2 className="mb-2 text-xl font-semibold text-neutral-900">
               Send a message to {company?.name ?? "this company"}
             </h2>
-            <p className="text-sm text-muted-foreground mb-6">
+            <p className="mb-6 text-sm text-neutral-600">
               Your message will be sent directly to the company. You can attach
               your CV or other documents.
             </p>

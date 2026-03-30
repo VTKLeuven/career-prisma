@@ -529,7 +529,8 @@ export type VacancySector = {
 
 export type VacancySectionConfig = {
   id: string;
-  key: string;
+  /** Optional legacy slug; vacancy.sections is keyed by config `id`. */
+  key?: string;
   label: string;
   sort?: number;
   active: boolean;

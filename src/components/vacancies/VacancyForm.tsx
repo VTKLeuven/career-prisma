@@ -47,11 +47,27 @@ export interface VacancyFormData {
   contact_email: string;
   contact_name: string;
   contact_phone: string;
+  /** Keys = vacancy_section_config row ids (Directus PK). */
   sections: Record<string, string>;
   masters: string[];
   status: "draft" | "published" | "archived";
 }
 
+function sectionHtmlFromVacancy(
+  vacancySections: Record<string, string> | undefined | null,
+  cfg: VacancySectionConfig
+): string {
+  const byId = vacancySections?.[cfg.id];
+  if (byId !== undefined) return byId;
+  if (cfg.key) return vacancySections?.[cfg.key] ?? "";
+  return "";
+}
+
+/**
+ * TipTap v3 + Next: never call `useEditor` with `editable: false` then flip to true in the
+ * same component — `setOptions` keeps the stale `editor.isEditable` and the field stays read-only.
+ * Mount the editor only after client hydration with `editable: true`.
+ */
 function RichTextEditor({
   label,
   required,
@@ -63,31 +79,13 @@ function RichTextEditor({
   value: string;
   onChange: (html: string) => void;
 }) {
-  const [isClient, setIsClient] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setIsClient(true);
+    setMounted(true);
   }, []);
 
-  const editor = useEditor({
-    extensions: [StarterKit],
-    content: value,
-    onUpdate({ editor }) {
-      onChange(editor.getHTML());
-    },
-    immediatelyRender: false,
-    editable: isClient,
-  });
-
-  useEffect(() => {
-    if (editor && value !== editor.getHTML()) {
-      editor.commands.setContent(value || "");
-    }
-    // Only sync when value prop changes externally, not on every editor update
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
-
-  if (!isClient) {
+  if (!mounted) {
     return (
       <div className="space-y-2">
         <Label>
@@ -98,6 +96,43 @@ function RichTextEditor({
       </div>
     );
   }
+
+  return (
+    <RichTextEditorInner
+      label={label}
+      required={required}
+      value={value}
+      onChange={onChange}
+    />
+  );
+}
+
+function RichTextEditorInner({
+  label,
+  required,
+  value,
+  onChange,
+}: {
+  label: string;
+  required?: boolean;
+  value: string;
+  onChange: (html: string) => void;
+}) {
+  const editor = useEditor({
+    extensions: [StarterKit],
+    content: value,
+    onUpdate({ editor }) {
+      onChange(editor.getHTML());
+    },
+    immediatelyRender: false,
+    editable: true,
+  });
+
+  useEffect(() => {
+    if (editor && value !== editor.getHTML()) {
+      editor.commands.setContent(value || "");
+    }
+  }, [editor, value]);
 
   return (
     <div className="space-y-2">
@@ -215,7 +250,7 @@ export function VacancyForm({
   const [sections, setSections] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
     for (const cfg of sectionConfigs) {
-      initial[cfg.key] = vacancy?.sections?.[cfg.key] ?? "";
+      initial[cfg.id] = sectionHtmlFromVacancy(vacancy?.sections, cfg);
     }
     return initial;
   });
@@ -407,11 +442,11 @@ export function VacancyForm({
         <h3 className="text-lg font-semibold">Vacancy Details</h3>
         {sectionConfigs.map((cfg) => (
           <RichTextEditor
-            key={cfg.key}
+            key={cfg.id}
             label={cfg.label}
             required={cfg.required}
-            value={sections[cfg.key] ?? ""}
-            onChange={(html) => handleSectionChange(cfg.key, html)}
+            value={sections[cfg.id] ?? ""}
+            onChange={(html) => handleSectionChange(cfg.id, html)}
           />
         ))}
       </div>

@@ -1,6 +1,12 @@
 export function getDirectusImageUrl(
   file?: string | { id?: string } | null,
-  options?: { width?: number; height?: number; quality?: number }
+  options?: {
+    width?: number;
+    height?: number;
+    quality?: number;
+    /** Directus asset `fit`: prefer `inside` for logos (no letterbox); `contain` can add black bars server-side. */
+    fit?: "cover" | "contain" | "fill" | "inside" | "outside";
+  }
 ): string | undefined {
   if (!file) return undefined;
 
@@ -14,6 +20,7 @@ export function getDirectusImageUrl(
     if (options.width) params.set("width", options.width.toString());
     if (options.height) params.set("height", options.height.toString());
     if (options.quality) params.set("quality", options.quality.toString());
+    if (options.fit) params.set("fit", options.fit);
     url += `?${params.toString()}`;
   }
 

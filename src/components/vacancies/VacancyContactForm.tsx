@@ -74,17 +74,23 @@ export function VacancyContactForm({
     }
   };
 
+  const fieldClass =
+    "border-neutral-200 focus-visible:border-vtk-blue/40 focus-visible:ring-vtk-blue/20";
+
   if (success) {
     return (
-      <div className="text-center py-8 space-y-3">
-        <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto" />
-        <h3 className="text-lg font-semibold">Message Sent!</h3>
-        <p className="text-muted-foreground">
+      <div className="space-y-3 py-8 text-center">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-vtk-blue/10">
+          <CheckCircle2 className="h-8 w-8 text-vtk-blue" />
+        </div>
+        <h3 className="text-lg font-semibold text-neutral-900">Message sent</h3>
+        <p className="text-neutral-600">
           Your message has been sent to {companyName}. They will reach out to
           you via your email address.
         </p>
         <Button
           variant="outline"
+          className="border-vtk-blue/30 text-vtk-blue hover:bg-vtk-blue/5"
           onClick={() => {
             setSuccess(false);
             setSubject("");
@@ -100,10 +106,10 @@ export function VacancyContactForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="contact-name">
-            Your Name <span className="text-red-500">*</span>
+          <Label htmlFor="contact-name" className="text-neutral-700">
+            Your name <span className="text-red-500">*</span>
           </Label>
           <Input
             id="contact-name"
@@ -111,11 +117,12 @@ export function VacancyContactForm({
             onChange={(e) => setName(e.target.value)}
             required
             placeholder="Your name"
+            className={fieldClass}
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="contact-email">
-            Your Email <span className="text-red-500">*</span>
+          <Label htmlFor="contact-email" className="text-neutral-700">
+            Your email <span className="text-red-500">*</span>
           </Label>
           <Input
             id="contact-email"
@@ -124,12 +131,13 @@ export function VacancyContactForm({
             onChange={(e) => setEmail(e.target.value)}
             required
             placeholder="you@example.com"
+            className={fieldClass}
           />
         </div>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="contact-subject">
+        <Label htmlFor="contact-subject" className="text-neutral-700">
           Subject <span className="text-red-500">*</span>
         </Label>
         <Input
@@ -138,11 +146,12 @@ export function VacancyContactForm({
           onChange={(e) => setSubject(e.target.value)}
           required
           placeholder="Application for..."
+          className={fieldClass}
         />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="contact-message">
+        <Label htmlFor="contact-message" className="text-neutral-700">
           Message <span className="text-red-500">*</span>
         </Label>
         <Textarea
@@ -152,19 +161,22 @@ export function VacancyContactForm({
           required
           rows={6}
           placeholder="Write your message here..."
+          className={fieldClass}
         />
       </div>
 
       {/* File attachments */}
       <div className="space-y-2">
-        <Label>Attachments (CV, cover letter, ...)</Label>
-        <div className="flex items-center gap-2">
+        <Label className="text-neutral-700">
+          Attachments (CV, cover letter, …)
+        </Label>
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={() => fileRef.current?.click()}
-            className="gap-2"
+            className="gap-2 border-neutral-200 text-neutral-800 hover:border-vtk-blue/30 hover:bg-vtk-blue/5 hover:text-vtk-blue-dark"
           >
             <Paperclip className="h-4 w-4" />
             Add file
@@ -177,20 +189,20 @@ export function VacancyContactForm({
             onChange={handleFiles}
             accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg"
           />
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs text-neutral-500">
             PDF, DOC, DOCX, TXT, PNG, JPG (max 10MB each)
           </span>
         </div>
         {files.length > 0 && (
-          <div className="space-y-1 mt-2">
+          <div className="mt-2 space-y-1">
             {files.map((file, idx) => (
               <div
                 key={`${file.name}-${idx}`}
-                className="flex items-center gap-2 text-sm bg-muted rounded px-3 py-1.5"
+                className="flex items-center gap-2 rounded-lg border border-neutral-200/90 bg-vtk-light/60 px-3 py-1.5 text-sm text-neutral-800"
               >
-                <Paperclip className="h-3 w-3 flex-shrink-0" />
+                <Paperclip className="h-3 w-3 flex-shrink-0 text-vtk-blue/70" />
                 <span className="truncate">{file.name}</span>
-                <span className="text-muted-foreground text-xs flex-shrink-0">
+                <span className="flex-shrink-0 text-xs text-neutral-500">
                   ({(file.size / 1024).toFixed(0)} KB)
                 </span>
                 <button
@@ -210,9 +222,13 @@ export function VacancyContactForm({
         <p className="text-sm text-red-600 bg-red-50 rounded p-3">{error}</p>
       )}
 
-      <Button type="submit" disabled={loading} className="gap-2">
+      <Button
+        type="submit"
+        disabled={loading}
+        className="gap-2 bg-vtk-blue text-white shadow-sm hover:bg-vtk-blue-dark disabled:opacity-60"
+      >
         <Send className="h-4 w-4" />
-        {loading ? "Sending..." : "Send Message"}
+        {loading ? "Sending…" : "Send message"}
       </Button>
     </form>
   );

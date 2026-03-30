@@ -108,7 +108,9 @@ function ConfigTable<T extends { id: string; name: string; sort?: number; active
     setFormActive(true);
     const defaults: Record<string, any> = {};
     extraColumns?.forEach((c) => {
-      defaults[c.key] = c.defaultValue ?? "";
+      if (c.editField) {
+        defaults[c.key] = c.defaultValue ?? "";
+      }
     });
     setExtraValues(defaults);
     setDialogOpen(true);
@@ -121,7 +123,9 @@ function ConfigTable<T extends { id: string; name: string; sort?: number; active
     setFormActive(item.active);
     const vals: Record<string, any> = {};
     extraColumns?.forEach((c) => {
-      vals[c.key] = (item as any)[c.key] ?? c.defaultValue ?? "";
+      if (c.editField) {
+        vals[c.key] = (item as any)[c.key] ?? c.defaultValue ?? "";
+      }
     });
     setExtraValues(vals);
     setDialogOpen(true);
@@ -134,8 +138,12 @@ function ConfigTable<T extends { id: string; name: string; sort?: number; active
         name: formName,
         sort: formSort,
         active: formActive,
-        ...extraValues,
       };
+      extraColumns?.forEach((c) => {
+        if (c.editField) {
+          payload[c.key] = extraValues[c.key];
+        }
+      });
       if (editId) {
         await onUpdate(editId, payload);
       } else {
@@ -372,7 +380,6 @@ export default function AdminVacanciesPage() {
   // --------------- Section Configs ---------------
   const handleAddSection = async (data: any) => {
     await createVacancySectionConfigAction({
-      key: data.key,
       label: data.name,
       sort: data.sort,
       active: data.active,
@@ -384,7 +391,6 @@ export default function AdminVacanciesPage() {
   const handleUpdateSection = async (id: string, data: any) => {
     await updateVacancySectionConfigAction(id, {
       label: data.name,
-      key: data.key,
       sort: data.sort,
       active: data.active,
       required: data.required,
@@ -463,7 +469,7 @@ export default function AdminVacanciesPage() {
             <div>
               <h2 className="text-lg font-semibold mb-2">Vacancy Types</h2>
               <p className="text-sm text-muted-foreground mb-4">
-                Types like Stage, Job, Studentenjob. Companies select one when
+                Examples: internship, job, student job. Companies select one when
                 posting a vacancy.
               </p>
               <ConfigTable
@@ -500,8 +506,7 @@ export default function AdminVacanciesPage() {
                 Define which rich-text sections appear on the vacancy form.
                 Each active section becomes a TipTap editor for companies and a
                 rendered block on the public detail page. The &quot;Name&quot;
-                field is the display label; the &quot;Key&quot; field is the
-                internal identifier stored in JSON.
+                field is the display label.
               </p>
               <ConfigTable
                 items={sectionItemsForTable}
@@ -509,29 +514,6 @@ export default function AdminVacanciesPage() {
                 onUpdate={handleUpdateSection}
                 onDelete={handleDeleteSection}
                 extraColumns={[
-                  {
-                    key: "key",
-                    header: "Key",
-                    render: (item: any) => (
-                      <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                        {item.key}
-                      </code>
-                    ),
-                    editField: (value, onChange) => (
-                      <Input
-                        value={value}
-                        onChange={(e) =>
-                          onChange(
-                            e.target.value
-                              .toLowerCase()
-                              .replace(/[^a-z0-9_]/g, "_")
-                          )
-                        }
-                        placeholder="e.g. description"
-                      />
-                    ),
-                    defaultValue: "",
-                  },
                   {
                     key: "required",
                     header: "Required",
