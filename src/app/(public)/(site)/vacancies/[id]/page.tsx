@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -15,11 +15,11 @@ import { getDirectusImageUrl } from "@/components/Images";
 import type {
   Vacancy,
   VacancyType,
-  VacancySector,
   VacancySectionConfig,
   Master,
   Company,
 } from "@/lib/schema";
+import { getVacancySectorsResolved } from "@/lib/vacancy-sectors";
 import {
   ArrowLeft,
   MapPin,
@@ -41,6 +41,15 @@ export default function VacancyDetailPage() {
   );
   const [loading, setLoading] = useState(true);
   const [showContactForm, setShowContactForm] = useState(false);
+  const contactFormSectionRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showContactForm) return;
+    contactFormSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, [showContactForm]);
 
   useEffect(() => {
     Promise.all([
@@ -56,10 +65,12 @@ export default function VacancyDetailPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-white to-vtk-blue/5">
-        <div className="container mx-auto max-w-4xl space-y-6 px-4 py-16 sm:py-24">
+        <div className="px-2 sm:px-0">
+          <div className="mx-auto w-full max-w-7xl space-y-6 px-2 py-16 sm:px-4 sm:py-24">
           <div className="h-8 w-32 animate-pulse rounded-md bg-vtk-light/60" />
           <div className="h-64 animate-pulse rounded-2xl bg-vtk-light/50" />
           <div className="h-96 animate-pulse rounded-2xl bg-vtk-light/50" />
+          </div>
         </div>
       </div>
     );
@@ -68,7 +79,8 @@ export default function VacancyDetailPage() {
   if (!vacancy) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-white to-vtk-blue/5">
-        <div className="container mx-auto px-4 py-24 text-center">
+        <div className="px-2 sm:px-0">
+          <div className="mx-auto w-full max-w-7xl px-2 py-24 text-center sm:px-4">
           <div className="mx-auto max-w-md rounded-2xl border border-neutral-200/80 bg-white p-10 shadow-sm">
             <h1 className="mb-2 text-2xl font-bold text-neutral-900">
               Vacancy not found
@@ -87,6 +99,7 @@ export default function VacancyDetailPage() {
               </Link>
             </Button>
           </div>
+          </div>
         </div>
       </div>
     );
@@ -96,10 +109,7 @@ export default function VacancyDetailPage() {
     typeof vacancy.company === "object" ? (vacancy.company as Company) : null;
   const typeName =
     typeof vacancy.type === "object" ? (vacancy.type as VacancyType).name : "";
-  const sectorName =
-    typeof vacancy.sector === "object"
-      ? (vacancy.sector as VacancySector).name
-      : "";
+  const sectorEntries = getVacancySectorsResolved(vacancy);
   const masterNames =
     vacancy.masters
       ?.map((m) =>
@@ -117,7 +127,8 @@ export default function VacancyDetailPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-white to-vtk-blue/5">
-      <div className="container mx-auto max-w-4xl px-4 py-16 sm:py-24">
+      <div className="px-2 sm:px-0">
+        <div className="mx-auto w-full max-w-7xl px-2 py-16 sm:px-4 sm:py-24">
         <Button
           variant="ghost"
           size="sm"
@@ -179,11 +190,15 @@ export default function VacancyDetailPage() {
                     {typeName}
                   </Badge>
                 )}
-                {sectorName && (
-                  <Badge variant="outline" className="border-neutral-200 text-neutral-700">
-                    {sectorName}
+                {sectorEntries.map((s) => (
+                  <Badge
+                    key={s.id}
+                    variant="outline"
+                    className="border-neutral-200 text-neutral-700"
+                  >
+                    {s.name}
                   </Badge>
-                )}
+                ))}
                 {vacancy.location && (
                   <Badge variant="outline" className="gap-1 border-neutral-200 text-neutral-700">
                     <MapPin className="h-3 w-3 text-vtk-blue/70" />
@@ -297,7 +312,10 @@ export default function VacancyDetailPage() {
 
         {/* Contact form (full width below) */}
         {showContactForm && (
-          <div className="mt-8 rounded-2xl border border-neutral-200/80 bg-white p-6 shadow-sm ring-1 ring-vtk-blue/[0.06] sm:p-8">
+          <div
+            ref={contactFormSectionRef}
+            className="mt-8 scroll-mt-28 rounded-2xl border border-neutral-200/80 bg-white p-6 shadow-sm ring-1 ring-vtk-blue/[0.06] sm:p-8 md:scroll-mt-32"
+          >
             <h2 className="mb-2 text-xl font-semibold text-neutral-900">
               Send a message to {company?.name ?? "this company"}
             </h2>
@@ -311,6 +329,7 @@ export default function VacancyDetailPage() {
             />
           </div>
         )}
+        </div>
       </div>
     </div>
   );

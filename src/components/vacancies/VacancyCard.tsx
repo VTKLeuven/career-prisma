@@ -5,7 +5,8 @@ import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
 import { getDirectusImageUrl } from "@/components/Images";
 import { MapPin, Building2 } from "lucide-react";
-import type { Vacancy, VacancyType, VacancySector, Master, Company } from "@/lib/schema";
+import type { Vacancy, VacancyType, Master, Company } from "@/lib/schema";
+import { getVacancySectorsResolved } from "@/lib/vacancy-sectors";
 
 interface VacancyCardProps {
   vacancy: Vacancy;
@@ -20,10 +21,7 @@ export function VacancyCard({ vacancy }: VacancyCardProps) {
     typeof vacancy.type === "object"
       ? (vacancy.type as VacancyType).name
       : "";
-  const sectorName =
-    typeof vacancy.sector === "object"
-      ? (vacancy.sector as VacancySector).name
-      : "";
+  const sectorEntries = getVacancySectorsResolved(vacancy);
   const masterNames =
     vacancy.masters
       ?.map((m) =>
@@ -86,14 +84,15 @@ export function VacancyCard({ vacancy }: VacancyCardProps) {
                 {typeName}
               </Badge>
             )}
-            {sectorName && (
+            {sectorEntries.map((s) => (
               <Badge
+                key={s.id}
                 variant="outline"
                 className="border-neutral-200 text-neutral-700"
               >
-                {sectorName}
+                {s.name}
               </Badge>
-            )}
+            ))}
             {vacancy.location && (
               <Badge variant="outline" className="gap-1 border-neutral-200 text-neutral-700">
                 <MapPin className="h-3 w-3 text-vtk-blue/70" />

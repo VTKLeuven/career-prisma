@@ -485,7 +485,8 @@ export default function AdminVacanciesPage() {
             <div>
               <h2 className="text-lg font-semibold mb-2">Vacancy Sectors</h2>
               <p className="text-sm text-muted-foreground mb-4">
-                Business sectors (IT, Consultancy, etc.). Companies select one
+                Business sectors (IT, Consultancy, etc.). Companies can select
+                one or more per vacancy.
                 when posting.
               </p>
               <ConfigTable

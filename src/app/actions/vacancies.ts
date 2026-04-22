@@ -129,6 +129,23 @@ export async function updateVacancyAction(
   return updateVacancy(id, payload);
 }
 
+const VACANCY_STATUS_VALUES: Vacancy["status"][] = [
+  "draft",
+  "published",
+  "archived",
+];
+
+/** Quick status change from the company vacancies table (no full edit form). */
+export async function updateVacancyStatusAction(
+  id: string,
+  status: Vacancy["status"]
+): Promise<Vacancy | null> {
+  if (!VACANCY_STATUS_VALUES.includes(status)) {
+    throw new Error("Invalid vacancy status");
+  }
+  return updateVacancyAction(id, { status });
+}
+
 export async function deleteVacancyAction(id: string): Promise<void> {
   const user = await requireUser();
   const existing = await getVacancyById(id);

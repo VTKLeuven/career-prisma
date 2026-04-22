@@ -42,7 +42,7 @@ export default function NewVacancyPage() {
     const result = await createVacancyAction({
       title: data.title,
       type: data.type,
-      sector: data.sector,
+      sectors: data.sectors,
       location: data.location,
       contact_email: data.contact_email,
       contact_name: data.contact_name,

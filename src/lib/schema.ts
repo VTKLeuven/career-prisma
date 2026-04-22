@@ -545,7 +545,19 @@ export type Vacancy = {
   company: string | Company;
   title: string;
   type: string | VacancyType;
-  sector: string | VacancySector;
+  /** Legacy single sector (M2O). Kept in sync as first selected sector when using M2M. */
+  sector?: string | VacancySector;
+  /**
+   * M2M sectors (junction rows from API), or client writes: array of `vacancy_sectors` ids.
+   * Junction FK is usually `sector_id` → vacancy_sectors; some setups use `vacancy_sectors_id`.
+   */
+  sectors?: Array<
+    | string
+    | {
+        sector_id?: string | VacancySector;
+        vacancy_sectors_id?: string | VacancySector;
+      }
+  >;
   location: string;
   contact_email: string;
   contact_name?: string;
@@ -591,4 +603,10 @@ export type Schema = {
   vacancy_sectors: VacancySector[];
   vacancy_section_config: VacancySectionConfig[];
   vacancies_masters: { id: number | string; vacancies_id: string | Vacancy; master_id: string | Master }[];
+  vacancies_sectors: {
+    id?: number | string;
+    vacancies_id?: string | Vacancy;
+    sector_id?: string | VacancySector;
+    vacancy_sectors_id?: string | VacancySector;
+  }[];
 };

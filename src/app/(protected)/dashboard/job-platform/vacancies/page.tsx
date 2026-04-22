@@ -5,6 +5,13 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -27,18 +34,28 @@ import { Plus, Pencil, Trash2 } from "lucide-react";
 import {
   fetchMyVacanciesAction,
   deleteVacancyAction,
+  updateVacancyStatusAction,
 } from "@/app/actions/vacancies";
-import type { Vacancy, VacancyType, VacancySector } from "@/lib/schema";
+import type { Vacancy, VacancyType } from "@/lib/schema";
+import { getVacancySectorsResolved } from "@/lib/vacancy-sectors";
+import { cn } from "@/lib/utils";
 
-const statusColors: Record<string, string> = {
-  draft: "bg-yellow-100 text-yellow-800",
-  published: "bg-green-100 text-green-800",
-  archived: "bg-neutral-100 text-neutral-600",
+const statusTriggerClass: Record<Vacancy["status"], string> = {
+  draft: "border-yellow-200 bg-yellow-50 text-yellow-900",
+  published: "border-green-200 bg-green-50 text-green-900",
+  archived: "border-neutral-200 bg-neutral-50 text-neutral-700",
+};
+
+const statusLabels: Record<Vacancy["status"], string> = {
+  draft: "Draft",
+  published: "Published",
+  archived: "Archived",
 };
 
 export default function DashboardVacanciesPage() {
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
   const [loading, setLoading] = useState(true);
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -65,11 +82,27 @@ export default function DashboardVacanciesPage() {
     }
   };
 
+  const handleStatusChange = async (
+    vacancyId: string,
+    next: Vacancy["status"]
+  ) => {
+    const current = vacancies.find((x) => x.id === vacancyId)?.status;
+    if (current === next) return;
+    setStatusUpdatingId(vacancyId);
+    try {
+      await updateVacancyStatusAction(vacancyId, next);
+      setVacancies((prev) =>
+        prev.map((v) => (v.id === vacancyId ? { ...v, status: next } : v))
+      );
+    } catch (err) {
+      console.error("Failed to update vacancy status:", err);
+    } finally {
+      setStatusUpdatingId(null);
+    }
+  };
+
   const getTypeName = (v: Vacancy) =>
     typeof v.type === "object" ? (v.type as VacancyType).name : "";
-  const getSectorName = (v: Vacancy) =>
-    typeof v.sector === "object" ? (v.sector as VacancySector).name : "";
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -112,7 +145,7 @@ export default function DashboardVacanciesPage() {
               <TableRow>
                 <TableHead>Title</TableHead>
                 <TableHead>Type</TableHead>
-                <TableHead>Sector</TableHead>
+                <TableHead>Sectors</TableHead>
                 <TableHead>Location</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Date</TableHead>
@@ -120,19 +153,56 @@ export default function DashboardVacanciesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {vacancies.map((v) => (
+              {vacancies.map((v) => {
+                const sectorList = getVacancySectorsResolved(v);
+                return (
                 <TableRow key={v.id}>
                   <TableCell className="font-medium">{v.title}</TableCell>
                   <TableCell>{getTypeName(v)}</TableCell>
-                  <TableCell>{getSectorName(v)}</TableCell>
+                  <TableCell className="min-w-[140px] max-w-[320px]">
+                    <div className="flex flex-wrap gap-1">
+                      {sectorList.length === 0 ? (
+                        <span className="text-muted-foreground text-sm">—</span>
+                      ) : (
+                        sectorList.map((s) => (
+                          <Badge
+                            key={s.id}
+                            variant="outline"
+                            className="border-neutral-200 font-normal text-neutral-700"
+                          >
+                            {s.name}
+                          </Badge>
+                        ))
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>{v.location}</TableCell>
                   <TableCell>
-                    <Badge
-                      variant="secondary"
-                      className={statusColors[v.status] ?? ""}
+                    <Select
+                      value={v.status}
+                      disabled={statusUpdatingId === v.id}
+                      onValueChange={(value) =>
+                        handleStatusChange(v.id, value as Vacancy["status"])
+                      }
                     >
-                      {v.status}
-                    </Badge>
+                      <SelectTrigger
+                        className={cn(
+                          "h-8 w-[148px] text-xs font-medium",
+                          statusTriggerClass[v.status] ?? ""
+                        )}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(statusLabels) as Vacancy["status"][]).map(
+                          (s) => (
+                            <SelectItem key={s} value={s}>
+                              {statusLabels[s]}
+                            </SelectItem>
+                          )
+                        )}
+                      </SelectContent>
+                    </Select>
                   </TableCell>
                   <TableCell>
                     {new Date(v.date_created).toLocaleDateString()}
@@ -176,7 +246,8 @@ export default function DashboardVacanciesPage() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </div>

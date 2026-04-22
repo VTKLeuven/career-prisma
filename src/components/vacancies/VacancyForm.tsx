@@ -23,6 +23,7 @@ import type {
   VacancySectionConfig,
   Master,
 } from "@/lib/schema";
+import { getVacancySectorsResolved } from "@/lib/vacancy-sectors";
 
 const EditorContent = dynamic(
   () => import("@tiptap/react").then((mod) => mod.EditorContent),
@@ -42,7 +43,8 @@ interface VacancyFormProps {
 export interface VacancyFormData {
   title: string;
   type: string;
-  sector: string;
+  /** One or more vacancy_sectors ids. */
+  sectors: string[];
   location: string;
   contact_email: string;
   contact_name: string;
@@ -221,11 +223,15 @@ export function VacancyForm({
   const [typeId, setTypeId] = useState(
     typeof vacancy?.type === "object" ? vacancy.type.id : (vacancy?.type ?? "")
   );
-  const [sectorId, setSectorId] = useState(
-    typeof vacancy?.sector === "object"
-      ? vacancy.sector.id
-      : (vacancy?.sector ?? "")
-  );
+  const [selectedSectors, setSelectedSectors] = useState<string[]>(() => {
+    const resolved = vacancy ? getVacancySectorsResolved(vacancy) : [];
+    if (resolved.length > 0) return resolved.map((s) => s.id);
+    const legacy =
+      typeof vacancy?.sector === "object"
+        ? vacancy.sector.id
+        : (vacancy?.sector ?? "");
+    return legacy ? [legacy] : [];
+  });
   const [location, setLocation] = useState(vacancy?.location ?? "");
   const [contactEmail, setContactEmail] = useState(
     vacancy?.contact_email ?? ""
@@ -267,14 +273,23 @@ export function VacancyForm({
     );
   };
 
+  const toggleSector = (sectorId: string) => {
+    setSelectedSectors((prev) =>
+      prev.includes(sectorId)
+        ? prev.filter((id) => id !== sectorId)
+        : [...prev, sectorId]
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (selectedSectors.length === 0) return;
     setLoading(true);
     try {
       await onSubmit({
         title,
         type: typeId,
-        sector: sectorId,
+        sectors: selectedSectors,
         location,
         contact_email: contactEmail,
         contact_name: contactName,
@@ -306,42 +321,50 @@ export function VacancyForm({
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="type">
-              Type <span className="text-red-500">*</span>
-            </Label>
-            <Select value={typeId} onValueChange={setTypeId} required>
-              <SelectTrigger>
-                <SelectValue placeholder="Select type" />
-              </SelectTrigger>
-              <SelectContent>
-                {types.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="type">
+            Type <span className="text-red-500">*</span>
+          </Label>
+          <Select value={typeId} onValueChange={setTypeId} required>
+            <SelectTrigger>
+              <SelectValue placeholder="Select type" />
+            </SelectTrigger>
+            <SelectContent>
+              {types.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="sector">
-              Sector <span className="text-red-500">*</span>
-            </Label>
-            <Select value={sectorId} onValueChange={setSectorId} required>
-              <SelectTrigger>
-                <SelectValue placeholder="Select sector" />
-              </SelectTrigger>
-              <SelectContent>
-                {sectors.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <div className="space-y-2">
+          <Label>
+            Sectors <span className="text-red-500">*</span>
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            Select all sectors that apply (at least one).
+          </p>
+          <div className="grid max-h-48 grid-cols-1 gap-2 overflow-y-auto rounded-md border p-3 sm:grid-cols-2">
+            {sectors.map((s) => (
+              <label
+                key={s.id}
+                className="flex cursor-pointer items-center gap-2 text-sm"
+              >
+                <Checkbox
+                  checked={selectedSectors.includes(s.id)}
+                  onCheckedChange={() => toggleSector(s.id)}
+                />
+                {s.name}
+              </label>
+            ))}
           </div>
+          {selectedSectors.length === 0 && (
+            <p className="text-xs text-amber-600">
+              Choose at least one sector to save this vacancy.
+            </p>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -453,7 +476,10 @@ export function VacancyForm({
 
       {/* Submit */}
       <div className="flex gap-3">
-        <Button type="submit" disabled={loading}>
+        <Button
+          type="submit"
+          disabled={loading || selectedSectors.length === 0}
+        >
           {loading ? "Saving..." : submitLabel}
         </Button>
       </div>

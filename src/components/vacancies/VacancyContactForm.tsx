@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Paperclip, X, Send, CheckCircle2 } from "lucide-react";
+import { submitVacancyContactAction } from "@/app/actions/vacancy-contact";
 
 interface VacancyContactFormProps {
   vacancyId: string;
@@ -56,14 +57,10 @@ export function VacancyContactForm({
         formData.append("files", file);
       }
 
-      const res = await fetch("/api/vacancies/contact", {
-        method: "POST",
-        body: formData,
-      });
+      const result = await submitVacancyContactAction(formData);
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to send message");
+      if (!result.success) {
+        throw new Error(result.error || "Failed to send message");
       }
 
       setSuccess(true);

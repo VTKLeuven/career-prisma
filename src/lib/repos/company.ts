@@ -7,6 +7,7 @@ import {
   directus,
   getServerDirectusClient,
   getAdminDirectusClient,
+  getServerDirectusClientPreferStatic,
 } from "@/lib/directus";
 import type { Company } from "@/lib/schema";
 
@@ -19,13 +20,15 @@ export type CompanyBasicForVacancy = Pick<Company, "id" | "name" | "logo" | "web
  * `vacancies → company.name` but allow direct `readItems("company", ...)`.
  */
 export async function getCompaniesBasicByIds(
-  ids: string[]
+  ids: string[],
+  opts?: { preferServerToken?: boolean }
 ): Promise<CompanyBasicForVacancy[]> {
   const unique = [...new Set(ids.filter(Boolean))];
   if (unique.length === 0) return [];
 
-  const client =
-    (await getDirectusWithToken()) || getAdminDirectusClient() || directus;
+  const client = opts?.preferServerToken
+    ? await getServerDirectusClientPreferStatic()
+    : (await getDirectusWithToken()) || getAdminDirectusClient() || directus;
 
   try {
     const items = (await client.request(

@@ -27,6 +27,7 @@ import type {
 } from "@/lib/schema";
 import { Search, X, SlidersHorizontal, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { vacancyMatchesSectorFilter } from "@/lib/vacancy-sectors";
 
 type SortOption = "newest" | "oldest" | "az" | "za";
 
@@ -57,6 +58,12 @@ export default function VacanciesPage() {
     (searchParams.get("sort") as SortOption) ?? "newest"
   );
   const [showFilters, setShowFilters] = useState(false);
+  /** Radix Select generates unstable aria-controls between SSR and client — render selects only after mount. */
+  const [filtersUiReady, setFiltersUiReady] = useState(false);
+
+  useEffect(() => {
+    setFiltersUiReady(true);
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -106,10 +113,7 @@ export default function VacanciesPage() {
       });
     }
     if (filterSector) {
-      result = result.filter((v) => {
-        const sid = typeof v.sector === "object" ? v.sector.id : v.sector;
-        return sid === filterSector;
-      });
+      result = result.filter((v) => vacancyMatchesSectorFilter(v, filterSector));
     }
     if (filterMaster) {
       result = result.filter((v) =>
@@ -160,9 +164,11 @@ export default function VacanciesPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-white to-vtk-blue/5">
-      <div className="container mx-auto px-4 py-16 sm:py-24">
-        {/* Header — same card pattern as Contact / Terms */}
-        <div className="max-w-3xl mx-auto rounded-2xl border border-neutral-200/80 bg-white p-8 shadow-sm text-center mb-10">
+      {/* Horizontal shell matches site Header: outer px-2 sm:px-0, inner max-w-7xl px-2 sm:px-4 */}
+      <div className="px-2 sm:px-0">
+        <div className="mx-auto w-full max-w-7xl px-2 py-16 sm:px-4 sm:py-24">
+        {/* Header — same card pattern as Contact / Terms; width aligned with site header */}
+        <div className="mb-10 w-full rounded-2xl border border-neutral-200/80 bg-white p-8 text-center shadow-sm">
           <div className="flex justify-center mb-4">
             <div className="rounded-full bg-vtk-blue/10 p-4 ring-4 ring-vtk-blue/5">
               <Building2 className="h-10 w-10 text-vtk-blue" />
@@ -178,7 +184,7 @@ export default function VacanciesPage() {
         </div>
 
         {/* Search & filters — VTK shell */}
-        <div className="max-w-4xl mx-auto rounded-2xl border border-neutral-200/80 bg-white shadow-sm p-5 sm:p-6 mb-8">
+        <div className="mb-8 w-full rounded-2xl border border-neutral-200/80 bg-white p-5 shadow-sm sm:p-6">
           <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-vtk-blue/50" />
@@ -190,17 +196,24 @@ export default function VacanciesPage() {
               />
             </div>
 
-            <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-              <SelectTrigger className="w-full sm:w-44 border-neutral-200 focus:ring-vtk-blue/25">
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="newest">Newest first</SelectItem>
-                <SelectItem value="oldest">Oldest first</SelectItem>
-                <SelectItem value="az">A - Z</SelectItem>
-                <SelectItem value="za">Z - A</SelectItem>
-              </SelectContent>
-            </Select>
+            {filtersUiReady ? (
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+                <SelectTrigger className="h-9 w-full border-neutral-200 focus:ring-vtk-blue/25 sm:w-44">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="newest">Newest first</SelectItem>
+                  <SelectItem value="oldest">Oldest first</SelectItem>
+                  <SelectItem value="az">A - Z</SelectItem>
+                  <SelectItem value="za">Z - A</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              <div
+                className="h-9 w-full shrink-0 rounded-md border border-neutral-200 bg-muted/30 sm:w-44"
+                aria-hidden
+              />
+            )}
 
             <Button
               variant={showFilters ? "default" : "outline"}
@@ -234,53 +247,65 @@ export default function VacanciesPage() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-neutral-800">Type</label>
-                  <Select value={filterType || "all"} onValueChange={(v) => setFilterType(v === "all" ? "" : v)}>
-                    <SelectTrigger className="border-neutral-200">
-                      <SelectValue placeholder="All types" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All types</SelectItem>
-                      {types.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>
-                          {t.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {filtersUiReady ? (
+                    <Select value={filterType || "all"} onValueChange={(v) => setFilterType(v === "all" ? "" : v)}>
+                      <SelectTrigger className="h-9 w-full border-neutral-200">
+                        <SelectValue placeholder="All types" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All types</SelectItem>
+                        {types.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="h-9 w-full rounded-md border border-neutral-200 bg-muted/30" aria-hidden />
+                  )}
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-neutral-800">Sector</label>
-                  <Select value={filterSector || "all"} onValueChange={(v) => setFilterSector(v === "all" ? "" : v)}>
-                    <SelectTrigger className="border-neutral-200">
-                      <SelectValue placeholder="All sectors" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All sectors</SelectItem>
-                      {sectors.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {filtersUiReady ? (
+                    <Select value={filterSector || "all"} onValueChange={(v) => setFilterSector(v === "all" ? "" : v)}>
+                      <SelectTrigger className="h-9 w-full border-neutral-200">
+                        <SelectValue placeholder="All sectors" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All sectors</SelectItem>
+                        {sectors.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="h-9 w-full rounded-md border border-neutral-200 bg-muted/30" aria-hidden />
+                  )}
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-neutral-800">Master</label>
-                  <Select value={filterMaster || "all"} onValueChange={(v) => setFilterMaster(v === "all" ? "" : v)}>
-                    <SelectTrigger className="border-neutral-200">
-                      <SelectValue placeholder="All masters" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All masters</SelectItem>
-                      {masters.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
-                          {m.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {filtersUiReady ? (
+                    <Select value={filterMaster || "all"} onValueChange={(v) => setFilterMaster(v === "all" ? "" : v)}>
+                      <SelectTrigger className="h-9 w-full border-neutral-200">
+                        <SelectValue placeholder="All masters" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All masters</SelectItem>
+                        {masters.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="h-9 w-full rounded-md border border-neutral-200 bg-muted/30" aria-hidden />
+                  )}
                 </div>
               </div>
 
@@ -334,7 +359,7 @@ export default function VacanciesPage() {
         </div>
 
         {/* Results */}
-        <div className="max-w-4xl mx-auto">
+        <div className="w-full">
           {loading ? (
             <div className="space-y-4">
               {[1, 2, 3, 4].map((i) => (
@@ -376,6 +401,7 @@ export default function VacanciesPage() {
               </div>
             </>
           )}
+        </div>
         </div>
       </div>
     </div>
