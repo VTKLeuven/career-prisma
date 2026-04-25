@@ -19,7 +19,10 @@ import type {
   Master,
   Company,
 } from "@/lib/schema";
-import { getVacancySectorsResolved } from "@/lib/vacancy-sectors";
+import {
+  getVacancySectorsResolved,
+  vacancySectorDisplayName,
+} from "@/lib/vacancy-sectors";
 import {
   ArrowLeft,
   MapPin,
@@ -196,7 +199,7 @@ export default function VacancyDetailPage() {
                     variant="outline"
                     className="border-neutral-200 text-neutral-700"
                   >
-                    {s.name}
+                    {vacancySectorDisplayName(s)}
                   </Badge>
                 ))}
                 {vacancy.location && (

@@ -6,7 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { getDirectusImageUrl } from "@/components/Images";
 import { MapPin, Building2 } from "lucide-react";
 import type { Vacancy, VacancyType, Master, Company } from "@/lib/schema";
-import { getVacancySectorsResolved } from "@/lib/vacancy-sectors";
+import {
+  getVacancySectorsResolved,
+  vacancySectorDisplayName,
+} from "@/lib/vacancy-sectors";
 
 interface VacancyCardProps {
   vacancy: Vacancy;
@@ -90,7 +93,7 @@ export function VacancyCard({ vacancy }: VacancyCardProps) {
                 variant="outline"
                 className="border-neutral-200 text-neutral-700"
               >
-                {s.name}
+                {vacancySectorDisplayName(s)}
               </Badge>
             ))}
             {vacancy.location && (

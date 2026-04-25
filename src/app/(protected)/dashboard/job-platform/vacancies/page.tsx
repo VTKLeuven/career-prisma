@@ -37,7 +37,10 @@ import {
   updateVacancyStatusAction,
 } from "@/app/actions/vacancies";
 import type { Vacancy, VacancyType } from "@/lib/schema";
-import { getVacancySectorsResolved } from "@/lib/vacancy-sectors";
+import {
+  getVacancySectorsResolved,
+  vacancySectorDisplayName,
+} from "@/lib/vacancy-sectors";
 import { cn } from "@/lib/utils";
 
 const statusTriggerClass: Record<Vacancy["status"], string> = {
@@ -170,7 +173,7 @@ export default function DashboardVacanciesPage() {
                             variant="outline"
                             className="border-neutral-200 font-normal text-neutral-700"
                           >
-                            {s.name}
+                            {vacancySectorDisplayName(s)}
                           </Badge>
                         ))
                       )}

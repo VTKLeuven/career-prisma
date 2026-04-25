@@ -100,9 +100,11 @@ The main vacancy/job posting collection.
 
 | Field          | Type              | Notes                                      |
 |----------------|-------------------|--------------------------------------------|
-| id             | Auto integer      | Primary key                                |
-| vacancies_id   | M2O → vacancies   | Foreign key to vacancy (UUID if vacancies use UUID) |
+| id             | Auto integer      | Primary key (this is normal — **no need** to change it to UUID) |
+| vacancies_id   | M2O → vacancies   | Foreign key to vacancy (UUID if `vacancies.id` is UUID) |
 | (see below)    | M2O → vacancy_sectors | **Must be UUID** (same type as `vacancy_sectors.id`) |
+
+**Primary key `id`:** an **integer** junction PK is normal. The earlier “integer vs UUID” error referred to a **foreign key column** receiving a UUID (wrong field), not to the junction PK.
 
 Directus usually creates **`vacancy_sectors_id`** (M2O → `vacancy_sectors`). Some teams add or rename a field **`sector_id`** — that name must still be a **UUID** foreign key to `vacancy_sectors`. If `sector_id` is accidentally a different type (e.g. integer), inserts will fail (see troubleshooting).
 
@@ -110,12 +112,10 @@ Directus usually creates **`vacancy_sectors_id`** (M2O → `vacancy_sectors`). S
 
 1. Junction collection `vacancies_sectors` with M2O to `vacancies` and M2O to `vacancy_sectors` (or use Directus “Create M2M” on `vacancies` → `sectors`).
 2. On `vacancies`, M2M **`sectors`** → `vacancy_sectors` via that junction.
-3. **App defaults (no env):** writes use **`vacancy_sectors_id`** on the junction; reads expand **`sectors.vacancy_sectors_id.*`** in `VACANCY_READ_FIELDS`. If you **only** have a renamed UUID field `sector_id` (and no `vacancy_sectors_id`), set in `.env`:  
-   `DIRECTUS_VACANCY_SECTORS_JUNCTION_FK=sector_id`  
-   and in `vacancies.ts` swap the read field comment to use `sectors.sector_id.*` instead of `vacancy_sectors_id.*`.
-4. Optional env: `DIRECTUS_VACANCIES_SECTORS_JUNCTION_COLLECTION` if the junction name is not `vacancies_sectors`; `DIRECTUS_VACANCIES_SECTORS_JUNCTION_VACANCY_FK` if the vacancy FK is not `vacancies_id`.
+3. **One env for read + nested write shape:** `DIRECTUS_VACANCY_SECTORS_JUNCTION_FK` (default `vacancy_sectors_id`) must be the **actual UUID M2O field name** on `vacancies_sectors` pointing at `vacancy_sectors`. The app builds **`sectors.<that_field>.*`** for reads and sends **`sectors`** on `vacancies` the same way as **`masters`**: an array of `{ "<that_fk>": "<vacancy_sectors_uuid>" }`. If you only have `sector_id` (UUID), set `DIRECTUS_VACANCY_SECTORS_JUNCTION_FK=sector_id`.
+4. Optional: `DIRECTUS_VACANCIES_SECTORS_JUNCTION_SECTOR_FKS` (comma-separated) only if **multiple** UUID columns must receive the same sector id (rare).
 
-**How the app saves sectors:** direct **`items/vacancies_sectors`** creates/deletes (not nested `sectors` on the vacancy). Company role needs **read, create, delete** on that junction for their vacancies.
+**How the app saves sectors:** identical pattern to **`masters`** — nested payload on **`POST/PATCH /items/vacancies`**, not separate calls to `vacancies_sectors`. Permissions for company users should therefore match what already works for **`vacancies_masters`** (create/read/update/delete on the junction for rows linked to their vacancies, or equivalent relational access through `vacancies` update).
 
 ### Troubleshooting: `invalid input syntax for type integer` + a UUID
 
@@ -133,7 +133,7 @@ PostgreSQL is saying a **UUID string** was written into a column typed as **inte
 
 Junction rows exist, but the link to **`vacancy_sectors`** is empty or the wrong column is filled.
 
-1. In **Data model → `vacancies_sectors`**, check which field is the real M2O to **`vacancy_sectors`** (UUID). The app writes that as a nested relation: `{ id: "<uuid>" }`.
+1. In **Data model → `vacancies_sectors`**, check which field is the real M2O to **`vacancy_sectors`** (UUID). Set `DIRECTUS_VACANCY_SECTORS_JUNCTION_FK` to that field name so the app sends the same key as **`master_id`** for masters.
 2. If Studio still shows `--` after deploy, the UI may be bound to a **second** field (e.g. `sector_id`) while only `vacancy_sectors_id` was filled. If **both** columns are UUID foreign keys to `vacancy_sectors`, set in `.env`:  
    `DIRECTUS_VACANCIES_SECTORS_JUNCTION_SECTOR_FKS=vacancy_sectors_id,sector_id`  
    **Do not** list an integer `sector_id` here — that will error again.
@@ -176,6 +176,31 @@ All public permissions plus:
 - `vacancy_types`: read
 - `vacancy_sectors`: read
 - `vacancy_section_config`: read
+
+### How to verify company (rep) access in Directus
+
+1. **Settings → Access Control → Roles**  
+   Open the role your company users use (e.g. *Company Representative*, *Company*, … — the same role the app assigns after login).
+
+2. **Per collection, open the role’s permissions** and confirm at least:
+
+   | Collection | Company role needs |
+   |------------|-------------------|
+   | `vacancies` | **Create**, **Read**, **Update**, **Delete** with a rule so rows are limited to **their** company (e.g. Item Permissions: `company` **equals** `$CURRENT_USER.company`, or your equivalent dynamic variable). |
+   | `vacancies_sectors` | **Create**, **Read**, **Update**, **Delete** on junction rows for their vacancies (same scoping as **`vacancies_masters`**). Nested `sectors` on `vacancies` updates need the same junction access as nested `masters`. |
+   | `vacancies_masters` | Same idea as `vacancies_sectors` if reps pick masters on vacancies. |
+   | `vacancy_types`, `vacancy_sectors`, `vacancy_section_config` | **Read** (often with filter `active = true` where applicable). |
+
+3. **Field-level permissions**  
+   Under each collection permission, check **Field Permissions**: the fields the Next.js app sends (title, type, location, `sections`, `contact_*`, etc.) must be readable/writable for create/update. If a field is “no access”, saves can partially fail or look broken.
+
+4. **Smoke test as a real company user**  
+   - Log in on the career site as a **company** user (not admin).  
+   - Create or edit a vacancy, change sectors, save.  
+   - If you get **403** or silent failures, open **Directus → Users** for that user: confirm **role** and **company** are set. Then in the browser **Network** tab, inspect failed calls to your API / server actions — the error body often echoes Directus “permission denied” or a field name.
+
+5. **Compare with Admin**  
+   If the same action **works** when you use an **admin** token but **not** as company, the gap is almost always **role permissions** or **missing `$CURRENT_USER.company`** on the user record.
 
 ### Admin role
 - Full CRUD on all vacancy-related collections: `vacancies`, `vacancy_types`, `vacancy_sectors`, `vacancy_section_config`, `vacancies_masters`, `vacancies_sectors`

@@ -23,6 +23,31 @@ import type {
   Company,
 } from "@/lib/schema";
 
+// --- vacancies.sectors M2M (same API shape as `masters`: array of `{ <fk>: uuid }` on create/updateItem) ---
+
+/** Junction field → `vacancy_sectors.id` (UUID). Same as `DIRECTUS_VACANCY_SECTORS_JUNCTION_FK` for reads. */
+const VACANCIES_SECTORS_JUNCTION_FK =
+  process.env.DIRECTUS_VACANCY_SECTORS_JUNCTION_FK?.trim() ||
+  "vacancy_sectors_id";
+
+/**
+ * Optional comma-separated junction keys that all point at `vacancy_sectors` (same UUID each).
+ * Only use when every listed column is a UUID FK (never list an integer `sector_id`).
+ */
+const VACANCIES_SECTORS_JUNCTION_SECTOR_FKS =
+  process.env.DIRECTUS_VACANCIES_SECTORS_JUNCTION_SECTOR_FKS?.trim();
+
+function junctionSectorFkKeys(): string[] {
+  if (VACANCIES_SECTORS_JUNCTION_SECTOR_FKS) {
+    return VACANCIES_SECTORS_JUNCTION_SECTOR_FKS.split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return [VACANCIES_SECTORS_JUNCTION_FK];
+}
+
+const VACANCY_READ_FIELDS_SECTORS_EXPAND = `sectors.${VACANCIES_SECTORS_JUNCTION_FK}.*`;
+
 /**
  * No nested `company.*` — many Directus policies allow direct `company` reads but
  * forbid expanding company fields from `vacancies`. Company rows are merged in a second query.
@@ -44,10 +69,7 @@ const VACANCY_READ_FIELDS = [
   "sections",
   "type.*",
   "sector.*",
-  // Junction → vacancy_sectors: use the field that is UUID in your DB (Directus default: vacancy_sectors_id).
-  "sectors.vacancy_sectors_id.*",
-  // If you renamed that FK to `sector_id` (UUID) and removed vacancy_sectors_id, swap the line above for:
-  // "sectors.sector_id.*",
+  VACANCY_READ_FIELDS_SECTORS_EXPAND,
   "masters.master_id.*",
 ] as const;
 
@@ -198,46 +220,6 @@ export async function getVacancyById(
   }
 }
 
-/** Junction between vacancies and vacancy_sectors (M2M `sectors`). */
-const VACANCIES_SECTORS_JUNCTION =
-  process.env.DIRECTUS_VACANCIES_SECTORS_JUNCTION_COLLECTION?.trim() ||
-  "vacancies_sectors";
-
-/**
- * FK on that junction pointing at `vacancy_sectors.id`.
- * Directus’s default M2M field is usually `vacancy_sectors_id` (UUID).
- * If you renamed it to `sector_id`, set `DIRECTUS_VACANCY_SECTORS_JUNCTION_FK=sector_id`.
- * If `sector_id` exists as a different (e.g. integer) column, you must use `vacancy_sectors_id` for UUIDs.
- */
-const VACANCIES_SECTORS_JUNCTION_FK =
-  process.env.DIRECTUS_VACANCY_SECTORS_JUNCTION_FK?.trim() ||
-  "vacancy_sectors_id";
-
-/**
- * Optional: comma-separated M2O keys on the junction that all point at `vacancy_sectors`
- * (same UUID is written to each). Use when Studio shows "--" for sectors because the
- * relation reads e.g. `sector_id` while we only filled `vacancy_sectors_id`.
- * Example: `vacancy_sectors_id,sector_id` (only if both columns are UUID FKs).
- */
-const VACANCIES_SECTORS_JUNCTION_SECTOR_FKS =
-  process.env.DIRECTUS_VACANCIES_SECTORS_JUNCTION_SECTOR_FKS?.trim();
-
-/** FK on the junction pointing at `vacancies.id` (often `vacancies_id`). */
-const VACANCIES_SECTORS_JUNCTION_VACANCY_FK =
-  process.env.DIRECTUS_VACANCIES_SECTORS_JUNCTION_VACANCY_FK?.trim() ||
-  "vacancies_id";
-
-function junctionSectorFkKeys(): string[] {
-  if (VACANCIES_SECTORS_JUNCTION_SECTOR_FKS) {
-    return VACANCIES_SECTORS_JUNCTION_SECTOR_FKS.split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-  return [VACANCIES_SECTORS_JUNCTION_FK];
-}
-
-type DirectusClient = NonNullable<Awaited<ReturnType<typeof getDirectusWithToken>>>;
-
 function dedupeSectorIds(ids: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -270,93 +252,53 @@ function sectorIdsFromSectorsPayload(sectors: unknown): string[] | undefined {
 }
 
 /**
- * Removes `sectors` / `sector` from the vacancy payload and optionally returns ids to sync
- * via direct junction writes (nested M2M on `vacancies` is unreliable for multiple rows).
- *
- * `syncSectorIds === undefined` → caller must not touch the junction (field absent).
- * `syncSectorIds === []` → clear all junction rows for this vacancy.
+ * Normalise `sectors` to the same shape Directus expects for `masters`:
+ * `sectors: [{ vacancy_sectors_id: "<uuid>" }, …]` (FK key from env).
+ * Strips legacy `sector` when rewriting from an array so it does not fight the M2M.
  */
-function splitVacancyPayloadForSectorSync(payload: Record<string, unknown>): {
-  body: Record<string, unknown>;
-  syncSectorIds: string[] | undefined;
-} {
+function normalizeSectorsForVacancyPayload(
+  payload: Record<string, unknown>
+): Record<string, unknown> {
   if (!("sectors" in payload)) {
-    return { body: { ...payload }, syncSectorIds: undefined };
+    return { ...payload };
   }
 
   const out = { ...payload };
   const raw = out.sectors;
-  delete out.sectors;
-  delete out.sector;
 
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-    out.sectors = raw;
-    return { body: out, syncSectorIds: undefined };
+    return out;
   }
 
+  delete out.sector;
+
   if (!Array.isArray(raw)) {
-    return { body: out, syncSectorIds: undefined };
+    delete out.sectors;
+    return out;
   }
 
   if (raw.length === 0) {
-    return { body: out, syncSectorIds: [] };
+    out.sectors = [];
+    return out;
   }
 
   const parsed = sectorIdsFromSectorsPayload(raw);
-  return {
-    body: out,
-    syncSectorIds: parsed ? dedupeSectorIds(parsed) : [],
-  };
-}
-
-/**
- * Replace junction rows with `sectorIds` (flat `createItem` per row).
- * Avoids nested `sectors: { create, delete }` on the parent, which often persists only one link.
- */
-async function syncVacancySectorsJunction(
-  client: DirectusClient,
-  vacancyId: string,
-  sectorIds: string[]
-): Promise<void> {
-  const junction = VACANCIES_SECTORS_JUNCTION;
-  const vacFk = VACANCIES_SECTORS_JUNCTION_VACANCY_FK;
-  const sectorFkKeys = junctionSectorFkKeys();
-
-  const existing = (await client.request(
-    readItems(junction as any, {
-      filter: { [vacFk]: { _eq: vacancyId } },
-      fields: ["id"],
-      limit: -1,
-    })
-  )) as { id: string | number }[];
-
-  for (const row of existing) {
-    await client.request(deleteItem(junction as any, row.id));
+  if (!parsed?.length) {
+    out.sectors = [];
+    return out;
   }
 
-  for (const sid of sectorIds) {
-    const row: Record<string, unknown> = {
-      [vacFk]: vacancyId,
-    };
-    for (const fk of sectorFkKeys) {
-      row[fk] = { id: sid };
+  const keys = junctionSectorFkKeys();
+  const ids = dedupeSectorIds(parsed);
+  out.sectors = ids.map((id) => {
+    const row: Record<string, unknown> = {};
+    for (const fk of keys) {
+      row[fk] = id;
     }
+    return row;
+  });
 
-    try {
-      await client.request(createItem(junction as any, row as any));
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (/invalid input syntax for type integer.*[0-9a-f-]{36}/i.test(msg)) {
-        const primary = sectorFkKeys[0] ?? VACANCIES_SECTORS_JUNCTION_FK;
-        console.error(
-          "[vacancies_sectors] UUID was rejected as integer — wrong junction FK or dual-FK env lists a non-UUID column. " +
-            `Sector keys used: ${sectorFkKeys.join(", ") || primary}. ` +
-            "See DIRECTUS_VACANCIES.md (junction troubleshooting)."
-        );
-      }
-      throw e;
-    }
-  }
+  return out;
 }
 
 export async function createVacancy(
@@ -365,24 +307,13 @@ export async function createVacancy(
   const client = await getDirectusWithToken();
   if (!client) return null;
 
-  const { body, syncSectorIds } = splitVacancyPayloadForSectorSync({
+  const body = normalizeSectorsForVacancyPayload({
     ...(payload as Record<string, unknown>),
   });
 
-  const created = (await client.request(
+  return (await client.request(
     createItem("vacancies" as any, body as any)
   )) as unknown as Vacancy;
-
-  if (syncSectorIds !== undefined && created?.id) {
-    try {
-      await syncVacancySectorsJunction(client, created.id, syncSectorIds);
-    } catch (e) {
-      console.error("[createVacancy] Junction sector sync failed:", e);
-      throw e;
-    }
-  }
-
-  return created;
 }
 
 export async function updateVacancy(
@@ -392,24 +323,13 @@ export async function updateVacancy(
   const client = await getDirectusWithToken();
   if (!client) return null;
 
-  const { body, syncSectorIds } = splitVacancyPayloadForSectorSync({
+  const body = normalizeSectorsForVacancyPayload({
     ...(payload as Record<string, unknown>),
   });
 
-  const updated = (await client.request(
+  return (await client.request(
     updateItem("vacancies" as any, id, body as any)
   )) as unknown as Vacancy;
-
-  if (syncSectorIds !== undefined) {
-    try {
-      await syncVacancySectorsJunction(client, id, syncSectorIds);
-    } catch (e) {
-      console.error("[updateVacancy] Junction sector sync failed:", e);
-      throw e;
-    }
-  }
-
-  return updated;
 }
 
 export async function deleteVacancy(id: string): Promise<void> {
