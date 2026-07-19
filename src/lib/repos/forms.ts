@@ -1,9 +1,69 @@
 // lib/repos/forms.ts
 "use server";
 
-import { readItems, createItem, updateItem, deleteItem, readItem } from "@directus/sdk";
-import { getAuthedDirectusOrThrow, directus } from "@/lib/directus";
+import { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import type { Form, FormVersion, FormResponse, FormSchema, FormMetadata, FormField } from "@/lib/schema";
+
+/**
+ * Ids cross this API as strings; forms, versions and responses use integer keys.
+ * Returns null for anything non-numeric so callers can bail rather than query
+ * with NaN.
+ */
+const num = (v: string | number): number | null => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+const nums = (vs: Array<string | number>): number[] =>
+  vs.map(num).filter((n): n is number => n != null);
+
+/** Directus returned `form_versions` nested under the form; consumers still read that. */
+const FORM_INCLUDE = { formVersions: { orderBy: { version_number: "desc" as const } } } as const;
+
+function shapeForm(row: Record<string, any> | null): Form | null {
+  if (!row) return null;
+  const { formVersions, ...rest } = row;
+  return { ...rest, form_versions: formVersions ?? [] } as Form;
+}
+
+/**
+ * Archived responses are excluded everywhere the student/company dedupe
+ * matters. `archived` is nullable, so NULL counts as not archived.
+ *
+ * NOTE: this is an `OR`, so it must never be spread into the same object
+ * literal as another `OR` -- the second key wins and this filter vanishes
+ * without any error. Combine them with `AND: [NOT_ARCHIVED, other]` instead.
+ */
+const NOT_ARCHIVED = { OR: [{ archived: null }, { archived: false }] };
+
+/**
+ * `data._student_id` is stored as a JSON *number*, not a string.
+ *
+ * The Directus code compared it with `===` against a string-typed studentId,
+ * which is false for 553 === "553"; it only worked because callers happened to
+ * pass a number despite the annotation. Matching on both representations makes
+ * it correct regardless of what the caller passes.
+ *
+ * This is also why the JSON columns were migrated to jsonb: Prisma's JSON
+ * filters compile to jsonb operators and silently match nothing against a
+ * `json` column.
+ */
+function studentIdMatch(studentId: string | number) {
+  const asString = String(studentId);
+  const asNumber = Number(studentId);
+  const alternatives: Prisma.FormResponseWhereInput[] = [
+    { data: { path: ["_student_id"], equals: asString } },
+    { data: { path: ["student_id"], equals: asString } },
+  ];
+  if (Number.isFinite(asNumber)) {
+    alternatives.push(
+      { data: { path: ["_student_id"], equals: asNumber } },
+      { data: { path: ["student_id"], equals: asNumber } }
+    );
+  }
+  return { OR: alternatives };
+}
 
 // ===================== FORMS =====================
 
@@ -14,20 +74,27 @@ export async function listForms(opts?: {
   sort?: string;
 }) {
   try {
-    const client = await getAuthedDirectusOrThrow();
     const { search, limit = 25, page = 1, sort = "-created_at" } = opts ?? {};
+    const desc = sort.startsWith("-");
+    const sortField = desc ? sort.slice(1) : sort;
 
-    const result = await client.request(
-      readItems("forms" as any, {
-        fields: ["*", { form_versions: ["*"] } as any],
-        limit,
-        page,
-        sort: sort as any,
-        ...(search ? { search } : {}),
-      })
-    ) as unknown as Form[];
+    const rows = await prisma.form.findMany({
+      where: search
+        ? {
+            OR: [
+              { name: { contains: search, mode: "insensitive" } },
+              { slug: { contains: search, mode: "insensitive" } },
+              { description: { contains: search, mode: "insensitive" } },
+            ],
+          }
+        : undefined,
+      include: FORM_INCLUDE,
+      orderBy: { [sortField]: desc ? "desc" : "asc" },
+      take: limit,
+      skip: (page - 1) * limit,
+    });
 
-    return result;
+    return rows.map((r) => shapeForm(r)!) as Form[];
   } catch (error) {
     console.error("[listForms] Error listing forms:", error);
     throw error;
@@ -36,20 +103,10 @@ export async function listForms(opts?: {
 
 export async function getFormById(id: string) {
   try {
-    // Try authenticated first, fall back to public client for public form access
-    let client;
-    try {
-      client = await getAuthedDirectusOrThrow();
-    } catch {
-      // If auth fails, use public client for public form submissions
-      client = directus;
-    }
-
-    return client.request(
-      readItem("forms" as any, id, {
-        fields: ["*", { form_versions: ["*"] } as any],
-      })
-    ) as unknown as Form;
+    const formId = num(id);
+    if (formId == null) return null as unknown as Form;
+    const row = await prisma.form.findUnique({ where: { id: formId }, include: FORM_INCLUDE });
+    return shapeForm(row) as Form;
   } catch (error) {
     console.error("Error getting form by id:", error);
     throw error;
@@ -58,42 +115,24 @@ export async function getFormById(id: string) {
 
 export async function getFormBySlug(slug: string) {
   try {
-    // Try authenticated first, fall back to public client
-    let client;
-    try {
-      client = await getAuthedDirectusOrThrow();
-    } catch {
-      // If auth fails, use public client for public forms
-      client = directus;
-    }
-
-    const forms = await client.request(
-      readItems("forms" as any, {
-        fields: ["*", { form_versions: ["*"] } as any],
-        filter: { slug: { _eq: slug } },
-        limit: 1,
-      })
-    ) as unknown as Form[];
-
-    return forms?.[0] ?? null;
+    const row = await prisma.form.findUnique({ where: { slug }, include: FORM_INCLUDE });
+    return shapeForm(row);
   } catch (error) {
     console.error("[getFormBySlug] Error getting form by slug:", error);
     throw error;
   }
 }
 
+/**
+ * Directus needed a separate public-client variant of the slug lookup because
+ * the authenticated client would 403 for anonymous visitors. There is no
+ * permission layer now, so this is the same query; the export is kept so
+ * callers do not have to change.
+ */
 export async function getPublicFormBySlug(slug: string) {
   try {
-    // Always use public client for public form access
-    const forms = await directus.request(
-      readItems("forms" as any, {
-        fields: ["*", { form_versions: ["*"] } as any],
-        filter: { slug: { _eq: slug } },
-        limit: 1,
-      })
-    ) as unknown as Form[];
-
-    return forms?.[0] ?? null;
+    const row = await prisma.form.findUnique({ where: { slug }, include: FORM_INCLUDE });
+    return shapeForm(row);
   } catch (error) {
     console.error("[getPublicFormBySlug] Error getting public form by slug:", error);
     throw error;
@@ -102,21 +141,13 @@ export async function getPublicFormBySlug(slug: string) {
 
 export async function createForm(data: Partial<Form> & { metadata?: unknown }) {
   try {
-    const client = await getAuthedDirectusOrThrow();
-    // Remove metadata from form creation - it goes on form_version instead
-    const { metadata, ...formData } = data;
-    const created = await client.request(
-      createItem("forms" as any, formData)
-    ) as unknown as Form;
-
-    // Refetch to get all fields
-    const result = await client.request(
-      readItem("forms" as any, created.id, {
-        fields: ["*", { form_versions: ["*"] } as any],
-      })
-    ) as unknown as Form;
-
-    return result;
+    // metadata belongs on the version, not the form
+    const { metadata, id: _id, form_versions: _versions, ...formData } = data as Record<string, any>;
+    const row = await prisma.form.create({
+      data: { ...formData, created_at: new Date(), updated_at: new Date() } as Prisma.FormCreateInput,
+      include: FORM_INCLUDE,
+    });
+    return shapeForm(row) as Form;
   } catch (error) {
     console.error("Error creating form:", error);
     throw error;
@@ -125,57 +156,62 @@ export async function createForm(data: Partial<Form> & { metadata?: unknown }) {
 
 export async function updateForm(id: string, data: Partial<Form>) {
   try {
-    const client = await getAuthedDirectusOrThrow();
-    await client.request(
-      updateItem("forms" as any, id, data)
-    );
+    const formId = num(id);
+    if (formId == null) throw new Error("Invalid form id");
+    const { id: _id, form_versions: _versions, ...rest } = data as Record<string, any>;
 
-    // Refetch to get updated data with all fields
-    const updated = await client.request(
-      readItem("forms" as any, id, {
-        fields: ["*", { form_versions: ["*"] } as any],
-      })
-    ) as unknown as Form;
-
-    return updated;
+    const row = await prisma.form.update({
+      where: { id: formId },
+      data: { ...rest, updated_at: new Date() },
+      include: FORM_INCLUDE,
+    });
+    return shapeForm(row) as Form;
   } catch (error) {
     console.error("Error updating form:", error);
     throw error;
   }
 }
 
+/**
+ * Delete a form with its versions and responses.
+ *
+ * The Directus version deleted every response one HTTP request at a time; a
+ * form with a few thousand responses meant a few thousand round trips. This is
+ * three statements in a transaction, so it is also atomic -- previously a
+ * failure part-way left the form half-deleted.
+ */
 export async function deleteForm(id: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
+    const formId = num(id);
+    if (formId == null) return true;
 
-    // Get all versions for this form
-    const versions = await listFormVersions(id);
-    const versionIds = versions.map(v => v.id);
+    await prisma.$transaction(async (tx) => {
+      const versions = await tx.formVersion.findMany({
+        where: { form_id: formId },
+        select: { id: true },
+      });
+      const versionIds = versions.map((v) => v.id);
 
-    // Delete all responses for all versions of this form
-    if (versionIds.length > 0) {
-      // Get all responses for all versions
-      const allResponses = await client.request(
-        readItems("form_responses" as any, {
-          fields: ["id"],
-          filter: { form_version_id: { _in: versionIds } },
-          limit: -1, // Get all responses
-        })
-      ) as unknown as FormResponse[];
-
-      // Delete each response
-      for (const response of allResponses) {
-        await client.request(deleteItem("form_responses" as any, response.id));
+      if (versionIds.length > 0) {
+        // Responses are referenced by scans, favourites and screenings, none of
+        // which cascade.
+        const responses = await tx.formResponse.findMany({
+          where: { form_version_id: { in: versionIds } },
+          select: { id: true },
+        });
+        const responseIds = responses.map((r) => r.id);
+        if (responseIds.length > 0) {
+          await tx.attendantScan.deleteMany({ where: { form_response_id: { in: responseIds } } });
+          await tx.cvBookFavourite.deleteMany({ where: { form_response: { in: responseIds } } });
+          await tx.cvBookScreening.deleteMany({ where: { form_response: { in: responseIds } } });
+          await tx.formResponse.deleteMany({ where: { id: { in: responseIds } } });
+        }
+        await tx.formVersion.deleteMany({ where: { id: { in: versionIds } } });
       }
-    }
 
-    // Delete all versions
-    for (const versionId of versionIds) {
-      await client.request(deleteItem("form_versions" as any, versionId));
-    }
+      await tx.form.delete({ where: { id: formId } });
+    });
 
-    // Finally, delete the form itself
-    await client.request(deleteItem("forms" as any, id));
     return true;
   } catch (error) {
     console.error("Error deleting form:", error);
@@ -187,32 +223,27 @@ export async function deleteForm(id: string) {
 
 export async function listFormVersions(formId: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
-    return client.request(
-      readItems("form_versions" as any, {
-        fields: ["*"],
-        filter: { form_id: { _eq: formId } },
-        sort: "-version_number",
-      })
-    ) as unknown as FormVersion[];
+    const id = num(formId);
+    if (id == null) return [] as unknown as FormVersion[];
+    return (await prisma.formVersion.findMany({
+      where: { form_id: id },
+      orderBy: { version_number: "desc" },
+    })) as unknown as FormVersion[];
   } catch (error) {
     console.error("Error listing form versions:", error);
     throw error;
   }
 }
 
-/** List form versions using server client (for student/prerequisite flow). */
+/** Same query as listFormVersions; kept because callers import it by name. */
 export async function listFormVersionsForServer(formId: string): Promise<FormVersion[]> {
   try {
-    const { getServerDirectusClientPreferStatic } = await import("@/lib/directus");
-    const client = await getServerDirectusClientPreferStatic();
-    return client.request(
-      readItems("form_versions" as any, {
-        fields: ["*"],
-        filter: { form_id: { _eq: formId } },
-        sort: "-version_number",
-      })
-    ) as unknown as FormVersion[];
+    const id = num(formId);
+    if (id == null) return [];
+    return (await prisma.formVersion.findMany({
+      where: { form_id: id },
+      orderBy: { version_number: "desc" },
+    })) as unknown as FormVersion[];
   } catch (error) {
     console.error("[listFormVersionsForServer] Error:", error);
     return [];
@@ -221,20 +252,15 @@ export async function listFormVersionsForServer(formId: string): Promise<FormVer
 
 export async function getFormVersionById(id: string) {
   try {
-    // Try authenticated first, fall back to public client for public form access
-    let client;
-    try {
-      client = await getAuthedDirectusOrThrow();
-    } catch {
-      // If auth fails, use public client for public form submissions
-      client = directus;
-    }
-
-    return client.request(
-      readItem("form_versions" as any, id, {
-        fields: ["*", { form_id: ["*"] } as any],
-      })
-    ) as unknown as FormVersion;
+    const versionId = num(id);
+    if (versionId == null) return null as unknown as FormVersion;
+    const row = await prisma.formVersion.findUnique({
+      where: { id: versionId },
+      include: { form: true },
+    });
+    if (!row) return null as unknown as FormVersion;
+    const { form, ...rest } = row;
+    return { ...rest, form_id: form ?? rest.form_id } as unknown as FormVersion;
   } catch (error) {
     console.error("Error getting form version:", error);
     throw error;
@@ -249,23 +275,30 @@ export async function createFormVersion(data: {
   metadata?: FormMetadata;
 }) {
   try {
-    const client = await getAuthedDirectusOrThrow();
+    const formId = num(data.form_id);
+    if (formId == null) throw new Error("Invalid form id");
 
-    // If this version should be active, deactivate all other versions first
-    if (data.is_active) {
-      const existingVersions = await listFormVersions(data.form_id);
-      for (const version of existingVersions) {
-        if (version.is_active) {
-          await client.request(
-            updateItem("form_versions" as any, version.id, { is_active: false })
-          );
-        }
+    const row = await prisma.$transaction(async (tx) => {
+      // Only one version may be active at a time.
+      if (data.is_active) {
+        await tx.formVersion.updateMany({
+          where: { form_id: formId, is_active: true },
+          data: { is_active: false },
+        });
       }
-    }
+      return tx.formVersion.create({
+        data: {
+          form_id: formId,
+          schema: data.schema as unknown as Prisma.InputJsonValue,
+          version_number: data.version_number,
+          is_active: data.is_active ?? false,
+          metadata: (data.metadata as unknown as Prisma.InputJsonValue) ?? Prisma.DbNull,
+          created_at: new Date(),
+        },
+      });
+    });
 
-    return client.request(
-      createItem("form_versions" as any, data)
-    ) as unknown as FormVersion;
+    return row as unknown as FormVersion;
   } catch (error) {
     console.error("Error creating form version:", error);
     throw error;
@@ -274,28 +307,41 @@ export async function createFormVersion(data: {
 
 export async function updateFormVersion(id: string, data: Partial<FormVersion>) {
   try {
-    const client = await getAuthedDirectusOrThrow();
+    const versionId = num(id);
+    if (versionId == null) throw new Error("Invalid form version id");
 
-    // If activating this version, deactivate others
-    if (data.is_active) {
-      const version = await getFormVersionById(id);
-      const formId = typeof version.form_id === "string" ? version.form_id : version.form_id.id;
+    const { id: _id, form_id, schema, metadata, ...rest } = data as Record<string, any>;
 
-      const existingVersions = await listFormVersions(formId);
-
-      for (const v of existingVersions) {
-        if (v.id !== id && v.is_active) {
-          await client.request(
-            updateItem("form_versions" as any, v.id, { is_active: false })
-          );
+    const row = await prisma.$transaction(async (tx) => {
+      if (data.is_active) {
+        const current = await tx.formVersion.findUnique({
+          where: { id: versionId },
+          select: { form_id: true },
+        });
+        if (current?.form_id != null) {
+          await tx.formVersion.updateMany({
+            where: { form_id: current.form_id, is_active: true, id: { not: versionId } },
+            data: { is_active: false },
+          });
         }
       }
-    }
 
-    const result = await client.request(
-      updateItem("form_versions" as any, id, data)
-    ) as unknown as FormVersion;
-    return result;
+      return tx.formVersion.update({
+        where: { id: versionId },
+        data: {
+          ...rest,
+          ...(form_id !== undefined
+            ? { form_id: num(typeof form_id === "object" ? form_id.id : form_id) }
+            : {}),
+          ...(schema !== undefined ? { schema: schema as Prisma.InputJsonValue } : {}),
+          ...(metadata !== undefined
+            ? { metadata: (metadata as Prisma.InputJsonValue) ?? Prisma.DbNull }
+            : {}),
+        },
+      });
+    });
+
+    return row as unknown as FormVersion;
   } catch (error) {
     console.error("[updateFormVersion] Error updating form version:", error);
     throw error;
@@ -304,24 +350,24 @@ export async function updateFormVersion(id: string, data: Partial<FormVersion>) 
 
 export async function deleteFormVersion(id: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
+    const versionId = num(id);
+    if (versionId == null) return true;
 
-    // Get all responses for this version
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id"],
-        filter: { form_version_id: { _eq: id } },
-        limit: -1, // Get all responses
-      })
-    ) as unknown as FormResponse[];
+    await prisma.$transaction(async (tx) => {
+      const responses = await tx.formResponse.findMany({
+        where: { form_version_id: versionId },
+        select: { id: true },
+      });
+      const responseIds = responses.map((r) => r.id);
+      if (responseIds.length > 0) {
+        await tx.attendantScan.deleteMany({ where: { form_response_id: { in: responseIds } } });
+        await tx.cvBookFavourite.deleteMany({ where: { form_response: { in: responseIds } } });
+        await tx.cvBookScreening.deleteMany({ where: { form_response: { in: responseIds } } });
+        await tx.formResponse.deleteMany({ where: { id: { in: responseIds } } });
+      }
+      await tx.formVersion.delete({ where: { id: versionId } });
+    });
 
-    // Delete all responses for this version
-    for (const response of responses) {
-      await client.request(deleteItem("form_responses" as any, response.id));
-    }
-
-    // Delete the version itself
-    await client.request(deleteItem("form_versions" as any, id));
     return true;
   } catch (error) {
     console.error("Error deleting form version:", error);
@@ -331,38 +377,25 @@ export async function deleteFormVersion(id: string) {
 
 export async function getActiveFormVersion(formId: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
-    const versions = await client.request(
-      readItems("form_versions" as any, {
-        fields: ["*"],
-        filter: {
-          form_id: { _eq: formId },
-          is_active: { _eq: true },
-        },
-        limit: 1,
-      })
-    ) as unknown as FormVersion[];
-
-    return versions?.[0] ?? null;
+    const id = num(formId);
+    if (id == null) return null;
+    return (await prisma.formVersion.findFirst({
+      where: { form_id: id, is_active: true },
+    })) as unknown as FormVersion | null;
   } catch (error) {
     console.error("Error getting active form version:", error);
     throw error;
   }
 }
 
-/** Get active form version using server client (for student/prerequisite flow). */
+/** Same query as getActiveFormVersion; kept because callers import it by name. */
 export async function getActiveFormVersionForServer(formId: string): Promise<FormVersion | null> {
   try {
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const client = await getServerDirectusClient();
-    const versions = await client.request(
-      readItems("form_versions" as any, {
-        fields: ["*"],
-        filter: { form_id: { _eq: formId }, is_active: { _eq: true } },
-        limit: 1,
-      })
-    ) as unknown as FormVersion[];
-    return versions?.[0] ?? null;
+    const id = num(formId);
+    if (id == null) return null;
+    return (await prisma.formVersion.findFirst({
+      where: { form_id: id, is_active: true },
+    })) as unknown as FormVersion | null;
   } catch (error) {
     console.error("[getActiveFormVersionForServer] Error:", error);
     return null;
@@ -371,104 +404,75 @@ export async function getActiveFormVersionForServer(formId: string): Promise<For
 
 // ===================== FORM RESPONSES =====================
 
-/** Filter to exclude archived responses (for student form deduplication). */
-const NOT_ARCHIVED_FILTER = {
-  _or: [
-    { archived: { _null: true } },
-    { archived: { _eq: false } },
-  ],
-};
-
-/** Archive all previous form responses from this student for the given form. Call before creating a new response. */
+/**
+ * Archive this student's previous responses to a form.
+ *
+ * Previously this fetched every response across all versions of the form and
+ * compared `data._student_id` in JavaScript, then issued one PATCH per match.
+ * With jsonb the match happens in the database and the archive is one UPDATE.
+ */
 export async function archivePreviousStudentResponsesForForm(
   studentId: string,
   formId: string
 ): Promise<void> {
   try {
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const client = await getServerDirectusClient();
-    const versions = await listFormVersionsForServer(formId);
-    const versionIds = versions.map((v) => v.id);
-    if (versionIds.length === 0) return;
+    const id = num(formId);
+    if (id == null) return;
 
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id", "data"],
-        filter: { form_version_id: { _in: versionIds } },
-        limit: -1,
-      })
-    ) as unknown as Array<{ id: string; data?: Record<string, unknown> }>;
-
-    const { updateItem } = await import("@directus/sdk");
-    for (const r of responses) {
-      if ((r.data as Record<string, unknown>)?._student_id === studentId) {
-        await client.request(updateItem("form_responses" as any, r.id, { archived: true }));
-      }
-    }
+    await prisma.formResponse.updateMany({
+      where: {
+        formVersion: { form_id: id },
+        ...studentIdMatch(studentId),
+      },
+      data: { archived: true },
+    });
   } catch (error) {
     console.error("[archivePreviousStudentResponsesForForm] Error:", error);
     // Non-fatal: continue with submission
   }
 }
 
-/** Archive all previous form responses from this company for the given form. Call before creating a new response. */
+/** Archive all previous form responses from this company for the given form. */
 export async function archivePreviousCompanyResponsesForForm(
   companyId: string,
   formId: string
 ): Promise<void> {
   try {
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const client = await getServerDirectusClient();
-    const versions = await listFormVersionsForServer(formId);
-    const versionIds = versions.map((v) => v.id);
-    if (versionIds.length === 0) return;
+    const id = num(formId);
+    if (id == null) return;
 
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id", "company_id"],
-        filter: {
-          _and: [
-            { form_version_id: { _in: versionIds } },
-            { company_id: { _eq: companyId } },
-          ],
-        },
-        limit: -1,
-      })
-    ) as unknown as Array<{ id: string; company_id?: string | { id: string } }>;
-
-    const { updateItem } = await import("@directus/sdk");
-    for (const r of responses) {
-      await client.request(updateItem("form_responses" as any, r.id, { archived: true }));
-    }
+    await prisma.formResponse.updateMany({
+      where: { formVersion: { form_id: id }, company_id: companyId },
+      data: { archived: true },
+    });
   } catch (error) {
     console.error("[archivePreviousCompanyResponsesForForm] Error:", error);
     // Non-fatal: continue with submission
   }
 }
 
-/** Archive duplicate student/company responses for a form, keeping only the most recent per student or company. Returns count archived. */
+/** Archive duplicate student/company responses for a form, keeping only the most recent per student or company. */
 export async function archiveDuplicateResponsesForForm(formId: string): Promise<{ archived: number }> {
   try {
-    const client = await getAuthedDirectusOrThrow();
-    const versions = await listFormVersions(formId);
-    const versionIds = versions.map((v) => v.id);
-    if (versionIds.length === 0) return { archived: 0 };
+    const id = num(formId);
+    if (id == null) return { archived: 0 };
 
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id", "data", "company_id", "submitted_at"],
-        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
-        limit: -1,
-        sort: "-submitted_at",
-      })
-    ) as unknown as Array<{ id: string; data?: Record<string, unknown>; company_id?: string | { id: string }; submitted_at: string }>;
+    const responses = await prisma.formResponse.findMany({
+      where: { formVersion: { form_id: id }, ...NOT_ARCHIVED },
+      select: { id: true, data: true, company_id: true, submitted_at: true },
+      orderBy: { submitted_at: "desc" },
+    });
 
     // Group by dedupe key: company_id for company forms, _student_id for student forms
     const byKey = new Map<string, typeof responses>();
     for (const r of responses) {
-      const companyId = typeof r.company_id === "string" ? r.company_id : r.company_id?.id;
-      const studentId = (r.data as Record<string, unknown>)?._student_id as string | undefined;
-      const key = companyId ? `company:${companyId}` : studentId ? `student:${studentId}` : undefined;
+      const data = r.data as Record<string, unknown> | null;
+      const studentId = data?._student_id;
+      const key = r.company_id
+        ? `company:${r.company_id}`
+        : studentId != null
+          ? `student:${String(studentId)}`
+          : undefined;
       if (key) {
         const list = byKey.get(key) ?? [];
         list.push(r);
@@ -476,61 +480,62 @@ export async function archiveDuplicateResponsesForForm(formId: string): Promise<
       }
     }
 
-    const { updateItem } = await import("@directus/sdk");
-    let archived = 0;
+    // Keep the first of each group (most recent by sort), archive the rest.
+    const toArchive: number[] = [];
     for (const [, list] of byKey) {
       if (list.length <= 1) continue;
-      // Keep first (most recent by sort), archive the rest
-      const toArchive = list.slice(1);
-      for (const r of toArchive) {
-        await client.request(updateItem("form_responses" as any, r.id, { archived: true }));
-        archived++;
-      }
+      for (const r of list.slice(1)) toArchive.push(r.id);
     }
-    return { archived };
+
+    if (toArchive.length === 0) return { archived: 0 };
+
+    const { count } = await prisma.formResponse.updateMany({
+      where: { id: { in: toArchive } },
+      data: { archived: true },
+    });
+    return { archived: count };
   } catch (error) {
     console.error("[archiveDuplicateResponsesForForm] Error:", error);
     throw error;
   }
 }
 
+/** Relations Directus expanded on a response listing. */
+const RESPONSE_INCLUDE = {
+  company: { select: { id: true, name: true } },
+  formVersion: { select: { id: true, version_number: true, form: { select: { name: true } } } },
+} as const;
+
 export async function listFormResponses(formVersionId: string, opts?: {
   limit?: number;
   page?: number;
 }) {
   try {
-    const client = await getAuthedDirectusOrThrow();
+    const versionId = num(formVersionId);
+    if (versionId == null) return [] as unknown as FormResponse[];
     const { limit = 25, page = 1 } = opts ?? {};
 
-    const result = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["*", { user_id: ["name", "email"], form_version_id: { form_id: ["name"] }, company_id: ["name", "id"], student_id: ["full_name", "first_name", "last_name", "email"] } as any],
-        filter: { _and: [{ form_version_id: { _eq: formVersionId } }, NOT_ARCHIVED_FILTER] },
-        limit,
-        page,
-        sort: "-submitted_at",
-      })
-    ) as unknown as FormResponse[];
-
-    return result;
+    return (await prisma.formResponse.findMany({
+      where: { form_version_id: versionId, ...NOT_ARCHIVED },
+      include: RESPONSE_INCLUDE,
+      orderBy: { submitted_at: "desc" },
+      take: limit,
+      skip: (page - 1) * limit,
+    })) as unknown as FormResponse[];
   } catch (error) {
     console.error("Error listing form responses:", error);
     throw error;
   }
 }
 
+/** Counts previously fetched every row and took .length; this is a COUNT. */
 export async function getFormResponsesTotalCount(formVersionId: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id"],
-        filter: { _and: [{ form_version_id: { _eq: formVersionId } }, NOT_ARCHIVED_FILTER] },
-        limit: -1, // Get all to count
-      })
-    ) as unknown as Array<{ id: string }>;
-
-    return responses.length;
+    const versionId = num(formVersionId);
+    if (versionId == null) return 0;
+    return await prisma.formResponse.count({
+      where: { form_version_id: versionId, ...NOT_ARCHIVED },
+    });
   } catch (error) {
     console.error("Error counting form responses:", error);
     return 0;
@@ -539,17 +544,15 @@ export async function getFormResponsesTotalCount(formVersionId: string) {
 
 export async function getFirstFormResponse(formVersionId: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["submitted_at"],
-        filter: { _and: [{ form_version_id: { _eq: formVersionId } }, NOT_ARCHIVED_FILTER] },
-        limit: 1,
-        sort: "submitted_at", // Oldest first
-      })
-    ) as unknown as Array<{ submitted_at: string }>;
-
-    return responses.length > 0 ? responses[0] : null;
+    const versionId = num(formVersionId);
+    if (versionId == null) return null;
+    const row = await prisma.formResponse.findFirst({
+      where: { form_version_id: versionId, ...NOT_ARCHIVED },
+      select: { submitted_at: true },
+      orderBy: { submitted_at: "asc" },
+    });
+    // Directus returned an ISO string here and callers store it in string state.
+    return row ? { submitted_at: row.submitted_at?.toISOString() ?? null } : null;
   } catch (error) {
     console.error("Error getting first form response:", error);
     return null;
@@ -558,25 +561,22 @@ export async function getFirstFormResponse(formVersionId: string) {
 
 export async function getLatestFormResponse(formVersionId: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["submitted_at"],
-        filter: { _and: [{ form_version_id: { _eq: formVersionId } }, NOT_ARCHIVED_FILTER] },
-        limit: 1,
-        sort: "-submitted_at", // Newest first
-      })
-    ) as unknown as Array<{ submitted_at: string }>;
-
-    return responses.length > 0 ? responses[0] : null;
+    const versionId = num(formVersionId);
+    if (versionId == null) return null;
+    const row = await prisma.formResponse.findFirst({
+      where: { form_version_id: versionId, ...NOT_ARCHIVED },
+      select: { submitted_at: true },
+      orderBy: { submitted_at: "desc" },
+    });
+    // Directus returned an ISO string here and callers store it in string state.
+    return row ? { submitted_at: row.submitted_at?.toISOString() ?? null } : null;
   } catch (error) {
     console.error("Error getting latest form response:", error);
     return null;
   }
 }
 
-/** Batch: get latest form response data for multiple students. Returns Map<studentId, data>.
- * Uses server client. Fetches all responses for form versions once, then groups by data._student_id. */
+/** Batch: get latest form response data for multiple students. Returns Map<studentId, data>. */
 export async function getStudentFormResponsesBatchForForm(
   formId: string,
   studentIds: string[]
@@ -584,39 +584,22 @@ export async function getStudentFormResponsesBatchForForm(
   if (studentIds.length === 0) return new Map();
   const idSet = new Set(studentIds.map(String));
   try {
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const client = await getServerDirectusClient();
-    const versions = await listFormVersionsForServer(formId);
-    const versionIds = versions.map((v) => v.id);
-    if (versionIds.length === 0) return new Map();
-    type FormResponseRow = { id: string; form_version_id: string; data?: Record<string, unknown> };
-    let responses: FormResponseRow[];
-    try {
-      responses = (await client.request(
-        readItems("form_responses" as any, {
-          fields: ["id", "form_version_id", "data"],
-          filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
-          limit: -1,
-          sort: "-submitted_at",
-        })
-      )) as unknown as FormResponseRow[];
-    } catch {
-      responses = (await client.request(
-        readItems("form_responses" as any, {
-          fields: ["id", "form_version_id", "data"],
-          filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
-          limit: -1,
-          sort: "-submitted_at",
-        })
-      )) as unknown as FormResponseRow[];
-    }
+    const id = num(formId);
+    if (id == null) return new Map();
+
+    const responses = await prisma.formResponse.findMany({
+      where: { formVersion: { form_id: id }, ...NOT_ARCHIVED },
+      select: { id: true, form_version_id: true, data: true },
+      orderBy: { submitted_at: "desc" },
+    });
+
     const byStudent = new Map<string, Record<string, unknown>>();
     for (const r of responses) {
-      const dataObj = r.data as Record<string, unknown> | undefined;
-      const fromData = dataObj?._student_id ?? dataObj?.student_id;
+      const data = r.data as Record<string, unknown> | null;
+      const fromData = data?._student_id ?? data?.student_id;
       const sid = fromData != null ? String(fromData) : null;
       if (sid != null && idSet.has(sid) && !byStudent.has(sid)) {
-        byStudent.set(sid, r.data ?? {});
+        byStudent.set(sid, data ?? {});
       }
     }
     return byStudent;
@@ -626,29 +609,41 @@ export async function getStudentFormResponsesBatchForForm(
   }
 }
 
-/** Get a student's latest form response across any of the given form versions. Uses server client.
- * Matches by data._student_id (stored in form data JSON) since form_responses may not have a student_id column.
- * Fetches all responses (limit: -1) so early submitters are not missed when the form has many responses. */
+/**
+ * Get a student's latest response across the given form versions.
+ *
+ * The Directus version fetched every response for those versions (all 5398 in
+ * the production dataset) and scanned for a match in JavaScript. The student
+ * filter now runs in the database.
+ */
 export async function getStudentLatestFormResponseForForm(
   studentId: string,
   versionIds: string[]
 ): Promise<{ id: string; form_version_id: string; data: Record<string, unknown>; attendant_uuid?: string } | null> {
   if (versionIds.length === 0) return null;
   try {
-    const { getServerDirectusClientPreferStatic } = await import("@/lib/directus");
-    const client = await getServerDirectusClientPreferStatic();
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id", "form_version_id", "data", "attendant_uuid"],
-        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
-        limit: -1,
-        sort: "-submitted_at",
-      })
-    ) as unknown as Array<{ id: string; form_version_id: string; data?: Record<string, unknown>; attendant_uuid?: string }>;
-    const match = responses.find(
-      (r) => (r.data as Record<string, unknown>)?._student_id === studentId
-    );
-    return match ? { id: match.id, form_version_id: match.form_version_id, data: match.data ?? {}, attendant_uuid: match.attendant_uuid ?? undefined } : null;
+    const ids = nums(versionIds);
+    if (ids.length === 0) return null;
+
+    const match = await prisma.formResponse.findFirst({
+      where: {
+        form_version_id: { in: ids },
+        // Both of these are OR-shaped, so they are combined with AND rather
+        // than spread into one object (see the note on NOT_ARCHIVED).
+        AND: [NOT_ARCHIVED, studentIdMatch(studentId)],
+      },
+      select: { id: true, form_version_id: true, data: true, attendant_uuid: true },
+      orderBy: { submitted_at: "desc" },
+    });
+
+    return match
+      ? {
+          id: String(match.id),
+          form_version_id: String(match.form_version_id),
+          data: (match.data as Record<string, unknown>) ?? {},
+          attendant_uuid: match.attendant_uuid ?? undefined,
+        }
+      : null;
   } catch (error) {
     console.error("[getStudentLatestFormResponseForForm] Error:", error);
     return null;
@@ -662,8 +657,7 @@ export type ScanningColumns = {
   year_of_study?: string;
 };
 
-/** Get event registration form response data for students. Returns Map<studentId, { data, scanning_columns }>.
- * Uses server client. Fetches from event registration forms linked to the event. */
+/** Get event registration form response data for students. Returns Map<studentId, { data, scanning_columns }>. */
 export async function getStudentFormResponseDataForEvent(
   eventId: string,
   studentIds: string[]
@@ -671,52 +665,42 @@ export async function getStudentFormResponseDataForEvent(
   if (studentIds.length === 0) return new Map();
   const idSet = new Set(studentIds.map(String));
   try {
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const client = await getServerDirectusClient();
-    const forms = await client.request(
-      readItems("forms" as any, {
-        fields: ["id", { form_versions: ["id", "metadata"] } as any],
-        limit: -1,
-      })
-    ) as unknown as Array<{
-      id: string;
-      form_versions?: Array<{
-        id: string;
-        metadata?: { is_event_registration?: boolean; event_id?: string; scanning_columns?: ScanningColumns };
-      }>;
-    }>;
+    // metadata.is_event_registration / event_id live inside a jsonb blob, so the
+    // versions are selected in application code as before.
+    const versions = await prisma.formVersion.findMany({
+      select: { id: true, metadata: true },
+    });
 
-    const versionIds: string[] = [];
-    const versionToScanningColumns = new Map<string, ScanningColumns>();
-    for (const form of forms) {
-      for (const v of form.form_versions ?? []) {
-        const meta = v.metadata;
-        if (meta?.is_event_registration && String(meta.event_id) === String(eventId)) {
-          versionIds.push(v.id);
-          if (meta.scanning_columns) versionToScanningColumns.set(v.id, meta.scanning_columns);
-        }
+    const versionIds: number[] = [];
+    const versionToScanningColumns = new Map<number, ScanningColumns>();
+    for (const v of versions) {
+      const meta = v.metadata as
+        | { is_event_registration?: boolean; event_id?: string; scanning_columns?: ScanningColumns }
+        | null;
+      if (meta?.is_event_registration && String(meta.event_id) === String(eventId)) {
+        versionIds.push(v.id);
+        if (meta.scanning_columns) versionToScanningColumns.set(v.id, meta.scanning_columns);
       }
     }
     if (versionIds.length === 0) return new Map();
 
-    type Row = { id: string; form_version_id: string; data?: Record<string, unknown>; submitted_at?: string };
-    const responses = (await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id", "form_version_id", "data", "submitted_at"],
-        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
-        limit: -1,
-        sort: "-submitted_at",
-      })
-    )) as unknown as Row[];
+    const responses = await prisma.formResponse.findMany({
+      where: { form_version_id: { in: versionIds }, ...NOT_ARCHIVED },
+      select: { id: true, form_version_id: true, data: true, submitted_at: true },
+      orderBy: { submitted_at: "desc" },
+    });
 
     const byStudent = new Map<string, { data: Record<string, unknown>; scanning_columns?: ScanningColumns }>();
     for (const r of responses) {
-      const dataObj = r.data as Record<string, unknown> | undefined;
-      const fromData = dataObj?._student_id ?? dataObj?.student_id;
+      const data = r.data as Record<string, unknown> | null;
+      const fromData = data?._student_id ?? data?.student_id;
       const sid = fromData != null ? String(fromData) : null;
       if (sid != null && idSet.has(sid) && !byStudent.has(sid)) {
-        const scanningColumns = versionToScanningColumns.get(r.form_version_id);
-        byStudent.set(sid, { data: r.data ?? {}, scanning_columns: scanningColumns });
+        byStudent.set(sid, {
+          data: data ?? {},
+          scanning_columns:
+            r.form_version_id != null ? versionToScanningColumns.get(r.form_version_id) : undefined,
+        });
       }
     }
     return byStudent;
@@ -732,28 +716,18 @@ export async function listFormResponsesForAllVersions(formId: string, opts?: {
   page?: number;
 }) {
   try {
-    const client = await getAuthedDirectusOrThrow();
+    const id = num(formId);
+    if (id == null) return [] as unknown as FormResponse[];
     const { limit = 25, page = 1 } = opts ?? {};
 
-    // First, get all version IDs for this form
-    const versions = await listFormVersions(formId);
-    const versionIds = versions.map(v => v.id);
-
-    if (versionIds.length === 0) {
-      return [];
-    }
-
-    const result = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["*", { user_id: ["name", "email"], form_version_id: { form_id: ["name"], version_number: ["*"] }, company_id: ["name", "id"], student_id: ["full_name", "first_name", "last_name", "email"] } as any],
-        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
-        limit,
-        page,
-        sort: "-submitted_at",
-      })
-    ) as unknown as FormResponse[];
-
-    return result;
+    return (await prisma.formResponse.findMany({
+      where: { formVersion: { form_id: id }, ...NOT_ARCHIVED },
+      include: RESPONSE_INCLUDE,
+      orderBy: { submitted_at: "desc" },
+      // Callers pass limit: -1 to mean "everything"; Prisma expresses that by
+      // omitting `take`.
+      ...(limit > 0 ? { take: limit, skip: (page - 1) * limit } : {}),
+    })) as unknown as FormResponse[];
   } catch (error) {
     console.error("Error listing form responses for all versions:", error);
     throw error;
@@ -762,25 +736,11 @@ export async function listFormResponsesForAllVersions(formId: string, opts?: {
 
 export async function getFormResponsesTotalCountForAllVersions(formId: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
-
-    // First, get all version IDs for this form
-    const versions = await listFormVersions(formId);
-    const versionIds = versions.map(v => v.id);
-
-    if (versionIds.length === 0) {
-      return 0;
-    }
-
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id"],
-        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
-        limit: -1, // Get all to count
-      })
-    ) as unknown as Array<{ id: string }>;
-
-    return responses.length;
+    const id = num(formId);
+    if (id == null) return 0;
+    return await prisma.formResponse.count({
+      where: { formVersion: { form_id: id }, ...NOT_ARCHIVED },
+    });
   } catch (error) {
     console.error("Error counting form responses for all versions:", error);
     return 0;
@@ -789,26 +749,14 @@ export async function getFormResponsesTotalCountForAllVersions(formId: string) {
 
 export async function getFirstFormResponseForAllVersions(formId: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
-
-    // First, get all version IDs for this form
-    const versions = await listFormVersions(formId);
-    const versionIds = versions.map(v => v.id);
-
-    if (versionIds.length === 0) {
-      return null;
-    }
-
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["submitted_at"],
-        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
-        limit: 1,
-        sort: "submitted_at", // Oldest first
-      })
-    ) as unknown as Array<{ submitted_at: string }>;
-
-    return responses.length > 0 ? responses[0] : null;
+    const id = num(formId);
+    if (id == null) return null;
+    const row = await prisma.formResponse.findFirst({
+      where: { formVersion: { form_id: id }, ...NOT_ARCHIVED },
+      select: { submitted_at: true },
+      orderBy: { submitted_at: "asc" },
+    });
+    return row ? { submitted_at: row.submitted_at?.toISOString() ?? null } : null;
   } catch (error) {
     console.error("Error getting first form response for all versions:", error);
     return null;
@@ -817,26 +765,14 @@ export async function getFirstFormResponseForAllVersions(formId: string) {
 
 export async function getLatestFormResponseForAllVersions(formId: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
-
-    // First, get all version IDs for this form
-    const versions = await listFormVersions(formId);
-    const versionIds = versions.map(v => v.id);
-
-    if (versionIds.length === 0) {
-      return null;
-    }
-
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["submitted_at"],
-        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
-        limit: 1,
-        sort: "-submitted_at", // Newest first
-      })
-    ) as unknown as Array<{ submitted_at: string }>;
-
-    return responses.length > 0 ? responses[0] : null;
+    const id = num(formId);
+    if (id == null) return null;
+    const row = await prisma.formResponse.findFirst({
+      where: { formVersion: { form_id: id }, ...NOT_ARCHIVED },
+      select: { submitted_at: true },
+      orderBy: { submitted_at: "desc" },
+    });
+    return row ? { submitted_at: row.submitted_at?.toISOString() ?? null } : null;
   } catch (error) {
     console.error("Error getting latest form response for all versions:", error);
     return null;
@@ -845,12 +781,12 @@ export async function getLatestFormResponseForAllVersions(formId: string) {
 
 export async function getFormResponseById(id: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
-    return client.request(
-      readItem("form_responses" as any, id, {
-        fields: ["*", { user_id: ["*"], form_version_id: ["*"] } as any],
-      })
-    ) as unknown as FormResponse;
+    const responseId = num(id);
+    if (responseId == null) return null as unknown as FormResponse;
+    return (await prisma.formResponse.findUnique({
+      where: { id: responseId },
+      include: { formVersion: true, company: true },
+    })) as unknown as FormResponse;
   } catch (error) {
     console.error("Error getting form response:", error);
     throw error;
@@ -864,18 +800,21 @@ export async function createFormResponse(data: {
   attachments?: string[];
 }) {
   try {
-    // Try authenticated first, fall back to public client for anonymous submissions
-    let client;
-    try {
-      client = await getAuthedDirectusOrThrow();
-    } catch {
-      // If auth fails, use public client for anonymous form submissions
-      client = directus;
-    }
+    const versionId = num(data.form_version_id);
+    if (versionId == null) throw new Error("Invalid form version id");
 
-    return client.request(
-      createItem("form_responses" as any, data)
-    ) as unknown as FormResponse;
+    // `attachments` and `user_id` have no column on form_responses; Directus
+    // accepted and discarded them, so they are dropped here too.
+    const { form_version_id: _v, user_id: _u, attachments: _a, data: payload, ...rest } = data as Record<string, any>;
+
+    return (await prisma.formResponse.create({
+      data: {
+        ...rest,
+        form_version_id: versionId,
+        data: payload as Prisma.InputJsonValue,
+        submitted_at: new Date(),
+      },
+    })) as unknown as FormResponse;
   } catch (error) {
     console.error("Error creating form response:", error);
     throw error;
@@ -892,10 +831,17 @@ export async function updateFormResponse(
   }>
 ) {
   try {
-    const client = await getAuthedDirectusOrThrow();
-    return client.request(
-      updateItem("form_responses" as any, id, data)
-    ) as unknown as FormResponse;
+    const responseId = num(id);
+    if (responseId == null) throw new Error("Invalid form response id");
+    const { data: payload, ...rest } = data as Record<string, any>;
+
+    return (await prisma.formResponse.update({
+      where: { id: responseId },
+      data: {
+        ...rest,
+        ...(payload !== undefined ? { data: payload as Prisma.InputJsonValue } : {}),
+      },
+    })) as unknown as FormResponse;
   } catch (error) {
     console.error("Error updating form response:", error);
     throw error;
@@ -904,8 +850,14 @@ export async function updateFormResponse(
 
 export async function deleteFormResponse(id: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
-    await client.request(deleteItem("form_responses" as any, id));
+    const responseId = num(id);
+    if (responseId == null) return true;
+    await prisma.$transaction(async (tx) => {
+      await tx.attendantScan.deleteMany({ where: { form_response_id: responseId } });
+      await tx.cvBookFavourite.deleteMany({ where: { form_response: responseId } });
+      await tx.cvBookScreening.deleteMany({ where: { form_response: responseId } });
+      await tx.formResponse.delete({ where: { id: responseId } });
+    });
     return true;
   } catch (error) {
     console.error("Error deleting form response:", error);
@@ -916,9 +868,11 @@ export async function deleteFormResponse(id: string) {
 /** Migrate master-degrees fields in form responses from label format to canonical (fac:facId:masterId). */
 export async function migrateFormResponsesMasterDegrees(formId: string): Promise<{ updated: number; total: number }> {
   try {
-    const client = await getAuthedDirectusOrThrow();
     const { listMasters, listFaculties } = await import("@/lib/repos/features");
     const { buildMasterDegreeOptionsForForm, normalizeMasterDegreesValues, normalizeFaculties } = await import("@/lib/utils/master-degree-options");
+
+    const id = num(formId);
+    if (id == null) return { updated: 0, total: 0 };
 
     const form = await getFormById(formId);
     if (!form?.form_versions?.length) return { updated: 0, total: 0 };
@@ -940,18 +894,14 @@ export async function migrateFormResponsesMasterDegrees(formId: string): Promise
     const masterDegreeFields = Array.from(masterDegreeFieldsByKey.values());
     if (masterDegreeFields.length === 0) return { updated: 0, total: 0 };
 
-    const versionIds = form.form_versions.map((v) => v.id);
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id", "form_version_id", "data"],
-        filter: { form_version_id: { _in: versionIds } },
-        limit: -1,
-      })
-    ) as unknown as Array<{ id: string; form_version_id: string; data: Record<string, unknown> }>;
+    const responses = await prisma.formResponse.findMany({
+      where: { formVersion: { form_id: id } },
+      select: { id: true, form_version_id: true, data: true },
+    });
 
     let updated = 0;
     for (const response of responses) {
-      const data = { ...(response.data ?? {}) };
+      const data = { ...((response.data as Record<string, unknown>) ?? {}) };
       let changed = false;
       for (const field of masterDegreeFields) {
         const fieldValue = data[field.name];
@@ -972,7 +922,10 @@ export async function migrateFormResponsesMasterDegrees(formId: string): Promise
         }
       }
       if (changed) {
-        await client.request(updateItem("form_responses" as any, response.id, { data }));
+        await prisma.formResponse.update({
+          where: { id: response.id },
+          data: { data: data as Prisma.InputJsonValue },
+        });
         updated++;
       }
     }
@@ -985,61 +938,24 @@ export async function migrateFormResponsesMasterDegrees(formId: string): Promise
 
 export async function countFormResponses(formId: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
-
-    // Get all versions for this form
-    const versions = await listFormVersions(formId);
-    const versionIds = versions.map(v => v.id);
-
-    if (versionIds.length === 0) {
-      return 0;
-    }
-
-    // Count responses for all versions of this form
-    const { readItems } = await import("@directus/sdk");
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id"],
-        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED_FILTER] },
-        limit: -1, // Get all to count
-      })
-    ) as unknown as FormResponse[];
-
-    return responses.length;
+    const id = num(formId);
+    if (id == null) return 0;
+    return await prisma.formResponse.count({
+      where: { formVersion: { form_id: id }, ...NOT_ARCHIVED },
+    });
   } catch (error) {
     console.error("Error counting form responses:", error);
     return 0; // Return 0 on error to avoid breaking the UI
   }
 }
 
-export async function countFormVersionResponses(formVersionId: string, usePublic = false) {
+export async function countFormVersionResponses(formVersionId: string, _usePublic = false) {
   try {
-    // Use public client if requested, otherwise try authenticated
-    let client;
-    if (usePublic) {
-      const { directus } = await import("@/lib/directus");
-      client = directus;
-    } else {
-      try {
-        client = await getAuthedDirectusOrThrow();
-      } catch {
-        // Fall back to public client if auth fails
-        const { directus } = await import("@/lib/directus");
-        client = directus;
-      }
-    }
-
-    // Count responses for a specific form version
-    const { readItems } = await import("@directus/sdk");
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id"],
-        filter: { _and: [{ form_version_id: { _eq: formVersionId } }, NOT_ARCHIVED_FILTER] },
-        limit: -1, // Get all to count
-      })
-    ) as unknown as FormResponse[];
-
-    return responses.length;
+    const versionId = num(formVersionId);
+    if (versionId == null) return 0;
+    return await prisma.formResponse.count({
+      where: { form_version_id: versionId, ...NOT_ARCHIVED },
+    });
   } catch (error) {
     console.error("Error counting form version responses:", error);
     return 0; // Return 0 on error to avoid breaking the UI
@@ -1048,46 +964,22 @@ export async function countFormVersionResponses(formVersionId: string, usePublic
 
 /**
  * Initialize UUIDs for existing form responses that don't have them.
- * This is useful for migrating forms created before the UUID feature was added.
  * Only processes responses for event registration forms.
  */
 export async function initializeAttendantUuids(formId?: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
-    const { readItems, updateItem } = await import("@directus/sdk");
+    const scopedFormId = formId ? num(formId) : null;
 
-    // Get all event registration forms
-    const forms = await client.request(
-      readItems("forms" as any, {
-        fields: ["id", { form_versions: ["id", "metadata"] } as any],
-      })
-    ) as unknown as Array<{
-      id: string;
-      form_versions?: Array<{
-        id: string;
-        metadata?: { is_event_registration?: boolean };
-      }>;
-    }>;
+    const versions = await prisma.formVersion.findMany({
+      where: scopedFormId != null ? { form_id: scopedFormId } : undefined,
+      select: { id: true, metadata: true },
+    });
 
-    // Filter to event registration forms
-    const eventRegistrationFormIds = new Set<string>();
-    const eventRegistrationVersionIds = new Set<string>();
+    const eventRegistrationVersionIds = versions
+      .filter((v) => (v.metadata as { is_event_registration?: boolean } | null)?.is_event_registration)
+      .map((v) => v.id);
 
-    for (const form of forms) {
-      // If formId is specified, only process that form
-      if (formId && form.id !== formId) continue;
-
-      const versions = form.form_versions || [];
-      for (const version of versions) {
-        const metadata = version.metadata as { is_event_registration?: boolean } | undefined;
-        if (metadata?.is_event_registration) {
-          eventRegistrationFormIds.add(form.id);
-          eventRegistrationVersionIds.add(version.id);
-        }
-      }
-    }
-
-    if (eventRegistrationVersionIds.size === 0) {
+    if (eventRegistrationVersionIds.length === 0) {
       return {
         success: true,
         message: formId
@@ -1097,50 +989,30 @@ export async function initializeAttendantUuids(formId?: string) {
       };
     }
 
-    // Get all responses for these versions that don't have attendant_uuid
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id", "attendant_uuid", "form_version_id"],
-        filter: {
-          form_version_id: { _in: Array.from(eventRegistrationVersionIds) },
-          _or: [
-            { attendant_uuid: { _null: true } },
-            { attendant_uuid: { _empty: true } },
-          ],
-        },
-        limit: -1,
-      })
-    ) as unknown as Array<{
-      id: string;
-      attendant_uuid?: string | null;
-      form_version_id: string;
-    }>;
+    const responses = await prisma.formResponse.findMany({
+      where: {
+        form_version_id: { in: eventRegistrationVersionIds },
+        OR: [{ attendant_uuid: null }, { attendant_uuid: "" }],
+      },
+      select: { id: true },
+    });
 
     if (responses.length === 0) {
-      return {
-        success: true,
-        message: "All responses already have UUIDs.",
-        updated: 0,
-      };
+      return { success: true, message: "All responses already have UUIDs.", updated: 0 };
     }
 
-    // Generate UUIDs and update responses
     let updated = 0;
     const errors: string[] = [];
-
     for (const response of responses) {
       try {
-        const uuid = crypto.randomUUID();
-        await client.request(
-          updateItem("form_responses" as any, response.id, {
-            attendant_uuid: uuid,
-          })
-        );
+        await prisma.formResponse.update({
+          where: { id: response.id },
+          data: { attendant_uuid: crypto.randomUUID() },
+        });
         updated++;
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         errors.push(`Failed to update response ${response.id}: ${errorMsg}`);
-        console.error(`Error updating response ${response.id}:`, error);
       }
     }
 
@@ -1162,114 +1034,93 @@ export async function initializeAttendantUuids(formId?: string) {
 
 // ===================== COMPANY FORMS =====================
 
+/**
+ * Company forms for an event, restricted to the options a company holds.
+ *
+ * Assignment is decided by the ACTIVE version's option_ids only: if an older
+ * version was assigned to many options but the active one to a few, only those
+ * few apply. `is_company_form`, `event_id` and `option_ids` all live inside the
+ * version's jsonb metadata, so the selection stays in application code.
+ *
+ * The Directus version wrapped this in a network-error retry loop with
+ * exponential backoff; a local database connection does not need it.
+ */
 export async function getCompanyFormsForEvent(
   eventId: string,
   companyOptionIds: string[],
-  retries = 2,
+  _retries = 2,
   /** When true, only return forms explicitly assigned via option_ids (excludes forms with empty option_ids) */
   requireOptionAssignment = false
 ) {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const client = await getAuthedDirectusOrThrow();
+  try {
+    const forms = await prisma.form.findMany({
+      where: { is_active: true },
+      include: FORM_INCLUDE,
+    });
 
-      // Get all forms with active versions
-      const forms = await client.request(
-        readItems("forms" as any, {
-          fields: ["*", { form_versions: ["*"] } as any],
-          filter: {
-            is_active: { _eq: true },
-          },
-        })
-      ) as unknown as Form[];
+    const companyForms: Array<{
+      id: string;
+      name: string;
+      slug: string;
+      description?: string;
+      metadata: FormMetadata;
+      activeVersion: { id: string; version_number: number; schema: FormSchema };
+    }> = [];
 
-      // Filter for company forms linked to this event.
-      // For assignment (which options must fill the form): only use the ACTIVE version's option_ids.
-      // So if an old version was assigned to many options but the active version only to a few, only those few apply.
-      const companyForms: Array<{
-        id: string;
-        name: string;
-        slug: string;
-        description?: string;
-        metadata: FormMetadata;
-        activeVersion: { id: string; version_number: number; schema: FormSchema };
-      }> = [];
+    // Option ids may arrive as strings, numbers or { id } objects.
+    const normalizeOptionId = (id: unknown): string => {
+      if (id == null) return "";
+      if (typeof id === "string") return id;
+      if (typeof id === "number") return String(id);
+      if (typeof id === "object" && id !== null && "id" in id) return String((id as { id: unknown }).id);
+      return String(id);
+    };
+    const companyOptionIdSet = new Set(companyOptionIds.map(normalizeOptionId).filter(Boolean));
 
-      // Normalize option ID for comparison (Directus may return string, number, or { id: string })
-      const normalizeOptionId = (id: unknown): string => {
-        if (id == null) return "";
-        if (typeof id === "string") return id;
-        if (typeof id === "number") return String(id);
-        if (typeof id === "object" && id !== null && "id" in id) return String((id as { id: unknown }).id);
-        return String(id);
-      };
-      const companyOptionIdSet = new Set(companyOptionIds.map(normalizeOptionId).filter(Boolean));
+    for (const form of forms) {
+      const activeVersion = form.formVersions.find((v) => v.is_active);
+      if (!activeVersion) continue;
 
-      for (const form of forms) {
-        const versions = form.form_versions || [];
-        const activeVersion = versions.find((v) => v.is_active);
-        if (!activeVersion) continue;
+      const metadata = activeVersion.metadata as FormMetadata | null;
+      if (!metadata?.is_company_form) continue;
+      if (String(metadata.event_id) !== String(eventId)) continue;
 
-        const metadata = (activeVersion as FormVersion & { metadata?: FormMetadata })?.metadata;
-        if (!metadata?.is_company_form) continue;
-        if (String(metadata.event_id) !== String(eventId)) continue;
-
-        // Assignment: only active version's option_ids determine which options must fill this form
-        const rawOptionIds = metadata.option_ids || [];
-        if (requireOptionAssignment && rawOptionIds.length === 0) continue;
-        if (rawOptionIds.length > 0) {
-          const requiredIds = rawOptionIds.map(normalizeOptionId).filter(Boolean);
-          const hasRequiredOption = requiredIds.some((optId) => companyOptionIdSet.has(optId));
-          if (!hasRequiredOption) continue;
-        }
-
-        companyForms.push({
-          id: form.id,
-          name: form.name,
-          slug: form.slug,
-          description: form.description,
-          metadata,
-          activeVersion: {
-            id: activeVersion.id,
-            version_number: activeVersion.version_number,
-            schema: activeVersion.schema,
-          },
-        });
+      const rawOptionIds = metadata.option_ids || [];
+      if (requireOptionAssignment && rawOptionIds.length === 0) continue;
+      if (rawOptionIds.length > 0) {
+        const requiredIds = rawOptionIds.map(normalizeOptionId).filter(Boolean);
+        const hasRequiredOption = requiredIds.some((optId) => companyOptionIdSet.has(optId));
+        if (!hasRequiredOption) continue;
       }
 
-      return companyForms;
-    } catch (error: any) {
-      // For network errors, retry with exponential backoff
-      const isNetworkError = error?.message?.includes("fetch failed") ||
-        error?.message?.includes("network") ||
-        error?.message?.includes("ECONNREFUSED") ||
-        error?.message?.includes("ETIMEDOUT");
-
-      if (isNetworkError && attempt < retries) {
-        const delay = Math.min(1000 * Math.pow(2, attempt), 5000); // Max 5 seconds
-        console.warn(`[getCompanyFormsForEvent] Network error (attempt ${attempt + 1}/${retries + 1}), retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        continue;
-      }
-
-      // For other errors or final retry, log and return empty array
-      console.error("[getCompanyFormsForEvent] Error fetching company forms:", error);
-      return [];
+      companyForms.push({
+        id: String(form.id),
+        name: form.name,
+        slug: form.slug ?? "",
+        description: form.description ?? undefined,
+        metadata,
+        activeVersion: {
+          id: String(activeVersion.id),
+          version_number: activeVersion.version_number,
+          schema: activeVersion.schema as unknown as FormSchema,
+        },
+      });
     }
+
+    return companyForms;
+  } catch (error) {
+    console.error("[getCompanyFormsForEvent] Error fetching company forms:", error);
+    return [];
   }
-  return [];
 }
 
 /** Get ALL company forms for an event (for admin floorplan filtering). No company option filter. */
 export async function getAllCompanyFormsForEvent(eventId: string) {
   try {
-    const client = await getAuthedDirectusOrThrow();
-    const forms = await client.request(
-      readItems("forms" as any, {
-        fields: ["*", "form_versions.*"],
-        filter: { is_active: { _eq: true } },
-      })
-    ) as unknown as Form[];
+    const forms = await prisma.form.findMany({
+      where: { is_active: true },
+      include: FORM_INCLUDE,
+    });
 
     const companyForms: Array<{
       id: string;
@@ -1279,22 +1130,21 @@ export async function getAllCompanyFormsForEvent(eventId: string) {
     }> = [];
 
     for (const form of forms) {
-      const versions = form.form_versions || [];
-      const activeVersion = versions.find((v) => v.is_active);
+      const activeVersion = form.formVersions.find((v) => v.is_active);
       if (!activeVersion) continue;
 
-      const metadata = (activeVersion as FormVersion & { metadata?: FormMetadata })?.metadata;
+      const metadata = activeVersion.metadata as FormMetadata | null;
       if (!metadata?.is_company_form) continue;
       if (String(metadata.event_id) !== String(eventId)) continue;
 
       companyForms.push({
-        id: form.id,
+        id: String(form.id),
         name: form.name,
-        slug: form.slug,
+        slug: form.slug ?? "",
         activeVersion: {
-          id: activeVersion.id,
+          id: String(activeVersion.id),
           version_number: activeVersion.version_number,
-          schema: activeVersion.schema,
+          schema: activeVersion.schema as unknown as FormSchema,
         },
       });
     }
@@ -1355,23 +1205,16 @@ export async function getCompanyIdsMatchingFormFieldOption(
   optionValue: string
 ): Promise<string[]> {
   try {
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const client = await getServerDirectusClient();
 
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id", "company_id", "data"],
-        filter: {
-          _and: [
-            { form_version_id: { _eq: formVersionId } },
-            { company_id: { _nnull: true } },
-            NOT_ARCHIVED_FILTER,
-          ],
-        },
-        limit: -1,
-        sort: "-submitted_at",
-      })
-    ) as unknown as Array<{ id: string; company_id: string | { id: string }; data: Record<string, unknown> }>;
+    const responses = await prisma.formResponse.findMany({
+      where: {
+        form_version_id: Number(formVersionId),
+        company_id: { not: null },
+        ...NOT_ARCHIVED,
+      },
+      select: { id: true, company_id: true, data: true },
+      orderBy: { submitted_at: "desc" },
+    }) as unknown as Array<{ id: string; company_id: string | { id: string }; data: Record<string, unknown> }>;
 
     // Keep only latest response per company (responses sorted by -submitted_at)
     const latestByCompany = new Map<string, Record<string, unknown>>();
@@ -1409,23 +1252,16 @@ export async function getCompanyFormFieldValues(
   fieldName: string
 ): Promise<Record<string, string>> {
   try {
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const client = await getServerDirectusClient();
 
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id", "company_id", "data"],
-        filter: {
-          _and: [
-            { form_version_id: { _eq: formVersionId } },
-            { company_id: { _nnull: true } },
-            NOT_ARCHIVED_FILTER,
-          ],
-        },
-        limit: -1,
-        sort: "-submitted_at",
-      })
-    ) as unknown as Array<{ id: string; company_id: string | { id: string }; data: Record<string, unknown> }>;
+    const responses = await prisma.formResponse.findMany({
+      where: {
+        form_version_id: Number(formVersionId),
+        company_id: { not: null },
+        ...NOT_ARCHIVED,
+      },
+      select: { id: true, company_id: true, data: true },
+      orderBy: { submitted_at: "desc" },
+    }) as unknown as Array<{ id: string; company_id: string | { id: string }; data: Record<string, unknown> }>;
 
     const latestByCompany = new Map<string, Record<string, unknown>>();
     for (const r of responses) {
@@ -1457,27 +1293,20 @@ export async function getCompanyFormFieldValuesFromForm(
   fieldName: string
 ): Promise<Record<string, string>> {
   try {
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const client = await getServerDirectusClient();
 
     const versions = await listFormVersionsForServer(formId);
     const versionIds = versions.map((v) => v.id);
     if (versionIds.length === 0) return {};
 
-    const responses = await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id", "company_id", "data", "submitted_at"],
-        filter: {
-          _and: [
-            { form_version_id: { _in: versionIds } },
-            { company_id: { _nnull: true } },
-            NOT_ARCHIVED_FILTER,
-          ],
-        },
-        limit: -1,
-        sort: "-submitted_at",
-      })
-    ) as unknown as Array<{ company_id: string | { id: string }; data: Record<string, unknown> }>;
+    const responses = await prisma.formResponse.findMany({
+      where: {
+        form_version_id: { in: nums(versionIds) },
+        company_id: { not: null },
+        ...NOT_ARCHIVED,
+      },
+      select: { id: true, company_id: true, data: true, submitted_at: true },
+      orderBy: { submitted_at: "desc" },
+    }) as unknown as Array<{ company_id: string | { id: string }; data: Record<string, unknown> }>;
 
     const latestByCompany = new Map<string, Record<string, unknown>>();
     for (const r of responses) {
@@ -1565,9 +1394,6 @@ export async function getCompanyIdsMatchingFloorplanCategory(
     const { listMasters, listFaculties } = await import("@/lib/repos/features");
     const { normalizeMasterDegreesValues, normalizeFaculties } = await import("@/lib/utils/master-degree-options");
     const { buildMasterDegreeOptionsForForm } = await import("@/lib/utils/master-degree-options");
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const client = await getServerDirectusClient();
-    if (!client) return [];
 
     const masters = (await listMasters({ limit: 300, sort: "name" })) ?? [];
     const rawFaculties = (await listFaculties({ limit: 100, sort: "name" })) ?? [];
@@ -1596,20 +1422,15 @@ export async function getCompanyIdsMatchingFloorplanCategory(
       const versions = await listFormVersionsForServer(formId);
       const versionIds = versions.map((v) => v.id);
       if (versionIds.length === 0) continue;
-      const responses = await client.request(
-        readItems("form_responses" as any, {
-          fields: ["id", "company_id", "data"],
-          filter: {
-            _and: [
-              { form_version_id: { _in: versionIds } },
-              { company_id: { _nnull: true } },
-              NOT_ARCHIVED_FILTER,
-            ],
-          },
-          limit: -1,
-          sort: "-submitted_at",
-        })
-      ) as unknown as Array<{ company_id: string | { id: string }; data: Record<string, unknown> }>;
+      const responses = await prisma.formResponse.findMany({
+        where: {
+          form_version_id: { in: nums(versionIds) },
+          company_id: { not: null },
+          ...NOT_ARCHIVED,
+        },
+        select: { id: true, company_id: true, data: true },
+        orderBy: { submitted_at: "desc" },
+      }) as unknown as Array<{ company_id: string | { id: string }; data: Record<string, unknown> }>;
       const latestByCompany = new Map<string, Record<string, unknown>>();
       for (const r of responses) {
         const companyId = typeof r.company_id === "string" ? r.company_id : r.company_id?.id;
@@ -1655,9 +1476,6 @@ export async function getCompanyCategoriesFromFormResponses(
   try {
     const { listMasters, listFaculties } = await import("@/lib/repos/features");
     const { normalizeFaculties, resolveMasterDegreeValueToDisplayLabel } = await import("@/lib/utils/master-degree-options");
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const client = await getServerDirectusClient();
-    if (!client) return result;
 
     const masters = (await listMasters({ limit: 300, sort: "name" })) ?? [];
     const rawFaculties = (await listFaculties({ limit: 100, sort: "name" })) ?? [];
@@ -1678,20 +1496,15 @@ export async function getCompanyCategoriesFromFormResponses(
       const versions = await listFormVersionsForServer(formId);
       const versionIds = versions.map((v) => v.id);
       if (versionIds.length === 0) continue;
-      const responses = await client.request(
-        readItems("form_responses" as any, {
-          fields: ["id", "company_id", "data"],
-          filter: {
-            _and: [
-              { form_version_id: { _in: versionIds } },
-              { company_id: { _nnull: true } },
-              NOT_ARCHIVED_FILTER,
-            ],
-          },
-          limit: -1,
-          sort: "-submitted_at",
-        })
-      ) as unknown as Array<{ company_id: string | { id: string }; data: Record<string, unknown> }>;
+      const responses = await prisma.formResponse.findMany({
+        where: {
+          form_version_id: { in: nums(versionIds) },
+          company_id: { not: null },
+          ...NOT_ARCHIVED,
+        },
+        select: { id: true, company_id: true, data: true },
+        orderBy: { submitted_at: "desc" },
+      }) as unknown as Array<{ company_id: string | { id: string }; data: Record<string, unknown> }>;
       const latestByCompany = new Map<string, Record<string, unknown>>();
       for (const r of responses) {
         const companyId = typeof r.company_id === "string" ? r.company_id : r.company_id?.id;
@@ -1735,9 +1548,6 @@ export async function getCompanyMasterDegreesFromForm(
     const rawFaculties = (await listFaculties({ limit: 100, sort: "name" })) ?? [];
     const faculties = normalizeFaculties(rawFaculties);
 
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const client = await getServerDirectusClient();
-    if (!client) return [];
 
     const valuesSeen = new Set<string>();
     const orderedValues: string[] = [];
@@ -1745,20 +1555,16 @@ export async function getCompanyMasterDegreesFromForm(
       const versions = await listFormVersionsForServer(formId);
       const versionIds = versions.map((v) => v.id);
       if (versionIds.length === 0) continue;
-      const responses = await client.request(
-        readItems("form_responses" as any, {
-          fields: ["id", "company_id", "data"],
-          filter: {
-            _and: [
-              { form_version_id: { _in: versionIds } },
-              { company_id: { _eq: companyId } },
-              NOT_ARCHIVED_FILTER,
-            ],
-          },
-          limit: 1,
-          sort: "-submitted_at",
-        })
-      ) as unknown as Array<{ data: Record<string, unknown> }>;
+      const responses = await prisma.formResponse.findMany({
+        where: {
+          form_version_id: { in: nums(versionIds) },
+          company_id: companyId,
+          ...NOT_ARCHIVED,
+        },
+        select: { id: true, company_id: true, data: true },
+        orderBy: { submitted_at: "desc" },
+        take: 1,
+      }) as unknown as Array<{ data: Record<string, unknown> }>;
       const data = responses?.[0]?.data ?? {};
       const fieldValue = data[fieldName];
       const extractVal = (v: unknown): string | null => {
@@ -1880,9 +1686,6 @@ export async function getCompanyMasterDegreesFromFormBatch(
   try {
     const { listMasters, listFaculties } = await import("@/lib/repos/features");
     const { resolveLogosForValue, extractLogoId, normalizeFaculties } = await import("@/lib/utils/master-degree-options");
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const client = await getServerDirectusClient();
-    if (!client) return result;
 
     const { groups } = await getFloorplanCategoryOptions(categoryFields);
     const opts = groups.flatMap((g) => g.options);
@@ -1935,20 +1738,15 @@ export async function getCompanyMasterDegreesFromFormBatch(
       const versions = await listFormVersionsForServer(formId);
       const versionIds = versions.map((v) => v.id);
       if (versionIds.length === 0) continue;
-      const responses = await client.request(
-        readItems("form_responses" as any, {
-          fields: ["id", "company_id", "data"],
-          filter: {
-            _and: [
-              { form_version_id: { _in: versionIds } },
-              { company_id: { _in: companyIds } },
-              NOT_ARCHIVED_FILTER,
-            ],
-          },
-          limit: -1,
-          sort: "-submitted_at",
-        })
-      ) as unknown as Array<{ company_id: string | { id: string }; data: Record<string, unknown> }>;
+      const responses = await prisma.formResponse.findMany({
+        where: {
+          form_version_id: { in: nums(versionIds) },
+          company_id: { in: companyIds },
+          ...NOT_ARCHIVED,
+        },
+        select: { id: true, company_id: true, data: true },
+        orderBy: { submitted_at: "desc" },
+      }) as unknown as Array<{ company_id: string | { id: string }; data: Record<string, unknown> }>;
       const byCompany = new Map<string, Record<string, unknown>>();
       companyDataByFormId.set(formId, byCompany);
       for (const r of responses) {
@@ -2039,26 +1837,14 @@ export async function getCompanyMasterDegreesFromFormBatch(
 
 export async function getCompanyFormBySlugAndEvent(eventId: string, slug: string) {
   try {
-    // Try authenticated first, fall back to public client for public form access
-    let client;
-    try {
-      client = await getAuthedDirectusOrThrow();
-    } catch {
-      // If auth fails, use public client for public form access
-      client = directus;
-    }
-
     // Get form by slug
-    const forms = await client.request(
-      readItems("forms" as any, {
-        fields: ["*", { form_versions: ["*"] } as any],
-        filter: {
-          slug: { _eq: slug },
-          is_active: { _eq: true },
-        },
-        limit: 1,
+    const forms = (
+      await prisma.form.findMany({
+        where: { slug, is_active: true },
+        include: FORM_INCLUDE,
+        take: 1,
       })
-    ) as unknown as Form[];
+    ).map((r) => shapeForm(r)!) as Form[];
 
     if (forms.length === 0) return null;
 
@@ -2099,24 +1885,16 @@ export async function getCompanyFormBySlugAndEvent(eventId: string, slug: string
 export async function checkCompanyFormCompletion(companyId: string, formVersionIds: string[]) {
   try {
     // Use server client to ensure we have permissions to read company_id field
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const serverClient = await getServerDirectusClient();
 
     if (formVersionIds.length === 0) return new Set<string>();
 
-    const { readItems } = await import("@directus/sdk");
-    const responses = await serverClient.request(
-      readItems("form_responses" as any, {
-        fields: ["form_version_id", "company_id"],
-        filter: {
-          _and: [
-            { company_id: { _eq: companyId } },
-            { form_version_id: { _in: formVersionIds } },
-          ],
-        },
-        limit: -1,
-      })
-    ) as unknown as Array<{ form_version_id: string; company_id: string }>;
+    const responses = await prisma.formResponse.findMany({
+      where: {
+        company_id: companyId,
+        form_version_id: { in: nums(formVersionIds) },
+      },
+      select: { form_version_id: true, company_id: true },
+    }) as unknown as Array<{ form_version_id: string; company_id: string }>;
 
     // Return set of completed form version IDs
     return new Set(responses.map((r) => r.form_version_id));
@@ -2135,20 +1913,13 @@ export async function checkCompanyFormCompletionBatch(
   companyIds.forEach((id) => result.set(id, new Set()));
   if (companyIds.length === 0 || formVersionIds.length === 0) return result;
   try {
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const serverClient = await getServerDirectusClient();
-    const responses = await serverClient.request(
-      readItems("form_responses" as any, {
-        fields: ["form_version_id", "company_id"],
-        filter: {
-          _and: [
-            { company_id: { _in: companyIds } },
-            { form_version_id: { _in: formVersionIds } },
-          ],
-        },
-        limit: -1,
-      })
-    ) as unknown as Array<{ form_version_id: string; company_id: string }>;
+    const responses = await prisma.formResponse.findMany({
+      where: {
+        company_id: { in: companyIds },
+        form_version_id: { in: nums(formVersionIds) },
+      },
+      select: { form_version_id: true, company_id: true },
+    }) as unknown as Array<{ form_version_id: string; company_id: string }>;
     for (const r of responses) {
       const set = result.get(r.company_id);
       if (set) set.add(r.form_version_id);
@@ -2163,41 +1934,28 @@ export async function checkCompanyFormCompletionBatch(
 export async function checkCompanyFormCompletionByFormIds(companyId: string, formIds: string[]) {
   try {
     // Use server client to ensure we have permissions to read company_id field
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const serverClient = await getServerDirectusClient();
 
     if (formIds.length === 0) return new Set<string>();
 
-    const { readItems } = await import("@directus/sdk");
 
     // First, get all form version IDs for these forms
-    const formVersions = await serverClient.request(
-      readItems("form_versions" as any, {
-        fields: ["id", "form_id"],
-        filter: {
-          form_id: { _in: formIds },
-        },
-        limit: -1,
-      })
-    ) as unknown as Array<{ id: string; form_id: string }>;
+    const formVersions = await prisma.formVersion.findMany({
+      where: { form_id: { in: nums(formIds) } },
+      select: { id: true, form_id: true },
+    }) as unknown as Array<{ id: string; form_id: string }>;
 
     if (formVersions.length === 0) return new Set<string>();
 
     const formVersionIds = formVersions.map((fv) => fv.id);
 
     // Check for responses across all versions of these forms
-    const responses = await serverClient.request(
-      readItems("form_responses" as any, {
-        fields: ["form_version_id", "company_id"],
-        filter: {
-          _and: [
-            { company_id: { _eq: companyId } },
-            { form_version_id: { _in: formVersionIds } },
-          ],
-        },
-        limit: -1,
-      })
-    ) as unknown as Array<{ form_version_id: string; company_id: string }>;
+    const responses = await prisma.formResponse.findMany({
+      where: {
+        company_id: companyId,
+        form_version_id: { in: nums(formVersionIds) },
+      },
+      select: { form_version_id: true, company_id: true },
+    }) as unknown as Array<{ form_version_id: string; company_id: string }>;
 
     // Map form version IDs back to form IDs
     const formVersionToFormId = new Map(formVersions.map((fv) => [fv.id, fv.form_id]));
@@ -2226,30 +1984,20 @@ export async function checkCompanyFormCompletionByFormIdsBatch(
   companyIds.forEach((id) => result.set(id, new Set()));
   if (companyIds.length === 0 || formIds.length === 0) return result;
   try {
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const serverClient = await getServerDirectusClient();
-    const formVersions = await serverClient.request(
-      readItems("form_versions" as any, {
-        fields: ["id", "form_id"],
-        filter: { form_id: { _in: formIds } },
-        limit: -1,
-      })
-    ) as unknown as Array<{ id: string; form_id: string }>;
+    const formVersions = await prisma.formVersion.findMany({
+      where: { form_id: { in: nums(formIds) } },
+      select: { id: true, form_id: true },
+    }) as unknown as Array<{ id: string; form_id: string }>;
     if (formVersions.length === 0) return result;
     const formVersionIds = formVersions.map((fv) => fv.id);
     const formVersionToFormId = new Map(formVersions.map((fv) => [fv.id, fv.form_id]));
-    const responses = await serverClient.request(
-      readItems("form_responses" as any, {
-        fields: ["form_version_id", "company_id"],
-        filter: {
-          _and: [
-            { company_id: { _in: companyIds } },
-            { form_version_id: { _in: formVersionIds } },
-          ],
-        },
-        limit: -1,
-      })
-    ) as unknown as Array<{ form_version_id: string; company_id: string }>;
+    const responses = await prisma.formResponse.findMany({
+      where: {
+        company_id: { in: companyIds },
+        form_version_id: { in: nums(formVersionIds) },
+      },
+      select: { form_version_id: true, company_id: true },
+    }) as unknown as Array<{ form_version_id: string; company_id: string }>;
     for (const r of responses) {
       const formId = formVersionToFormId.get(r.form_version_id);
       const set = result.get(r.company_id);
@@ -2281,21 +2029,14 @@ export async function checkCompanyFormCompletionBatchWithCompulsory(
   try {
     // For compulsory forms: this version OR any newer version (version_number >= compulsory) counts
     if (compulsoryForms.length > 0) {
-      const { getServerDirectusClient } = await import("@/lib/directus");
-      const serverClient = await getServerDirectusClient();
-      for (const form of compulsoryForms) {
-        const formVersions = await serverClient.request(
-          readItems("form_versions" as any, {
-            fields: ["id"],
-            filter: {
-              _and: [
-                { form_id: { _eq: form.formId } },
-                { version_number: { _gte: form.versionNumber! } },
-              ],
-            },
-            limit: -1,
-          })
-        ) as unknown as Array<{ id: string }>;
+          for (const form of compulsoryForms) {
+        const formVersions = (await prisma.formVersion.findMany({
+          where: {
+            form_id: Number(form.formId),
+            version_number: { gte: form.versionNumber! },
+          },
+          select: { id: true },
+        })) as unknown as Array<{ id: string }>;
         const versionIds = formVersions.map((v) => v.id);
         if (versionIds.length === 0) continue;
         const batch = await checkCompanyFormCompletionBatch(companyIds, versionIds);
@@ -2328,25 +2069,14 @@ export async function checkCompanyFormCompletionBatchWithCompulsory(
 export async function getLatestCompanyFormResponse(formVersionId: string, companyId: string) {
   try {
     // Use server client to ensure we can always read company-linked responses
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const serverClient = await getServerDirectusClient();
-    const { readItems } = await import("@directus/sdk");
 
     // Get the most recent response for this specific form version and company
     // Sort by submitted_at descending to ensure we get the latest submission
-    const responses = await serverClient.request(
-      readItems("form_responses" as any, {
-        fields: ["*"],
-        filter: {
-          _and: [
-            { form_version_id: { _eq: formVersionId } },
-            { company_id: { _eq: companyId } },
-          ],
-        },
-        limit: 1,
-        sort: "-submitted_at", // Most recent first
-      })
-    ) as unknown as FormResponse[];
+    const responses = (await prisma.formResponse.findMany({
+      where: { form_version_id: Number(formVersionId), company_id: companyId },
+      orderBy: { submitted_at: "desc" }, // Most recent first
+      take: 1,
+    })) as unknown as FormResponse[];
 
     return responses[0] ?? null;
   } catch (error) {
@@ -2357,29 +2087,14 @@ export async function getLatestCompanyFormResponse(formVersionId: string, compan
 
 export async function getLatestCompanyFormResponseForForm(formId: string, companyId: string) {
   try {
-    const { getServerDirectusClient } = await import("@/lib/directus");
-    const serverClient = await getServerDirectusClient();
-    const { readItems } = await import("@directus/sdk");
 
     // Get the most recent response across ALL versions of this form for this company
     // Sort by submitted_at descending to ensure we get the latest submission regardless of version
-    const responses = await serverClient.request(
-      readItems("form_responses" as any, {
-        fields: ["*"],
-        filter: {
-          _and: [
-            { company_id: { _eq: companyId } },
-            {
-              form_version_id: {
-                form_id: { _eq: formId },
-              },
-            },
-          ],
-        },
-        limit: 1,
-        sort: "-submitted_at", // Most recent first
-      })
-    ) as unknown as FormResponse[];
+    const responses = (await prisma.formResponse.findMany({
+      where: { company_id: companyId, formVersion: { form_id: Number(formId) } },
+      orderBy: { submitted_at: "desc" }, // Most recent first
+      take: 1,
+    })) as unknown as FormResponse[];
 
     return responses[0] ?? null;
   } catch (error) {

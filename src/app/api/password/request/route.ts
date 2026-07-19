@@ -1,192 +1,71 @@
-// app/api/password/request/route.ts
-// NOTE: This route uses our own email service instead of Directus
-// It generates the reset token manually and sends the email via our SMTP service
 import { NextRequest, NextResponse } from "next/server";
-import { sendEmail } from "@/lib/repos/directus";
-import { generatePasswordResetEmailHtml, generateInvitationEmailHtml } from "@/lib/email-templates";
+import prisma from "@/lib/prisma";
+import { sendEmail } from "@/lib/email";
+import {
+  generateInvitationEmailHtml,
+  generatePasswordResetEmailHtml,
+} from "@/lib/email-templates";
 import { generateInviteTokenServer } from "@/lib/invite-token";
+import { createUserPasswordResetToken } from "@/lib/password-reset";
+
+const GENERIC_MESSAGE =
+  "If an account with that email exists, a password reset link has been sent.";
+
+function applicationUrl() {
+  return (
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_FORM_DOMAIN ||
+    "http://localhost:3000"
+  ).replace(/\/+$/, "");
+}
 
 export async function POST(request: NextRequest) {
+  const { email } = await request.json().catch(() => ({ email: null }));
+  if (typeof email !== "string" || !email.trim()) {
+    return NextResponse.json({ error: "Email is required" }, { status: 400 });
+  }
+
   try {
-    const { email } = await request.json();
-
-    if (!email) {
-      return NextResponse.json(
-        { error: "Email is required" },
-        { status: 400 }
-      );
+    const user = await prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() },
+    });
+    if (
+      !user?.email ||
+      (user.status !== "active" && user.status !== "invited")
+    ) {
+      return NextResponse.json({ success: true, message: GENERIC_MESSAGE });
     }
 
-    const baseUrl = process.env.DIRECTUS_URL;
-    if (!baseUrl) {
-      return NextResponse.json(
-        { error: "DIRECTUS_URL not configured" },
-        { status: 500 }
-      );
-    }
-
-    const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
-
-    // We need server token to generate and store the reset token ourselves
-    // This avoids Directus sending its own email
-    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-    
-    if (!serverToken) {
-      console.error("[password/request] DIRECTUS_SERVER_TOKEN not configured - cannot generate reset token");
-      // Still return success for security (don't reveal if email exists)
-      return NextResponse.json({ 
-        success: true, 
-        message: "If an account with that email exists, a password reset link has been sent." 
-      });
-    }
-
-    try {
-      // Find user by email
-      const userRes = await fetch(
-        `${normalizedBase}users?filter[email][_eq]=${encodeURIComponent(email)}&fields=id,email,first_name,last_name,status`,
-        {
-          headers: {
-            "Authorization": `Bearer ${serverToken}`,
-          },
-        }
-      );
-
-      if (!userRes.ok) {
-        // Don't reveal if user exists - always return success
-        return NextResponse.json({ 
-          success: true, 
-          message: "If an account with that email exists, a password reset link has been sent." 
-        });
-      }
-
-      const userData = await userRes.json();
-      const users = userData.data || [];
-      
-      if (users.length === 0) {
-        // User doesn't exist - return success anyway (security best practice)
-        return NextResponse.json({ 
-          success: true, 
-          message: "If an account with that email exists, a password reset link has been sent." 
-        });
-      }
-
-      const user = users[0];
-      
-      // Check if user is active (not suspended, etc.)
-      if (!user.status || (user.status !== "active" && user.status !== "invited")) {
-        // User exists but is not active - still return success
-        return NextResponse.json({ 
-          success: true, 
-          message: "If an account with that email exists, a password reset link has been sent." 
-        });
-      }
-
-      const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
-        || process.env.NEXT_PUBLIC_FORM_DOMAIN 
-        || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
-
-      const isInvited = user.status === "invited";
-
-      if (isInvited) {
-        // Invited users: use full activation flow (accept-invite) so they can fill in company info first
-        const tokenData = await generateInviteTokenServer(user.id);
-        if (!tokenData) {
-          console.error(`[password/request] Failed to generate invite token for invited user ${user.id}`);
-          return NextResponse.json({ 
-            success: true, 
-            message: "If an account with that email exists, a password reset link has been sent." 
-          });
-        }
-
-        const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(tokenData.token)}`;
-
-        try {
-          const emailHtml = generateInvitationEmailHtml({
+    if (user.status === "invited") {
+      const invite = await generateInviteTokenServer(user.id);
+      if (invite) {
+        const acceptInviteUrl = `${applicationUrl()}/accept-invite?token=${encodeURIComponent(invite.token)}`;
+        await sendEmail({
+          to: user.email,
+          subject: "Complete Your Registration - VTK Career Platform",
+          html: generateInvitationEmailHtml({
             firstName: user.first_name || undefined,
             lastName: user.last_name || undefined,
             acceptInviteUrl,
-            companyName: undefined,
-          });
-
-          await sendEmail({
-            to: user.email,
-            subject: "Set Up Your Account - VTK Career Platform",
-            html: emailHtml,
-          });
-          
-          console.log(`[password/request] Activation email sent to ${user.email} (invited user)`);
-        } catch (emailError) {
-          console.error(`[password/request] Error sending activation email:`, emailError);
-        }
-      } else {
-        // Active users: use reset-password flow
-        const crypto = await import("crypto");
-        const randomToken = crypto.randomBytes(32).toString("hex");
-        
-        const updateRes = await fetch(
-          `${normalizedBase}users/${user.id}`,
-          {
-            method: "PATCH",
-            headers: {
-              "Authorization": `Bearer ${serverToken}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              password_reset_token: randomToken,
-            }),
-          }
-        );
-
-        if (!updateRes.ok) {
-          const errorData = await updateRes.json().catch(() => null);
-          console.error(`[password/request] Failed to set reset token for user ${user.id}:`, errorData);
-          return NextResponse.json({ 
-            success: true, 
-            message: "If an account with that email exists, a password reset link has been sent." 
-          });
-        }
-
-        const resetUrl = `${frontendBaseUrl}/reset-password?token=${encodeURIComponent(randomToken)}`;
-
-        try {
-          const emailHtml = generatePasswordResetEmailHtml({
-            firstName: user.first_name || undefined,
-            lastName: user.last_name || undefined,
-            resetUrl,
-          });
-
-          await sendEmail({
-            to: user.email,
-            subject: "Reset Your Password - VTK Career Platform",
-            html: emailHtml,
-          });
-          
-          console.log(`[password/request] Password reset email sent to ${user.email}`);
-        } catch (emailError) {
-          console.error(`[password/request] Error sending password reset email:`, emailError);
-        }
+          }),
+        });
       }
-
-      // Always return success (security best practice - don't reveal if email exists)
-      return NextResponse.json({ 
-        success: true, 
-        message: "If an account with that email exists, a password reset link has been sent." 
-      });
-    } catch (err) {
-      console.error(`[password/request] Error processing password reset request:`, err);
-      // Don't reveal errors to user for security
-      return NextResponse.json({ 
-        success: true, 
-        message: "If an account with that email exists, a password reset link has been sent." 
+    } else {
+      const token = await createUserPasswordResetToken(user.id);
+      const resetUrl = `${applicationUrl()}/reset-password?token=${encodeURIComponent(token)}`;
+      await sendEmail({
+        to: user.email,
+        subject: "Reset Your Password - VTK Career Platform",
+        html: generatePasswordResetEmailHtml({
+          firstName: user.first_name || undefined,
+          lastName: user.last_name || undefined,
+          resetUrl,
+        }),
       });
     }
   } catch (error) {
-    console.error("Error in password request:", error);
-    // Don't reveal errors to user for security
-    return NextResponse.json({ 
-      success: true, 
-      message: "If an account with that email exists, a password reset link has been sent." 
-    });
+    console.error("[password/request] Failed to send password email:", error);
   }
-}
 
+  return NextResponse.json({ success: true, message: GENERIC_MESSAGE });
+}

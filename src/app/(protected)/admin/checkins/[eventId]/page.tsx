@@ -1,9 +1,7 @@
 import { getUserFromCookies } from "@/lib/auth-server";
-import { getAdminDirectusClient } from "@/lib/directus";
-import { readItems } from "@directus/sdk";
-import type { CareerEvent } from "@/lib/schema";
 import Link from "next/link";
 import CheckinsClient from "./client";
+import prisma from "@/lib/prisma";
 
 export default async function AdminCheckinEventPage({
   params,
@@ -15,18 +13,11 @@ export default async function AdminCheckinEventPage({
 
   const { eventId } = await params;
 
-  let eventName = "Event";
-  const client = getAdminDirectusClient();
-  if (client) {
-    const events = (await client.request(
-      readItems("career_event" as any, {
-        fields: ["id", "name"],
-        filter: { id: { _eq: eventId } },
-        limit: 1,
-      })
-    )) as unknown as CareerEvent[];
-    if (events.length > 0) eventName = events[0].name;
-  }
+  const event = await prisma.careerEvent.findUnique({
+    where: { id: eventId },
+    select: { name: true },
+  });
+  const eventName = event?.name || "Event";
 
   return (
     <div className="container mx-auto py-6 space-y-6">

@@ -1,21 +1,17 @@
 // app/api/admin/upload-company-guide/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { uploadDirectusFile } from "@/lib/repos/directus";
+import { uploadFile } from "@/lib/file-storage";
 import { getOrCreateEventPage } from "@/lib/repos/floorplan";
-import { getDirectusWithToken } from "@/lib/directus";
-import { updateItem } from "@directus/sdk";
+import { getUserFromCookies } from "@/lib/auth-server";
+import prisma from "@/lib/prisma";
 
 // Allow larger file uploads (up to 50MB)
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
-    const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
-    const cookieStore = await cookies();
-    const token = cookieStore.get(ACCESS_COOKIE)?.value;
-
-    if (!token) {
+    const user = await getUserFromCookies();
+    if (!user?.admin) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -46,10 +42,8 @@ export async function POST(req: Request) {
       );
     }
 
-    // Step 2: Upload PDF file to Directus
-    // Pass the file directly - uploadDirectusFile will handle it correctly
-    // This matches the pattern used in upload-floorplan route
-    const pdfFileId = await uploadDirectusFile(pdfFile);
+    // Step 2: Store the PDF.
+    const pdfFileId = await uploadFile(pdfFile);
 
     if (!pdfFileId) {
       return NextResponse.json(
@@ -59,19 +53,10 @@ export async function POST(req: Request) {
     }
 
     // Step 3: Update event page with company guide
-    const client = await getDirectusWithToken();
-    if (!client) {
-      return NextResponse.json(
-        { error: "Failed to get Directus client" },
-        { status: 500 }
-      );
-    }
-
-    await client.request(
-      updateItem("career_event_page", eventPage.id, {
-        company_guide: pdfFileId,
-      })
-    );
+    await prisma.careerEventPage.update({
+      where: { id: Number(eventPage.id) },
+      data: { company_guide: pdfFileId },
+    });
 
     return NextResponse.json({
       success: true,

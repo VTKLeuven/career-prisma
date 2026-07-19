@@ -10,11 +10,7 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "directustest.vtk.be", // your Directus domain
-      },
-      {
-        protocol: "https",
-        hostname: "images.unsplash.com", // your Directus domain
+        hostname: "images.unsplash.com",
       },
     ],
     // Enable image optimization caching
@@ -26,10 +22,10 @@ const nextConfig: NextConfig = {
     optimizePackageImports: ['framer-motion', 'lucide-react'],
     // Configure maximum body size for API routes (default is 10MB)
     // This allows file uploads up to 50MB
-    middlewareClientMaxBodySize: '50mb' as any, // Using 'as any' to bypass TypeScript if property not in types yet
+    proxyClientMaxBodySize: '50mb',
     // Increase server action body size limit (default is 1 MB)
     // This is needed for company information updates that might include large HTML descriptions
-    // Note: File uploads are handled separately via Directus API, not through server actions
+    // File uploads use dedicated routes, not server actions.
     // However, the payload can still be large due to HTML content from descriptions
     serverActions: {
       bodySizeLimit: '10mb',
@@ -47,6 +43,7 @@ const nextConfig: NextConfig = {
     return config;
   },
   turbopack: {
+    root: process.cwd(),
     resolveAlias: { "node:inspector": "inspector" },
   },
   // Reduce log spam: ignore polling endpoints (email-job-status, email-queue)

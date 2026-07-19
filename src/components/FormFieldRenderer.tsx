@@ -208,7 +208,7 @@ function MasterDegreesField({
   if (options.length === 0) {
     return (
       <div className="text-sm text-muted-foreground py-2">
-        No master degrees available. Ensure the master (and faculty) collections exist in Directus.
+        No master degrees are configured. Ask an administrator to add masters and faculties.
       </div>
     );
   }

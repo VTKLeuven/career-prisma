@@ -25,7 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, Loader2, Download } from "lucide-react";
 import type { FormField, FormSchema, FormResponse } from "@/lib/schema";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import NextImage from "next/image";
 import { FormFieldRenderer } from "@/components/FormFieldRenderer";
 import { userFacingFormSubmitErrorMessage } from "@/lib/form-submit-errors";
@@ -910,7 +910,7 @@ export default function CompanyFormPage() {
                 <div key={`row-${rowIndex}`} className="grid grid-cols-1 md:grid-cols-12 gap-4">
                   {row.map((field) => {
                     const layout = field.layout || 'full';
-                    const imageUrl = field.image ? getDirectusImageUrl(field.image) : null;
+                    const imageUrl = field.image ? getFileUrl(field.image) : null;
                     
                     return (
                       <div key={field.id} className={`space-y-2 ${getColSpanClass(layout)}`}>

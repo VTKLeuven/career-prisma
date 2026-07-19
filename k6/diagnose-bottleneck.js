@@ -5,11 +5,11 @@
  *
  * Test 1 (no app logic): k6 run -e BASE_URL=http://liv:3002 -e DIAG=health k6/diagnose-bottleneck.js
  * Test 2 (Next.js only): k6 run -e BASE_URL=http://liv:3002 -e DIAG=nextjs k6/diagnose-bottleneck.js
- * Test 3 (Directus):    k6 run -e BASE_URL=http://liv:3002 -e DIAG=directus k6/diagnose-bottleneck.js
+ * Test 3 (database):    k6 run -e BASE_URL=http://liv:3002 -e DIAG=database k6/diagnose-bottleneck.js
  *
  * If health fails at 950 → Caddy/Docker/network
  * If nextjs fails, health OK → Next.js or Caddy→Next.js
- * If directus fails, nextjs OK → Directus
+ * If database fails, nextjs OK → PostgreSQL/query layer
  */
 
 import http from "k6/http";
@@ -45,8 +45,7 @@ function getNextJsHomepage() {
   return http.get(`${BASE_URL}/`);
 }
 
-function getDirectus() {
-  // Adjust if your Directus is elsewhere — this hits the Next.js API that calls Directus
+function getDatabaseBackedPage() {
   return http.get(`${BASE_URL}/api/homepage`);
 }
 
@@ -56,8 +55,8 @@ export default function () {
     res = getHealth();
   } else if (DIAG === "nextjs") {
     res = getNextJsHomepage();
-  } else if (DIAG === "directus") {
-    res = getDirectus();
+  } else if (DIAG === "database") {
+    res = getDatabaseBackedPage();
   } else {
     res = getHealth();
   }

@@ -7,7 +7,7 @@ import NextImage from "next/image"
 import * as Sentry from "@sentry/nextjs"
 import { fetchFloorplanCategoryOptionsAction, fetchCompanyIdsMatchingFloorplanCategoryAction, fetchCompanyMasterDegreesFromFormBatchAction, fetchCompanyFormFieldValuesFromFormAction } from "@/app/actions/forms"
 import type { CareerEventPage, Booth, Master, Company } from '@/lib/schema'
-import { getDirectusImageUrl } from "@/components/Images"
+import { getFileUrl } from "@/components/Images"
 import { extractLogoId } from "@/lib/utils/master-degree-options"
 import { slugifyCompanyName, slugifyEventName } from "@/lib/utils/slugify"
 import { hasCompanyPageAccess } from "@/lib/utils/company-access"
@@ -665,7 +665,7 @@ function Header({
                           style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
                         >
                           <NextImage
-                            src={getDirectusImageUrl(cat.logo, { width: 64, height: 64 }) ?? ''}
+                            src={getFileUrl(cat.logo, { width: 64, height: 64 }) ?? ''}
                             alt={cat.short_name}
                             width={32}
                             height={32}
@@ -1168,7 +1168,7 @@ function Floorplan({
                     style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
                   >
                     <NextImage
-                      src={getDirectusImageUrl(cat.logo, { width: 72, height: 72 }) ?? ''}
+                      src={getFileUrl(cat.logo, { width: 72, height: 72 }) ?? ''}
                       alt={cat.short_name}
                       width={36}
                       height={36}
@@ -1196,7 +1196,7 @@ function Floorplan({
         <div
           className="fixed inset-0 z-0"
           style={{
-            backgroundImage: `url(${getDirectusImageUrl(backgroundImage) || ""})`,
+            backgroundImage: `url(${getFileUrl(backgroundImage) || ""})`,
             backgroundSize: "cover",
             backgroundPosition: "center",
             backgroundRepeat: "no-repeat",
@@ -1445,7 +1445,7 @@ function Floorplan({
                   style={{ borderColor: isSelected ? '#003366' : '#ccc' }}
                 >
                   <NextImage
-                    src={getDirectusImageUrl(cat.logo, { width: 72, height: 72 }) ?? ''}
+                    src={getFileUrl(cat.logo, { width: 72, height: 72 }) ?? ''}
                     alt={cat.short_name}
                     width={36}
                     height={36}
@@ -1968,7 +1968,7 @@ function Popup({
         {company.logo && (
           <div className="flex justify-center mb-4">
             <NextImage
-              src={getDirectusImageUrl(company.logo) ?? ''}
+              src={getFileUrl(company.logo) ?? ''}
               alt={displayName}
               width={100}
               height={80}
@@ -1984,7 +1984,7 @@ function Popup({
         {displayLogos.length > 0 && (
           <div className="flex flex-wrap items-center justify-center gap-3 mb-4">
             {displayLogos.map((logoId) => {
-              const logoUrl = getDirectusImageUrl(logoId)
+              const logoUrl = getFileUrl(logoId)
               if (!logoUrl) return null
               return (
                 <div

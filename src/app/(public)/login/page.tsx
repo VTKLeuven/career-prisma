@@ -8,7 +8,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation"
 import NextImage from "next/image";
 import Link from "next/link";
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import {
   Dialog,
   DialogContent,
@@ -130,7 +130,7 @@ export default function LoginPage() {
       </div>
       <div className="bg-muted relative hidden lg:block">
         <NextImage
-          src={getDirectusImageUrl("875bb00d-d935-4e0b-b2fb-2dc9a9a2b12d") || "/placeholder.svg"}
+          src={getFileUrl("875bb00d-d935-4e0b-b2fb-2dc9a9a2b12d") || "/placeholder.svg"}
           alt="VTK Career"
           fill
           className="object-cover dark:brightness-[0.2] dark:grayscale"

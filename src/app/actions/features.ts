@@ -3,22 +3,17 @@
 import { listBooths, listMasters, listFaculties } from "@/lib/repos/features";
 import { CareerEventPage, Booth, Master } from "@/lib/schema";
 import DOMPurify from "isomorphic-dompurify"
+import { readFile } from "fs/promises";
+import { getStoredFile } from "@/lib/file-storage";
+import { requireAdminUser } from "@/lib/auth-server";
 
 export async function fetchFloorplanAction(page: CareerEventPage) {
   if (!page.floorplan?.svg_file || page.floorplan.svg_file.length === 0) return null;
 
-  // Fetch SVG file
   const svgFileId = page.floorplan.svg_file;
-  const rawBase = process.env.NEXT_PUBLIC_DIRECTUS_URL || process.env.DIRECTUS_URL;
-  if (!rawBase) {
-    throw new Error("Directus base URL not configured (NEXT_PUBLIC_DIRECTUS_URL or DIRECTUS_URL)");
-  }
-  const base = rawBase.replace(/\/?$/, "/"); // ensure trailing slash
-  const svgFileRes = await fetch(`${base}assets/${svgFileId}`, { cache: "no-store" });
-  if (!svgFileRes.ok) {
-    throw new Error(`Failed to fetch floorplan SVG (status ${svgFileRes.status})`);
-  }
-  const svgText = await svgFileRes.text();
+  const stored = await getStoredFile(svgFileId);
+  if (!stored) throw new Error("Floorplan SVG not found");
+  const svgText = await readFile(stored.filePath, "utf8");
 
   // Fetch booths data
   const data = await listBooths(page.floorplan, { limit: -1 });
@@ -75,6 +70,7 @@ export async function updateFloorplanCategoryFormFieldsAction(
   categoryFormFields: Array<{ formId: string; formVersionId: string; fieldName: string }>
 ) {
   try {
+    await requireAdminUser();
     const { updateFloorplanCategoryFormFields } = await import("@/lib/repos/floorplan");
     return await updateFloorplanCategoryFormFields(eventId, categoryFormFields);
   } catch (error) {
@@ -88,6 +84,7 @@ export async function updateFloorplanCompanyNameFormFieldsAction(
   companyNameFormFields: Array<{ formId: string; formVersionId: string; fieldName: string }>
 ) {
   try {
+    await requireAdminUser();
     const { updateFloorplanCompanyNameFormFields } = await import("@/lib/repos/floorplan");
     return await updateFloorplanCompanyNameFormFields(eventId, companyNameFormFields);
   } catch (error) {

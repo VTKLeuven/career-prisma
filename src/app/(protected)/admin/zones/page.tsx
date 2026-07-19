@@ -1,20 +1,23 @@
 import { listZones } from "@/lib/repos/zones";
-import { directus, getAdminDirectusClient, getDirectusWithToken } from "@/lib/directus";
-import { readItems } from "@directus/sdk";
 import type { Booth } from "@/lib/schema";
 import { Suspense } from "react";
 import ZonesClient from "./client";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { fetchEventPagesAction } from "@/app/actions/events";
 import type { CareerEventPage } from "@/lib/schema";
+import prisma from "@/lib/prisma";
 
 async function getBooths() {
-    const client = await getDirectusWithToken() || await getAdminDirectusClient() || directus;
-    return client.request(readItems("Booths", {
-        fields: ["id", "booth_number", "Floorplan.name", "Floorplan.id", "company.name"] as any,
-        sort: ["Floorplan.name", "booth_number"] as any,
-        limit: -1,
-    })) as unknown as Promise<Booth[]>;
+    const rows = await prisma.booth.findMany({
+        include: { floorplan: true, company: true },
+        orderBy: { booth_number: "asc" },
+    });
+    return rows.map(({ floorplan, floorplan_id, company_id, ...row }) => ({
+        ...row,
+        id: String(row.id),
+        Floorplan: floorplan,
+        company: row.company,
+    })) as unknown as Booth[];
 }
 
 export default async function AdminZonesPage() {

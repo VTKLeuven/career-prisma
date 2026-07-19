@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerDirectusClient } from "@/lib/directus";
-import { readItems, readItem } from "@directus/sdk";
-import { sendEmail } from "@/lib/repos/directus";
+import { sendEmail } from "@/lib/email";
 import { getUserFromCookies } from "@/lib/auth-server";
 import {
   emailJobManager,
   type EmailTask,
   type EmailTaskResult,
 } from "@/lib/email-job-manager";
+import prisma from "@/lib/prisma";
 
 export async function POST(
   request: NextRequest,
@@ -37,19 +36,10 @@ export async function POST(
       );
     }
 
-    const client = await getServerDirectusClient();
-    if (!client) {
-      return NextResponse.json(
-        { error: "Failed to connect to database" },
-        { status: 500 }
-      );
-    }
-
-    const formVersion = (await client.request(
-      readItem("form_versions" as any, formVersionId, {
-        fields: ["*", { form_id: ["id", "name", "slug"] }, "metadata"],
-      })
-    )) as any;
+    const formVersion = await prisma.formVersion.findUnique({
+      where: { id: Number(formVersionId) },
+      include: { form: true },
+    });
 
     if (!formVersion) {
       return NextResponse.json(
@@ -58,8 +48,9 @@ export async function POST(
       );
     }
 
-    const form = formVersion.form_id;
-    const metadata = formVersion.metadata || {};
+    const form = formVersion.form;
+    if (!form) return NextResponse.json({ error: "Form not found" }, { status: 404 });
+    const metadata = (formVersion.metadata || {}) as Record<string, any>;
     const eventId = metadata.event_id;
 
     if (!eventId) {
@@ -78,26 +69,20 @@ export async function POST(
     const companyIds = [
       ...new Set(recipients.map((r: any) => r.companyId)),
     ];
-    const companies = (await client.request(
-      readItems("company" as any, {
-        fields: ["id", "name"],
-        filter: { id: { _in: companyIds } },
-        limit: -1,
-      })
-    )) as any[];
+    const companies = await prisma.company.findMany({
+      where: { id: { in: companyIds as string[] } },
+      select: { id: true, name: true },
+    });
 
     const companyMap = new Map(
       companies.map((c: any) => [c.id, c.name])
     );
 
     const repIds = recipients.map((r: any) => r.repId);
-    const representatives = (await client.request(
-      readItems("directus_users" as any, {
-        fields: ["id", "first_name", "last_name", "email"] as any,
-        filter: { id: { _in: repIds } },
-        limit: -1,
-      })
-    )) as any[];
+    const representatives = await prisma.user.findMany({
+      where: { id: { in: repIds } },
+      select: { id: true, first_name: true, last_name: true, email: true },
+    });
 
     const repMap = new Map(
       representatives.map((r: any) => [r.id, r])

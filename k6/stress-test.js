@@ -13,7 +13,7 @@
  *   k6 run -e BASE_URL=https://staging.yoursite.be k6/stress-test.js  # against staging
  *
  * Prerequisites:
- *   1. Create load-test accounts in Directus (company rep + student)
+ *   1. Create load-test accounts (company rep + student)
  *   2. Fill in TEST_* env vars or edit config.js with real IDs
  */
 
@@ -215,8 +215,7 @@ export function drinkOrdering() {
     // Server actions use a special encoding; simulate via direct API approach.
     // Since placeOrderAction is a server action, we call it as Next.js expects:
     // POST to the page URL with Next-Action header.
-    // For stress testing, we can call the underlying Directus API or
-    // simply POST to the booth page with the action payload.
+    // For stress testing, we can POST to the booth page with the action payload.
     // The simplest reliable approach: call the booth page and measure SSR perf,
     // then also hit the order status polling endpoint.
 

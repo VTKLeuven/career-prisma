@@ -2,6 +2,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyOAuthState, getRequestOrigin } from "@/lib/oauth";
 import { findStudentByEmail, findStudentByUsername, createStudentFromOAuth, updateStudentOAuthToken, updateStudentOAuthData } from "@/lib/repos/students";
+import {
+  createSessionToken,
+  sessionCookieOptions,
+  STUDENT_SESSION_COOKIE,
+} from "@/lib/auth-session";
 
 interface OAuthTokenResponse {
   access_token?: string;
@@ -236,17 +241,10 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Set student session cookie (store student ID)
-    const STUDENT_SESSION_COOKIE = "student_session";
-
     // Calculate session expiration (match token expiration or default to 30 days)
     const sessionMaxAge = tokenData.expires_in
       ? Math.min(tokenData.expires_in, 30 * 24 * 60 * 60) // Max 30 days
       : 30 * 24 * 60 * 60; // Default 30 days
-
-    const url = new URL(request.url);
-    const xfProto = (typeof request.headers.get === "function" && request.headers.get("x-forwarded-proto")) || "";
-    const isSecure = url.protocol === "https:" || xfProto.includes("https") || process.env.NODE_ENV === "production";
 
     // Redirect to frontend callback with user data
     const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
@@ -270,13 +268,11 @@ export async function GET(request: NextRequest) {
     const response = NextResponse.redirect(frontendCallbackUrl.toString());
 
     // Set session cookie on the response
-    response.cookies.set(STUDENT_SESSION_COOKIE, student.id, {
-      httpOnly: true,
-      secure: isSecure,
-      sameSite: "lax",
-      path: "/",
-      maxAge: sessionMaxAge,
-    });
+    response.cookies.set(
+      STUDENT_SESSION_COOKIE,
+      createSessionToken(student.id, "student", sessionMaxAge),
+      sessionCookieOptions(request, sessionMaxAge)
+    );
 
     return response;
   } catch (error) {
@@ -306,4 +302,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(frontendCallbackUrl.toString());
   }
 }
-

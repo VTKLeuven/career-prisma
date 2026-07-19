@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getEmailMetrics } from "@/lib/repos/directus";
+import { getEmailMetrics } from "@/lib/email";
 
 /**
  * API endpoint to get email sending metrics for diagnostics

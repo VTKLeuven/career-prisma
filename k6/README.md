@@ -13,7 +13,7 @@ brew install k6
 # Or download from https://grafana.com/docs/k6/latest/set-up/install-k6/
 ```
 
-### 2. Create load-test accounts in Directus
+### 2. Create load-test accounts
 
 Create dedicated test accounts — **never use real credentials**:
 
@@ -24,13 +24,13 @@ Create dedicated test accounts — **never use real credentials**:
 
 ### 3. Collect test data IDs
 
-You need real IDs from your Directus instance for meaningful tests:
+You need real IDs from the test database for meaningful tests:
 
 - **Event slug**: the slug of your jobfair event page (e.g. `vtk-jobfair`)
 - **Attendant UUIDs**: a few `attendant_uuid` values from `form_responses`
-- **Booth IDs**: IDs from the `Booths` collection
-- **Drink IDs**: IDs from the `drinks` collection
-- **CV file IDs**: file IDs from Directus assets (for CV download testing)
+- **Booth IDs**: IDs from the `booths` table
+- **Drink IDs**: IDs from the `drinks` table
+- **CV file IDs**: IDs from the `files` table (for CV download testing)
 
 ## Quick Start
 
@@ -169,23 +169,23 @@ K6_CLOUD_TOKEN=your-token k6 cloud k6/stress-test.js
 
 ```
                  ┌──────────────┐
-  k6 VUs ──────►│  Next.js App  │──────► Directus CMS (API + DB)
+  k6 VUs ──────►│  Next.js App  │──────► PostgreSQL + upload storage
                  │  (SSR + API)  │
                  └──────────────┘
 ```
 
 - **Next.js SSR**: booth pages, event pages, homepage are server-rendered
 - **Next.js API routes**: login, QR scan, user check, CV proxy, homepage API
-- **Directus**: all data reads/writes go through the Directus SDK
+- **Prisma/PostgreSQL**: application reads and writes
 - **In-memory caches**: homepage (2min TTL) and event pages (5min TTL)
 
 ### Bottlenecks to watch for
 
-1. **Directus connection pool**: many concurrent DB queries
+1. **PostgreSQL connection pool**: many concurrent DB queries
 2. **SSR rendering**: Next.js server under heavy load
 3. **In-memory caches**: homepage/event caches help but expire under pressure
-4. **CV file proxy**: large PDF files proxied through Next.js → Directus
-5. **Auth token refresh**: `/api/user/check` refreshes tokens via Directus
+4. **CV file service**: large PDF files streamed through Next.js
+5. **Session checks**: `/api/user/check` resolves signed sessions from PostgreSQL
 6. **Write contention**: concurrent QR scans create DB records simultaneously
 
 ## File Structure

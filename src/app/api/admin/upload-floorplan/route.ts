@@ -1,7 +1,7 @@
 // app/api/admin/upload-floorplan/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { uploadDirectusFile } from "@/lib/repos/directus";
+import { uploadFile } from "@/lib/file-storage";
+import { getUserFromCookies } from "@/lib/auth-server";
 import { createFloorplan, linkFloorplanToEventPage, getOrCreateEventPage, createBooths } from "@/lib/repos/floorplan";
 import { invalidateFloorplanCache } from "@/lib/floorplan-cache";
 import { invalidateEventPageCache } from "@/lib/event-page-cache";
@@ -9,11 +9,8 @@ import { extractBoothsFromSVG } from "@/lib/utils/svg-booth-extractor";
 
 export async function POST(req: Request) {
   try {
-    const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
-    const cookieStore = await cookies();
-    const token = cookieStore.get(ACCESS_COOKIE)?.value;
-
-    if (!token) {
+    const user = await getUserFromCookies();
+    if (!user?.admin) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -83,8 +80,8 @@ export async function POST(req: Request) {
       );
     }
 
-    // Upload SVG file to Directus
-    const svgFileId = await uploadDirectusFile(svgFileForUpload);
+    // Store the SVG file and its metadata.
+    const svgFileId = await uploadFile(svgFileForUpload, user.id);
 
     if (!svgFileId) {
       return NextResponse.json(
@@ -96,7 +93,7 @@ export async function POST(req: Request) {
     // Upload background image if provided
     let backgroundImageId: string | undefined;
     if (backgroundFile && backgroundFile.size > 0) {
-      const uploadedId = await uploadDirectusFile(backgroundFile);
+      const uploadedId = await uploadFile(backgroundFile, user.id);
       if (uploadedId) {
         backgroundImageId = uploadedId;
       } else {
@@ -142,7 +139,7 @@ export async function POST(req: Request) {
       
       extractedBooths = booths.map(booth => ({
         booth_number: booth.booth_number,
-        coords: booth.coords, // Directus will handle JSON serialization
+        coords: booth.coords,
         Floorplan: floorplan.id,
       }));
 
@@ -150,7 +147,7 @@ export async function POST(req: Request) {
 
       // Create booth entries
       if (extractedBooths.length > 0) {
-        console.log("Creating booths in Directus...");
+        console.log("Creating booths...");
         const boothResults = await createBooths(extractedBooths);
         if (boothResults) {
           console.log(`Successfully created ${boothResults.length} booths`);
@@ -196,4 +193,3 @@ export async function POST(req: Request) {
     );
   }
 }
-

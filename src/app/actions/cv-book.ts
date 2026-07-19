@@ -27,12 +27,13 @@ import {
   removeFavourite,
 } from "@/lib/repos/cv-book-favourites";
 import { listForms } from "@/lib/repos/forms";
-import { getUserFromCookies } from "@/lib/auth-server";
+import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
 import { listFormVersions } from "@/lib/repos/forms";
 import type { CVBook, AcademicYear, Form, FormField } from "@/lib/schema";
 
 export async function fetchCVBooksAction(): Promise<CVBook[]> {
   try {
+    await requireAdminUser();
     return await listCVBooks();
   } catch (error) {
     console.error("[fetchCVBooksAction] Error:", error);
@@ -66,6 +67,7 @@ export async function createCVBookAction(data: {
   student_linkedin_field_backup?: string;
 }): Promise<{ success: boolean; error?: string; cvBook?: CVBook }> {
   try {
+    await requireAdminUser();
     const cvBook = await createCVBook(data);
     return { success: true, cvBook };
   } catch (error) {
@@ -82,6 +84,7 @@ export async function updateCVBookAction(
   data: Partial<CVBook>
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    await requireAdminUser();
     await updateCVBook(id, data);
     return { success: true };
   } catch (error) {
@@ -95,6 +98,7 @@ export async function updateCVBookAction(
 
 export async function deleteCVBookAction(id: string): Promise<{ success: boolean; error?: string }> {
   try {
+    await requireAdminUser();
     await deleteCVBook(id);
     return { success: true };
   } catch (error) {
@@ -117,6 +121,7 @@ export async function fetchActiveCVBooksAction(): Promise<CVBook[]> {
 
 export async function toggleCVBookActiveAction(id: string, active: boolean): Promise<{ success: boolean; error?: string }> {
   try {
+    await requireAdminUser();
     await updateCVBook(id, { active });
     return { success: true };
   } catch (error) {
@@ -148,7 +153,14 @@ export async function fetchCVBookByYearForScreeningAction(yearId: string): Promi
 
 export async function fetchCVBookStudentDataAction(cvBook: CVBook): Promise<import("@/lib/repos/cv-book").StudentCVGroup[]> {
   try {
-    return await getCVBookStudentData(cvBook);
+    const user = await getUserFromCookies();
+    const { hasCVBookAccess } = await import("@/lib/utils/company-access");
+    if (!user?.admin && (!user?.company || !hasCVBookAccess(user.company))) {
+      return [];
+    }
+    const current = await getCVBookById(cvBook.id);
+    if (!current || (!user.admin && !current.active)) return [];
+    return await getCVBookStudentData(current);
   } catch (error) {
     console.error("[fetchCVBookStudentDataAction] Error:", error);
     return [];
@@ -157,6 +169,7 @@ export async function fetchCVBookStudentDataAction(cvBook: CVBook): Promise<impo
 
 export async function fetchCVBookStudentDataForScreeningAction(cvBook: CVBook): Promise<import("@/lib/repos/cv-book").StudentCVGroup[]> {
   try {
+    await requireAdminUser();
     return await getCVBookStudentData(cvBook, { forScreening: true });
   } catch (error) {
     console.error("[fetchCVBookStudentDataForScreeningAction] Error:", error);
@@ -176,7 +189,7 @@ export async function fetchCVBookFavouritesAction(
 
     let companyId: string | undefined =
       (user.company && (typeof user.company === "string" ? user.company : user.company.id)) ?? undefined;
-    if (!companyId && clientCompanyId) {
+    if (!companyId && user.admin && clientCompanyId) {
       companyId = clientCompanyId;
     }
     if (!companyId) return [];
@@ -221,10 +234,12 @@ export async function approveCVAction(
   formResponseId: string,
   studyOverride?: string | null
 ): Promise<{ success: boolean; error?: string }> {
+  await requireAdminUser();
   return approveCV(cvBookId, formResponseId, studyOverride);
 }
 
 export async function rejectCVAction(cvBookId: string, formResponseId: string): Promise<{ success: boolean; error?: string }> {
+  await requireAdminUser();
   return rejectCV(cvBookId, formResponseId);
 }
 
@@ -233,6 +248,7 @@ export async function updateStudyOverrideAction(
   formResponseId: string,
   studyOverride: string
 ): Promise<{ success: boolean; error?: string }> {
+  await requireAdminUser();
   return updateStudyOverride(cvBookId, formResponseId, studyOverride);
 }
 
@@ -240,6 +256,7 @@ export async function markCVBookScreeningCompleteAction(
   cvBookId: string,
   complete: boolean
 ): Promise<{ success: boolean; error?: string }> {
+  await requireAdminUser();
   if (complete) {
     // When marking ready: create approved screening records for all CVs that don't have one.
     // This ensures existing CVs are visible; new CVs added later (without screening) stay hidden.
@@ -358,9 +375,8 @@ export async function getFormFieldsAcrossAllVersions(formId: string): Promise<Fo
     console.error("[getFormFieldsAcrossAllVersions] Error fetching form fields for formId:", formId, error);
     // Check if it's a connection error
     if (error instanceof Error && (error.message.includes('ECONNRESET') || error.message.includes('fetch failed'))) {
-      console.warn("[getFormFieldsAcrossAllVersions] Connection error - Directus may be slow or unavailable");
+      console.warn("[getFormFieldsAcrossAllVersions] Database connection may be unavailable");
     }
     return [];
   }
 }
-

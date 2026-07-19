@@ -1,61 +1,50 @@
-// lib/auth-student.ts
 import "server-only";
+
 import { cookies } from "next/headers";
-import { Student } from "@/lib/schema";
+import type { Student } from "@/lib/schema";
+import {
+  STUDENT_SESSION_COOKIE,
+  verifySessionToken,
+} from "@/lib/auth-session";
+import prisma from "@/lib/prisma";
 
-const STUDENT_SESSION_COOKIE = "student_session";
-
-/**
- * Get current student from session cookie
- */
-export async function getStudentFromCookies(): Promise<Student | null> {
-  try {
-    const cookieStore = await cookies();
-    const studentId = cookieStore.get(STUDENT_SESSION_COOKIE)?.value;
-
-    if (!studentId) {
-      return null;
-    }
-
-    const baseUrl = process.env.DIRECTUS_URL;
-    if (!baseUrl) {
-      return null;
-    }
-
-    const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
-    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-
-    if (!serverToken) {
-      return null;
-    }
-
-    const res = await fetch(
-      `${normalizedBase}items/students/${studentId}?fields=*,is_shifter`,
-      {
-        headers: {
-          "Authorization": `Bearer ${serverToken}`,
-        },
-      }
-    );
-
-    if (!res.ok) {
-      return null;
-    }
-
-    const json = await res.json();
-    return json.data as Student;
-  } catch {
-    return null;
-  }
+function shapeStudent(student: NonNullable<Awaited<ReturnType<typeof prisma.student.findUnique>>>): Student {
+  return {
+    ...student,
+    id: String(student.id),
+    full_name: student.full_name ?? undefined,
+    university_status: student.university_status ?? undefined,
+    university: student.university ?? undefined,
+    organization_status: student.organization_status ?? undefined,
+    in_workinggroup: student.in_workinggroup ?? undefined,
+    litus_access_token: student.litus_access_token ?? undefined,
+    litus_token_expires_at: student.litus_token_expires_at?.toISOString(),
+    password: student.password ?? undefined,
+    verified: student.verified ?? undefined,
+    verification_token_hash: student.verification_token_hash ?? undefined,
+    verification_token_created:
+      student.verification_token_created?.toISOString(),
+    date_created: student.date_created?.toISOString(),
+    date_updated: student.date_updated?.toISOString(),
+    is_shifter: student.is_shifter ?? undefined,
+  };
 }
 
-/**
- * Clear student session cookie
- */
+export async function getStudentFromCookies(): Promise<Student | null> {
+  const cookieStore = await cookies();
+  const session = verifySessionToken(
+    cookieStore.get(STUDENT_SESSION_COOKIE)?.value,
+    "student"
+  );
+  if (!session) return null;
+
+  const id = Number(session.sub);
+  if (!Number.isSafeInteger(id)) return null;
+  const student = await prisma.student.findUnique({ where: { id } });
+  return student ? shapeStudent(student) : null;
+}
+
 export async function clearStudentSession(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.delete(STUDENT_SESSION_COOKIE);
 }
-
-
-

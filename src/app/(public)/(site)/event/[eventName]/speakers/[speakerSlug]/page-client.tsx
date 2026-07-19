@@ -4,7 +4,7 @@ import { useRef } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { CareerEventPage, Speaker } from '@/lib/schema'
-import { getDirectusImageUrl } from '@/components/Images'
+import { getFileUrl } from '@/components/Images'
 import { slugifyCompanyName, slugifyEventName, getSpeakerSlug } from '@/lib/utils/slugify'
 import { hasCompanyPageAccess } from '@/lib/utils/company-access'
 import { groupSpeakersByTimeSlot } from '@/lib/utils/speakers'
@@ -111,8 +111,8 @@ function SpeakerSidebarCard({ speaker, sticky = true }: { speaker: Speaker; stic
   const rep = speaker.representative
   const company = rep?.company
   const displayCompany = company ?? { name: "KU Leuven", logo: KU_LEUVEN_LOGO_ID }
-  const companyLogoUrl = displayCompany.logo ? getDirectusImageUrl(displayCompany.logo) : undefined
-  const avatarUrl = rep?.avatar ? getDirectusImageUrl(rep.avatar) : undefined
+  const companyLogoUrl = displayCompany.logo ? getFileUrl(displayCompany.logo) : undefined
+  const avatarUrl = rep?.avatar ? getFileUrl(rep.avatar) : undefined
 
   const cardContent = (
     <div className="flex flex-col items-center text-center">
@@ -192,7 +192,7 @@ function OtherSpeakerCard({ speaker: s, eventSlug, allSpeakers }: { speaker: Spe
         <div className="relative aspect-square w-full">
           {s.representative?.avatar ? (
             <Image
-              src={getDirectusImageUrl(s.representative.avatar)!}
+              src={getFileUrl(s.representative.avatar)!}
               alt=""
               fill
               className="object-cover"
@@ -241,7 +241,7 @@ function OtherSpeakerCardMulti({ speakers, eventSlug, allSpeakers }: { speakers:
       <div className="relative aspect-square w-full flex">
         {speakers.map((speaker) => {
           const rep = speaker.representative
-          const avatarUrl = rep?.avatar ? getDirectusImageUrl(rep.avatar) : undefined
+          const avatarUrl = rep?.avatar ? getFileUrl(rep.avatar) : undefined
           return (
             <Link
               key={speaker.id}

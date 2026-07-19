@@ -1,18 +1,28 @@
 // lib/schema.ts
-export type DirectusRole = { id: string; name: string };
+export type AppRole = { id: string; name: string };
 
-export type DirectusUser = {
+export type AppUser = {
   id: string;
   name: string | null;
   title?: string;
   email: string;
   tel?: string | null;
-  role?: string | DirectusRole | null;
+  role?: string | AppRole | null;
   admin: boolean;
   company?: Company | null;
   status?: string;
   is_shifter?: boolean;
 } | null;
+
+export type UserSummary = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  title: string | null;
+  avatar: string | null;
+  description?: string | null;
+};
 
 export type CompanyRep = {
   id: string;
@@ -21,7 +31,7 @@ export type CompanyRep = {
   title?: string;
   email: string;
   tel?: string | null;
-  role?: string | DirectusRole | null;
+  role?: string | AppRole | null;
   admin: boolean;
   company: Company;
   status: string;
@@ -33,7 +43,7 @@ export type AttendantScan = {
   attendant_uuid: string;
   form_response_id: string | FormResponse;
   company_id?: string | Company; // optional because your API sometimes omits it
-  scanned_by: string | CompanyRep | DirectusUser;
+  scanned_by: string | CompanyRep | AppUser;
   scanned_at: string;
 
   liked?: boolean;
@@ -375,7 +385,7 @@ export type FormField = {
 export type FormResponse = {
   id: string;
   form_version_id: string | FormVersion;
-  user_id?: string | DirectusUser;
+  user_id?: string | AppUser;
   student_id?: string | Student; // Student who submitted the form (for student forms)
   data: Record<string, unknown>;
   submitted_at: string;
@@ -450,7 +460,7 @@ export type Order = {
   company: string | Company; // Denormalized for easier querying? Or computed. Directus usually links relations.
   items: OrderItem[]; // JSON field
   status: 'pending' | 'preparing' | 'finished';
-  shifter?: string | DirectusUser;
+  shifter?: string | AppUser;
   shifter_name?: string; // Display name of the shifter (works for both Directus users and student shifters)
   date_created: string;
   date_updated: string;
@@ -466,11 +476,11 @@ export type OrderItem = {
 export type CompanyUserRequest = {
   id: string;
   email: string;
-  role?: string | DirectusRole; // ID or Role object
+  role?: string | AppRole; // ID or Role object
   status: string;
   date_created: string;
   company?: string | Company;
-  salesperson?: string | DirectusUser;
+  salesperson?: string | AppUser;
   first_name?: string | null;
   last_name?: string | null;
   tel?: string | null;
@@ -513,9 +523,62 @@ export type SignageScheduleSlot = {
   end_time: string;   // "HH:mm" (24h, Europe/Brussels)
 };
 
+export type VacancyType = {
+  id: string;
+  name: string;
+  sort?: number;
+  active: boolean;
+};
+
+export type VacancySector = {
+  id: string;
+  name: string;
+  sort?: number;
+  active: boolean;
+};
+
+export type VacancySectionConfig = {
+  id: string;
+  /** Optional legacy slug; vacancy.sections is keyed by config `id`. */
+  key?: string;
+  label: string;
+  sort?: number;
+  active: boolean;
+  required: boolean;
+};
+
+export type Vacancy = {
+  id: string;
+  status: 'draft' | 'published' | 'archived';
+  date_created: string;
+  date_updated?: string;
+  company: string | Company;
+  title: string;
+  type: string | VacancyType;
+  /** Legacy single sector (M2O). Kept in sync as first selected sector when using M2M. */
+  sector?: string | VacancySector;
+  /**
+   * M2M sectors (junction rows from API), or client writes: array of `vacancy_sectors` ids.
+   * Junction FK is usually `sector_id` → vacancy_sectors; some setups use `vacancy_sectors_id`.
+   */
+  sectors?: Array<
+    | string
+    | {
+        sector_id?: string | VacancySector;
+        vacancy_sectors_id?: string | VacancySector;
+      }
+  >;
+  location: string;
+  contact_email: string;
+  contact_name?: string;
+  contact_phone?: string;
+  sections: Record<string, string>;
+  masters?: Array<{ master_id: Master | string }>;
+};
+
 // Optional: Full Directus Schema map (only collections you use)
 export type Schema = {
-  directus_users: DirectusUser[];
+  directus_users: AppUser[];
   company: Company[];
   booths: Booth[];
   forms: Form[];
@@ -545,4 +608,15 @@ export type Schema = {
   signage_screens: SignageScreen[];
   signage_media: SignageMedia[];
   signage_schedule_slots: SignageScheduleSlot[];
+  vacancies: Vacancy[];
+  vacancy_types: VacancyType[];
+  vacancy_sectors: VacancySector[];
+  vacancy_section_config: VacancySectionConfig[];
+  vacancies_masters: { id: number | string; vacancies_id: string | Vacancy; master_id: string | Master }[];
+  vacancies_sectors: {
+    id?: number | string;
+    vacancies_id?: string | Vacancy;
+    sector_id?: string | VacancySector;
+    vacancy_sectors_id?: string | VacancySector;
+  }[];
 };

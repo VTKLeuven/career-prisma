@@ -1,24 +1,57 @@
 services:
+  # PostgreSQL replaces Directus entirely. Plain postgres, not postgis: the one
+  # geometry column (career_event_page.location) is now latitude/longitude
+  # floats, so the extension is no longer needed -- which also means this image
+  # builds natively on arm64.
+  database:
+    image: postgres:16-alpine
+    container_name: career-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-career}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-career}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      # Exposed on the host for migrations and psql. Bound to loopback so the
+      # database is never reachable from outside the machine.
+      - "127.0.0.1:${POSTGRES_PORT:-5434}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-career} -d ${POSTGRES_DB:-career}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
   app:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        DIRECTUS_URL: ${DIRECTUS_URL}
-        NEXT_PUBLIC_DIRECTUS_URL: ${NEXT_PUBLIC_DIRECTUS_URL:-${DIRECTUS_URL}}
         NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN}
         SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN}
-    # REMOVED the 'ports' mapping here so they don't clash on the host when scaling
+    # No 'ports' mapping: the replicas would clash on the host port.
     expose:
       - "3000"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_DIRECTUS_URL=${NEXT_PUBLIC_DIRECTUS_URL:-${DIRECTUS_URL}}
+      # Inside the compose network the database is reachable by service name,
+      # so this overrides whatever host-facing DATABASE_URL is in .env.
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-career}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-career}?schema=public
       - NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}
+      - UPLOADS_DIR=/app/directus-uploads
+    volumes:
+      # Shared by every app replica. Preserve UUID filenames from the old
+      # export; new uploads are written here too.
+      - ./directus-uploads:/app/directus-uploads
     restart: unless-stopped
     env_file:
       - .env
-    # Scale to 8 replicas (leaves your remaining 8 cores for Directus, DB, and OS)
+    depends_on:
+      database:
+        condition: service_healthy
+    # Scale to 8 replicas (leaves the remaining cores for Postgres and the OS)
     deploy:
       mode: replicated
       replicas: 8
@@ -51,3 +84,6 @@ services:
     sysctls:
       - net.core.somaxconn=65535
       - net.ipv4.tcp_tw_reuse=1
+
+volumes:
+  db-data:

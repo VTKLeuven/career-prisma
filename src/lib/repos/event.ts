@@ -1,8 +1,14 @@
 // lib/repos/event.ts
 "use server"
 
-import { readItems } from "@directus/sdk";
-import { directus, getServerDirectusClient } from "@/lib/directus";
+import { prisma } from "@/lib/prisma";
+import {
+  EVENT_PAGE_INCLUDE,
+  SPEAKER_INCLUDE,
+  shapeCareerEventOption,
+  shapeEventPage,
+  shapeSpeaker,
+} from "@/lib/repos/_shape";
 import type { CareerEvent, CareerEventPage } from "@/lib/schema";
 import { slugifyEventName } from "@/lib/utils/slugify";
 
@@ -13,29 +19,47 @@ export async function listEvents(opts?: {
   sort?: string;        // e.g. "-date_created" or "name"
 }) {
   try {
-
     const { search, limit = 25, page = 1, sort = "date" } = opts ?? {};
-    return directus.request(
-      readItems("career_event", {
-        fields: [
-          "*",
-          // Try both possible junction table structures for many-to-many
-          "options.career_event_option_id.*" as any,
-          "options.career_event_option_id.id" as any,
-          "options.career_event_option_id.name" as any,
-          "options.career_event_option_id.description" as any,
-          "options.career_event_option_id.price" as any,
-          "options.career_event_option_id.events.*" as any,
-          "options.career_event_option_id.event.*" as any,
-        ],
-        limit,
-        page,
-        sort: sort as any,
-        ...(search
-          ? { search } // Directus full-text search (if enabled)
-          : {}),
-      })
-    ) as unknown as CareerEvent[];
+    const desc = sort.startsWith("-");
+    const sortField = desc ? sort.slice(1) : sort;
+
+    const rows = await prisma.careerEvent.findMany({
+      where: search
+        ? {
+            OR: [
+              { name: { contains: search, mode: "insensitive" } },
+              { description: { contains: search, mode: "insensitive" } },
+            ],
+          }
+        : undefined,
+      include: {
+        careerEventOptionEvents: {
+          include: {
+            careerEventOption: {
+              include: {
+                careerEventOptionEvents: { include: { careerEvent: true } },
+                careerEventOptionSubOptions: { include: { careerSubOption: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { [sortField]: desc ? "desc" : "asc" },
+      take: limit,
+      skip: (page - 1) * limit,
+    });
+
+    return rows.map((row) => {
+      const { careerEventOptionEvents, image_id, ...rest } = row as Record<string, any>;
+      return {
+        ...rest,
+        image: image_id ?? null,
+        options: (careerEventOptionEvents ?? [])
+          .map((j: any) => j.careerEventOption)
+          .filter(Boolean)
+          .map((o: any) => ({ career_event_option_id: shapeCareerEventOption(o) })),
+      };
+    }) as unknown as CareerEvent[];
   } catch (error) {
     console.log(error);
   }
@@ -48,42 +72,23 @@ export async function listEventPages(opts?: {
   sort?: string; // e.g. "event.date" or "-event.date"
 }) {
   try {
-    const { search, limit = 25, page = 1, sort = "event.date"} = opts ?? {};
-    const client = (await getServerDirectusClient()) ?? directus;
+    const { limit = 25, page = 1, sort = "event.date" } = opts ?? {};
 
-    const list = await client.request(
-      readItems("career_event_page", {
-        fields: [
-          "*",
-          "*.*",
-          "event.*", // make sure we get event fields
-          "timetable.timetable_id.*",
-          "timetable.timetable_id.speaker.*",
-          "timetable.timetable_id.speaker.representative.id",
-          "timetable.timetable_id.speaker.representative.first_name",
-          "timetable.timetable_id.speaker.representative.last_name",
-          "companies.company_id.*",
-          "companies.company_id.status",
-          "companies.company_id.options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option_id.*",
-          "floorplan.*",
-          "floorplan.floorplan_category_form_fields", // explicit for floorplan category config
-          "floorplan.floorplan_company_name_form_field",
-          "company_guide.*", // include company guide file
-        ] as any,
-        limit,
-        page,
-        ...(search ? { search } : {}),
-        deep: { companies: { limit: 10000 } } as any, // Override Directus QUERY_LIMIT_DEFAULT (100)
-      })
-    ) as unknown as CareerEventPage[];
+    const rows = await prisma.careerEventPage.findMany({
+      include: EVENT_PAGE_INCLUDE,
+      take: limit,
+      skip: (page - 1) * limit,
+    });
 
-    let sortedList = list;
+    const list = rows.map(shapeEventPage) as CareerEventPage[];
 
+    // Sorting stays in JS: the default sort key is a nested path ("event.date")
+    // that the callers pass as a string, exactly as before.
     if (sort) {
       const desc = sort.startsWith("-");
-      const fieldPath = desc ? sort.slice(1) : sort; // e.g. "event.date"
+      const fieldPath = desc ? sort.slice(1) : sort;
 
-      sortedList = list.sort((a, b) => {
+      list.sort((a, b) => {
         const getField = (obj: Record<string, unknown>, path: string): unknown =>
           path.split(".").reduce((o, key) => o?.[key] as Record<string, unknown>, obj as Record<string, unknown>);
 
@@ -97,8 +102,7 @@ export async function listEventPages(opts?: {
       });
     }
 
-    // console.log("Fetched and sorted event pages:", sortedList);
-    return sortedList;
+    return list;
   } catch (error) {
     console.error("Error fetching event pages:", error);
     return [];
@@ -107,16 +111,11 @@ export async function listEventPages(opts?: {
 
 export async function getEventPageById(id: string): Promise<CareerEventPage | null> {
   try {
-    const client = (await getServerDirectusClient()) ?? directus;
-    const pages = await client.request(
-      readItems("career_event_page", {
-        fields: ["*", "event.*" as any, "floorplan.*" as any],
-        filter: { id: { _eq: id as any } },
-        limit: 1,
-      })
-    ) as unknown as CareerEventPage[];
-
-    return pages.length > 0 ? pages[0] : null;
+    const row = await prisma.careerEventPage.findUnique({
+      where: { id: Number(id) },
+      include: { event: true, floorplan: true },
+    });
+    return shapeEventPage(row) as CareerEventPage | null;
   } catch (error) {
     console.error("Error fetching event page by ID:", error);
     return null;
@@ -125,70 +124,26 @@ export async function getEventPageById(id: string): Promise<CareerEventPage | nu
 
 export async function getEventPageBySlug(slug: string): Promise<CareerEventPage | null> {
   try {
-    // Step 1: Fetch all events to find the one matching the slug
-    const events = await directus.request(
-      readItems("career_event", {
-        fields: ["id", "name"],
-        limit: 100, // Reasonable limit for events
-      })
-    ) as unknown as Array<{ id: string; name: string }>;
-
-    // Find event where slugified name matches (normalize accents for both)
-    const normalizedSlug = slugifyEventName(slug);
-    const matchingEvent = events.find((event) => {
-      const eventSlug = slugifyEventName(event.name);
-      return eventSlug === normalizedSlug;
+    // The slug is derived from the event name, so the match cannot be pushed
+    // into SQL: every candidate name has to be slugified and compared.
+    const events = await prisma.careerEvent.findMany({
+      select: { id: true, name: true },
+      take: 100,
     });
 
-    if (!matchingEvent) {
-      return null;
-    }
+    const normalizedSlug = slugifyEventName(slug);
+    const matchingEvent = events.find(
+      (event) => slugifyEventName(event.name ?? "") === normalizedSlug
+    );
 
-    // Step 2: Fetch the event page for this specific event
-    const client = (await getServerDirectusClient()) ?? directus;
-    const pages = await client.request(
-      readItems("career_event_page", {
-        fields: [
-          "*",
-          "*.*" as any,
-          "event.*",
-          "timetable.timetable_id.*",
-          "timetable.timetable_id.speaker.*",
-          "timetable.timetable_id.speaker.representative.id",
-          "timetable.timetable_id.speaker.representative.first_name",
-          "timetable.timetable_id.speaker.representative.last_name",
-          "companies.company_id.*",
-          "companies.company_id.status",
-          "companies.company_id.options.career_event_option_id.events.career_event_option_id.sub_options.career_sub_option_id.*",
-          "floorplan.*", // include floorplan relation
-          "company_guide.*", // include company guide file
-          "speakers.speaker_id.*",
-          "speakers.speaker_id.personal_information",
-          "speakers.speaker_id.content",
-          "speakers.speaker_id.representative.id",
-          "speakers.speaker_id.representative.first_name",
-          "speakers.speaker_id.representative.last_name",
-          "speakers.speaker_id.representative.avatar",
-          "speakers.speaker_id.representative.company.id",
-          "speakers.speaker_id.representative.company.name",
-          "speakers.speaker_id.representative.company.logo",
-          "speakers.speaker_id.representative.company.status",
-          "speakers.speaker_id.time.id",
-          "speakers.speaker_id.time.title",
-          "speakers.speaker_id.time.start_time",
-          "speakers.speaker_id.time.end_time",
-        ] as any,
-        filter: {
-          event: {
-            _eq: matchingEvent.id as any,
-          },
-        },
-        limit: 1,
-        deep: { companies: { limit: 10000 } } as any, // Override Directus QUERY_LIMIT_DEFAULT (100) (no default limit)
-      })
-    ) as unknown as CareerEventPage[];
+    if (!matchingEvent) return null;
 
-    return pages.length > 0 ? pages[0] : null;
+    const row = await prisma.careerEventPage.findFirst({
+      where: { event_id: matchingEvent.id },
+      include: EVENT_PAGE_INCLUDE,
+    });
+
+    return shapeEventPage(row) as CareerEventPage | null;
   } catch (error) {
     console.error("Error fetching event page by slug:", error);
     return null;
@@ -198,59 +153,27 @@ export async function getEventPageBySlug(slug: string): Promise<CareerEventPage 
 /** Speaker with event name for company page display */
 export type SpeakerWithEvent = import("@/lib/schema").Speaker & { eventName: string };
 
-/** Get all speakers for a company (representatives of this company who speak at events) */
+/**
+ * Get all speakers for a company (representatives of this company who speak at
+ * events). Previously this fetched every event page and filtered in JS; the
+ * company link is a plain join through speaker -> representative -> company.
+ */
 export async function getSpeakersForCompany(companyId: string): Promise<SpeakerWithEvent[]> {
   try {
-    const client = (await getServerDirectusClient()) ?? directus;
-    const pages = await client.request(
-      readItems("career_event_page", {
-        fields: [
-          "event.name",
-          "speakers.speaker_id.*",
-          "speakers.speaker_id.personal_information",
-          "speakers.speaker_id.content",
-          "speakers.speaker_id.representative.id",
-          "speakers.speaker_id.representative.first_name",
-          "speakers.speaker_id.representative.last_name",
-          "speakers.speaker_id.representative.avatar",
-          "speakers.speaker_id.representative.company.id",
-          "speakers.speaker_id.representative.company.name",
-          "speakers.speaker_id.representative.company.logo",
-          "speakers.speaker_id.representative.company.status",
-          "speakers.speaker_id.time.id",
-          "speakers.speaker_id.time.title",
-          "speakers.speaker_id.time.start_time",
-          "speakers.speaker_id.time.end_time",
-        ] as any,
-        limit: 100,
-      })
-    ) as unknown as Array<{
-      event?: { name?: string } | null;
-      speakers?: Array<{ speaker_id?: import("@/lib/schema").Speaker }>;
-    }>;
+    const links = await prisma.careerEventPageSpeaker.findMany({
+      where: { speaker: { representative: { company_id: companyId } } },
+      include: {
+        careerEventPage: { include: { event: { select: { name: true } } } },
+        speaker: { include: SPEAKER_INCLUDE },
+      },
+    });
 
-    const result: SpeakerWithEvent[] = [];
-    for (const page of pages ?? []) {
-      const eventName = page.event?.name ?? "";
-      const speakers = (page.speakers as Array<{ speaker_id?: import("@/lib/schema").Speaker }>) ?? [];
-      for (const item of speakers) {
-        const speaker = item.speaker_id ?? item;
-        if (!speaker || typeof speaker !== "object") continue;
-        const companyIdFromSpeaker = (speaker as { representative?: { company?: { id?: string } } }).representative?.company?.id;
-        if (companyIdFromSpeaker === companyId) {
-          result.push({
-            ...speaker,
-            id: (speaker as { id?: string }).id ?? "",
-            personal_information: (speaker as import("@/lib/schema").Speaker).personal_information ?? null,
-            content: (speaker as import("@/lib/schema").Speaker).content ?? null,
-            representative: (speaker as import("@/lib/schema").Speaker).representative ?? null,
-            time: (speaker as import("@/lib/schema").Speaker).time ?? null,
-            eventName,
-          });
-        }
-      }
-    }
-    return result;
+    return links
+      .filter((l) => l.speaker)
+      .map((l) => ({
+        ...shapeSpeaker(l.speaker),
+        eventName: l.careerEventPage?.event?.name ?? "",
+      })) as SpeakerWithEvent[];
   } catch (error) {
     console.error("Error fetching speakers for company:", error);
     return [];

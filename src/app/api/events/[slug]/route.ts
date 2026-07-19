@@ -21,7 +21,7 @@ export async function GET(
       });
     }
 
-    // Fetch from Directus
+    // Fetch the event page from the Prisma-backed action.
     const page = await fetchEventPageBySlugAction(slug);
 
     if (!page) {
@@ -48,4 +48,3 @@ export async function GET(
     );
   }
 }
-

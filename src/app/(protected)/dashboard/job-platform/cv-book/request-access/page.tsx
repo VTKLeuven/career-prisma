@@ -16,7 +16,7 @@ export default function RequestCVBookAccessPage() {
   useEffect(() => {
     async function loadPrice() {
       try {
-        // Fetch CV Book sub-option directly from Directus collection
+        // Resolve CV Book access from the company's configured sub-options.
         const cvBookSubOption = await getCVBookSubOption();
         if (cvBookSubOption?.price) {
           setPrice(cvBookSubOption.price);
@@ -136,4 +136,3 @@ export default function RequestCVBookAccessPage() {
     </div>
   );
 }
-

@@ -4,11 +4,10 @@ import { listOrders } from "@/lib/repos/orders";
 import { listZones } from "@/lib/repos/zones";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { getStudentFromCookies } from "@/lib/auth-student";
-import { getAdminDirectusClient } from "@/lib/directus";
 import { getOrderingSettings } from "@/lib/repos/ordering-settings";
-import { updateItem, deleteItem, readItems } from "@directus/sdk";
 import { revalidatePath } from "next/cache";
 import type { Order } from "@/lib/schema";
+import prisma from "@/lib/prisma";
 
 // Resolve zone for an order - must match getOrderZone logic in shifter client
 function getOrderZoneId(order: { booth?: { id?: string } | string; zone?: { id?: string } | string }, zones: { id: string; booths?: any[] }[]): string | null {
@@ -77,10 +76,6 @@ export async function pickUpOrderAction(orderId: string) {
 
     if (!userId) return { success: false, error: "Not authenticated" };
 
-    // Use admin client to bypass need for directus user token
-    const client = getAdminDirectusClient();
-    if (!client) return { success: false, error: "Server configuration error" };
-
     console.log("[pickUpOrderAction] orderId:", orderId, "userId:", userId, "isStudentShifter:", isStudentShifter, "shifterName:", shifterDisplayName);
 
     const updateData: any = {
@@ -94,7 +89,15 @@ export async function pickUpOrderAction(orderId: string) {
         updateData.shifter = userId;
     }
 
-    await client.request(updateItem("orders" as any, orderId, updateData));
+    await prisma.order.update({
+        where: { id: Number(orderId) },
+        data: {
+            status: updateData.status,
+            shifter_name: updateData.shifter_name,
+            ...(!isStudentShifter && userId ? { shifter_id: userId } : {}),
+            date_updated: new Date(),
+        },
+    });
 
     revalidatePath("/dashboard/shifter");
     try {
@@ -119,12 +122,10 @@ export async function finishOrderAction(orderId: string) {
 
     if (!isAuthorized) return { success: false, error: "Not authorized" };
 
-    const client = getAdminDirectusClient();
-    if (!client) return { success: false, error: "Server configuration error" };
-
-    await client.request(updateItem("orders" as any, orderId, {
-        status: "finished",
-    }));
+    await prisma.order.update({
+        where: { id: Number(orderId) },
+        data: { status: "finished", date_updated: new Date() },
+    });
 
     revalidatePath("/dashboard/shifter");
     return { success: true };
@@ -185,22 +186,14 @@ export async function fetchCompletedOrdersAction() {
     let eventEndHour = "17:30";
 
     if (activeEventId) {
-        const client = await getAdminDirectusClient();
-        if (client) {
-            const events = await client.request(
-                readItems("career_event" as any, {
-                    filter: { id: { _eq: activeEventId } },
-                    fields: ["date", "start_hour", "end_hour"],
-                    limit: 1,
-                })
-            ) as any[];
-
-            if (events && events.length > 0) {
-                // Normalize date to YYYY-MM-DD if it contains a timestamp
-                if (events[0].date) eventDateString = events[0].date.split('T')[0];
-                if (events[0].start_hour) eventStartHour = events[0].start_hour;
-                if (events[0].end_hour) eventEndHour = events[0].end_hour;
-            }
+        const event = await prisma.careerEvent.findUnique({
+            where: { id: activeEventId },
+            select: { date: true, start_hour: true, end_hour: true },
+        });
+        if (event) {
+            if (event.date) eventDateString = event.date.toISOString().split("T")[0];
+            if (event.start_hour) eventStartHour = event.start_hour.toISOString().slice(11, 16);
+            if (event.end_hour) eventEndHour = event.end_hour.toISOString().slice(11, 16);
         }
     }
 
@@ -407,11 +400,8 @@ export async function deleteOrderAction(orderId: string) {
 
     if (!isAuthorized) return { success: false, error: "Not authorized" };
 
-    const client = getAdminDirectusClient();
-    if (!client) return { success: false, error: "Server configuration error" };
-
     try {
-        await client.request(deleteItem("orders" as any, orderId));
+        await prisma.order.delete({ where: { id: Number(orderId) } });
         revalidatePath("/dashboard/shifter");
         return { success: true };
     } catch (error) {

@@ -6,7 +6,7 @@ import Image from "next/image";
 import { slugifyCompanyName, slugifyEventName } from "@/lib/utils/slugify";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
 import { CompanyLikeButton } from "@/components/CompanyLikeButton";
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import { useRouter } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -265,7 +265,7 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
                     .sort((a, b) => (scoreByCompanyId[a.id] ?? Infinity) - (scoreByCompanyId[b.id] ?? Infinity))
                     .map((c) => {
                     const hasPage = hasCompanyPageAccess(c);
-                    const logoUrl = c.logo ? getDirectusImageUrl(c.logo) : null;
+                    const logoUrl = c.logo ? getFileUrl(c.logo) : null;
                     const overlapKeywords = overlapByCompanyId[c.id] ?? [];
                     const cardInner = (
                       <div className="group relative flex h-full min-h-[280px] flex-col items-center rounded-xl border border-border/60 bg-card p-5 text-center transition-colors hover:border-vtk-blue/30 hover:bg-muted/30">

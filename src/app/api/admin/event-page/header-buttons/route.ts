@@ -1,7 +1,7 @@
 // app/api/admin/event-page/header-buttons/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { updateEventPageHeaderButtons } from "@/lib/repos/floorplan";
+import { getUserFromCookies } from "@/lib/auth-server";
 import { invalidateEventPageCache } from "@/lib/event-page-cache";
 import type { HeaderButtonType } from "@/lib/schema";
 
@@ -9,11 +9,8 @@ const VALID_BUTTONS: HeaderButtonType[] = ["floorplan", "company_guide", "cv_upl
 
 export async function PATCH(req: Request) {
   try {
-    const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
-    const cookieStore = await cookies();
-    const token = cookieStore.get(ACCESS_COOKIE)?.value;
-
-    if (!token) {
+    const user = await getUserFromCookies();
+    if (!user?.admin) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

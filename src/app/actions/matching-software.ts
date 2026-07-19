@@ -25,6 +25,7 @@ import {
   shouldRecomputeMatches,
 } from "@/lib/repos/matching-software";
 import type { MatchingSoftware, RIASECType } from "@/lib/schema";
+import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
 
 export async function listMatchingSoftwareAction(opts?: {
   eventId?: string;
@@ -40,10 +41,12 @@ export async function createMatchingSoftwareAction(data: {
   prerequisite_form?: string;
   active?: boolean;
 }) {
+  await requireAdminUser();
   return createMatchingSoftware(data);
 }
 
 export async function updateMatchingSoftwareAction(id: string, data: { active?: boolean; companies_can_view_matches?: boolean }) {
+  await requireAdminUser();
   return updateMatchingSoftware(id, data);
 }
 
@@ -56,6 +59,10 @@ export async function getFirstActiveMatchingSoftwareAction() {
 }
 
 export async function getCompanyMatchingResponseAction(companyId: string, matchingSoftwareId: string) {
+  const user = await getUserFromCookies();
+  if (!user?.admin && user?.company?.id !== companyId) {
+    throw new Error("Unauthorized");
+  }
   return getCompanyMatchingResponse(companyId, matchingSoftwareId);
 }
 
@@ -63,6 +70,10 @@ export async function getCompanyMatchingResponseAction(companyId: string, matchi
  * - Matching_Software.companies_can_view_matches is false (not yet open to companies), or
  * - Company lacks "Matching Software" suboption. */
 export async function getCompanyMatchingResponseForCompanyViewAction(companyId: string, matchingSoftwareId: string) {
+  const user = await getUserFromCookies();
+  if (!user?.admin && user?.company?.id !== companyId) {
+    throw new Error("Unauthorized");
+  }
   const { fetchCompanyByIdAction } = await import("@/app/actions/companies");
   const { hasMatchingSoftwareSubOption } = await import("@/lib/utils/company-access");
   const response = await getCompanyMatchingResponse(companyId, matchingSoftwareId);
@@ -93,17 +104,20 @@ export async function syncCompanyMatchedStudentsAction(
   companyId: string,
   matchingSoftwareId: string
 ) {
+  await requireAdminUser();
   return syncCompanyMatchedStudents(companyId, matchingSoftwareId);
 }
 
 /** Sync matched students for all companies with a matching response. Admin only. */
 export async function syncAllCompanyMatchedStudentsAction(matchingSoftwareId: string) {
+  await requireAdminUser();
   return syncAllCompanyMatchedStudents(matchingSoftwareId);
 }
 
 /** Full update: recompute all student matches, then sync company matches. Returns logs for admin display. */
 export async function fullUpdateAllMatchesAction(matchingSoftwareId: string) {
   try {
+    await requireAdminUser();
     return await fullUpdateAllMatches(matchingSoftwareId);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -118,6 +132,7 @@ export async function fullUpdateAllMatchesAction(matchingSoftwareId: string) {
 
 /** Get match counts per company for admin overview. */
 export async function getCompanyMatchCountsAction(matchingSoftwareId: string) {
+  await requireAdminUser();
   return getCompanyMatchCounts(matchingSoftwareId);
 }
 
@@ -128,6 +143,10 @@ export async function saveCompanyMatchingResponseAction(
   ocia: Record<string, number>,
   generalInfo?: { work_preference?: string[]; company_type?: string[]; work_options?: string[] }
 ) {
+  const user = await getUserFromCookies();
+  if (!user?.company || user.company.id !== companyId) {
+    throw new Error("Unauthorized");
+  }
   return createOrUpdateCompanyMatchingResponse({
     company: companyId,
     matching_software: matchingSoftwareId,

@@ -1,45 +1,28 @@
 // lib/repos/student-liked-companies.ts
 "use server";
 
-import { readItems, createItem, deleteItems } from "@directus/sdk";
-import { getAdminDirectusClient } from "@/lib/directus";
+import { prisma } from "@/lib/prisma";
 
 /**
- * Directus M2M junction for students.liked_companies -> company.
- * Check: Settings → Data Model → students → liked_companies field.
+ * Junction between students and the companies they liked (students_company).
+ *
+ * The Directus version probed for alternate column spellings at runtime
+ * (students_id vs student_id, company_id vs liked_companies_id) because the
+ * alias configuration was not known for certain. The columns are students_id
+ * and company_id; the guessing is gone.
  */
-const JUNCTION_COLLECTION = "students_company";
 
 /**
  * List liked company IDs for a student.
  */
 export async function listLikedCompanyIds(studentId: string): Promise<string[]> {
   try {
-    const client = getAdminDirectusClient();
-    if (!client) return [];
+    const rows = await prisma.studentCompany.findMany({
+      where: { students_id: Number(studentId) },
+      select: { company_id: true },
+    });
 
-    const items = (await client.request(
-      readItems(JUNCTION_COLLECTION as any, {
-        fields: ["*"],
-        filter: { students_id: { _eq: studentId } },
-        limit: 1000,
-      })
-    )) as unknown as Array<Record<string, unknown>>;
-
-    // Support alternate field names (Directus may use students_id or student_id, company_id or liked_companies_id)
-    const companyField =
-      items[0] && ("company_id" in items[0] || "liked_companies_id" in items[0])
-        ? "company_id" in items[0]
-          ? "company_id"
-          : "liked_companies_id"
-        : "company_id";
-
-    return (items ?? [])
-      .map((i) => {
-        const val = i[companyField];
-        return typeof val === "string" ? val : (val as { id?: string })?.id ?? (typeof val === "number" ? String(val) : null);
-      })
-      .filter(Boolean) as string[];
+    return rows.map((r) => r.company_id).filter((id): id is string => Boolean(id));
   } catch (error) {
     console.error("[listLikedCompanyIds] Error:", error);
     return [];
@@ -48,23 +31,26 @@ export async function listLikedCompanyIds(studentId: string): Promise<string[]> 
 
 /**
  * Add a company to the student's liked list.
+ *
+ * Idempotent: liking twice previously inserted a second junction row, which
+ * then showed up as a duplicate id from listLikedCompanyIds.
  */
 export async function addLikedCompany(
   studentId: string,
   companyId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const client = getAdminDirectusClient();
-    if (!client) {
-      return { success: false, error: "Server not configured" };
-    }
+    const students_id = Number(studentId);
 
-    await client.request(
-      createItem(JUNCTION_COLLECTION as any, {
-        students_id: studentId,
-        company_id: companyId,
-      })
-    );
+    const existing = await prisma.studentCompany.findFirst({
+      where: { students_id, company_id: companyId },
+      select: { id: true },
+    });
+    if (existing) return { success: true };
+
+    await prisma.studentCompany.create({
+      data: { students_id, company_id: companyId },
+    });
     return { success: true };
   } catch (error) {
     console.error("[addLikedCompany] Error:", error);
@@ -83,21 +69,9 @@ export async function removeLikedCompany(
   companyId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const client = getAdminDirectusClient();
-    if (!client) {
-      return { success: false, error: "Server not configured" };
-    }
-
-    await client.request(
-      deleteItems(JUNCTION_COLLECTION as any, {
-        filter: {
-          _and: [
-            { students_id: { _eq: studentId } },
-            { company_id: { _eq: companyId } },
-          ],
-        },
-      })
-    );
+    await prisma.studentCompany.deleteMany({
+      where: { students_id: Number(studentId), company_id: companyId },
+    });
     return { success: true };
   } catch (error) {
     console.error("[removeLikedCompany] Error:", error);

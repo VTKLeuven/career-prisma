@@ -16,9 +16,9 @@ import { Calendar, ChevronDown, Sparkles, LogOut, User, Star } from 'lucide-reac
 import { useRouter, usePathname } from 'next/navigation'
 import { fetchEventsAction } from "@/app/actions/events";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import { CareerEvent } from '@/lib/schema'
-import { DirectusUser } from "@directus/sdk";
+import type { UserSummary as AppUser } from "@/lib/schema";
 import { ScrollCue } from '@/components/ScrollCue';
 import { useBannerPage } from '@/hooks/use-banner-page';
 import { getUpcomingEventsWithFallback, type EventWithStatus } from '@/lib/utils/events';
@@ -621,7 +621,7 @@ function Hero() {
         <section ref={ref} className="relative isolate overflow-hidden border-b min-h-[60vh] sm:min-h-[72vh] md:min-h-[82vh] -mt-2 pt-16 sm:pt-20 md:pt-24">
             <motion.div aria-hidden className="absolute inset-0" style={{ y }}>
                 <Image
-                    src="https://directustest.vtk.be/assets/1be725c7-bc66-47ba-b956-e7ae59978983.jpg"
+                    src="/api/files/1be725c7-bc66-47ba-b956-e7ae59978983"
                     alt="VTK Career events crowd"
                     fill
                     priority
@@ -706,7 +706,7 @@ function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                     {upcomingEvents.map((event, i) => {
-                      const imageUrl = event.image ? getDirectusImageUrl(event.image) : null
+                      const imageUrl = event.image ? getFileUrl(event.image) : null
                       const isPast = event.isPast ?? false
                       return (
                         <motion.div
@@ -741,7 +741,7 @@ function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
                                     <div className="relative aspect-[4/3]">
                                       {event.image && (
                                       <Image
-                                        src={getDirectusImageUrl(event.image)!}
+                                        src={getFileUrl(event.image)!}
                                         alt={event.name}
                                         fill 
                                         priority={i < 3} // Priority for first 3 images
@@ -830,7 +830,7 @@ function AllEvents({ onBack }: { onBack?: () => void }) {
 }
 
 function TeamOverview() {
-    const [team, setTeam] = useState<DirectusUser[]>([]);
+    const [team, setTeam] = useState<AppUser[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -883,7 +883,7 @@ function TeamOverview() {
                   <div className="mx-auto h-24 w-24 overflow-hidden rounded-full ring-4 ring-vtk-light transition-transform duration-300 group-hover:scale-105">
                   {m.avatar && (
                     <Image
-                    src={getDirectusImageUrl(m.avatar)!}
+                    src={getFileUrl(m.avatar)!}
                     alt={`${m.first_name} ${m.last_name}`}
                     width={96}
                     height={96}
@@ -909,5 +909,4 @@ function TeamOverview() {
         </section>
     )
 }
-
 

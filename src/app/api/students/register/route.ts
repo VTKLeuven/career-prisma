@@ -1,7 +1,7 @@
 // app/api/students/register/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { findStudentByEmail, createNonOAuthStudent, generateStudentVerificationToken } from "@/lib/repos/students";
-import { sendEmail } from "@/lib/repos/directus";
+import { sendEmail } from "@/lib/email";
 import { generateStudentVerificationEmailHtml } from "@/lib/email-templates";
 
 export async function POST(request: NextRequest) {
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
       // Build verification URL
       const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL 
         || process.env.NEXT_PUBLIC_FORM_DOMAIN 
-        || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
+        || "http://localhost:3000";
       
       const verificationUrl = `${frontendBaseUrl}/verify-student?token=${encodeURIComponent(tokenData.token)}`;
       
@@ -104,6 +104,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
 
 

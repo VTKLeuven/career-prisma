@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerDirectusClient } from "@/lib/directus";
-import { readItems, readItem, updateItem } from "@directus/sdk";
-import { sendEmail } from "@/lib/repos/directus";
+import { sendEmail } from "@/lib/email";
 import { generateEventConfirmationEmailHtml } from "@/lib/email-templates";
 import { getUserFromCookies } from "@/lib/auth-server";
 import {
@@ -9,6 +7,8 @@ import {
   type EmailTask,
   type EmailTaskResult,
 } from "@/lib/email-job-manager";
+import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 export async function POST(
   request: NextRequest,
@@ -31,19 +31,10 @@ export async function POST(
       );
     }
 
-    const client = await getServerDirectusClient();
-    if (!client) {
-      return NextResponse.json(
-        { error: "Failed to connect to database" },
-        { status: 500 }
-      );
-    }
-
-    const formVersion = (await client.request(
-      readItem("form_versions" as any, formVersionId, {
-        fields: ["*", { form_id: ["id", "name", "slug"] }, "metadata"],
-      })
-    )) as any;
+    const formVersion = await prisma.formVersion.findUnique({
+      where: { id: Number(formVersionId) },
+      include: { form: true },
+    });
 
     if (!formVersion) {
       return NextResponse.json(
@@ -52,7 +43,7 @@ export async function POST(
       );
     }
 
-    const metadata = formVersion.metadata || {};
+    const metadata = (formVersion.metadata || {}) as Record<string, any>;
     if (!metadata.is_event_registration) {
       return NextResponse.json(
         { error: "Form is not an event registration form" },
@@ -60,23 +51,21 @@ export async function POST(
       );
     }
 
-    const form = formVersion.form_id;
+    const form = formVersion.form;
+    if (!form) return NextResponse.json({ error: "Form not found" }, { status: 404 });
     const formName = form.name || "Event Registration";
     const emailSubject = `${formName} - Your Event Ticket`;
     const emailContent =
       "Please find your personal QR code ticket below. Present it at the entrance for a smooth check-in. We look forward to seeing you there!";
 
-    const responses = (await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id", "data", "attendant_uuid"],
-        filter: {
-          form_version_id: { _eq: formVersionId },
-          archived: { _neq: true },
-          attendant_uuid: { _nnull: true },
-        },
-        limit: -1,
-      })
-    )) as any[];
+    const responses = await prisma.formResponse.findMany({
+      where: {
+        form_version_id: Number(formVersionId),
+        archived: { not: true },
+        attendant_uuid: { not: null },
+      },
+      select: { id: true, data: true, attendant_uuid: true },
+    });
 
     const formDomain =
       process.env.NEXT_PUBLIC_FORM_DOMAIN ||
@@ -87,7 +76,7 @@ export async function POST(
     let preSkipped = 0;
 
     for (const response of responses) {
-      const data = response.data || {};
+      const data = (response.data || {}) as Record<string, any>;
 
       if (onlyUnsent && data._qr_email_sent_at) {
         preSkipped++;
@@ -142,20 +131,19 @@ export async function POST(
         });
 
         // Fetch fresh data before updating to avoid overwriting concurrent changes
-        const freshResponse = (await client.request(
-          readItem("form_responses" as any, responseId, {
-            fields: ["data"],
-          })
-        )) as any;
-
-        await client.request(
-          updateItem("form_responses" as any, responseId, {
+        const freshResponse = await prisma.formResponse.findUnique({
+          where: { id: responseId },
+          select: { data: true },
+        });
+        await prisma.formResponse.update({
+          where: { id: responseId },
+          data: {
             data: {
-              ...(freshResponse?.data || responseData),
+              ...((freshResponse?.data || responseData) as Record<string, unknown>),
               _qr_email_sent_at: new Date().toISOString(),
-            },
-          })
-        );
+            } as Prisma.InputJsonValue,
+          },
+        });
 
         return "sent";
       });

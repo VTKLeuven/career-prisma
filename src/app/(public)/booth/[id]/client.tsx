@@ -7,7 +7,7 @@ import { Minus, Plus, ShoppingCart, Loader2, XCircle } from "lucide-react";
 import { placeOrderAction, checkOrderStatusAction, cancelOrderAction } from "@/app/actions/booth";
 import type { Drink, Order } from "@/lib/schema";
 import { useRouter } from "next/navigation";
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 
 export default function BoothClient({
     boothId,
@@ -137,7 +137,7 @@ export default function BoothClient({
                     </p>
                     <p className="text-xs text-muted-foreground mt-4">
                         {isPreparing
-                            ? 'Your order is being prepared. It wil arrive soon!'
+                            ? 'Your order is being prepared. It will arrive soon!'
                             : 'Your order is being picked up soon.'}
                     </p>
 
@@ -169,7 +169,7 @@ export default function BoothClient({
                     {item.image && (
                         <div className="relative flex-shrink-0 rounded-md overflow-hidden bg-white" style={{ width: '80px', height: '80px' }}>
                             <img
-                                src={getDirectusImageUrl(item.image)}
+                                src={getFileUrl(item.image)}
                                 alt={item.name}
                                 className="absolute inset-0 h-full w-full object-contain p-1"
                             />

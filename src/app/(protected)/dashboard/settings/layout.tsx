@@ -1,7 +1,7 @@
 "use client";
 
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import Image from "next/image";
 import { ReactNode } from "react";
 import { useState, useEffect, useCallback } from "react";
@@ -37,7 +37,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
       
       // Validate existing page image
       if (companyData?.page_image) {
-        const pageImageUrl = getDirectusImageUrl(companyData.page_image);
+        const pageImageUrl = getFileUrl(companyData.page_image);
         if (pageImageUrl) {
           const validation = await validateExistingPageImage(pageImageUrl);
           setPageImageValid(validation.valid);
@@ -120,7 +120,7 @@ function CompanyHeaderCard({ company }: { company: Company | null }) {
 
   const logoSrc = isFileLike(company.logo)
     ? URL.createObjectURL(company.logo)
-    : getDirectusImageUrl(company.logo);
+    : getFileUrl(company.logo);
 
   return (
     <Card className="rounded-2xl shadow-md bg-slate-700 text-white">

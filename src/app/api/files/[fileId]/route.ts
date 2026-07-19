@@ -1,84 +1,84 @@
-import { NextRequest, NextResponse } from "next/server";
+import { createReadStream } from "fs";
+import { stat } from "fs/promises";
+import { Readable } from "stream";
+import { NextResponse } from "next/server";
+import { getStoredFile } from "@/lib/file-storage";
+
+export const runtime = "nodejs";
 
 export async function GET(
-  request: NextRequest,
+  request: Request,
   context: { params: Promise<{ fileId: string }> }
 ) {
   try {
-    const params = await context.params;
-    const { fileId } = params;
-    
-    console.log('[files API] Fetching file with ID:', fileId);
-    console.log('[files API] File ID type:', typeof fileId);
-    console.log('[files API] File ID length:', fileId?.length);
-
-    // Get Directus URL and remove trailing slash to avoid double slashes
-    let directusUrl = process.env.NEXT_PUBLIC_DIRECTUS_URL || process.env.DIRECTUS_URL;
-    if (!directusUrl) {
-      console.error('[files API] Directus URL not configured');
-      throw new Error('Directus URL not configured');
+    const { fileId } = await context.params;
+    const stored = await getStoredFile(fileId);
+    if (!stored) {
+      return NextResponse.json({ error: "File not found" }, { status: 404 });
     }
 
-    // Remove trailing slash to avoid //assets/...
-    directusUrl = directusUrl.replace(/\/$/, '');
-
-    console.log('[files API] Using Directus URL:', directusUrl);
-    const assetUrl = `${directusUrl}/assets/${fileId}`;
-    console.log('[files API] Fetching from:', assetUrl);
-
-    // Fetch the file directly from Directus
-    const response = await fetch(assetUrl, {
-      method: 'GET',
-      headers: {
-        // Forward any auth headers if needed
-        ...(request.headers.get('cookie') ? { 'Cookie': request.headers.get('cookie')! } : {}),
-      },
-    });
-    
-    console.log('[files API] Directus response status:', response.status);
-    console.log('[files API] Directus response headers:', Object.fromEntries(response.headers.entries()));
-
-    if (!response.ok) {
-      console.error('[files API] Directus returned error:', response.status, response.statusText);
-      const errorText = await response.text();
-      console.error('[files API] Error body:', errorText);
-      return NextResponse.json(
-        { error: 'File not found', details: errorText },
-        { status: response.status }
-      );
+    const fileStat = await stat(stored.filePath);
+    const filename = stored.metadata.filename_download.replace(/["\r\n]/g, "_");
+    const range = request.headers.get("range");
+    let start = 0;
+    let end = fileStat.size - 1;
+    let status = 200;
+    if (range) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+      if (!match) {
+        return new NextResponse(null, {
+          status: 416,
+          headers: { "Content-Range": `bytes */${fileStat.size}` },
+        });
+      }
+      if (match[1]) start = Number(match[1]);
+      if (match[2]) end = Number(match[2]);
+      if (!match[1] && match[2]) {
+        const suffixLength = Number(match[2]);
+        start = Math.max(0, fileStat.size - suffixLength);
+        end = fileStat.size - 1;
+      }
+      if (
+        !Number.isSafeInteger(start) ||
+        !Number.isSafeInteger(end) ||
+        start < 0 ||
+        end < start ||
+        start >= fileStat.size
+      ) {
+        return new NextResponse(null, {
+          status: 416,
+          headers: { "Content-Range": `bytes */${fileStat.size}` },
+        });
+      }
+      end = Math.min(end, fileStat.size - 1);
+      status = 206;
     }
-
-    // Get the file as a blob
-    const blob = await response.blob();
-
-    // Get headers from Directus response
-    const contentType = response.headers.get('content-type') || blob.type || 'application/octet-stream';
-    const contentDisposition = response.headers.get('content-disposition');
-    const contentLength = response.headers.get('content-length');
-
-    console.log('[files API] File fetched successfully:', {
-      contentType,
-      size: contentLength,
-    });
-
-    // Return the file with proper headers including CDN caching
-    return new NextResponse(blob, {
-      status: 200,
+    const stream = Readable.toWeb(
+      createReadStream(stored.filePath, { start, end })
+    );
+    const contentLength = end - start + 1;
+    return new NextResponse(stream as BodyInit, {
+      status,
       headers: {
-        'Content-Type': contentType,
-        ...(contentDisposition ? { 'Content-Disposition': contentDisposition } : {}),
-        ...(contentLength ? { 'Content-Length': contentLength } : {}),
-        'Cache-Control': 'public, max-age=31536000, immutable', // 1 year cache for immutable assets
-        'CDN-Cache-Control': 'public, max-age=31536000',
-        'Vary': 'Accept',
+        "Content-Type":
+          stored.metadata.type || "application/octet-stream",
+        "Content-Length": String(contentLength),
+        "Content-Disposition": `inline; filename="${filename}"`,
+        "Cache-Control": "public, max-age=31536000, immutable",
+        "Accept-Ranges": "bytes",
+        ...(status === 206 && {
+          "Content-Range": `bytes ${start}-${end}/${fileStat.size}`,
+        }),
       },
     });
-  } catch (error) {
-    console.error('[files API] Error fetching file:', error);
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      return NextResponse.json({ error: "File not found" }, { status: 404 });
+    }
+    console.error("[files API] Error:", error);
     return NextResponse.json(
-      { error: 'Failed to fetch file' },
+      { error: "Failed to fetch file" },
       { status: 500 }
     );
   }
 }
-

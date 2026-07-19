@@ -185,7 +185,7 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
           <p className="text-destructive font-medium">Failed to load matching software</p>
           <p className="text-sm text-muted-foreground mt-2">{error}</p>
           <p className="text-xs text-muted-foreground mt-2">
-            Check that the Directus collection is named &quot;Matching_Software&quot; (or &quot;matching_software&quot;). See DIRECTUS_MATCHING_SOFTWARE.md.
+            No matching software is configured for this event.
           </p>
         </CardContent>
       </Card>
@@ -288,7 +288,7 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
                 {updateResult.errors.length > 0 && ` • ${updateResult.errors.length} errors`}
               </span>
             ) : (
-              "Sync company_matching_response.students from student matches. Clear students manually in Directus first if needed."
+              "Sync company matching responses from the latest student matches."
             )}
           </DialogDescription>
         </DialogHeader>
@@ -473,7 +473,7 @@ function CreateMatchingSoftwareDialog({ eventId: preselectedEventId, onCreated }
       onCreated?.();
     } catch (err) {
       console.error(err);
-      alert("Failed to create. Ensure matching_software and student_matching_response collections exist in Directus.");
+      alert("Failed to create the matching software configuration.");
     } finally {
       setLoading(false);
     }

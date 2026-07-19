@@ -20,7 +20,7 @@ export default function TermsPage() {
                   TERMS AND CONDITIONS OF VTK
                 </h1>
                 <p className="text-lg text-neutral-700">
-                  Verkoopsvoorwaarden
+                  General terms of sale
                 </p>
               </div>
             </div>
@@ -30,140 +30,140 @@ export default function TermsPage() {
               <div className="prose prose-neutral max-w-none">
                 <article className="space-y-8">
                   <section>
-                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Artikel 1: Toepassingsgebied</h2>
+                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Article 1: Scope</h2>
                     <p className="text-neutral-700 leading-relaxed">
-                      Deze algemene voorwaarden gelden voor alle contracten afgesloten door Vlaamse Technische Kring vzw. De medecontractant wordt geacht ze te aanvaarden door het enkel feit van de ondertekening van het contract. Afwijking van deze verkoopsvoorwaarden, zelfs indien vermeld op documenten uitgaande van de medecontractant zijn alleen dan aan Vlaamse Technische Kring vzw tegenstelbaar wanneer zij door Vlaamse Technische Kring vzw schriftelijk werden bevestigd. In dat geval blijven alle overige verkoopsvoorwaarden van kracht waarvan niet uitdrukkelijk werd afgeweken.
+                      These general terms apply to all agreements concluded by VZW Vlaamse Technische Kring (Flemish Technical Association). The co-contracting party is deemed to accept them by the mere fact of signing the agreement. Deviations from these terms of sale, even if stated on documents issued by the co-contracting party, are only binding on VTK if they have been confirmed in writing by VTK. In that case, all other terms of sale remain in force except where explicitly deviated from.
                     </p>
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Artikel 2: Totstandkoming van het contract</h2>
+                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Article 2: Formation of the agreement</h2>
                     <div className="space-y-4">
                       <p className="text-neutral-700 leading-relaxed">
-                        <strong>2.1.</strong> Alle mondelinge voorbesprekingen zijn zuiver informatief. De overeenkomst komt slechts tot stand door ondertekening van het contract door Vlaamse Technische Kring vzw. Een begin van uitvoering wordt gelijkgesteld met de afsluiting van een contract en met aanvaarding van deze algemene voorwaarden tenzij deze uitvoering onder uitdrukkelijk voorbehoud is geschied. De uitvoering ervan geschiedt conform de algemene verkoopsvoorwaarden in de offerte, het contract, de bestelbon, de leveringsnota, en/of de factuur opgenomen, zonder toepassing van de eigen voorwaarden van de medecontractant, zelfs al worden deze naderhand meegedeeld.
+                        <strong>2.1.</strong> All oral preliminary discussions are purely informative. The agreement is only formed upon signature of the contract by VZW Vlaamse Technische Kring. Commencement of performance is equated with conclusion of a contract and acceptance of these general terms, unless such performance was carried out under express reservation. Performance is carried out in accordance with the general terms of sale stated in the quotation, contract, purchase order, delivery note, and/or invoice, without application of the co-contracting party’s own terms, even if communicated afterwards.
                       </p>
                       <p className="text-neutral-700 leading-relaxed">
-                        <strong>2.2.</strong> Elke annulering van de bestelling dient schriftelijk te geschieden. Zij is slechts geldig mits schriftelijke aanvaarding door Vlaamse Technische Kring vzw. Ingeval van annulering is de medecontractant een forfaitaire vergoeding verschuldigd afhankelijk van het onderwerp van de overeenkomst, deze dekt de vaste en variabele kosten en mogelijke winstderving.
+                        <strong>2.2.</strong> Any cancellation of an order must be made in writing. It is only valid subject to written acceptance by VZW Vlaamse Technische Kring. In case of cancellation, the co-contracting party owes a lump-sum fee depending on the subject of the agreement, covering fixed and variable costs and possible loss of profit.
                       </p>
                       <p className="text-neutral-700 leading-relaxed ml-4">
-                        <strong>2.2.1.</strong> Voor Sector Nights, BR Launches, ECC, Internship Fair, Jobfair of gelijkaardige evenementen zal bij een annulatie tot en met 40 dagen voor het evenement 35% van het overeengekomen bedrag aangerekend worden, van 39 tot en met 21 dagen voor het evenement 60% van het overeengekomen bedrag aangerekend worden en vanaf 20 dagen voor het evenement zal 100% van dit bedrag aangerekend worden.
+                        <strong>2.2.1.</strong> For Sector Nights, BR Launches, ECC, Internship Fair, Job Fair, or similar events, cancellation up to and including 40 days before the event will incur 35% of the agreed amount; from 39 to 21 days before the event, 60% of the agreed amount; and from 20 days before the event, 100% of that amount will be charged.
                       </p>
                       <p className="text-neutral-700 leading-relaxed ml-4">
-                        <strong>2.2.2.</strong> Voor goederen of engagementen die bij het tekenen van de overeenkomst niet gekoppeld zijn aan een fysiek evenement zal bij annulatie een vergoeding van 35% verschuldigd zijn van de prijs.
+                        <strong>2.2.2.</strong> For goods or commitments that, at signing, are not linked to a physical event, cancellation incurs a fee of 35% of the price.
                       </p>
                       <p className="text-neutral-700 leading-relaxed">
-                        <strong>2.3</strong> In het geval dat Vlaamse Technische Kring vzw, met uitzondering van overmacht, overgaat tot de annulering van een evenement of bestelling, heeft het bedrijf recht op volledige compensatie.
+                        <strong>2.3</strong> If VZW Vlaamse Technische Kring, except in case of force majeure, cancels an event or order, the company is entitled to full compensation.
                       </p>
                     </div>
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Artikel 3: Prijs</h2>
+                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Article 3: Price</h2>
                     <p className="text-neutral-700 leading-relaxed">
-                      De prijs wordt bepaald op het ogenblik van de ondertekening van het contract.
+                      The price is determined at the moment the contract is signed.
                     </p>
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Artikel 4: Levering</h2>
+                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Article 4: Delivery</h2>
                     <div className="space-y-4">
                       <p className="text-neutral-700 leading-relaxed">
-                        <strong>4.1.</strong> De goederen die materieel moeten worden geleverd (vb. boeken, e.d.), worden verstuurd per post, behoudens schriftelijk anders overeengekomen.
+                        <strong>4.1.</strong> Goods that must be delivered materially (e.g. books, etc.) are sent by post, unless otherwise agreed in writing.
                       </p>
                       <p className="text-neutral-700 leading-relaxed">
-                        <strong>4.2.</strong> Indien het contract toegang verleent tot een online-databank, heeft de levering plaats door overhandiging van een gebruikersnaam en wachtwoord.
+                        <strong>4.2.</strong> If the contract grants access to an online database, delivery takes place by providing a username and password.
                       </p>
                     </div>
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Artikel 5: Controle</h2>
+                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Article 5: Inspection</h2>
                     <div className="space-y-4">
                       <p className="text-neutral-700 leading-relaxed">
-                        <strong>5.1.</strong> De medecontractant dient de goederen onmiddellijk in ontvangst te nemen en na te zien op hun conformiteit met de bestelling en op eventuele zichtbare gebreken. Indien op dat ogenblik niet wordt geprotesteerd, erkent de medecontractant dat de levering juist en volledig is, en aanvaardt hij de goederen in de staat waarin ze zich bevinden.
+                        <strong>5.1.</strong> The co-contracting party must take receipt of the goods immediately and verify their conformity with the order and any visible defects. If no objection is raised at that time, the co-contracting party acknowledges that delivery is correct and complete and accepts the goods in the condition in which they are delivered.
                       </p>
                       <p className="text-neutral-700 leading-relaxed">
-                        <strong>5.2.</strong> Verborgen gebreken kunnen slechts tot vergoeding aanleiding geven indien zij binnen de 8 dagen kenbaar worden gemaakt aan Vlaamse Technische Kring vzw en dit bij aangetekend schrijven en de goederen inmiddels niet in behandeling worden genomen.
+                        <strong>5.2.</strong> Hidden defects can only give rise to compensation if they are notified to VZW Vlaamse Technische Kring within 8 days by registered letter and the goods have not yet been processed.
                       </p>
                       <p className="text-neutral-700 leading-relaxed">
-                        <strong>5.3.</strong> De aansprakelijkheid van Vlaamse Technische Kring vzw is in elk geval beperkt tot de vervanging van de gebrekkige goederen door gelijkwaardige goederen. Vlaamse Technische Kring vzw is niet aansprakelijk voor enige andere schade uit welke hoofde ook, zij het aan personen, voorwerpen of aan de goederen zelf.
+                        <strong>5.3.</strong> The liability of VZW Vlaamse Technische Kring is in any case limited to replacement of defective goods with equivalent goods. VZW Vlaamse Technische Kring is not liable for any other damage of any kind, whether to persons, objects, or the goods themselves.
                       </p>
                     </div>
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Artikel 6: Betalingen</h2>
+                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Article 6: Payment</h2>
                     <div className="space-y-4">
                       <p className="text-neutral-700 leading-relaxed">
-                        <strong>6.1.</strong> De prijs is - behoudens uitdrukkelijk andersluidende vermelding op de factuur - betaalbaar uiterlijk 30 dagen na factuurdatum.
+                        <strong>6.1.</strong> Unless explicitly stated otherwise on the invoice, the price is payable no later than 30 days after the invoice date.
                       </p>
                       <p className="text-neutral-700 leading-relaxed">
-                        <strong>6.2.</strong> Bij niet-betaling op de vervaldag zal van rechtswege en zonder voorafgaande ingebrekestelling een verwijlintrest verschuldigd zijn van 12% of, indien deze hoger is, de wettelijke intrestvoet bepaald overeenkomstig artikel 5 van de wet van 2 augustus 2002 betreffende de bestrijding van de betalingsachterstand bij handelstransacties, gewijzigd door artikel 7 van de wet van 22 november 2013.
+                        <strong>6.2.</strong> If payment is not made by the due date, default interest of 12% shall be owed by operation of law and without prior notice of default, or, if higher, the statutory interest rate determined in accordance with Article 5 of the Act of 2 August 2002 on combating late payment in commercial transactions, as amended by Article 7 of the Act of 22 November 2013.
                       </p>
                       <p className="text-neutral-700 leading-relaxed">
-                        <strong>6.3.</strong> Bij niet-betaling op de vervaldag zal van rechtswege en zonder voorafgaande ingebrekestelling een schadeloosstelling van 10% bovenop een forfaitaire vergoeding van € 40,- voor de invorderingskosten, ontstaan door de niet-betaling, overeenkomstig artikel 6 van de wet van 2 augustus 2002 betreffende de bestrijding van de betalingsachterstand bij handelstransacties, gewijzigd door artikel 8 van de wet van 22 november 2013.
+                        <strong>6.3.</strong> If payment is not made by the due date, a flat damages fee of 10% plus a lump sum of €40 for collection costs arising from non-payment shall be owed by operation of law and without prior notice of default, in accordance with Article 6 of the Act of 2 August 2002 on combating late payment in commercial transactions, as amended by Article 8 of the Act of 22 November 2013.
                       </p>
                       <p className="text-neutral-700 leading-relaxed">
-                        <strong>6.4.</strong> Verkeerde meldingen op de factuur moeten binnen de 8 dagen na de factuurdatum bij aangetekend schrijven worden meegedeeld. Na afloop van die termijn wordt de factuur geacht juist en aanvaard te zijn.
+                        <strong>6.4.</strong> Incorrect items on the invoice must be reported within 8 days of the invoice date by registered letter. After that period, the invoice is deemed correct and accepted.
                       </p>
                       <p className="text-neutral-700 leading-relaxed">
-                        <strong>6.5.</strong> In geval van betwisting van een deel van de geleverde goederen is de medecontractant in ieder geval gehouden tot betaling op de vervaldag van de factuur van het niet betwiste gedeelte.
+                        <strong>6.5.</strong> If part of the delivered goods is disputed, the co-contracting party must in any event pay the undisputed portion by the invoice due date.
                       </p>
                     </div>
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Artikel 7: Waarborgen</h2>
+                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Article 7: Guarantees</h2>
                     <p className="text-neutral-700 leading-relaxed">
-                      Indien het vertrouwen van Vlaamse Technische Kring vzw in de kredietwaardigheid van de medecontractant geschokt wordt door daden van gerechtelijke uitvoering tegen de medecontractant en/of aanwijsbare andere gebeurtenissen die het vertrouwen in de goede uitvoering van door de medecontractant aangegane verbintenissen in vraag stellen, dan behoudt Vlaamse Technische Kring vzw zich het recht voor van de medecontractant geschikte waarborgen te eisen. Indien de medecontractant weigert hierop in te gaan, behoudt Vlaamse Technische Kring vzw zich het recht voor de gehele bestelling of een gedeelte ervan te annuleren, zelfs indien de goederen reeds geheel of gedeeltelijk werden verzonden of reeds online toegang werd verleend. In voorkomend geval zal een schadevergoeding verschuldigd zijn à rato van 35% van het bedrag van de bestelling/overeenkomst.
+                      If VTK’s confidence in the co-contracting party’s creditworthiness is shaken by enforcement measures against the co-contracting party and/or other demonstrable events that call into question confidence in proper performance of the co-contracting party’s obligations, VTK reserves the right to require appropriate security from the co-contracting party. If the co-contracting party refuses, VTK reserves the right to cancel the entire order or part of it, even if the goods have already been shipped in whole or in part or online access has already been granted. In that case, damages of 35% of the order/agreement amount shall be owed.
                     </p>
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Artikel 8: Industriële en intellectuele eigendom</h2>
+                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Article 8: Industrial and intellectual property</h2>
                     <div className="space-y-4">
                       <p className="text-neutral-700 leading-relaxed">
-                        <strong>8.1.</strong> Indien een door Vlaamse Technische Kring vzw geleverd goed inbreuk zou maken op een octrooi of model recht of op andere rechten van industriële- of intellectuele eigendom van derden, zal Vlaamse Technische Kring vzw naar haar keuze en na overleg met de medecontractant het betreffende goed vervangen door een goed dat geen inbreuk maakt op het betrokken recht of een licentierecht terzake werven, dan wel het goed terugnemen tegen terugbetaling van de betaalde prijs, onder aftrek van een bedrag wegens slijtage en/of ouderdom. De medecontractant dient alleszins Vlaamse Technische Kring vzw tijdig en volledig in te lichten over de aanspraken van derden, op straffe van verlies van het recht op de hierboven vermelde prestaties.
+                        <strong>8.1.</strong> If a good supplied by VTK would infringe a patent, design right, or other industrial or intellectual property rights of third parties, VTK shall, at its option and after consultation with the co-contracting party, replace the good with one that does not infringe the relevant right, obtain a licence, or take back the good against repayment of the price paid, less an amount for wear and/or age. The co-contracting party must in any event inform VTK fully and in good time of third-party claims, on pain of losing the right to the remedies above.
                       </p>
                       <p className="text-neutral-700 leading-relaxed">
-                        <strong>8.2.</strong> Het is de medecontractant evenmin toegelaten om de gegevens waartoe toegang wordt verschaft of de publicaties die ter beschikking worden gesteld te verveelvoudigen of openbaar te maken door middel van druk, fotocopie, microfilm, elektronisch, op geluidsband of op welke andere wijze ook en evenmin in een retrieval systeem worden opgeborgen zonder voorafgaandelijke, uitdrukkelijke en schriftelijke toestemming van Vlaamse Technische Kring vzw.
+                        <strong>8.2.</strong> The co-contracting party is likewise not permitted to reproduce or disclose data to which access is granted or publications made available, by print, photocopy, microfilm, electronic means, audio tape, or any other means, or to store them in a retrieval system without VTK’s prior express written consent.
                       </p>
                     </div>
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Artikel 9: Maatregelen die ons verplichten tot wijzigen van het evenement</h2>
+                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Article 9: Measures requiring changes to the event</h2>
                     <p className="text-neutral-700 leading-relaxed mb-4">
-                      Indien de onderwerpen van deze overeenkomst onderhevig worden aan maatregelen getroffen al dan niet opgelegd door overheden, de KU Leuven of andere betrokken instanties, zal VTK altijd trachten het betrokken engagement na te leven met het oog op het behouden van het evenement. Indien deze maatregelen het evenement niet meer mogelijk maken zal er een online alternatief voorzien worden, afhankelijk van het type evenement zal er een compensatie voorzien worden.
+                      If the subject matter of this agreement is affected by measures taken or imposed by authorities, KU Leuven, or other involved bodies, VTK will always seek to honour the relevant commitment with a view to preserving the event. If such measures make the event impossible, an online alternative will be provided; depending on the type of event, compensation will be provided as follows.
                     </p>
                     <div className="space-y-4">
                       <p className="text-neutral-700 leading-relaxed ml-4">
-                        <strong>9.1.</strong> Voor Sector Nights, BR Launches of gelijkaardige evenementen zal bij een overschakeling naar een online alternatief een compensatie geleverd worden in de vorm van een gratis door VTK aangewezen optie uit de door VTK opgestelde Collaboration Brochure van het academiejaar waarin het contract geldig is.
+                        <strong>9.1.</strong> For Sector Nights, BR Launches, or similar events, switching to an online alternative will be compensated by a free option designated by VTK from VTK’s Collaboration Brochure for the academic year in which the contract is valid.
                       </p>
                       <p className="text-neutral-700 leading-relaxed ml-4">
-                        <strong>9.2.</strong> Voor Internship Fair, Jobfair of gelijkaardige evenementen zal bij een overschakeling naar een online alternatief een financiële compensatie geleverd worden van 25% van de prijs van de desbetreffende optie waarvoor fysieke aanwezigheid vereist is.
+                        <strong>9.2.</strong> For Internship Fair, Job Fair, or similar events, switching to an online alternative will be compensated financially with 25% of the price of the relevant option for which physical presence is required.
                       </p>
                     </div>
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Artikel 10: Overmacht</h2>
+                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Article 10: Force majeure</h2>
                     <p className="text-neutral-700 leading-relaxed">
-                      Ingeval van overmacht heeft Vlaamse Technische Kring vzw het recht om de uitvoering van de overeenkomst op te schorten hetzij de overeenkomst te beëindigen. Ingeval van overmacht ziet de medecontractant uitdrukkelijk af van enige schadevergoeding.
+                      In case of force majeure, VZW Vlaamse Technische Kring has the right to suspend performance of the agreement or to terminate it. In case of force majeure, the co-contracting party expressly waives any claim to damages.
                     </p>
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Artikel 11: Toepasselijk recht</h2>
+                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Article 11: Applicable law</h2>
                     <p className="text-neutral-700 leading-relaxed">
-                      Op alle door Vlaamse Technische Kring vzw afgesloten overeenkomsten zal uitsluitend het Belgisch recht van toepassing zijn.
+                      Belgian law applies exclusively to all agreements concluded by VZW Vlaamse Technische Kring.
                     </p>
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Artikel 12: Geschillen</h2>
+                    <h2 className="text-2xl font-semibold text-neutral-900 mb-4">Article 12: Disputes</h2>
                     <p className="text-neutral-700 leading-relaxed">
-                      Ingeval van betwisting zijn uitsluitend de Rechtbanken van Leuven bevoegd.
+                      Any dispute shall fall under the exclusive jurisdiction of the courts of Leuven.
                     </p>
                   </section>
                 </article>
@@ -175,4 +175,3 @@ export default function TermsPage() {
     </div>
   )
 }
-

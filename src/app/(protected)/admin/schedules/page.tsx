@@ -32,7 +32,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Plus, Trash2, FileText } from "lucide-react";
 import { useUser } from "@/providers/UserProvider";
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import type { Master } from "@/lib/schema";
 
 export default function AdminSchedulesPage() {
@@ -143,7 +143,7 @@ function SchedulesTable({ eventId, onChanged }: { eventId?: string; onChanged: (
               <div className="space-y-2">
                 {schedules.map((s) => {
                   const fileId = typeof s.pdf === "string" ? s.pdf : s.pdf?.id;
-                  const pdfUrl = fileId ? getDirectusImageUrl(fileId) : null;
+                  const pdfUrl = fileId ? getFileUrl(fileId) : null;
                   const masterName = typeof s.master === "object" && s.master?.name ? s.master.name : "Unknown";
                   return (
                     <div

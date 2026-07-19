@@ -1,7 +1,7 @@
 // app/api/event/[eventName]/company-guide/download/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { fetchEventPagesAction } from "@/app/actions/events";
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import { slugifyEventName } from "@/lib/utils/slugify";
 
 export const dynamic = 'force-dynamic';
@@ -43,17 +43,15 @@ export async function GET(
       );
     }
 
-    // Get Directus URL
-    const directusUrl = getDirectusImageUrl(fileId);
-    if (!directusUrl) {
+    const filePath = getFileUrl(fileId);
+    if (!filePath) {
       return NextResponse.json(
         { error: "Failed to get PDF URL" },
         { status: 500 }
       );
     }
 
-    // Fetch PDF from Directus
-    const response = await fetch(directusUrl, {
+    const response = await fetch(new URL(filePath, request.url), {
       method: "GET",
       headers: {
         Accept: "application/pdf",
@@ -86,4 +84,3 @@ export async function GET(
     );
   }
 }
-

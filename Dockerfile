@@ -41,19 +41,20 @@ COPY . .
 
 # Uncomment the following line in case you want to disable telemetry during the build.
 ENV NEXT_TELEMETRY_DISABLED 1
+# Prisma is instantiated while Next.js analyzes server modules. Static page
+# generation does not query the database, but the client still requires a
+# syntactically valid URL during the image build. Runtime Compose overrides it.
+ENV DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build
 
 # Accept build args for environment variables needed during build
 # NEXT_PUBLIC_* variables are baked into the client bundle at build time
 # These come from docker-compose build args, which read from .env
-ARG DIRECTUS_URL
-ARG NEXT_PUBLIC_DIRECTUS_URL
 ARG NEXT_PUBLIC_SENTRY_DSN
 ARG SENTRY_AUTH_TOKEN
-ENV DIRECTUS_URL=$DIRECTUS_URL
-ENV NEXT_PUBLIC_DIRECTUS_URL=$NEXT_PUBLIC_DIRECTUS_URL
 ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
 ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
 
+RUN npx prisma generate
 RUN npm run build
 
 # Production image, copy all the files and run next

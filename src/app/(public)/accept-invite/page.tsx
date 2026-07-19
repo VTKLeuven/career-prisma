@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import NextImage from "next/image";
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import { validatePageImageDimensions } from "@/lib/utils/image-validation";
 import type { Company, Master } from "@/lib/schema";
 
@@ -65,7 +65,7 @@ function CompanySetupForm({ token, company, masters, onComplete }: {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(() => {
     if (company?.logo) {
-      const url = getDirectusImageUrl(company.logo);
+      const url = getFileUrl(company.logo);
       return url || null;
     }
     return null;
@@ -73,7 +73,7 @@ function CompanySetupForm({ token, company, masters, onComplete }: {
   const [pageImageFile, setPageImageFile] = useState<File | null>(null);
   const [pageImagePreview, setPageImagePreview] = useState<string | null>(() => {
     if (company?.page_image) {
-      const url = getDirectusImageUrl(company.page_image);
+      const url = getFileUrl(company.page_image);
       return url || null;
     }
     return null;
