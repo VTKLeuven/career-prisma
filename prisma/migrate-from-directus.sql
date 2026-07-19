@@ -241,7 +241,26 @@ ALTER TABLE IF EXISTS career_event_option_career_sub_option RENAME TO career_eve
 ALTER TABLE IF EXISTS student_matching_response_company   RENAME TO student_matching_response_companies;
 
 -- ---------------------------------------------------------------------------
--- 8. Default values for UUID primary keys
+-- 8. Orphaned junction rows
+-- ---------------------------------------------------------------------------
+-- Every junction FK Directus created uses ON DELETE SET NULL. Combined with how
+-- it unlinks m2m relations (PATCH the alias to [], rather than deleting the
+-- junction rows), clearing a relation left the rows behind with a NULL parent
+-- instead of removing them. Repeated syncs accumulated them:
+--
+--   company_matching_response_students  106996 of 116037 rows orphaned (92%)
+--   student_matching_response_company      241 of  28780
+--   zones_Booths                            91 of    306
+--
+-- They are unreachable -- a NULL parent matches no query -- so this is dead
+-- weight, not data. The Prisma repos delete junction rows outright, so nothing
+-- accumulates from here on.
+DELETE FROM company_matching_response_students WHERE company_matching_response_id IS NULL OR students_id IS NULL;
+DELETE FROM student_matching_response_companies WHERE student_matching_response_id IS NULL OR company_id IS NULL;
+DELETE FROM zone_booths WHERE zone_id IS NULL OR booth_id IS NULL;
+
+-- ---------------------------------------------------------------------------
+-- 9. Default values for UUID primary keys
 -- ---------------------------------------------------------------------------
 -- Directus generated row ids in application code, so these columns have no
 -- database default. Without one, every Prisma `create` on these tables fails
