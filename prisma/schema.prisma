@@ -1,0 +1,848 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model AcademicYear {
+  id                Int                @id(map: "Academic_Year_pkey") @default(autoincrement())
+  date_created      DateTime?          @db.Timestamptz(6)
+  date_updated      DateTime?          @db.Timestamptz(6)
+  start_of_year     DateTime?          @db.Timestamp(6)
+  name              String?            @db.VarChar(255)
+  end_of_year       DateTime?          @db.Timestamp(6)
+  cvBooks           CvBook[]
+  matchingSoftwares MatchingSoftware[]
+
+  @@map("academic_years")
+}
+
+model AttendantScan {
+  id                  String        @id @db.Uuid
+  attendant_uuid      String?       @db.VarChar(255)
+  form_response_id    Int?
+  company_id          Int?
+  scanned_by          String?       @db.Uuid
+  scanned_at          DateTime?     @db.Timestamptz(6)
+  liked               Boolean       @default(false)
+  comment             String?       @db.VarChar(255)
+  feedback_updated_at DateTime?     @db.Timestamp(6)
+  formResponse        FormResponse? @relation(fields: [form_response_id], references: [id], onUpdate: NoAction, map: "attendant_scans_form_response_id_foreign")
+  scannedBy           User?         @relation(fields: [scanned_by], references: [id], onUpdate: NoAction, map: "attendant_scans_scanned_by_foreign")
+
+  @@map("attendant_scans")
+}
+
+model Booth {
+  id           Int         @id(map: "Booths_pkey") @default(autoincrement())
+  coords       Json?       @db.Json
+  floorplan_id Int?
+  company_id   String?     @db.Uuid
+  booth_number Int?
+  company      Company?    @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "booths_company_foreign")
+  floorplan    Floorplan?  @relation(fields: [floorplan_id], references: [id], onUpdate: NoAction, map: "booths_floorplan_foreign")
+  orders       Order[]
+  zoneBooths   ZoneBooth[]
+
+  @@map("booths")
+}
+
+model CareerEventOptionEvent {
+  id                     Int                @id(map: "career_event_option_career_event_pkey") @default(autoincrement())
+  career_event_option_id String?            @db.Uuid
+  career_event_id        String?            @db.Uuid
+  careerEventOption      CareerEventOption? @relation(fields: [career_event_option_id], references: [id], onUpdate: NoAction, map: "career_event_option_career_event_career_ev__2a952c96_foreign")
+  careerEvent            CareerEvent?       @relation(fields: [career_event_id], references: [id], onUpdate: NoAction, map: "career_event_option_career_event_career_event_id_foreign")
+
+  @@map("career_event_option_events")
+}
+
+model CareerEventOptionSubOption {
+  id                     Int                @id(map: "career_event_option_career_sub_option_pkey") @default(autoincrement())
+  career_event_option_id String?            @db.Uuid
+  career_sub_option_id   Int?
+  careerSubOption        CareerSubOption?   @relation(fields: [career_sub_option_id], references: [id], onUpdate: NoAction, map: "career_event_option_career_sub_option_care__1e69f958_foreign")
+  careerEventOption      CareerEventOption? @relation(fields: [career_event_option_id], references: [id], onUpdate: NoAction, map: "career_event_option_career_sub_option_care__743ffebe_foreign")
+
+  @@map("career_event_option_sub_options")
+}
+
+model CareerEventOption {
+  id                          String                       @id(map: "career_event_option_pkey") @db.Uuid
+  date_created                DateTime?                    @db.Timestamptz(6)
+  date_updated                DateTime?                    @db.Timestamptz(6)
+  name                        String?                      @db.VarChar(255)
+  description                 String?
+  price                       Int?
+  careerEventOptionEvents     CareerEventOptionEvent[]
+  careerEventOptionSubOptions CareerEventOptionSubOption[]
+  companyCareerEventOptions   CompanyCareerEventOption[]
+
+  @@map("career_event_options")
+}
+
+model CareerEventPageCompany {
+  id                   Int              @id(map: "career_event_page_company_pkey") @default(autoincrement())
+  career_event_page_id Int?
+  company_id           String?          @db.Uuid
+  careerEventPage      CareerEventPage? @relation(fields: [career_event_page_id], references: [id], onUpdate: NoAction, map: "career_event_page_company_career_event_page_id_foreign")
+  company              Company?         @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "career_event_page_company_company_id_foreign")
+
+  @@map("career_event_page_companies")
+}
+
+model CareerEventPageSpeaker {
+  id                   Int              @id(map: "career_event_page_speaker_pkey") @default(autoincrement())
+  career_event_page_id Int?
+  speaker_id           Int?
+  careerEventPage      CareerEventPage? @relation(fields: [career_event_page_id], references: [id], onUpdate: NoAction, map: "career_event_page_speaker_career_event_page_id_foreign")
+  speaker              Speaker?         @relation(fields: [speaker_id], references: [id], onUpdate: NoAction, map: "career_event_page_speaker_speaker_id_foreign")
+
+  @@map("career_event_page_speakers")
+}
+
+model CareerEventPageTimetable {
+  id                   Int              @id(map: "career_event_page_timetable_pkey") @default(autoincrement())
+  career_event_page_id Int?
+  timetable_id         Int?
+  careerEventPage      CareerEventPage? @relation(fields: [career_event_page_id], references: [id], onUpdate: NoAction, map: "career_event_page_timetable_career_event_page_id_foreign")
+  timetable            Timetable?       @relation(fields: [timetable_id], references: [id], onUpdate: NoAction, map: "career_event_page_timetable_timetable_id_foreign")
+
+  @@map("career_event_page_timetables")
+}
+
+model CareerEventPage {
+  id                        Int                        @id(map: "career_event_page_pkey") @default(autoincrement())
+  status                    String                     @default("draft") @db.VarChar(255)
+  event_id                  String?                    @db.Uuid
+  shout                     String?                    @db.VarChar(255)
+  description_EN            String?
+  tagline                   String?                    @db.VarChar(255)
+  address                   String?                    @db.VarChar(255)
+  parking                   String?                    @db.VarChar(255)
+  registration_link         String?                    @db.VarChar(255)
+  floorplan_id              Int?
+  image_id                  String?                    @db.Uuid
+  company_guide             String?                    @db.Uuid
+  header_buttons            Json?                      @db.Json
+  latitude                  Float?
+  longitude                 Float?
+  careerEventPageCompanies  CareerEventPageCompany[]
+  careerEventPageSpeakers   CareerEventPageSpeaker[]
+  careerEventPageTimetables CareerEventPageTimetable[]
+  companyGuide              File?                      @relation("career_event_pages_company_guideTofiles", fields: [company_guide], references: [id], onUpdate: NoAction, map: "career_event_page_company_guide_foreign")
+  event                     CareerEvent?               @relation(fields: [event_id], references: [id], onUpdate: NoAction, map: "career_event_page_event_foreign")
+  floorplan                 Floorplan?                 @relation(fields: [floorplan_id], references: [id], onUpdate: NoAction, map: "career_event_page_floorplan_foreign")
+  image                     File?                      @relation("career_event_pages_image_idTofiles", fields: [image_id], references: [id], onUpdate: NoAction, map: "career_event_page_image_foreign")
+  timetableCareerEventPages TimetableCareerEventPage[]
+
+  @@map("career_event_pages")
+}
+
+model CareerEvent {
+  id                      String                   @id(map: "career_event_pkey") @db.Uuid
+  status                  String                   @default("draft") @db.VarChar(255)
+  date_created            DateTime?                @db.Timestamptz(6)
+  date_updated            DateTime?                @db.Timestamptz(6)
+  name                    String?
+  description             String?
+  location                String?                  @db.VarChar(255)
+  date                    DateTime?                @db.Date
+  end_hour                DateTime?                @db.Time(6)
+  start_hour              DateTime?                @db.Time(6)
+  num_of_companies        Int?
+  num_of_students         Int?
+  image_id                String?                  @db.Uuid
+  shout                   String?                  @db.VarChar(255)
+  careerEventOptionEvents CareerEventOptionEvent[]
+  careerEventPages        CareerEventPage[]
+  image                   File?                    @relation(fields: [image_id], references: [id], onUpdate: NoAction, map: "career_event_image_foreign")
+  matchingSoftwares       MatchingSoftware[]
+  schedules               Schedule[]
+
+  @@map("career_events")
+}
+
+model CareerSubOption {
+  id                          Int                          @id(map: "career_sub_option_pkey") @default(autoincrement())
+  date_updated                DateTime?                    @db.Timestamptz(6)
+  name                        String?                      @db.VarChar(255)
+  description                 String?
+  price                       String?                      @db.VarChar(255)
+  careerEventOptionSubOptions CareerEventOptionSubOption[]
+  companyCareerSubOptions     CompanyCareerSubOption[]
+
+  @@map("career_sub_options")
+}
+
+model Company {
+  id                               String                           @id(map: "company_pkey") @db.Uuid
+  status                           String                           @default("draft") @db.VarChar(255)
+  date_created                     DateTime?                        @db.Timestamptz(6)
+  date_updated                     DateTime?                        @db.Timestamptz(6)
+  name                             String?                          @db.VarChar(255)
+  salesperson_id                   String?                          @db.Uuid
+  VAT                              String?                          @db.VarChar(255)
+  address_street                   String?                          @db.VarChar(255)
+  address_number                   String?                          @db.VarChar(255)
+  address_zip                      String?                          @db.VarChar(255)
+  address_city                     String?                          @db.VarChar(255)
+  address_country                  String?                          @db.VarChar(255)
+  logo_id                          String?                          @db.Uuid
+  short_description                String?
+  long_description                 String?
+  location                         String?                          @db.VarChar(255)
+  website                          String?                          @db.VarChar(255)
+  page_image                       String?                          @db.Uuid
+  booths                           Booth[]
+  careerEventPageCompanies         CareerEventPageCompany[]
+  logo                             File?                            @relation("companies_logo_idTofiles", fields: [logo_id], references: [id], onUpdate: NoAction, map: "company_logo_foreign")
+  pageImage                        File?                            @relation("companies_page_imageTofiles", fields: [page_image], references: [id], onUpdate: NoAction, map: "company_page_image_foreign")
+  salesperson                      User?                            @relation("companies_salesperson_idTousers", fields: [salesperson_id], references: [id], onUpdate: NoAction, map: "company_salesperson_foreign")
+  companyCareerEventOptions        CompanyCareerEventOption[]
+  companyCareerSubOptions          CompanyCareerSubOption[]
+  companyMasters                   CompanyMaster[]
+  companyMatchingResponses         CompanyMatchingResponse[]
+  companyUserRequests              CompanyUserRequest[]
+  cvBookFavourites                 CvBookFavourite[]
+  formResponses                    FormResponse[]
+  studentMatchingResponseCompanies StudentMatchingResponseCompany[]
+  studentCompanies                 StudentCompany[]
+  users                            User[]                           @relation("users_company_idTocompanies")
+  vacancies                        Vacancy[]
+
+  @@map("companies")
+}
+
+model CompanyCareerEventOption {
+  id                     Int                @id @default(autoincrement())
+  company_id             String?            @db.Uuid
+  career_event_option_id String?            @db.Uuid
+  careerEventOption      CareerEventOption? @relation(fields: [career_event_option_id], references: [id], onUpdate: NoAction, map: "company_career_event_option_career_event_option_id_foreign")
+  company                Company?           @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "company_career_event_option_company_id_foreign")
+
+  @@map("company_career_event_option")
+}
+
+model CompanyCareerSubOption {
+  id                   Int              @id @default(autoincrement())
+  company_id           String?          @db.Uuid
+  career_sub_option_id Int?
+  careerSubOption      CareerSubOption? @relation(fields: [career_sub_option_id], references: [id], onUpdate: NoAction, map: "company_career_sub_option_career_sub_option_id_foreign")
+  company              Company?         @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "company_career_sub_option_company_id_foreign")
+
+  @@map("company_career_sub_option")
+}
+
+model CompanyMaster {
+  id         Int      @id @default(autoincrement())
+  company_id String?  @db.Uuid
+  master_id  Int?
+  company    Company? @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "company_master_company_id_foreign")
+  master     Master?  @relation(fields: [master_id], references: [id], onUpdate: NoAction, map: "company_master_master_id_foreign")
+
+  @@map("company_master")
+}
+
+model CompanyMatchingResponseStudent {
+  id                           Int                      @id @default(autoincrement())
+  company_matching_response_id Int?
+  students_id                  Int?
+  companyMatchingResponse      CompanyMatchingResponse? @relation(fields: [company_matching_response_id], references: [id], onUpdate: NoAction, map: "company_matching_response_students_company__1d3330c9_foreign")
+  students                     Student?                 @relation(fields: [students_id], references: [id], onUpdate: NoAction, map: "company_matching_response_students_students_id_foreign")
+
+  @@map("company_matching_response_students")
+}
+
+model CompanyMatchingResponse {
+  id                              Int                              @id(map: "company_matching_response_pkey") @default(autoincrement())
+  date_updated                    DateTime?                        @db.Timestamptz(6)
+  company_id                      String?                          @db.Uuid
+  matching_software               Int?
+  ocia_answers                    Json?                            @db.Json
+  ocia                            Json?                            @db.Json
+  general_info_answers            Json?                            @db.Json
+  companyMatchingResponseStudents CompanyMatchingResponseStudent[]
+  company                         Company?                         @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "company_matching_response_company_foreign")
+  matchingSoftware                MatchingSoftware?                @relation("company_matching_responses_matching_softwareTomatching_software", fields: [matching_software], references: [id], onUpdate: NoAction, map: "company_matching_response_matching_software_foreign")
+
+  @@map("company_matching_responses")
+}
+
+model CompanyUserRequest {
+  id         Int      @id @default(autoincrement())
+  status     String   @default("draft") @db.VarChar(255)
+  first_name String?  @db.VarChar(255)
+  last_name  String?  @db.VarChar(255)
+  email      String?  @db.VarChar(255)
+  tel        String?  @db.VarChar(255)
+  title      String?  @db.VarChar(255)
+  company_id String?  @db.Uuid
+  company    Company? @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "company_user_requests_company_foreign")
+
+  @@map("company_user_requests")
+}
+
+model CvBookFavourite {
+  id            Int           @id(map: "cv_book_favourite_pkey") @default(autoincrement())
+  date_created  DateTime?     @db.Timestamptz(6)
+  company_id    String?       @db.Uuid
+  form_response Int?
+  cv_book       Int?
+  company       Company?      @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "cv_book_favourite_company_foreign")
+  cvBook        CvBook?       @relation(fields: [cv_book], references: [id], onUpdate: NoAction, map: "cv_book_favourite_cv_book_foreign")
+  formResponse  FormResponse? @relation(fields: [form_response], references: [id], onUpdate: NoAction, map: "cv_book_favourite_form_response_foreign")
+
+  @@map("cv_book_favourites")
+}
+
+model CvBookScreening {
+  id             Int           @id(map: "CV_Book_screening_pkey") @default(autoincrement())
+  date_created   DateTime?     @db.Timestamptz(6)
+  date_updated   DateTime?     @db.Timestamptz(6)
+  cv_book        Int?
+  form_response  Int?
+  status         Json?         @db.Json
+  study_override String?       @db.VarChar(255)
+  screened_at    DateTime?     @db.Timestamp(6)
+  screened_by    String?       @db.Uuid
+  cvBook         CvBook?       @relation(fields: [cv_book], references: [id], onUpdate: NoAction, map: "cv_book_screening_cv_book_foreign")
+  formResponse   FormResponse? @relation(fields: [form_response], references: [id], onUpdate: NoAction, map: "cv_book_screening_form_response_foreign")
+  screenedBy     User?         @relation(fields: [screened_by], references: [id], onUpdate: NoAction, map: "cv_book_screening_screened_by_foreign")
+
+  @@map("cv_book_screenings")
+}
+
+model CvBook {
+  id                              Int               @id(map: "CV_Book_pkey") @default(autoincrement())
+  date_created                    DateTime?         @db.Timestamptz(6)
+  date_updated                    DateTime?         @db.Timestamptz(6)
+  year_id                         Int?
+  form_id                         Int?
+  student_cv_field                String?           @db.VarChar(255)
+  student_email_field             String?           @db.VarChar(255)
+  student_study_field             String?           @db.VarChar(255)
+  student_first_name_field        String?           @db.VarChar(255)
+  student_last_name_field         String?           @db.VarChar(255)
+  student_first_name_field_backup String?           @db.VarChar(255)
+  student_last_name_field_backup  String?           @db.VarChar(255)
+  student_study_field_backup      String?           @db.VarChar(255)
+  student_cv_field_backup         String?           @db.VarChar(255)
+  student_email_field_backup      String?           @db.VarChar(255)
+  active                          Boolean?          @default(false)
+  student_linkedin_field          String?           @db.VarChar(255)
+  student_linkedin_field_backup   String?           @db.VarChar(255)
+  screening_complete              Boolean?          @default(false)
+  cvBookFavourites                CvBookFavourite[]
+  cvBookScreenings                CvBookScreening[]
+  form                            Form?             @relation(fields: [form_id], references: [id], onUpdate: NoAction, map: "cv_book_form_foreign")
+  year                            AcademicYear?     @relation(fields: [year_id], references: [id], onUpdate: NoAction, map: "cv_book_year_foreign")
+
+  @@map("cv_books")
+}
+
+model Drink {
+  id            String    @id @db.Uuid
+  name          String?   @db.VarChar(255)
+  type          String?   @db.VarChar(255)
+  is_active     Boolean?  @default(true)
+  image_id      String?   @db.Uuid
+  visible_from  DateTime? @db.Time(6)
+  visible_until DateTime? @db.Time(6)
+  image         File?     @relation(fields: [image_id], references: [id], onUpdate: NoAction, map: "drinks_image_foreign")
+
+  @@map("drinks")
+}
+
+model EventCheckin {
+  id            Int       @id @default(autoincrement())
+  barcode       String?   @db.VarChar(255)
+  event_id      String?   @db.VarChar(255)
+  checked_in_at DateTime? @db.Timestamp(6)
+  date_created  DateTime? @db.Timestamptz(6)
+
+  @@map("event_checkins")
+}
+
+model Faculty {
+  id             Int             @id(map: "faculty_pkey") @default(autoincrement())
+  date_created   DateTime?       @db.Timestamptz(6)
+  date_updated   DateTime?       @db.Timestamptz(6)
+  name           String?         @db.VarChar(255)
+  logo_id        String?         @db.Uuid
+  logo           File?           @relation(fields: [logo_id], references: [id], onUpdate: NoAction, map: "faculty_logo_foreign")
+  facultyMasters FacultyMaster[]
+
+  @@map("faculties")
+}
+
+model FacultyMaster {
+  id         Int      @id @default(autoincrement())
+  faculty_id Int?
+  master_id  Int?
+  faculty    Faculty? @relation(fields: [faculty_id], references: [id], onUpdate: NoAction, map: "faculty_master_faculty_id_foreign")
+  master     Master?  @relation(fields: [master_id], references: [id], onUpdate: NoAction, map: "faculty_master_master_id_foreign")
+
+  @@map("faculty_master")
+}
+
+model File {
+  id                      String            @id(map: "directus_files_pkey") @db.Uuid
+  storage                 String            @db.VarChar(255)
+  filename_disk           String?           @db.VarChar(255)
+  filename_download       String            @db.VarChar(255)
+  title                   String?           @db.VarChar(255)
+  type                    String?           @db.VarChar(255)
+  folder                  String?           @db.Uuid
+  uploaded_by             String?           @db.Uuid
+  created_on              DateTime          @default(now()) @db.Timestamptz(6)
+  modified_by             String?           @db.Uuid
+  modified_on             DateTime          @default(now()) @db.Timestamptz(6)
+  charset                 String?           @db.VarChar(50)
+  filesize                BigInt?
+  width                   Int?
+  height                  Int?
+  duration                Int?
+  embed                   String?           @db.VarChar(200)
+  description             String?
+  location                String?
+  tags                    String?
+  metadata                Json?             @db.Json
+  focal_point_x           Int?
+  focal_point_y           Int?
+  tus_id                  String?           @db.VarChar(64)
+  tus_data                Json?             @db.Json
+  uploaded_on             DateTime?         @db.Timestamptz(6)
+  careerEventPages        CareerEventPage[] @relation("career_event_pages_company_guideTofiles")
+  imageIdCareerEventPages CareerEventPage[] @relation("career_event_pages_image_idTofiles")
+  careerEvents            CareerEvent[]
+  companies               Company[]         @relation("companies_logo_idTofiles")
+  pageImageCompanies      Company[]         @relation("companies_page_imageTofiles")
+  drinks                  Drink[]
+  faculties               Faculty[]
+  modifiedBy              User?             @relation("files_modified_byTousers", fields: [modified_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "directus_files_modified_by_foreign")
+  uploadedBy              User?             @relation("files_uploaded_byTousers", fields: [uploaded_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "directus_files_uploaded_by_foreign")
+  floorplans              Floorplan[]       @relation("floorplans_background_imageTofiles")
+  svgFileFloorplans       Floorplan[]       @relation("floorplans_svg_fileTofiles")
+  masters                 Master[]
+  schedules               Schedule[]
+  signageMedias           SignageMedia[]
+
+  @@map("files")
+}
+
+model Floorplan {
+  id                                Int               @id(map: "Floorplan_pkey") @default(autoincrement())
+  svg_file                          String?           @db.Uuid
+  year                              String?           @db.VarChar(255)
+  name                              String?           @db.VarChar(255)
+  background_image                  String?           @db.Uuid
+  floorplan_category_form_fields    Json?             @db.Json
+  floorplan_company_name_form_field Json?             @db.Json
+  booths                            Booth[]
+  careerEventPages                  CareerEventPage[]
+  backgroundImage                   File?             @relation("floorplans_background_imageTofiles", fields: [background_image], references: [id], onUpdate: NoAction, map: "floorplan_background_image_foreign")
+  svgFile                           File?             @relation("floorplans_svg_fileTofiles", fields: [svg_file], references: [id], onUpdate: NoAction, map: "floorplan_svg_file_foreign")
+
+  @@map("floorplans")
+}
+
+model FormResponse {
+  id                   Int               @id @default(autoincrement())
+  form_version_id      Int?
+  data                 Json              @db.Json
+  submitted_at         DateTime?         @db.Timestamptz(6)
+  attendant_uuid       String?           @db.VarChar(255)
+  company_id           String?           @db.Uuid
+  submitter_email      String?           @db.VarChar(255)
+  submitter_first_name String?           @db.VarChar(255)
+  submitter_last_name  String?           @db.VarChar(255)
+  archived             Boolean?          @default(false)
+  attendantScans       AttendantScan[]
+  cvBookFavourites     CvBookFavourite[]
+  cvBookScreenings     CvBookScreening[]
+  company              Company?          @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "form_responses_company_id_foreign")
+  formVersion          FormVersion?      @relation(fields: [form_version_id], references: [id], onUpdate: NoAction, map: "form_responses_form_version_id_foreign")
+
+  @@map("form_responses")
+}
+
+model FormVersion {
+  id             Int            @id @default(autoincrement())
+  form_id        Int?
+  version_number Int
+  schema         Json           @db.Json
+  is_active      Boolean        @default(false)
+  created_at     DateTime?      @db.Timestamptz(6)
+  metadata       Json?          @db.Json
+  formResponses  FormResponse[]
+  form           Form?          @relation(fields: [form_id], references: [id], onUpdate: NoAction, map: "form_versions_form_id_foreign")
+
+  @@map("form_versions")
+}
+
+model Form {
+  id                Int                @id @default(autoincrement())
+  name              String             @db.VarChar(255)
+  slug              String?            @unique(map: "forms_slug_unique") @db.VarChar(255)
+  description       String?
+  created_at        DateTime?          @db.Timestamptz(6)
+  updated_at        DateTime?          @db.Timestamptz(6)
+  is_active         Boolean            @default(false)
+  cvBooks           CvBook[]
+  formVersions      FormVersion[]
+  matchingSoftwares MatchingSoftware[]
+
+  @@map("forms")
+}
+
+model Master {
+  id             Int             @id(map: "master_pkey") @default(autoincrement())
+  name           String?         @db.VarChar(255)
+  logo_id        String?         @db.Uuid
+  short_name     String?         @db.VarChar(255)
+  students       Int?
+  modules        String?
+  companyMasters CompanyMaster[]
+  facultyMasters FacultyMaster[]
+  logo           File?           @relation(fields: [logo_id], references: [id], onUpdate: NoAction, map: "master_logo_foreign")
+  schedules      Schedule[]
+  vacancyMasters VacancyMaster[]
+
+  @@map("masters")
+}
+
+model MatchingSoftware {
+  id                         Int                       @id @default(autoincrement())
+  date_updated               DateTime?                 @db.Timestamptz(6)
+  year_id                    Int?
+  event_id                   String?                   @db.Uuid
+  prerequisite_form          Int?
+  active                     Boolean?                  @default(true)
+  category_form_fields       Json?                     @db.Json
+  companies_can_view_matches Boolean?                  @default(false)
+  companyMatchingResponses   CompanyMatchingResponse[] @relation("company_matching_responses_matching_softwareTomatching_software")
+  event                      CareerEvent?              @relation(fields: [event_id], references: [id], onUpdate: NoAction, map: "matching_software_event_foreign")
+  prerequisiteForm           Form?                     @relation(fields: [prerequisite_form], references: [id], onUpdate: NoAction, map: "matching_software_prerequisite_form_foreign")
+  year                       AcademicYear?             @relation(fields: [year_id], references: [id], onUpdate: NoAction, map: "matching_software_year_foreign")
+  studentMatchingResponses   StudentMatchingResponse[] @relation("student_matching_responses_matching_softwareTomatching_software")
+
+  @@map("matching_software")
+}
+
+model OrderingSettings {
+  id                       Int      @id @default(autoincrement())
+  company_ordering_enabled Boolean? @default(false)
+  active_event_id          String?  @db.VarChar(255)
+
+  @@map("ordering_settings")
+}
+
+model Order {
+  id           Int       @id @default(autoincrement())
+  date_created DateTime? @db.Timestamptz(6)
+  date_updated DateTime? @db.Timestamptz(6)
+  status       String?   @default("pending") @db.VarChar(255)
+  items        Json?     @db.Json
+  booth_id     Int?
+  shifter_id   String?   @db.Uuid
+  shifter_name String?   @db.VarChar(255)
+  booth        Booth?    @relation(fields: [booth_id], references: [id], onUpdate: NoAction, map: "orders_booth_foreign")
+  shifter      User?     @relation(fields: [shifter_id], references: [id], onUpdate: NoAction, map: "orders_shifter_foreign")
+
+  @@map("orders")
+}
+
+model Role {
+  id          String  @id(map: "directus_roles_pkey") @db.Uuid
+  name        String  @db.VarChar(100)
+  icon        String  @default("supervised_user_circle") @db.VarChar(64)
+  description String?
+  parent_id   String? @db.Uuid
+  parent      Role?   @relation("rolesToroles", fields: [parent_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "directus_roles_parent_foreign")
+  roles       Role[]  @relation("rolesToroles")
+  users       User[]
+
+  @@map("roles")
+}
+
+model Schedule {
+  id           Int          @id(map: "schedule_pkey") @default(autoincrement())
+  date_created DateTime?    @db.Timestamptz(6)
+  date_updated DateTime?    @db.Timestamptz(6)
+  pdf_id       String?      @db.Uuid
+  master_id    Int?
+  event_id     String?      @db.Uuid
+  event        CareerEvent? @relation(fields: [event_id], references: [id], onUpdate: NoAction, map: "schedule_event_foreign")
+  master       Master?      @relation(fields: [master_id], references: [id], onUpdate: NoAction, map: "schedule_master_foreign")
+  pdf          File?        @relation(fields: [pdf_id], references: [id], onUpdate: NoAction, map: "schedule_pdf_foreign")
+
+  @@map("schedules")
+}
+
+model SignageMedia {
+  id                   Int                   @id @default(autoincrement())
+  name                 String?               @db.VarChar(255)
+  type                 String?               @db.VarChar(255)
+  file_id              String?               @db.Uuid
+  file                 File?                 @relation(fields: [file_id], references: [id], onUpdate: NoAction, map: "signage_media_file_foreign")
+  signageScheduleSlots SignageScheduleSlot[]
+
+  @@map("signage_media")
+}
+
+model SignageScheduleSlot {
+  id         Int            @id @default(autoincrement())
+  screen_id  Int?
+  start_time DateTime?      @db.Time(6)
+  end_time   DateTime?      @db.Time(6)
+  file_id    Int?
+  file       SignageMedia?  @relation(fields: [file_id], references: [id], onUpdate: NoAction, map: "signage_schedule_slots_file_foreign")
+  screen     SignageScreen? @relation(fields: [screen_id], references: [id], onUpdate: NoAction, map: "signage_schedule_slots_screen_foreign")
+
+  @@map("signage_schedule_slots")
+}
+
+model SignageScreen {
+  id                   Int                   @id @default(autoincrement())
+  name                 String?               @db.VarChar(255)
+  slug                 String?               @db.VarChar(255)
+  status               String?               @db.VarChar(255)
+  signageScheduleSlots SignageScheduleSlot[]
+
+  @@map("signage_screens")
+}
+
+model Speaker {
+  id                      Int                      @id(map: "speaker_pkey") @default(autoincrement())
+  date_created            DateTime?                @db.Timestamptz(6)
+  date_updated            DateTime?                @db.Timestamptz(6)
+  representative_id       String?                  @db.Uuid
+  time_id                 Int?
+  personal_information    String?
+  content                 String?
+  careerEventPageSpeakers CareerEventPageSpeaker[]
+  representative          User?                    @relation(fields: [representative_id], references: [id], onUpdate: NoAction, map: "speaker_representative_foreign")
+  time                    Timetable?               @relation("speakers_time_idTotimetables", fields: [time_id], references: [id], onUpdate: NoAction, map: "speaker_time_foreign")
+  timetables              Timetable[]              @relation("timetables_speaker_idTospeakers")
+
+  @@map("speakers")
+}
+
+model StudentMatchingResponseCompany {
+  id                           Int                      @id(map: "student_matching_response_company_pkey") @default(autoincrement())
+  student_matching_response_id Int?
+  company_id                   String?                  @db.Uuid
+  company                      Company?                 @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "student_matching_response_company_company_id_foreign")
+  studentMatchingResponse      StudentMatchingResponse? @relation(fields: [student_matching_response_id], references: [id], onUpdate: NoAction, map: "student_matching_response_company_student___18993dce_foreign")
+
+  @@map("student_matching_response_companies")
+}
+
+model StudentMatchingResponse {
+  id                               Int                              @id(map: "student_matching_response_pkey") @default(autoincrement())
+  date_updated                     DateTime?                        @db.Timestamptz(6)
+  student_id                       Int?
+  matching_software                Int?
+  prerequisite_form_response       Json?                            @db.Json
+  riasec_answers                   Json?                            @db.Json
+  riasec                           Json?                            @db.Json
+  general_info_answers             Json?                            @db.Json
+  matches_last_computed_at         DateTime?                        @db.Timestamp(6)
+  studentMatchingResponseCompanies StudentMatchingResponseCompany[]
+  matchingSoftware                 MatchingSoftware?                @relation("student_matching_responses_matching_softwareTomatching_software", fields: [matching_software], references: [id], onUpdate: NoAction, map: "student_matching_response_matching_software_foreign")
+  student                          Student?                         @relation(fields: [student_id], references: [id], onUpdate: NoAction, map: "student_matching_response_student_foreign")
+
+  @@map("student_matching_responses")
+}
+
+model Student {
+  id                              Int                              @id @default(autoincrement())
+  username                        String                           @unique(map: "students_username_unique") @db.VarChar(255)
+  email                           String                           @unique(map: "students_email_unique") @db.VarChar(255)
+  first_name                      String?                          @db.VarChar(255)
+  last_name                       String?                          @db.VarChar(255)
+  full_name                       String?                          @db.VarChar(255)
+  university_status               String?                          @db.VarChar(255)
+  organization_status             String?                          @db.VarChar(255)
+  in_workinggroup                 Boolean?
+  litus_access_token              String?                          @db.VarChar(255)
+  litus_token_expires_at          DateTime?                        @db.Timestamp(6)
+  date_created                    DateTime?                        @db.Timestamp(6)
+  date_updated                    DateTime?                        @db.Timestamp(6)
+  university                      String?                          @db.VarChar(255)
+  verification_token_hash         String?                          @db.VarChar(255)
+  verification_token_created      DateTime?                        @db.Timestamp(6)
+  verified                        Boolean?
+  password                        String?                          @db.VarChar(255)
+  password_reset_token            String?                          @db.VarChar(255)
+  is_shifter                      Boolean?                         @default(false)
+  companyMatchingResponseStudents CompanyMatchingResponseStudent[]
+  studentMatchingResponses        StudentMatchingResponse[]
+  studentCompanies                StudentCompany[]
+
+  @@map("students")
+}
+
+model StudentCompany {
+  id          Int      @id @default(autoincrement())
+  students_id Int?
+  company_id  String?  @db.Uuid
+  company     Company? @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "students_company_company_id_foreign")
+  students    Student? @relation(fields: [students_id], references: [id], onUpdate: NoAction, map: "students_company_students_id_foreign")
+
+  @@map("students_company")
+}
+
+model TimetableCareerEventPage {
+  id                   Int              @id(map: "timetable_career_event_page_pkey") @default(autoincrement())
+  timetable_id         Int?
+  career_event_page_id Int?
+  careerEventPage      CareerEventPage? @relation(fields: [career_event_page_id], references: [id], onUpdate: NoAction, map: "timetable_career_event_page_career_event_page_id_foreign")
+  timetable            Timetable?       @relation(fields: [timetable_id], references: [id], onUpdate: NoAction, map: "timetable_career_event_page_timetable_id_foreign")
+
+  @@map("timetable_career_event_pages")
+}
+
+model Timetable {
+  id                        Int                        @id(map: "timetable_pkey") @default(autoincrement())
+  status                    String                     @default("draft") @db.VarChar(255)
+  date_created              DateTime?                  @db.Timestamptz(6)
+  title                     String?                    @db.VarChar(255)
+  description               String?
+  start_time                DateTime?                  @db.Time(6)
+  end_time                  DateTime?                  @db.Time(6)
+  icon                      String?                    @db.VarChar(255)
+  type                      Json?                      @db.Json
+  speaker_id                Int?
+  careerEventPageTimetables CareerEventPageTimetable[]
+  speakers                  Speaker[]                  @relation("speakers_time_idTotimetables")
+  timetableCareerEventPages TimetableCareerEventPage[]
+  speaker                   Speaker?                   @relation("timetables_speaker_idTospeakers", fields: [speaker_id], references: [id], onUpdate: NoAction, map: "timetable_speaker_foreign")
+
+  @@map("timetables")
+}
+
+model User {
+  id                   String            @id(map: "directus_users_pkey") @db.Uuid
+  first_name           String?           @db.VarChar(50)
+  last_name            String?           @db.VarChar(50)
+  email                String?           @unique(map: "directus_users_email_unique") @db.VarChar(128)
+  password             String?           @db.VarChar(255)
+  location             String?           @db.VarChar(255)
+  title                String?           @db.VarChar(50)
+  avatar               String?           @db.Uuid
+  status               String            @default("active") @db.VarChar(16)
+  role_id              String?           @db.Uuid
+  last_access          DateTime?         @db.Timestamptz(6)
+  tel                  String?           @db.VarChar(255)
+  company_id           String?           @db.Uuid
+  password_reset_token String?           @db.VarChar(255)
+  attendantScans       AttendantScan[]
+  companies            Company[]         @relation("companies_salesperson_idTousers")
+  cvBookScreenings     CvBookScreening[]
+  files                File[]            @relation("files_modified_byTousers")
+  uploadedByFiles      File[]            @relation("files_uploaded_byTousers")
+  orders               Order[]
+  speakers             Speaker[]
+  company              Company?          @relation("users_company_idTocompanies", fields: [company_id], references: [id], onUpdate: NoAction, map: "directus_users_company_foreign")
+  role                 Role?             @relation(fields: [role_id], references: [id], onUpdate: NoAction, map: "directus_users_role_foreign")
+
+  @@map("users")
+}
+
+model Vacancy {
+  id                 String              @id @db.Uuid
+  status             String?             @default("draft") @db.VarChar(255)
+  date_created       DateTime?           @db.Timestamptz(6)
+  date_updated       DateTime?           @db.Timestamptz(6)
+  title              String              @db.VarChar(255)
+  type_id            String?             @db.Uuid
+  sector_id          String?             @db.Uuid
+  location           String?             @db.VarChar(255)
+  contact_email      String?             @db.VarChar(255)
+  contact_name       String?             @db.VarChar(255)
+  contact_phone      String?             @db.VarChar(255)
+  sections           Json?               @db.Json
+  company_id         String?             @db.Uuid
+  company            Company?            @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "vacancies_company_foreign")
+  sector             VacancySector?      @relation(fields: [sector_id], references: [id], onUpdate: NoAction, map: "vacancies_sector_foreign")
+  type               VacancyType?        @relation(fields: [type_id], references: [id], onUpdate: NoAction, map: "vacancies_type_foreign")
+  vacancyMasters     VacancyMaster[]
+  vacancySectorLinks VacancySectorLink[]
+
+  @@map("vacancies")
+}
+
+model VacancyMaster {
+  id           Int      @id @default(autoincrement())
+  vacancies_id String?  @db.Uuid
+  master_id    Int?
+  master       Master?  @relation(fields: [master_id], references: [id], onUpdate: NoAction, map: "vacancies_master_master_id_foreign")
+  vacancies    Vacancy? @relation(fields: [vacancies_id], references: [id], onUpdate: NoAction, map: "vacancies_master_vacancies_id_foreign")
+
+  @@map("vacancies_master")
+}
+
+model VacancySectorLink {
+  id                 Int            @id @default(autoincrement())
+  vacancies_id       String?        @db.Uuid
+  vacancy_sectors_id String?        @db.Uuid
+  vacancies          Vacancy?       @relation(fields: [vacancies_id], references: [id], onUpdate: NoAction, map: "vacancies_vacancy_sectors_vacancies_id_foreign")
+  vacancySectors     VacancySector? @relation(fields: [vacancy_sectors_id], references: [id], onUpdate: NoAction, map: "vacancies_vacancy_sectors_vacancy_sectors_id_foreign")
+
+  @@map("vacancies_vacancy_sectors")
+}
+
+model VacancySectionConfig {
+  id       String  @id(map: "vacancy_section_config_pkey") @db.Uuid
+  key      String? @db.VarChar(255)
+  label    String? @db.VarChar(255)
+  sort     Int?
+  active   Boolean @default(true)
+  required Boolean @default(false)
+
+  @@map("vacancy_section_configs")
+}
+
+model VacancySector {
+  id                 String              @id @db.Uuid
+  name               String?             @db.VarChar(255)
+  sort               String?             @db.VarChar(255)
+  active             Boolean             @default(true)
+  vacancies          Vacancy[]
+  vacancySectorLinks VacancySectorLink[]
+
+  @@map("vacancy_sectors")
+}
+
+model VacancyType {
+  id        String    @id @db.Uuid
+  active    Boolean   @default(true)
+  name      String?   @db.VarChar(255)
+  sort      Int?
+  vacancies Vacancy[]
+
+  @@map("vacancy_types")
+}
+
+model ZoneBooth {
+  id       Int    @id(map: "zones_Booths_pkey") @default(autoincrement())
+  zone_id  Int?
+  booth_id Int?
+  booth    Booth? @relation(fields: [booth_id], references: [id], onUpdate: NoAction, map: "zones_booths_booths_id_foreign")
+  zone     Zone?  @relation(fields: [zone_id], references: [id], onUpdate: NoAction, map: "zones_booths_zones_id_foreign")
+
+  @@map("zone_booths")
+}
+
+model Zone {
+  id         Int         @id @default(autoincrement())
+  name       String?     @db.VarChar(255)
+  dot_color  String?     @db.VarChar(255)
+  zoneBooths ZoneBooth[]
+
+  @@map("zones")
+}
