@@ -1,9 +1,12 @@
 // lib/repos/floorplan.ts
 "use server";
 
-import { readItems, createItem, updateItem, deleteItems, deleteItem } from "@directus/sdk";
-import { getDirectusWithToken, getDirectusForAdminOperations } from "@/lib/directus";
+import { prisma } from "@/lib/prisma";
+import { COMPANY_INCLUDE, shapeBooth, shapeCompany, shapeEventPage } from "@/lib/repos/_shape";
 import type { Floorplan, Booth, CareerEventPage, Company, HeaderButtonType } from "@/lib/schema";
+
+/** Ids cross this API as strings; floorplan/booth/page columns are integers. */
+const num = (v: string | number) => Number(v);
 
 export async function createFloorplan(payload: {
   name: string;
@@ -12,14 +15,7 @@ export async function createFloorplan(payload: {
   background_image?: string;
 }): Promise<Floorplan | null> {
   try {
-    const client = await getDirectusWithToken();
-    if (!client) return null;
-
-    const floorplan = await client.request(
-      createItem("Floorplan", payload)
-    ) as unknown as Floorplan;
-
-    return floorplan;
+    return (await prisma.floorplan.create({ data: payload })) as unknown as Floorplan;
   } catch (error) {
     console.error("Failed to create floorplan:", error);
     return null;
@@ -31,15 +27,10 @@ export async function linkFloorplanToEventPage(
   eventPageId: string
 ): Promise<boolean> {
   try {
-    const client = await getDirectusWithToken();
-    if (!client) return false;
-
-    await client.request(
-      updateItem("career_event_page", eventPageId, {
-        floorplan: floorplanId,
-      })
-    );
-
+    await prisma.careerEventPage.update({
+      where: { id: num(eventPageId) },
+      data: { floorplan_id: num(floorplanId) },
+    });
     return true;
   } catch (error) {
     console.error("Failed to link floorplan to event page:", error);
@@ -49,36 +40,17 @@ export async function linkFloorplanToEventPage(
 
 export async function getOrCreateEventPage(eventId: string): Promise<CareerEventPage | null> {
   try {
-    const client = await getDirectusWithToken();
-    if (!client) return null;
+    const existing = await prisma.careerEventPage.findFirst({
+      where: { event_id: eventId },
+      include: { event: true },
+    });
+    if (existing) return shapeEventPage(existing) as CareerEventPage;
 
-    // Try to find existing event page
-    const existingPages = await client.request(
-      readItems("career_event_page", {
-        fields: ["*", "event.*" as any],
-        filter: {
-          event: {
-            _eq: eventId as any,
-          },
-        },
-        limit: 1,
-      })
-    ) as unknown as CareerEventPage[];
-
-    if (existingPages.length > 0) {
-      return existingPages[0];
-    }
-
-    // Create new event page if it doesn't exist
-    const newPage = await client.request(
-      createItem("career_event_page", {
-        event: eventId as any,
-        description_EN: "",
-        image: "",
-      })
-    ) as unknown as CareerEventPage;
-
-    return newPage;
+    const created = await prisma.careerEventPage.create({
+      data: { event_id: eventId, description_EN: "" },
+      include: { event: true },
+    });
+    return shapeEventPage(created) as CareerEventPage;
   } catch (error) {
     console.error("Failed to get or create event page:", error);
     return null;
@@ -87,24 +59,24 @@ export async function getOrCreateEventPage(eventId: string): Promise<CareerEvent
 
 export async function deleteBoothsForFloorplan(floorplanId: string): Promise<boolean> {
   try {
-    const client = await getDirectusWithToken();
-    if (!client) {
-      console.error("No Directus client available for deleting booths");
-      return false;
-    }
-
-    // Delete all booths for this floorplan
-    await client.request(
-      deleteItems("Booths", {
-        filter: {
-          Floorplan: {
-            _eq: floorplanId as any,
-          },
-        },
-      })
-    );
-
-    console.log(`Deleted existing booths for floorplan ${floorplanId}`);
+    const id = num(floorplanId);
+    // Orders and zone memberships reference booths and have no cascade, so they
+    // are cleared first or the delete fails on the foreign key.
+    await prisma.$transaction(async (tx) => {
+      const booths = await tx.booth.findMany({
+        where: { floorplan_id: id },
+        select: { id: true },
+      });
+      const boothIds = booths.map((b) => b.id);
+      if (boothIds.length) {
+        await tx.zoneBooth.deleteMany({ where: { booth_id: { in: boothIds } } });
+        await tx.order.updateMany({
+          where: { booth_id: { in: boothIds } },
+          data: { booth_id: null },
+        });
+      }
+      await tx.booth.deleteMany({ where: { floorplan_id: id } });
+    });
     return true;
   } catch (error) {
     console.error("Failed to delete booths for floorplan:", error);
@@ -112,127 +84,104 @@ export async function deleteBoothsForFloorplan(floorplanId: string): Promise<boo
   }
 }
 
+/**
+ * Create or update booths for a floorplan.
+ *
+ * The Directus version issued three requests per booth (select, then insert or
+ * update) inside a loop, so importing a ~200 booth floorplan meant ~600 round
+ * trips. This does one query for the existing set and batches the writes.
+ *
+ * `coords` is passed through as an object: the column is json and every one of
+ * the 2888 existing rows holds an object, so the previous JSON.stringify was
+ * relying on Directus to parse it back.
+ */
 export async function createBooths(booths: Array<{
   booth_number: number;
   coords: unknown; // JSON object
   Floorplan: string; // Floorplan ID
 }>, deleteExisting: boolean = true): Promise<Booth[] | null> {
   try {
-    const client = await getDirectusWithToken();
-    if (!client) {
-      console.error("No Directus client available for creating booths");
-      return null;
+    if (booths.length === 0) return [];
+
+    const floorplanId = num(booths[0].Floorplan);
+
+    const coordsOf = (c: unknown) =>
+      typeof c === "string" ? (JSON.parse(c) as object) : (c as object);
+
+    if (deleteExisting) {
+      await deleteBoothsForFloorplan(booths[0].Floorplan);
     }
 
-    if (booths.length === 0) {
-      console.log("No booths to create");
-      return [];
-    }
+    const result = await prisma.$transaction(async (tx) => {
+      const existing = await tx.booth.findMany({
+        where: {
+          floorplan_id: floorplanId,
+          booth_number: { in: booths.map((b) => b.booth_number) },
+        },
+        select: { id: true, booth_number: true },
+      });
+      const byNumber = new Map(existing.map((e) => [e.booth_number, e.id]));
 
-    // Delete existing booths for this floorplan if requested
-    if (deleteExisting && booths.length > 0) {
-      const floorplanId = booths[0].Floorplan;
-      await deleteBoothsForFloorplan(floorplanId);
-    }
+      const toCreate = booths.filter((b) => !byNumber.has(b.booth_number));
+      const toUpdate = booths.filter((b) => byNumber.has(b.booth_number));
 
-    console.log(`Attempting to create/update ${booths.length} booths...`);
-    const createdBooths: Booth[] = [];
-
-    for (const booth of booths) {
-      try {
-        // Ensure coords is properly formatted (Directus JSON fields can accept objects)
-        const boothPayload = {
-          booth_number: booth.booth_number,
-          coords: (typeof booth.coords === "string" ? booth.coords : JSON.stringify(booth.coords)) as any,
-          Floorplan: booth.Floorplan,
-        };
-
-        // Check if a booth with this number already exists for this floorplan
-        const existingBooths = await client.request(
-          readItems("Booths", {
-            fields: ["*"],
-            filter: {
-              _and: [
-                { booth_number: { _eq: booth.booth_number } },
-                { Floorplan: { _eq: booth.Floorplan as any } },
-              ],
-            },
-            limit: 1,
-          })
-        ) as unknown as Booth[];
-
-        let created: Booth;
-        if (existingBooths.length > 0) {
-          // Update existing booth
-          console.log(`Updating existing booth: ${booth.booth_number}`);
-          created = await client.request(
-            updateItem("Booths", existingBooths[0].id, boothPayload)
-          ) as unknown as Booth;
-        } else {
-          // Create new booth
-          console.log(`Creating new booth: ${booth.booth_number}`);
-          created = await client.request(
-            createItem("Booths", boothPayload as any)
-          ) as unknown as Booth;
-        }
-
-        createdBooths.push(created);
-        console.log(`Successfully processed booth: ${booth.booth_number}`);
-      } catch (err) {
-        console.error(`Failed to create/update booth ${booth.booth_number}:`, err);
-        if (err instanceof Error) {
-          console.error("Error details:", err.message, err.stack);
-        }
+      for (const b of toUpdate) {
+        await tx.booth.update({
+          where: { id: byNumber.get(b.booth_number)! },
+          data: { coords: coordsOf(b.coords) as any, floorplan_id: floorplanId },
+        });
       }
-    }
 
-    console.log(`Processed ${createdBooths.length} out of ${booths.length} booths`);
-    return createdBooths;
+      if (toCreate.length) {
+        await tx.booth.createMany({
+          data: toCreate.map((b) => ({
+            booth_number: b.booth_number,
+            coords: coordsOf(b.coords) as any,
+            floorplan_id: floorplanId,
+          })),
+        });
+      }
+
+      return tx.booth.findMany({
+        where: {
+          floorplan_id: floorplanId,
+          booth_number: { in: booths.map((b) => b.booth_number) },
+        },
+        orderBy: { booth_number: "asc" },
+      });
+    });
+
+    return result.map(shapeBooth) as Booth[];
   } catch (error) {
     console.error("Failed to create booths:", error);
-    if (error instanceof Error) {
-      console.error("Error details:", error.message, error.stack);
-    }
     return null;
   }
 }
 
+/**
+ * Unlike listEventPages in repos/event.ts, this one returns `companies` already
+ * flattened to Company[] rather than junction-wrapped -- matching what the
+ * floorplan admin screens expect.
+ */
 export async function getEventPageWithFloorplan(eventId: string): Promise<CareerEventPage | null> {
   try {
-    const client = await getDirectusWithToken();
-    if (!client) return null;
+    const page = await prisma.careerEventPage.findFirst({
+      where: { event_id: eventId },
+      include: {
+        event: true,
+        floorplan: true,
+        careerEventPageCompanies: { include: { company: { include: COMPANY_INCLUDE } } },
+      },
+    });
+    if (!page) return null;
 
-    const pages = await client.request(
-      readItems("career_event_page", {
-        fields: [
-          "*",
-          "event.*" as any,
-          "floorplan.*" as any,
-          "companies.company_id.*" as any,
-          "company_guide.*" as any, // include company guide file
-        ],
-        filter: {
-          event: {
-            _eq: eventId as any,
-          },
-        },
-        limit: 1,
-        deep: { companies: { limit: 10000 } } as any, // Override Directus QUERY_LIMIT_DEFAULT (100)
-      })
-    ) as unknown as CareerEventPage[];
+    const shaped = shapeEventPage(page) as Record<string, any>;
+    shaped.companies = (page.careerEventPageCompanies ?? [])
+      .map((j) => j.company)
+      .filter(Boolean)
+      .map(shapeCompany);
 
-    if (pages.length === 0) return null;
-
-    const page = pages[0];
-
-    // Flatten companies from junction table
-    if (page.companies) {
-      page.companies = (page.companies as unknown as Array<{ company_id: Company }>)?.map((item) => {
-        return item.company_id;
-      }) ?? [];
-    }
-
-    return page;
+    return shaped as CareerEventPage;
   } catch (error) {
     console.error("Failed to get event page with floorplan:", error);
     return null;
@@ -241,16 +190,12 @@ export async function getEventPageWithFloorplan(eventId: string): Promise<Career
 
 export async function updateBoothCompany(boothId: string, companyId: string | null): Promise<Booth | null> {
   try {
-    const client = await getDirectusForAdminOperations();
-    if (!client) return null;
-
-    const updated = await client.request(
-      updateItem("Booths", boothId, {
-        company: companyId,
-      })
-    ) as unknown as Booth;
-
-    return updated;
+    const updated = await prisma.booth.update({
+      where: { id: num(boothId) },
+      data: { company_id: companyId },
+      include: { company: true },
+    });
+    return shapeBooth(updated) as Booth;
   } catch (error) {
     console.error("Failed to update booth company:", error);
     return null;
@@ -259,36 +204,19 @@ export async function updateBoothCompany(boothId: string, companyId: string | nu
 
 export async function deleteFloorplan(floorplanId: string): Promise<boolean> {
   try {
-    const client = await getDirectusWithToken();
-    if (!client) return false;
+    const id = num(floorplanId);
 
-    // First delete all booths for this floorplan
+    // Event pages must be unlinked before the floorplan row goes: the previous
+    // implementation deleted the floorplan first and unlinked afterwards, which
+    // only survived because Directus was not enforcing the constraint.
+    await prisma.careerEventPage.updateMany({
+      where: { floorplan_id: id },
+      data: { floorplan_id: null },
+    });
+
     await deleteBoothsForFloorplan(floorplanId);
+    await prisma.floorplan.delete({ where: { id } });
 
-    // Then delete the floorplan itself
-    await client.request(deleteItem("Floorplan", floorplanId));
-
-    // Also unlink from event pages
-    const eventPages = await client.request(
-      readItems("career_event_page", {
-        fields: ["id"],
-        filter: {
-          floorplan: {
-            _eq: floorplanId,
-          },
-        },
-      })
-    ) as unknown as Array<{ id: string }>;
-
-    for (const page of eventPages) {
-      await client.request(
-        updateItem("career_event_page", page.id, {
-          floorplan: null,
-        })
-      );
-    }
-
-    console.log(`Deleted floorplan ${floorplanId} and all associated booths`);
     return true;
   } catch (error) {
     console.error("Failed to delete floorplan:", error);
@@ -298,28 +226,15 @@ export async function deleteFloorplan(floorplanId: string): Promise<boolean> {
 
 export async function getCompaniesForEvent(eventId: string): Promise<Company[]> {
   try {
-    const client = await getDirectusWithToken();
-    if (!client) return [];
+    const links = await prisma.careerEventPageCompany.findMany({
+      where: { careerEventPage: { event_id: eventId } },
+      include: { company: { include: COMPANY_INCLUDE } },
+    });
 
-    // Fetch the event page to get the directly linked companies
-    const eventPage = await client.request(
-      readItems("career_event_page", {
-        fields: ["companies.company_id.*" as any], // Only need company details
-        filter: {
-          event: { _eq: eventId as any },
-        },
-        limit: 1,
-        deep: { companies: { limit: 10000 } } as any, // Override Directus QUERY_LIMIT_DEFAULT (100)
-      })
-    ) as unknown as Array<{ companies?: Array<{ company_id: Company }> }>;
-
-    if (!eventPage || eventPage.length === 0 || !eventPage[0].companies) {
-      return [];
-    }
-
-    // Flatten the companies array
-    const companies = eventPage[0].companies.map(item => item.company_id).filter(Boolean);
-    return companies;
+    return links
+      .map((l) => l.company)
+      .filter(Boolean)
+      .map(shapeCompany) as Company[];
   } catch (error) {
     console.error("Failed to get companies for event:", error);
     return [];
@@ -328,27 +243,12 @@ export async function getCompaniesForEvent(eventId: string): Promise<Company[]> 
 
 export async function getBoothsForFloorplan(floorplanId: string): Promise<Booth[]> {
   try {
-    const client = await getDirectusForAdminOperations();
-    if (!client) return [];
-
-    const booths = await client.request(
-      readItems("Booths", {
-        fields: [
-          "*",
-          "company.*" as any,
-          "Floorplan.*" as any,
-        ],
-        filter: {
-          Floorplan: {
-            _eq: floorplanId as any,
-          },
-        },
-        sort: ["booth_number"],
-        limit: -1, // Fetch all booths (Directus defaults to 100)
-      })
-    ) as unknown as Booth[];
-
-    return booths;
+    const booths = await prisma.booth.findMany({
+      where: { floorplan_id: num(floorplanId) },
+      include: { company: { include: COMPANY_INCLUDE }, floorplan: true },
+      orderBy: { booth_number: "asc" },
+    });
+    return booths.map(shapeBooth) as Booth[];
   } catch (error) {
     console.error("Failed to get booths for floorplan:", error);
     return [];
@@ -360,28 +260,20 @@ export async function updateEventPageHeaderButtons(
   headerButtons: HeaderButtonType[]
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const client = await getDirectusWithToken();
-    if (!client) return { success: false, error: "Not authenticated" };
-
     const eventPage = await getOrCreateEventPage(eventId);
     if (!eventPage) return { success: false, error: "Event page not found" };
 
-    await client.request(
-      updateItem("career_event_page", eventPage.id, {
-        header_buttons: headerButtons,
-      })
-    );
+    await prisma.careerEventPage.update({
+      where: { id: num(eventPage.id as unknown as string) },
+      data: { header_buttons: headerButtons },
+    });
 
     return { success: true };
   } catch (error) {
     console.error("Failed to update header buttons:", error);
-    const msg = error instanceof Error ? error.message : "Failed to update";
-    const hint = msg.includes("header_buttons") || msg.includes("doesn't exist")
-      ? " Add a JSON field 'header_buttons' to career_event_page in Directus."
-      : "";
     return {
       success: false,
-      error: msg + hint,
+      error: error instanceof Error ? error.message : "Failed to update",
     };
   }
 }
@@ -391,28 +283,22 @@ export async function updateFloorplanCategoryFormFields(
   categoryFormFields: Array<{ formId: string; formVersionId: string; fieldName: string }>
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const client = await getDirectusWithToken();
-    if (!client) return { success: false, error: "Not authenticated" };
-
     const eventPage = await getEventPageWithFloorplan(eventId);
-    if (!eventPage?.floorplan?.id) return { success: false, error: "Event page or floorplan not found" };
+    if (!eventPage?.floorplan?.id) {
+      return { success: false, error: "Event page or floorplan not found" };
+    }
 
-    await client.request(
-      updateItem("Floorplan", eventPage.floorplan.id, {
-        floorplan_category_form_fields: categoryFormFields,
-      })
-    );
+    await prisma.floorplan.update({
+      where: { id: num(eventPage.floorplan.id as unknown as string) },
+      data: { floorplan_category_form_fields: categoryFormFields },
+    });
 
     return { success: true };
   } catch (error) {
     console.error("Failed to update floorplan category form fields:", error);
-    const msg = error instanceof Error ? error.message : "Failed to update";
-    const hint = msg.includes("floorplan_category_form_fields") || msg.includes("doesn't exist")
-      ? " Add a JSON field 'floorplan_category_form_fields' to Floorplan in Directus."
-      : "";
     return {
       success: false,
-      error: msg + hint,
+      error: error instanceof Error ? error.message : "Failed to update",
     };
   }
 }
@@ -422,29 +308,22 @@ export async function updateFloorplanCompanyNameFormFields(
   companyNameFormFields: Array<{ formId: string; formVersionId: string; fieldName: string }>
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const client = await getDirectusWithToken();
-    if (!client) return { success: false, error: "Not authenticated" };
-
     const eventPage = await getEventPageWithFloorplan(eventId);
-    if (!eventPage?.floorplan?.id) return { success: false, error: "Event page or floorplan not found" };
+    if (!eventPage?.floorplan?.id) {
+      return { success: false, error: "Event page or floorplan not found" };
+    }
 
-    await client.request(
-      updateItem("Floorplan", eventPage.floorplan.id, {
-        floorplan_company_name_form_field: companyNameFormFields,
-      })
-    );
+    await prisma.floorplan.update({
+      where: { id: num(eventPage.floorplan.id as unknown as string) },
+      data: { floorplan_company_name_form_field: companyNameFormFields },
+    });
 
     return { success: true };
   } catch (error) {
     console.error("Failed to update floorplan company name form fields:", error);
-    const msg = error instanceof Error ? error.message : "Failed to update";
-    const hint = msg.includes("floorplan_company_name_form_field") || msg.includes("doesn't exist")
-      ? " Add a JSON field 'floorplan_company_name_form_field' to Floorplan in Directus."
-      : "";
     return {
       success: false,
-      error: msg + hint,
+      error: error instanceof Error ? error.message : "Failed to update",
     };
   }
 }
-
