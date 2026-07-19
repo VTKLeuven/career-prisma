@@ -17,6 +17,22 @@
 
 type Nullable<T> = T | null | undefined;
 
+/** PostgreSQL `date`/`time` values are Date objects in Prisma, while the
+ * compatibility API promises the strings Directus returned. */
+export function shapeDate(value: unknown): string | null {
+  if (value == null) return null;
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
+}
+
+export function shapeTime(value: unknown): string | null {
+  if (value == null) return null;
+  if (value instanceof Date) return value.toISOString().slice(11, 19);
+  const text = String(value);
+  const isoTime = text.match(/T(\d{2}:\d{2}:\d{2})/);
+  return isoTime?.[1] ?? text;
+}
+
 /** Wraps a list of junction rows back into Directus' `{ <fk>: <entity> }` form. */
 function junction<Row, Key extends string>(
   rows: Nullable<Row[]>,
@@ -97,13 +113,34 @@ export function shapeCareerEventOption(row: Nullable<CompanyRow>): any {
     events: junction(
       careerEventOptionEvents,
       "career_event_id",
-      (r: any) => r.careerEvent
+      (r: any) => shapeCareerEvent(r.careerEvent)
     ),
     sub_options: junction(
       careerEventOptionSubOptions,
       "career_sub_option_id",
       (r: any) => r.careerSubOption
     ),
+  };
+}
+
+/** Career-event dates and hours were plain strings in the Directus API. */
+export function shapeCareerEvent(row: Nullable<CompanyRow>): any {
+  if (!row) return null;
+  const {
+    date,
+    start_hour,
+    end_hour,
+    image_id,
+    image: _image,
+    careerEventOptionEvents: _careerEventOptionEvents,
+    ...rest
+  } = row;
+  return {
+    ...rest,
+    date: shapeDate(date),
+    start_hour: shapeTime(start_hour),
+    end_hour: shapeTime(end_hour),
+    image: image_id ?? null,
   };
 }
 
@@ -167,9 +204,10 @@ export const SPEAKER_INCLUDE = {
 
 export function shapeSpeaker(row: Nullable<CompanyRow>): any {
   if (!row) return null;
-  const { representative_id, time_id, representative, ...rest } = row;
+  const { representative_id, time_id, representative, time, ...rest } = row;
   return {
     ...rest,
+    time: shapeTimetable(time),
     representative: representative
       ? {
           ...representative,
@@ -182,6 +220,18 @@ export function shapeSpeaker(row: Nullable<CompanyRow>): any {
             : null,
         }
       : null,
+  };
+}
+
+/** Timetable hours are also exposed as Directus-style `HH:mm:ss` strings. */
+export function shapeTimetable(row: Nullable<CompanyRow>): any {
+  if (!row) return null;
+  const { start_time, end_time, speaker, ...rest } = row;
+  return {
+    ...rest,
+    start_time: shapeTime(start_time),
+    end_time: shapeTime(end_time),
+    ...(speaker !== undefined ? { speaker: shapeSpeaker(speaker) } : {}),
   };
 }
 
@@ -208,6 +258,7 @@ export function shapeEventPage(row: Nullable<CompanyRow>): any {
   if (!row) return null;
   const {
     event_id,
+    event,
     image_id,
     floorplan_id,
     image,
@@ -220,12 +271,11 @@ export function shapeEventPage(row: Nullable<CompanyRow>): any {
 
   return {
     ...rest,
+    event: shapeCareerEvent(event),
     // Consumers pass these straight to getFileUrl / check for a string.
     image: image_id ?? null,
     timetable: junction(careerEventPageTimetables, "timetable_id", (r: any) =>
-      r.timetable
-        ? { ...r.timetable, speaker: shapeSpeaker(r.timetable.speaker) }
-        : null
+      shapeTimetable(r.timetable)
     ),
     companies: junction(careerEventPageCompanies, "company_id", (r: any) =>
       shapeCompany(r.company)

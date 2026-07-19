@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import {
   EVENT_PAGE_INCLUDE,
   SPEAKER_INCLUDE,
+  shapeCareerEvent,
   shapeCareerEventOption,
   shapeEventPage,
   shapeSpeaker,
@@ -50,10 +51,9 @@ export async function listEvents(opts?: {
     });
 
     return rows.map((row) => {
-      const { careerEventOptionEvents, image_id, ...rest } = row as Record<string, any>;
+      const { careerEventOptionEvents } = row as Record<string, any>;
       return {
-        ...rest,
-        image: image_id ?? null,
+        ...shapeCareerEvent(row),
         options: (careerEventOptionEvents ?? [])
           .map((j: any) => j.careerEventOption)
           .filter(Boolean)

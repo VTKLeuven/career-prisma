@@ -1,6 +1,7 @@
 "use server"
 
 import { prisma } from "@/lib/prisma";
+import { shapeTime } from "@/lib/repos/_shape";
 import type { Drink } from "@/lib/schema";
 
 function getBrusselsTimeMinutes(): number {
@@ -36,8 +37,23 @@ function isVisibleNow(drink: Drink): boolean {
 
 /** Consumers pass `image` straight to getFileUrl(), so it stays a bare file id. */
 function shapeDrink(row: Record<string, any>): Drink {
-    const { image_id, ...rest } = row;
-    return { ...rest, image: image_id ?? undefined } as Drink;
+    const { image_id, visible_from, visible_until, ...rest } = row;
+    return {
+        ...rest,
+        image: image_id ?? undefined,
+        visible_from: shapeTime(visible_from) ?? undefined,
+        visible_until: shapeTime(visible_until) ?? undefined,
+    } as Drink;
+}
+
+function timeValue(value: unknown): Date | null | undefined {
+    if (value === undefined) return undefined;
+    if (value === null || value === "") return null;
+    if (value instanceof Date) return value;
+    const match = String(value).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (!match) throw new Error(`Invalid time: ${String(value)}`);
+    const [, hour, minute, second = "00"] = match;
+    return new Date(`1970-01-01T${hour.padStart(2, "0")}:${minute}:${second}.000Z`);
 }
 
 export async function listDrinks(opts?: {
@@ -61,18 +77,28 @@ export async function listDrinks(opts?: {
 }
 
 export async function createDrink(data: Partial<Drink>) {
-    const { image, id: _id, ...rest } = data as Record<string, any>;
+    const { image, id: _id, visible_from, visible_until, ...rest } = data as Record<string, any>;
     const row = await prisma.drink.create({
-        data: { ...rest, ...(image !== undefined ? { image_id: image || null } : {}) },
+        data: {
+            ...rest,
+            visible_from: timeValue(visible_from),
+            visible_until: timeValue(visible_until),
+            ...(image !== undefined ? { image_id: image || null } : {}),
+        },
     });
     return shapeDrink(row);
 }
 
 export async function updateDrink(id: string, data: Partial<Drink>) {
-    const { image, id: _id, ...rest } = data as Record<string, any>;
+    const { image, id: _id, visible_from, visible_until, ...rest } = data as Record<string, any>;
     const row = await prisma.drink.update({
         where: { id },
-        data: { ...rest, ...(image !== undefined ? { image_id: image || null } : {}) },
+        data: {
+            ...rest,
+            ...(visible_from !== undefined ? { visible_from: timeValue(visible_from) } : {}),
+            ...(visible_until !== undefined ? { visible_until: timeValue(visible_until) } : {}),
+            ...(image !== undefined ? { image_id: image || null } : {}),
+        },
     });
     return shapeDrink(row);
 }
