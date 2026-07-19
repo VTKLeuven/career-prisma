@@ -37,7 +37,7 @@ model AttendantScan {
 
 model Booth {
   id           Int         @id(map: "Booths_pkey") @default(autoincrement())
-  coords       Json?       @db.Json
+  coords       Json?
   floorplan_id Int?
   company_id   String?     @db.Uuid
   booth_number Int?
@@ -126,7 +126,7 @@ model CareerEventPage {
   floorplan_id              Int?
   image_id                  String?                    @db.Uuid
   company_guide             String?                    @db.Uuid
-  header_buttons            Json?                      @db.Json
+  header_buttons            Json?
   latitude                  Float?
   longitude                 Float?
   careerEventPageCompanies  CareerEventPageCompany[]
@@ -261,9 +261,9 @@ model CompanyMatchingResponse {
   date_updated                    DateTime?                        @db.Timestamptz(6)
   company_id                      String?                          @db.Uuid
   matching_software               Int?
-  ocia_answers                    Json?                            @db.Json
-  ocia                            Json?                            @db.Json
-  general_info_answers            Json?                            @db.Json
+  ocia_answers                    Json?
+  ocia                            Json?
+  general_info_answers            Json?
   companyMatchingResponseStudents CompanyMatchingResponseStudent[]
   company                         Company?                         @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "company_matching_response_company_foreign")
   matchingSoftware                MatchingSoftware?                @relation("company_matching_responses_matching_softwareTomatching_software", fields: [matching_software], references: [id], onUpdate: NoAction, map: "company_matching_response_matching_software_foreign")
@@ -304,7 +304,7 @@ model CvBookScreening {
   date_updated   DateTime?     @db.Timestamptz(6)
   cv_book        Int?
   form_response  Int?
-  status         Json?         @db.Json
+  status         Json?
   study_override String?       @db.VarChar(255)
   screened_at    DateTime?     @db.Timestamp(6)
   screened_by    String?       @db.Uuid
@@ -409,11 +409,11 @@ model File {
   description             String?
   location                String?
   tags                    String?
-  metadata                Json?             @db.Json
+  metadata                Json?
   focal_point_x           Int?
   focal_point_y           Int?
   tus_id                  String?           @db.VarChar(64)
-  tus_data                Json?             @db.Json
+  tus_data                Json?
   uploaded_on             DateTime?         @db.Timestamptz(6)
   careerEventPages        CareerEventPage[] @relation("career_event_pages_company_guideTofiles")
   imageIdCareerEventPages CareerEventPage[] @relation("career_event_pages_image_idTofiles")
@@ -439,8 +439,8 @@ model Floorplan {
   year                              String?           @db.VarChar(255)
   name                              String?           @db.VarChar(255)
   background_image                  String?           @db.Uuid
-  floorplan_category_form_fields    Json?             @db.Json
-  floorplan_company_name_form_field Json?             @db.Json
+  floorplan_category_form_fields    Json?
+  floorplan_company_name_form_field Json?
   booths                            Booth[]
   careerEventPages                  CareerEventPage[]
   backgroundImage                   File?             @relation("floorplans_background_imageTofiles", fields: [background_image], references: [id], onUpdate: NoAction, map: "floorplan_background_image_foreign")
@@ -452,7 +452,7 @@ model Floorplan {
 model FormResponse {
   id                   Int               @id @default(autoincrement())
   form_version_id      Int?
-  data                 Json              @db.Json
+  data                 Json
   submitted_at         DateTime?         @db.Timestamptz(6)
   attendant_uuid       String?           @db.VarChar(255)
   company_id           String?           @db.Uuid
@@ -473,10 +473,10 @@ model FormVersion {
   id             Int            @id @default(autoincrement())
   form_id        Int?
   version_number Int
-  schema         Json           @db.Json
+  schema         Json
   is_active      Boolean        @default(false)
   created_at     DateTime?      @db.Timestamptz(6)
-  metadata       Json?          @db.Json
+  metadata       Json?
   formResponses  FormResponse[]
   form           Form?          @relation(fields: [form_id], references: [id], onUpdate: NoAction, map: "form_versions_form_id_foreign")
 
@@ -521,7 +521,7 @@ model MatchingSoftware {
   event_id                   String?                   @db.Uuid
   prerequisite_form          Int?
   active                     Boolean?                  @default(true)
-  category_form_fields       Json?                     @db.Json
+  category_form_fields       Json?
   companies_can_view_matches Boolean?                  @default(false)
   companyMatchingResponses   CompanyMatchingResponse[] @relation("company_matching_responses_matching_softwareTomatching_software")
   event                      CareerEvent?              @relation(fields: [event_id], references: [id], onUpdate: NoAction, map: "matching_software_event_foreign")
@@ -545,7 +545,7 @@ model Order {
   date_created DateTime? @db.Timestamptz(6)
   date_updated DateTime? @db.Timestamptz(6)
   status       String?   @default("pending") @db.VarChar(255)
-  items        Json?     @db.Json
+  items        Json?
   booth_id     Int?
   shifter_id   String?   @db.Uuid
   shifter_name String?   @db.VarChar(255)
@@ -646,10 +646,10 @@ model StudentMatchingResponse {
   date_updated                     DateTime?                        @db.Timestamptz(6)
   student_id                       Int?
   matching_software                Int?
-  prerequisite_form_response       Json?                            @db.Json
-  riasec_answers                   Json?                            @db.Json
-  riasec                           Json?                            @db.Json
-  general_info_answers             Json?                            @db.Json
+  prerequisite_form_response       Json?
+  riasec_answers                   Json?
+  riasec                           Json?
+  general_info_answers             Json?
   matches_last_computed_at         DateTime?                        @db.Timestamp(6)
   studentMatchingResponseCompanies StudentMatchingResponseCompany[]
   matchingSoftware                 MatchingSoftware?                @relation("student_matching_responses_matching_softwareTomatching_software", fields: [matching_software], references: [id], onUpdate: NoAction, map: "student_matching_response_matching_software_foreign")
@@ -715,7 +715,7 @@ model Timetable {
   start_time                DateTime?                  @db.Time(6)
   end_time                  DateTime?                  @db.Time(6)
   icon                      String?                    @db.VarChar(255)
-  type                      Json?                      @db.Json
+  type                      Json?
   speaker_id                Int?
   careerEventPageTimetables CareerEventPageTimetable[]
   speakers                  Speaker[]                  @relation("speakers_time_idTotimetables")
@@ -765,7 +765,7 @@ model Vacancy {
   contact_email      String?             @db.VarChar(255)
   contact_name       String?             @db.VarChar(255)
   contact_phone      String?             @db.VarChar(255)
-  sections           Json?               @db.Json
+  sections           Json?
   company_id         String?             @db.Uuid
   company            Company?            @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "vacancies_company_foreign")
   sector             VacancySector?      @relation(fields: [sector_id], references: [id], onUpdate: NoAction, map: "vacancies_sector_foreign")

@@ -31,7 +31,7 @@ CREATE TABLE "attendant_scans" (
 -- CreateTable
 CREATE TABLE "booths" (
     "id" SERIAL NOT NULL,
-    "coords" JSON,
+    "coords" JSONB,
     "floorplan_id" INTEGER,
     "company_id" UUID,
     "booth_number" INTEGER,
@@ -110,7 +110,7 @@ CREATE TABLE "career_event_pages" (
     "floorplan_id" INTEGER,
     "image_id" UUID,
     "company_guide" UUID,
-    "header_buttons" JSON,
+    "header_buttons" JSONB,
     "latitude" DOUBLE PRECISION,
     "longitude" DOUBLE PRECISION,
 
@@ -214,9 +214,9 @@ CREATE TABLE "company_matching_responses" (
     "date_updated" TIMESTAMPTZ(6),
     "company_id" UUID,
     "matching_software" INTEGER,
-    "ocia_answers" JSON,
-    "ocia" JSON,
-    "general_info_answers" JSON,
+    "ocia_answers" JSONB,
+    "ocia" JSONB,
+    "general_info_answers" JSONB,
 
     CONSTRAINT "company_matching_response_pkey" PRIMARY KEY ("id")
 );
@@ -253,7 +253,7 @@ CREATE TABLE "cv_book_screenings" (
     "date_updated" TIMESTAMPTZ(6),
     "cv_book" INTEGER,
     "form_response" INTEGER,
-    "status" JSON,
+    "status" JSONB,
     "study_override" VARCHAR(255),
     "screened_at" TIMESTAMP(6),
     "screened_by" UUID,
@@ -352,11 +352,11 @@ CREATE TABLE "files" (
     "description" TEXT,
     "location" TEXT,
     "tags" TEXT,
-    "metadata" JSON,
+    "metadata" JSONB,
     "focal_point_x" INTEGER,
     "focal_point_y" INTEGER,
     "tus_id" VARCHAR(64),
-    "tus_data" JSON,
+    "tus_data" JSONB,
     "uploaded_on" TIMESTAMPTZ(6),
 
     CONSTRAINT "directus_files_pkey" PRIMARY KEY ("id")
@@ -369,8 +369,8 @@ CREATE TABLE "floorplans" (
     "year" VARCHAR(255),
     "name" VARCHAR(255),
     "background_image" UUID,
-    "floorplan_category_form_fields" JSON,
-    "floorplan_company_name_form_field" JSON,
+    "floorplan_category_form_fields" JSONB,
+    "floorplan_company_name_form_field" JSONB,
 
     CONSTRAINT "Floorplan_pkey" PRIMARY KEY ("id")
 );
@@ -379,7 +379,7 @@ CREATE TABLE "floorplans" (
 CREATE TABLE "form_responses" (
     "id" SERIAL NOT NULL,
     "form_version_id" INTEGER,
-    "data" JSON NOT NULL,
+    "data" JSONB NOT NULL,
     "submitted_at" TIMESTAMPTZ(6),
     "attendant_uuid" VARCHAR(255),
     "company_id" UUID,
@@ -396,10 +396,10 @@ CREATE TABLE "form_versions" (
     "id" SERIAL NOT NULL,
     "form_id" INTEGER,
     "version_number" INTEGER NOT NULL,
-    "schema" JSON NOT NULL,
+    "schema" JSONB NOT NULL,
     "is_active" BOOLEAN NOT NULL DEFAULT false,
     "created_at" TIMESTAMPTZ(6),
-    "metadata" JSON,
+    "metadata" JSONB,
 
     CONSTRAINT "form_versions_pkey" PRIMARY KEY ("id")
 );
@@ -437,7 +437,7 @@ CREATE TABLE "matching_software" (
     "event_id" UUID,
     "prerequisite_form" INTEGER,
     "active" BOOLEAN DEFAULT true,
-    "category_form_fields" JSON,
+    "category_form_fields" JSONB,
     "companies_can_view_matches" BOOLEAN DEFAULT false,
 
     CONSTRAINT "matching_software_pkey" PRIMARY KEY ("id")
@@ -458,7 +458,7 @@ CREATE TABLE "orders" (
     "date_created" TIMESTAMPTZ(6),
     "date_updated" TIMESTAMPTZ(6),
     "status" VARCHAR(255) DEFAULT 'pending',
-    "items" JSON,
+    "items" JSONB,
     "booth_id" INTEGER,
     "shifter_id" UUID,
     "shifter_name" VARCHAR(255),
@@ -548,10 +548,10 @@ CREATE TABLE "student_matching_responses" (
     "date_updated" TIMESTAMPTZ(6),
     "student_id" INTEGER,
     "matching_software" INTEGER,
-    "prerequisite_form_response" JSON,
-    "riasec_answers" JSON,
-    "riasec" JSON,
-    "general_info_answers" JSON,
+    "prerequisite_form_response" JSONB,
+    "riasec_answers" JSONB,
+    "riasec" JSONB,
+    "general_info_answers" JSONB,
     "matches_last_computed_at" TIMESTAMP(6),
 
     CONSTRAINT "student_matching_response_pkey" PRIMARY KEY ("id")
@@ -611,7 +611,7 @@ CREATE TABLE "timetables" (
     "start_time" TIME(6),
     "end_time" TIME(6),
     "icon" VARCHAR(255),
-    "type" JSON,
+    "type" JSONB,
     "speaker_id" INTEGER,
 
     CONSTRAINT "timetable_pkey" PRIMARY KEY ("id")
@@ -650,7 +650,7 @@ CREATE TABLE "vacancies" (
     "contact_email" VARCHAR(255),
     "contact_name" VARCHAR(255),
     "contact_phone" VARCHAR(255),
-    "sections" JSON,
+    "sections" JSONB,
     "company_id" UUID,
 
     CONSTRAINT "vacancies_pkey" PRIMARY KEY ("id")

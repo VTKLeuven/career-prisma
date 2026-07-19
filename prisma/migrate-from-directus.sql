@@ -260,7 +260,39 @@ DELETE FROM student_matching_response_companies WHERE student_matching_response_
 DELETE FROM zone_booths WHERE zone_id IS NULL OR booth_id IS NULL;
 
 -- ---------------------------------------------------------------------------
--- 9. Default values for UUID primary keys
+-- 9. json -> jsonb
+-- ---------------------------------------------------------------------------
+-- Directus created every JSON column as `json`, which stores the raw text and
+-- supports almost no operators. That breaks Prisma in a way that is worse than
+-- an error, because it fails silently:
+--
+--   prisma.formResponse.findMany({ where: { data: { path: ["_student_id"],
+--                                                   equals: "553" } } })  -> 0 rows
+--   SELECT ... WHERE data->>'_student_id' = '553'                        -> 3 rows
+--
+-- Prisma's JSON filters compile to jsonb operators; against a `json` column
+-- they simply never match. Nothing errors, queries just come back empty.
+-- `json` also has no equality operator at all, so groupBy and WHERE on
+-- cv_book_screenings.status are impossible.
+--
+-- jsonb is a strict improvement here: same values, indexable, and it makes the
+-- ORM behave. The only change is that key order and insignificant whitespace
+-- are not preserved, which nothing in this application depends on.
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN
+    SELECT table_name AS tbl, column_name AS col
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND data_type = 'json'
+  LOOP
+    EXECUTE format('ALTER TABLE %I ALTER COLUMN %I TYPE jsonb USING %I::jsonb',
+                   r.tbl, r.col, r.col);
+  END LOOP;
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- 10. Default values for UUID primary keys
 -- ---------------------------------------------------------------------------
 -- Directus generated row ids in application code, so these columns have no
 -- database default. Without one, every Prisma `create` on these tables fails
