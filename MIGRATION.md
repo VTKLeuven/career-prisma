@@ -37,7 +37,9 @@ The script:
 4. marks the baseline migration as applied;
 5. deploys all follow-up Prisma migrations.
 
-It drops and recreates the database named by `DATABASE_URL`.
+It reads the target from the resolved Docker Compose `POSTGRES_*` configuration
+and drops and recreates that database. The app is stopped during the destructive
+import and restarted after a successful load.
 
 The temporary PostGIS step is required because the old dump contains a
 `geometry(Point,4326)` column. The transform converts that column to plain

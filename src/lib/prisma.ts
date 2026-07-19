@@ -5,16 +5,31 @@ import { PrismaClient } from "@prisma/client";
 // Prisma 7 no longer accepts a `datasources` option on the constructor: the
 // default engine talks to the database through a driver adapter instead.
 const connectionString = process.env.DATABASE_URL;
+const databaseHost = process.env.DATABASE_HOST;
 
-if (!connectionString) {
+if (!connectionString && !databaseHost) {
   throw new Error(
-    "DATABASE_URL is not set. Copy .env.example to .env and point it at your Postgres instance."
+    "Database connection is not configured. Set DATABASE_URL or the DATABASE_HOST/DATABASE_* fields."
   );
 }
 
+// Compose supplies separate fields so a password containing URL-reserved
+// characters (for example @, #, /, ?, %, or :) never has to be embedded in a
+// connection URL. Local development and the Prisma CLI continue to use
+// DATABASE_URL.
+const adapterConfig = databaseHost
+  ? {
+      host: databaseHost,
+      port: Number(process.env.DATABASE_PORT || 5432),
+      user: process.env.DATABASE_USER,
+      password: process.env.DATABASE_PASSWORD,
+      database: process.env.DATABASE_NAME,
+    }
+  : { connectionString: connectionString! };
+
 const createPrismaClient = () =>
   new PrismaClient({
-    adapter: new PrismaPg({ connectionString }),
+    adapter: new PrismaPg(adapterConfig),
     log:
       process.env.NODE_ENV === "development"
         ? ["warn", "error"]

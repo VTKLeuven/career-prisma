@@ -36,9 +36,13 @@ services:
       - "${APP_PORT:-3003}:3000"
     environment:
       - NODE_ENV=production
-      # Inside the compose network the database is reachable by service name,
-      # so this overrides whatever host-facing DATABASE_URL is in .env.
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-career}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-career}?schema=public
+      # Separate fields avoid corrupting a URL when the password contains
+      # reserved characters such as @, #, /, ?, %, or :.
+      - DATABASE_HOST=database
+      - DATABASE_PORT=5432
+      - DATABASE_USER=${POSTGRES_USER:-career}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD}
+      - DATABASE_NAME=${POSTGRES_DB:-career}
       - NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}
       - UPLOADS_DIR=/app/directus-uploads
     volumes:

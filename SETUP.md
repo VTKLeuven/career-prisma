@@ -32,9 +32,10 @@ One command, given an export produced by `scripts/export-directus.sh`:
 ```
 
 It restores the Directus dump, converts it to the Prisma schema, loads it into
-the database named in `DATABASE_URL`, and marks the baseline migration as
-applied. **It drops and recreates that database**, so only run it on a fresh
-install.
+the PostgreSQL database configured by Docker Compose, and marks the baseline
+migration as applied. **It drops and recreates that database**, so only run it
+on a fresh install. If the app is already running, the loader stops it during
+the import and starts it again after a successful load.
 
 The conversion runs inside a temporary `postgis/postgis` container that the
 script starts and removes on its own. This is not optional: the Directus dump
@@ -60,7 +61,7 @@ so include it in backups together with PostgreSQL.
 
 | Variable | Purpose |
 |---|---|
-| `DATABASE_URL` | Postgres connection string. Used by the app and the Prisma CLI. |
+| `DATABASE_URL` | Host-side Postgres connection string used by the Prisma CLI. URL-encode special characters in its password. |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Consumed by the `database` service in `docker-compose.yml`. `POSTGRES_PASSWORD` is required and has no default. |
 | `POSTGRES_PORT` | Host port for Postgres. Defaults to `5437`, bound to loopback only. |
 | `APP_PORT` | Host port for the application. Defaults to `3003`. |
@@ -71,8 +72,9 @@ so include it in backups together with PostgreSQL.
 | `SMTP_*` | Outbound mail. |
 | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN` | Sentry. |
 
-Inside Docker the app overrides `DATABASE_URL` to reach the database by service
-name, so the value in `.env` only needs to be correct for host-side work
+Inside Docker the app uses separate `DATABASE_*` connection fields derived from
+the Compose `POSTGRES_*` settings. This safely supports passwords containing URL
+special characters. `DATABASE_URL` only needs to be correct for host-side work
 (`prisma migrate`, `psql`).
 
 ## Working with the schema

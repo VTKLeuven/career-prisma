@@ -6,7 +6,9 @@
 #   ./scripts/load-directus-export.sh directus-export-20260719-163031
 #   ./scripts/load-directus-export.sh directus-export-20260719-163031.tar.gz
 #
-# The target database is taken from DATABASE_URL in .env.
+# By default the target is the database service from docker-compose.yml. This
+# reads the resolved POSTGRES_* values directly, so passwords do not need URL
+# encoding for the import.
 #
 # Why the detour through a temporary container: the Directus dump contains a
 # PostGIS geometry column (career_event_page.location). Restoring it directly
@@ -22,14 +24,19 @@ set -euo pipefail
 
 EXPORT="${1:-}"
 TMP_CONTAINER="career-import-$$"
+TMP_EXPORT_DIR=""
 PGIS_IMAGE="${PGIS_IMAGE:-postgis/postgis:16-master}"
+APP_WAS_RUNNING=0
 
 say()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
 info() { printf '  %s\n' "$*"; }
 warn() { printf '  \033[33m! %s\033[0m\n' "$*"; }
 die()  { printf '\n\033[31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 
-cleanup() { docker rm -f "$TMP_CONTAINER" >/dev/null 2>&1 || true; }
+cleanup() {
+  docker rm -f "$TMP_CONTAINER" >/dev/null 2>&1 || true
+  [ -z "$TMP_EXPORT_DIR" ] || rm -rf "$TMP_EXPORT_DIR"
+}
 trap cleanup EXIT
 
 [ -n "$EXPORT" ] || die "Usage: $0 <export-directory-or-tarball>"
@@ -41,8 +48,12 @@ case "$EXPORT" in
   *.tar.gz)
     [ -f "$EXPORT" ] || die "No such file: $EXPORT"
     say "Extracting $EXPORT"
-    tar -xzf "$EXPORT"
-    EXPORT="$(basename "${EXPORT%.tar.gz}")"
+    TMP_EXPORT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/career-import.XXXXXX")" \
+      || die "Could not create a temporary extraction directory"
+    archive_root="$(basename "${EXPORT%.tar.gz}")"
+    tar -xzf "$EXPORT" -C "$TMP_EXPORT_DIR" \
+      || die "Could not extract $EXPORT"
+    EXPORT="$TMP_EXPORT_DIR/$archive_root"
     ;;
 esac
 
@@ -56,25 +67,44 @@ MIGRATION="$ROOT/prisma/migrate-from-directus.sql"
 
 command -v docker >/dev/null || die "docker is required (the conversion runs in a temporary container)"
 command -v psql   >/dev/null || die "psql not found (install postgresql-client)"
+command -v node   >/dev/null || die "node is required"
+[ -x "$ROOT/node_modules/.bin/prisma" ] \
+  || die "Project dependencies are missing. Run 'npm ci' in $ROOT before importing."
 
 # ---------------------------------------------------------------------------
-# Resolve the target database from DATABASE_URL
+# Resolve the target database from Docker Compose
 # ---------------------------------------------------------------------------
-if [ -z "${DATABASE_URL:-}" ] && [ -f "$ROOT/.env" ]; then
-  DATABASE_URL="$(grep -E '^DATABASE_URL=' "$ROOT/.env" | head -1 | cut -d= -f2- \
-                  | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/")"
-fi
-[ -n "${DATABASE_URL:-}" ] || die "DATABASE_URL is not set (checked the environment and .env)"
+COMPOSE_JSON="$(cd "$ROOT" && docker compose config --format json)" \
+  || die "Could not resolve docker-compose.yml (check .env)"
 
-proto_stripped="${DATABASE_URL#*://}"
-creds="${proto_stripped%%@*}"
-hostpart="${proto_stripped#*@}"
-DB_USER="${creds%%:*}"
-DB_PASS="${creds#*:}"
-hostport="${hostpart%%/*}"
-DB_HOST="${hostport%%:*}"
-DB_PORT="${hostport#*:}"; [ "$DB_PORT" = "$DB_HOST" ] && DB_PORT=5432
-DB_NAME="${hostpart#*/}"; DB_NAME="${DB_NAME%%\?*}"
+compose_value() {
+  printf '%s' "$COMPOSE_JSON" | node -e '
+    let input = "";
+    process.stdin.on("data", chunk => input += chunk);
+    process.stdin.on("end", () => {
+      const config = JSON.parse(input);
+      const database = config.services.database;
+      const key = process.argv[1];
+      if (key === "port") {
+        const binding = (database.ports || []).find(port => Number(port.target) === 5432);
+        process.stdout.write(String(binding?.published || ""));
+      } else {
+        process.stdout.write(String(database.environment?.[key] || ""));
+      }
+    });
+  ' "$1"
+}
+
+DB_USER="$(compose_value POSTGRES_USER)"
+DB_PASS="$(compose_value POSTGRES_PASSWORD)"
+DB_NAME="$(compose_value POSTGRES_DB)"
+DB_HOST=127.0.0.1
+DB_PORT="$(compose_value port)"
+
+[ -n "$DB_USER" ] || die "POSTGRES_USER is missing from the Compose configuration"
+[ -n "$DB_PASS" ] || die "POSTGRES_PASSWORD is missing from the Compose configuration"
+[ -n "$DB_NAME" ] || die "POSTGRES_DB is missing from the Compose configuration"
+[ -n "$DB_PORT" ] || die "The database service does not publish port 5432 to the host"
 
 say "Target"
 info "host     $DB_HOST:$DB_PORT"
@@ -84,6 +114,12 @@ export PGPASSWORD="$DB_PASS"
 PSQL_ADMIN=(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -v ON_ERROR_STOP=1 -q)
 "${PSQL_ADMIN[@]}" -c 'SELECT 1' >/dev/null 2>&1 \
   || die "Cannot connect to $DB_HOST:$DB_PORT. Is it running? (docker compose up -d database)"
+
+if (cd "$ROOT" && docker compose ps --status running --services | grep -qx app); then
+  say "Stopping the app during the destructive import"
+  (cd "$ROOT" && docker compose stop app >/dev/null)
+  APP_WAS_RUNNING=1
+fi
 
 # ---------------------------------------------------------------------------
 # 1. Temporary PostGIS container
@@ -168,9 +204,17 @@ info "loaded"
 # The tables already exist, so `prisma migrate deploy` must not try to create
 # them. Resolving the baseline records it as applied without running it.
 say "[5/5] Baselining and applying Prisma migrations"
+export DB_USER DB_PASS DB_HOST DB_PORT DB_NAME
+PRISMA_DATABASE_URL="$(node -e '
+  const encode = encodeURIComponent;
+  process.stdout.write(
+    `postgresql://${encode(process.env.DB_USER)}:${encode(process.env.DB_PASS)}` +
+    `@${process.env.DB_HOST}:${process.env.DB_PORT}/${encode(process.env.DB_NAME)}?schema=public`
+  );
+')"
 ( cd "$ROOT" && \
-  npx prisma migrate resolve --applied 00000000000000_init >/dev/null && \
-  npx prisma migrate deploy ) || \
+  DATABASE_URL="$PRISMA_DATABASE_URL" npx prisma migrate resolve --applied 00000000000000_init >/dev/null && \
+  DATABASE_URL="$PRISMA_DATABASE_URL" npx prisma migrate deploy ) || \
   die "Could not apply Prisma migrations"
 
 say "Loaded"
@@ -181,6 +225,11 @@ UNION ALL SELECT 'students', count(*) FROM students
 UNION ALL SELECT 'form_responses', count(*) FROM form_responses
 UNION ALL SELECT 'career_event_pages', count(*) FROM career_event_pages
 UNION ALL SELECT 'files', count(*) FROM files;" | sed 's/^/  /'
+
+if [ "$APP_WAS_RUNNING" = 1 ]; then
+  say "Restarting the app"
+  (cd "$ROOT" && docker compose up -d app >/dev/null)
+fi
 
 cat <<'EOF'
 
