@@ -67,37 +67,23 @@ MIGRATION="$ROOT/prisma/migrate-from-directus.sql"
 
 command -v docker >/dev/null || die "docker is required (the conversion runs in a temporary container)"
 command -v psql   >/dev/null || die "psql not found (install postgresql-client)"
-command -v node   >/dev/null || die "node is required"
 
 # ---------------------------------------------------------------------------
-# Resolve the target database from Docker Compose
+# Resolve the target database from the running Docker Compose service
 # ---------------------------------------------------------------------------
-COMPOSE_JSON="$(cd "$ROOT" && docker compose config --format json)" \
-  || die "Could not resolve docker-compose.yml (check .env)"
-
-compose_value() {
-  printf '%s' "$COMPOSE_JSON" | node -e '
-    let input = "";
-    process.stdin.on("data", chunk => input += chunk);
-    process.stdin.on("end", () => {
-      const config = JSON.parse(input);
-      const database = config.services.database;
-      const key = process.argv[1];
-      if (key === "port") {
-        const binding = (database.ports || []).find(port => Number(port.target) === 5432);
-        process.stdout.write(String(binding?.published || ""));
-      } else {
-        process.stdout.write(String(database.environment?.[key] || ""));
-      }
-    });
-  ' "$1"
+compose_exec() {
+  (cd "$ROOT" && docker compose exec -T database printenv "$1")
 }
 
-DB_USER="$(compose_value POSTGRES_USER)"
-DB_PASS="$(compose_value POSTGRES_PASSWORD)"
-DB_NAME="$(compose_value POSTGRES_DB)"
+DB_USER="$(compose_exec POSTGRES_USER)" \
+  || die "Cannot inspect the database container. Start it with: docker compose up -d database"
+DB_PASS="$(compose_exec POSTGRES_PASSWORD)" \
+  || die "Cannot read POSTGRES_PASSWORD from the database container"
+DB_NAME="$(compose_exec POSTGRES_DB)" \
+  || die "Cannot read POSTGRES_DB from the database container"
 DB_HOST=127.0.0.1
-DB_PORT="$(compose_value port)"
+DB_PORT="$(cd "$ROOT" && docker compose port database 5432 | sed 's/.*://')" \
+  || die "Cannot resolve the published PostgreSQL port"
 
 [ -n "$DB_USER" ] || die "POSTGRES_USER is missing from the Compose configuration"
 [ -n "$DB_PASS" ] || die "POSTGRES_PASSWORD is missing from the Compose configuration"
@@ -223,8 +209,7 @@ fi
 cat <<'EOF'
 
   Next:
-    npx prisma generate
-    npm run dev
+    docker compose up -d --build app
 
   Uploaded files live outside the database. Sync them separately:
     rsync -avz <directus-host>:/vtk/directus-postgis/uploads/ ./directus-uploads/
