@@ -98,5 +98,5 @@ ENV PORT 3000
 ENV HOSTNAME "0.0.0.0"
 
 # server.js is created by next build from the standalone output
-# Run native Node directly so Docker Compose/Caddy can handle scaling
+# Run native Node directly in the single Compose app container.
 CMD ["node", "server.js"]

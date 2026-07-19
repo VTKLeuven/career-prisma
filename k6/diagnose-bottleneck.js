@@ -3,19 +3,19 @@
  *
  * Run each test separately. Compare which one fails first.
  *
- * Test 1 (no app logic): k6 run -e BASE_URL=http://liv:3002 -e DIAG=health k6/diagnose-bottleneck.js
- * Test 2 (Next.js only): k6 run -e BASE_URL=http://liv:3002 -e DIAG=nextjs k6/diagnose-bottleneck.js
- * Test 3 (database):    k6 run -e BASE_URL=http://liv:3002 -e DIAG=database k6/diagnose-bottleneck.js
+ * Test 1 (no app logic): k6 run -e BASE_URL=http://liv:3003 -e DIAG=health k6/diagnose-bottleneck.js
+ * Test 2 (Next.js only): k6 run -e BASE_URL=http://liv:3003 -e DIAG=nextjs k6/diagnose-bottleneck.js
+ * Test 3 (database):    k6 run -e BASE_URL=http://liv:3003 -e DIAG=database k6/diagnose-bottleneck.js
  *
- * If health fails at 950 → Caddy/Docker/network
- * If nextjs fails, health OK → Next.js or Caddy→Next.js
+ * If health fails at 950 → Docker/network
+ * If nextjs fails, health OK → Next.js
  * If database fails, nextjs OK → PostgreSQL/query layer
  */
 
 import http from "k6/http";
 import { check } from "k6";
 
-const BASE_URL = __ENV.BASE_URL || "http://localhost:3002";
+const BASE_URL = __ENV.BASE_URL || "http://localhost:3003";
 const DIAG = __ENV.DIAG || "health";
 
 export const options = {

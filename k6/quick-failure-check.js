@@ -2,10 +2,10 @@
  * Quick failure check — ~1.5 min run to see which requests fail.
  *
  * Run via script (loads .env for login credentials):
- *   ./k6/run-quick-failure-check.sh -e BASE_URL=http://localhost:3002
+ *   ./k6/run-quick-failure-check.sh -e BASE_URL=http://localhost:3003
  *
  * Failures logged to stderr. Redirect to analyze:
- *   ./k6/run-quick-failure-check.sh -e BASE_URL=http://localhost:3002 2>failures.log
+ *   ./k6/run-quick-failure-check.sh -e BASE_URL=http://localhost:3003 2>failures.log
  *   grep "FAILED" failures.log | sed 's/.*FAILED: //' | sort | uniq -c | sort -rn
  */
 
