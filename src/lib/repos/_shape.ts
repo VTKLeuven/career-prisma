@@ -159,6 +159,83 @@ export function shapeFaculty(row: Nullable<CompanyRow>): any {
   };
 }
 
+/** Speaker with its representative (and that person's company) expanded. */
+export const SPEAKER_INCLUDE = {
+  representative: { include: { company: true } },
+  time: true,
+} as const;
+
+export function shapeSpeaker(row: Nullable<CompanyRow>): any {
+  if (!row) return null;
+  const { representative_id, time_id, representative, ...rest } = row;
+  return {
+    ...rest,
+    representative: representative
+      ? {
+          ...representative,
+          avatar: representative.avatar ?? null,
+          company: representative.company
+            ? {
+                ...representative.company,
+                logo: representative.company.logo_id ?? null,
+              }
+            : null,
+        }
+      : null,
+  };
+}
+
+/**
+ * Everything an event page needs.
+ *
+ * Note `careerEventPageTimetables` rather than `timetableCareerEventPages`:
+ * two junction tables link these models, and Directus' relation metadata shows
+ * career_event_page_timetable backs the `timetable` alias (48 rows) while
+ * timetable_career_event_page backs `timetable.events` (33 rows).
+ */
+export const EVENT_PAGE_INCLUDE = {
+  event: true,
+  floorplan: true,
+  careerEventPageTimetables: {
+    include: { timetable: { include: { speaker: { include: SPEAKER_INCLUDE } } } },
+  },
+  careerEventPageCompanies: { include: { company: { include: COMPANY_INCLUDE } } },
+  careerEventPageSpeakers: { include: { speaker: { include: SPEAKER_INCLUDE } } },
+} as const;
+
+/** Maps a Prisma event page into the junction-wrapped shape actions/events.ts flattens. */
+export function shapeEventPage(row: Nullable<CompanyRow>): any {
+  if (!row) return null;
+  const {
+    event_id,
+    image_id,
+    floorplan_id,
+    image,
+    companyGuide,
+    careerEventPageTimetables,
+    careerEventPageCompanies,
+    careerEventPageSpeakers,
+    ...rest
+  } = row;
+
+  return {
+    ...rest,
+    // Consumers pass these straight to getDirectusImageUrl / check for a string.
+    image: image_id ?? null,
+    timetable: junction(careerEventPageTimetables, "timetable_id", (r: any) =>
+      r.timetable
+        ? { ...r.timetable, speaker: shapeSpeaker(r.timetable.speaker) }
+        : null
+    ),
+    companies: junction(careerEventPageCompanies, "company_id", (r: any) =>
+      shapeCompany(r.company)
+    ),
+    speakers: junction(careerEventPageSpeakers, "speaker_id", (r: any) =>
+      shapeSpeaker(r.speaker)
+    ),
+  };
+}
+
 /** Schedule keeps `event` and `pdf` as bare ids; `master` is expanded. */
 export function shapeSchedule(row: Nullable<CompanyRow>): any {
   if (!row) return null;
