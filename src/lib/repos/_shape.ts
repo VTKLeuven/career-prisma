@@ -129,8 +129,44 @@ export function shapeBooth(row: Nullable<CompanyRow>): any {
   const { floorplan_id, company_id, floorplan, company, ...rest } = row;
   return {
     ...rest,
-    company: company ?? company_id ?? null,
+    company: company ? shapeCompany(company) : (company_id ?? null),
     // The legacy schema spells this field `Floorplan` on Booth.
     Floorplan: floorplan ?? floorplan_id ?? null,
+  };
+}
+
+/** `logo` was a bare file id in the Directus payload, not an expanded object. */
+export function shapeMaster(row: Nullable<CompanyRow>): any {
+  if (!row) return null;
+  const { logo_id, logo, ...rest } = row;
+  return { ...rest, logo: logo_id ?? null };
+}
+
+export const FACULTY_INCLUDE = {
+  facultyMasters: { include: { master: true } },
+} as const;
+
+/** Faculty.masters is junction-wrapped: `[{ master_id: Master }]`. */
+export function shapeFaculty(row: Nullable<CompanyRow>): any {
+  if (!row) return null;
+  const { logo_id, logo, facultyMasters, ...rest } = row;
+  return {
+    ...rest,
+    logo: logo_id ?? null,
+    masters: junction(facultyMasters, "master_id", (r: any) =>
+      r.master ? shapeMaster(r.master) : null
+    ),
+  };
+}
+
+/** Schedule keeps `event` and `pdf` as bare ids; `master` is expanded. */
+export function shapeSchedule(row: Nullable<CompanyRow>): any {
+  if (!row) return null;
+  const { event_id, pdf_id, master_id, event, pdf, master, ...rest } = row;
+  return {
+    ...rest,
+    event: event_id ?? null,
+    pdf: pdf_id ?? null,
+    master: master ? shapeMaster(master) : (master_id ?? null),
   };
 }
