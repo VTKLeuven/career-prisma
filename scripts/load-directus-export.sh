@@ -202,7 +202,7 @@ info "loaded"
 # The tables already exist, so `prisma migrate deploy` must not try to create
 # them. Resolving the baseline records it as applied without running it.
 say "[5/5] Baselining and applying Prisma migrations"
-( cd "$ROOT" && docker compose --profile tools run --rm \
+( cd "$ROOT" && docker compose --profile tools run --rm --build \
     -e BASELINE_EXISTING_SCHEMA=1 migration ) || \
   die "Could not apply Prisma migrations"
 

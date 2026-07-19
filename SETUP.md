@@ -13,7 +13,7 @@ git clone <repo> career && cd career
 cp .env.example .env      # then fill in the secrets, see below
 docker compose up -d database
 # Runs the pinned Prisma CLI in a one-off Docker container.
-docker compose --profile tools run --rm migration
+docker compose --profile tools run --rm --build migration
 mkdir -p directus-uploads
 # Linux Docker hosts: make the bind mount writable by the image's nextjs user
 sudo chown -R 1001:1001 directus-uploads
