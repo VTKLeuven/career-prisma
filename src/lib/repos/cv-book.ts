@@ -1,38 +1,24 @@
 // lib/repos/cv-book.ts
 "use server";
 
-import { readItems, readItem, createItem, updateItem, deleteItem } from "@directus/sdk";
-import { getAuthedDirectusOrThrow, getAdminDirectusClient } from "@/lib/directus";
-
-/** Client for CV book operations. Prefers admin token (bypasses Directus role permissions) when available. */
-async function getCVBookClient() {
-  const adminClient = getAdminDirectusClient();
-  if (adminClient) return adminClient;
-  return getAuthedDirectusOrThrow();
-}
+import { prisma } from "@/lib/prisma";
 import type { CVBook, AcademicYear, FormResponse } from "@/lib/schema";
 import { listFormResponsesForAllVersions } from "./forms";
 import { listScreeningForCVBook, type CVBookScreeningRecord, type ScreeningStatus } from "./cv-book-screening";
 
-function extractFormResponseId(rec: Record<string, unknown>): string | null {
-  const fr = rec.form_response ?? rec.form_response_id;
-  if (typeof fr === "string" && fr) return fr;
-  if (typeof fr === "number" && !Number.isNaN(fr)) return String(fr);
-  if (fr && typeof fr === "object" && "id" in fr) return String((fr as { id: unknown }).id);
-  return null;
-}
+/** Ids cross this API as strings; the columns are integers. */
+const num = (v: string | number) => Number(v);
 
-function normalizeScreeningStatus(raw: unknown): ScreeningStatus {
-  if (raw === "approved" || raw === "rejected" || raw === "pending") return raw;
-  if (typeof raw === "string") {
-    try {
-      const p = JSON.parse(raw);
-      if (p === "approved" || p === "rejected" || p === "pending") return p;
-    } catch {
-      if (raw.trim() === "approved" || raw.trim() === "rejected" || raw.trim() === "pending") return raw.trim() as ScreeningStatus;
-    }
-  }
-  return "pending";
+/** `year` is expanded; `form` carries only the fields the UI reads. */
+const CV_BOOK_INCLUDE = {
+  year: true,
+  form: { select: { id: true, name: true, slug: true } },
+} as const;
+
+function shapeCVBook(row: Record<string, any> | null): CVBook | null {
+  if (!row) return null;
+  const { year_id, form_id, ...rest } = row;
+  return { ...rest, year: row.year ?? year_id ?? null, form: row.form ?? form_id ?? null } as CVBook;
 }
 
 // ===================== ACADEMIC YEARS =====================
@@ -44,18 +30,16 @@ export async function listAcademicYears(opts?: {
   sort?: string;
 }) {
   try {
-    const client = await getCVBookClient();
     const { search, limit = 100, page = 1, sort = "-start_of_year" } = opts ?? {};
+    const desc = sort.startsWith("-");
+    const sortField = desc ? sort.slice(1) : sort;
 
-    return client.request(
-      readItems("academic_year", {
-        fields: ["*"],
-        limit,
-        page,
-        sort: sort as any,
-        ...(search ? { search } : {}),
-      })
-    ) as unknown as AcademicYear[];
+    return (await prisma.academicYear.findMany({
+      where: search ? { name: { contains: search, mode: "insensitive" } } : undefined,
+      orderBy: { [sortField]: desc ? "desc" : "asc" },
+      take: limit,
+      skip: (page - 1) * limit,
+    })) as unknown as AcademicYear[];
   } catch (error) {
     console.error("[listAcademicYears] Error listing academic years:", error);
     throw error;
@@ -64,12 +48,9 @@ export async function listAcademicYears(opts?: {
 
 export async function getAcademicYearById(id: string) {
   try {
-    const client = await getCVBookClient();
-    return client.request(
-      readItem("academic_year", id, {
-        fields: ["*"],
-      })
-    ) as unknown as AcademicYear;
+    return (await prisma.academicYear.findUnique({
+      where: { id: num(id) },
+    })) as unknown as AcademicYear;
   } catch (error) {
     console.error("[getAcademicYearById] Error getting academic year:", error);
     throw error;
@@ -78,6 +59,12 @@ export async function getAcademicYearById(id: string) {
 
 // ===================== CV BOOKS =====================
 
+/**
+ * The Directus version wrapped this in a 403 retry: expanding `year` and `form`
+ * triggered permission checks on those collections, and when the token lacked
+ * read access it fell back to unexpanded ids and a different sort order. There
+ * is no permission layer to trip over now, so the expansion is unconditional.
+ */
 export async function listCVBooks(opts?: {
   search?: string;
   limit?: number;
@@ -89,48 +76,35 @@ export async function listCVBooks(opts?: {
   };
 }) {
   try {
-    const client = await getCVBookClient();
     const { search, limit = 100, page = 1, sort = "-date_created", filter } = opts ?? {};
 
-    const filterObj: any = {};
-    if (filter?.active !== undefined) {
-      filterObj.active = { _eq: filter.active };
-    }
-    if (filter?.screening_complete !== undefined) {
-      filterObj.screening_complete = { _eq: filter.screening_complete };
-    }
+    const desc = sort.startsWith("-");
+    const sortField = desc ? sort.slice(1) : sort;
+    const dir = desc ? "desc" : "asc";
 
-    // Fetch cv_book. Directus checks permissions on nested collections (academic_year, forms)
-    // when expanding relations - if that fails with 403, retry with base fields only (year/form as IDs).
-    const baseQuery = {
-      limit,
-      page,
-      sort: sort as any,
-      ...(search ? { search } : {}),
-      ...(Object.keys(filterObj).length > 0 ? { filter: filterObj } : {}),
-    };
+    // Callers pass nested sort keys such as "-year.start_of_year".
+    const orderBy = sortField.includes(".")
+      ? sortField.split(".").reduceRight<Record<string, unknown>>(
+          (acc, key) => ({ [key]: acc }),
+          dir as unknown as Record<string, unknown>
+        )
+      : { [sortField]: dir };
 
-    try {
-      return (await client.request(
-        readItems("CV_Book" as any, {
-          ...baseQuery,
-          fields: ["*", { year: ["*"], form: ["id", "name", "slug"] } as any],
-        } as any)
-      )) as unknown as CVBook[];
-    } catch (nestedError: unknown) {
-      const is403 =
-        nestedError &&
-        typeof nestedError === "object" &&
-        "response" in nestedError &&
-        (nestedError as { response?: Response }).response?.status === 403;
-      if (is403) {
-        // Nested expansion/sort 403: token may lack read on academic_year/forms. Use base fields
-        // and sort by date_created (avoids joining to year).
-        const fallbackQuery = { ...baseQuery, fields: ["*"] as const, sort: "-date_created" as const };
-        return (await client.request(readItems("CV_Book" as any, fallbackQuery as any))) as unknown as CVBook[];
-      }
-      throw nestedError;
-    }
+    const rows = await prisma.cvBook.findMany({
+      where: {
+        ...(filter?.active !== undefined ? { active: filter.active } : {}),
+        ...(filter?.screening_complete !== undefined
+          ? { screening_complete: filter.screening_complete }
+          : {}),
+        ...(search ? { form: { name: { contains: search, mode: "insensitive" } } } : {}),
+      },
+      include: CV_BOOK_INCLUDE,
+      orderBy: orderBy as any,
+      take: limit,
+      skip: (page - 1) * limit,
+    });
+
+    return rows.map((r) => shapeCVBook(r)!) as CVBook[];
   } catch (error) {
     console.error("[listCVBooks] Error listing CV books:", error);
     throw error;
@@ -152,22 +126,11 @@ export async function getActiveCVBooks() {
 
 export async function getCVBookByYear(yearId: string) {
   try {
-    const client = await getCVBookClient();
-    const cvBooks = await client.request(
-      readItems("CV_Book" as any, {
-        fields: [
-          "*",
-          { year: ["*"], form: ["id", "name", "slug"] } as any
-        ],
-        filter: {
-          year: { _eq: yearId },
-          active: { _eq: true },
-        },
-        limit: 1,
-      } as any)
-    ) as unknown as CVBook[];
-
-    return cvBooks.length > 0 ? cvBooks[0] : null;
+    const row = await prisma.cvBook.findFirst({
+      where: { year_id: num(yearId), active: true },
+      include: CV_BOOK_INCLUDE,
+    });
+    return shapeCVBook(row);
   } catch (error) {
     console.error("[getCVBookByYear] Error getting CV book by year:", error);
     throw error;
@@ -177,16 +140,12 @@ export async function getCVBookByYear(yearId: string) {
 /** Get CV Book by year for admin screening (ignores active/screening_complete) */
 export async function getCVBookByYearForScreening(yearId: string): Promise<CVBook | null> {
   try {
-    const client = await getCVBookClient();
-    const cvBooks = (await client.request(
-      readItems("CV_Book" as any, {
-        fields: ["*", { year: ["*"], form: ["id", "name", "slug"] } as any],
-        filter: { year: { _eq: yearId } },
-        limit: 1,
-        sort: "-date_created",
-      } as any)
-    )) as unknown as CVBook[];
-    return cvBooks.length > 0 ? cvBooks[0] : null;
+    const row = await prisma.cvBook.findFirst({
+      where: { year_id: num(yearId) },
+      include: CV_BOOK_INCLUDE,
+      orderBy: { date_created: "desc" },
+    });
+    return shapeCVBook(row);
   } catch (error) {
     console.error("[getCVBookByYearForScreening] Error:", error);
     throw error;
@@ -204,7 +163,7 @@ export type StudentCVData = {
   linkedinUrl: string | null;
   /** When the form was submitted (for admin screening view) */
   submittedAt?: string;
-  /** Screening status (when forScreening: true) - from CV_Book_screening collection */
+  /** Screening status (when forScreening: true) - from cv_book_screenings */
   screeningStatus?: ScreeningStatus;
   /** Full screening record (when forScreening: true) - for study_override etc */
   screeningRecord?: CVBookScreeningRecord;
@@ -216,40 +175,20 @@ export type StudentCVGroup = {
 };
 
 /**
- * Get student CV data for a CV Book
- * Extracts student information from form responses using CV Book field mappings
- * @param opts.forScreening - When true, returns all CVs with submittedAt for admin screening. When false, filters to approved only.
+ * Get student CV data for a CV Book.
+ * Extracts student information from form responses using CV Book field mappings.
+ * @param opts.forScreening - When true, returns all CVs with submittedAt for admin
+ *   screening. When false, filters to screened and not-rejected only.
  */
 export async function getCVBookStudentData(
   cvBook: CVBook,
   opts?: { forScreening?: boolean }
 ): Promise<StudentCVGroup[]> {
   try {
-    const formId = typeof cvBook.form === "string" ? cvBook.form : cvBook.form.id;
-
-    console.log("[getCVBookStudentData] CV Book:", {
-      id: cvBook.id,
-      formId,
-      mappings: {
-        firstName: cvBook.student_first_name_field,
-        lastName: cvBook.student_last_name_field,
-        email: cvBook.student_email_field,
-        study: cvBook.student_study_field,
-        cv: cvBook.student_cv_field,
-      },
-      backups: {
-        firstName: cvBook.student_first_name_field_backup,
-        lastName: cvBook.student_last_name_field_backup,
-        email: cvBook.student_email_field_backup,
-        study: cvBook.student_study_field_backup,
-        cv: cvBook.student_cv_field_backup,
-      },
-    });
+    const formId = typeof cvBook.form === "string" ? cvBook.form : String((cvBook.form as { id: unknown }).id);
 
     // Fetch all form responses for all versions of the form
     const responses = await listFormResponsesForAllVersions(formId, { limit: -1 });
-
-    console.log("[getCVBookStudentData] Fetched responses:", responses.length);
 
     if (responses.length === 0) {
       console.warn("[getCVBookStudentData] No form responses found for form:", formId);
@@ -260,13 +199,14 @@ export async function getCVBookStudentData(
     function getAccountId(response: FormResponse): string | null {
       const sid = response.student_id;
       if (sid) {
-        return typeof sid === "string" ? sid : (sid as { id: string }).id;
+        return typeof sid === "string" ? sid : String((sid as { id: unknown }).id);
       }
       const data = response.data as Record<string, unknown> | undefined;
       return (data?._student_id as string) || null;
     }
 
-    // Group by student account and keep only the most recent response per account (1 CV per account)
+    // Group by student account and keep only the most recent response per account
+    // (1 CV per account)
     const responsesByAccount = new Map<string, FormResponse>();
     const responsesWithoutAccount: FormResponse[] = [];
 
@@ -287,16 +227,6 @@ export async function getCVBookStudentData(
       ...Array.from(responsesByAccount.values()),
       ...responsesWithoutAccount,
     ];
-    console.log(`[getCVBookStudentData] Filtered to ${uniqueResponses.length} unique entries (${responsesByAccount.size} by account + ${responsesWithoutAccount.length} without account) from ${responses.length} responses`);
-
-    // Log first response structure for debugging
-    if (uniqueResponses.length > 0) {
-      console.log("[getCVBookStudentData] First response structure:", {
-        id: uniqueResponses[0].id,
-        dataKeys: Object.keys(uniqueResponses[0].data || {}),
-        sampleData: uniqueResponses[0].data,
-      });
-    }
 
     // Extract student data from responses
     const studentData: StudentCVData[] = [];
@@ -307,15 +237,15 @@ export async function getCVBookStudentData(
       const data = response.data || {};
 
       // Extract fields using CV Book mappings (with backup fallback)
-      let firstName = (data[cvBook.student_first_name_field] || 
+      let firstName = (data[cvBook.student_first_name_field] ||
                         (cvBook.student_first_name_field_backup ? data[cvBook.student_first_name_field_backup] : null)) as string;
-      let lastName = (data[cvBook.student_last_name_field] || 
+      let lastName = (data[cvBook.student_last_name_field] ||
                        (cvBook.student_last_name_field_backup ? data[cvBook.student_last_name_field_backup] : null)) as string;
-      const email = (data[cvBook.student_email_field] || 
+      const email = (data[cvBook.student_email_field] ||
                     (cvBook.student_email_field_backup ? data[cvBook.student_email_field_backup] : null)) as string;
-      const study = (data[cvBook.student_study_field] || 
+      const study = (data[cvBook.student_study_field] ||
                     (cvBook.student_study_field_backup ? data[cvBook.student_study_field_backup] : null)) as string;
-      const cvFileId = (data[cvBook.student_cv_field] || 
+      const cvFileId = (data[cvBook.student_cv_field] ||
                        (cvBook.student_cv_field_backup ? data[cvBook.student_cv_field_backup] : null)) as string | null;
       const linkedinRaw = (cvBook.student_linkedin_field ? (data[cvBook.student_linkedin_field] ||
                        (cvBook.student_linkedin_field_backup ? data[cvBook.student_linkedin_field_backup] : null)) : null) as string | null;
@@ -339,18 +269,6 @@ export async function getCVBookStudentData(
             lastName = lastName || '';
           }
         }
-      }
-
-      // Debug: log what we found
-      if (responses.indexOf(response) < 3) { // Log first 3 for debugging
-        console.log(`[getCVBookStudentData] Response ${response.id}:`, {
-          firstName: firstName || "MISSING",
-          lastName: lastName || "MISSING",
-          email: email || "MISSING",
-          study: study || "MISSING",
-          cvFileId: cvFileId || "MISSING",
-          availableFields: Object.keys(data),
-        });
       }
 
       // Skip if required fields are missing
@@ -380,53 +298,50 @@ export async function getCVBookStudentData(
         continue;
       }
 
-      // Get CV file URL - use API route to avoid CORS issues
-      let cvFileUrl: string | null = null;
-      if (cvFileId) {
-        // Use API route to proxy the file with authentication
-        cvFileUrl = `/api/cv-file/${cvFileId}`;
-      }
-
       studentData.push({
-        id: response.id,
+        id: String(response.id),
         firstName,
         lastName,
         email,
         study,
         cvFileId,
-        cvFileUrl,
+        // Proxied through an API route so the file is served with auth.
+        cvFileUrl: `/api/cv-file/${cvFileId}`,
         linkedinUrl,
         ...(opts?.forScreening && { submittedAt: response.submitted_at }),
       });
     }
 
-    console.log(`[getCVBookStudentData] Extracted ${studentData.length} students from ${responses.length} responses`);
-    console.log(`[getCVBookStudentData] Skipped ${skippedCount} responses:`, skipReasons);
-
-    if (studentData.length === 0) {
-      console.warn("[getCVBookStudentData] No valid student data extracted. Check field mappings!");
-      // Log available fields from first response for debugging
-      if (responses.length > 0 && responses[0].data) {
-        console.log("[getCVBookStudentData] Available fields in first response:", Object.keys(responses[0].data));
-        console.log("[getCVBookStudentData] First response data sample:", JSON.stringify(responses[0].data, null, 2).substring(0, 500));
-      }
+    if (skippedCount > 0) {
+      // Field names only: the values are student PII and must not reach the logs.
+      console.warn(
+        `[getCVBookStudentData] Skipped ${skippedCount}/${uniqueResponses.length} responses:`,
+        skipReasons
+      );
     }
 
-    // Fetch screening records and match to students (same flow for both screening and company view)
-    const screeningRecords = await listScreeningForCVBook(cvBook.id);
+    if (studentData.length === 0 && responses.length > 0) {
+      console.warn(
+        "[getCVBookStudentData] No valid student data extracted. Check field mappings. Available fields:",
+        Object.keys(responses[0].data ?? {})
+      );
+    }
+
+    // Fetch screening records and match to students
+    const screeningRecords = await listScreeningForCVBook(String(cvBook.id));
     const screeningByFormResponse = new Map<string, CVBookScreeningRecord>();
     for (const rec of screeningRecords) {
-      const frId = extractFormResponseId(rec);
-      if (frId) screeningByFormResponse.set(String(frId).toLowerCase(), rec);
+      if (rec.form_response) {
+        screeningByFormResponse.set(rec.form_response.toLowerCase(), rec);
+      }
     }
 
     // Attach screening to each student (match case-insensitively for UUIDs)
     const studentsWithScreening = studentData.map((s) => {
       const rec = screeningByFormResponse.get(String(s.id).toLowerCase());
-      const status = rec ? normalizeScreeningStatus(rec.status) : undefined;
       return {
         ...s,
-        screeningStatus: status,
+        screeningStatus: rec?.status,
         screeningRecord: rec,
       };
     });
@@ -439,8 +354,8 @@ export async function getCVBookStudentData(
 
     let finalStudentData = withStudyOverride;
     if (!opts?.forScreening) {
-      // Company view: only show CVs that went through screening and are not rejected
-      // (have screening record + approved or pending; new unscreened CVs stay hidden)
+      // Company view: only show CVs that went through screening and are not
+      // rejected (new unscreened CVs stay hidden).
       finalStudentData = withStudyOverride.filter((s) => {
         if (!s.screeningRecord) return false;
         return s.screeningStatus !== "rejected";
@@ -458,7 +373,7 @@ export async function getCVBookStudentData(
     }
 
     // Convert to array and sort studies alphabetically
-    const groups: StudentCVGroup[] = Array.from(grouped.entries())
+    return Array.from(grouped.entries())
       .map(([study, students]) => ({
         study,
         students: students.sort((a, b) => {
@@ -468,10 +383,6 @@ export async function getCVBookStudentData(
         }),
       }))
       .sort((a, b) => a.study.localeCompare(b.study));
-
-    console.log(`[getCVBookStudentData] Returning ${groups.length} study groups`);
-
-    return groups;
   } catch (error) {
     console.error("[getCVBookStudentData] Error getting student CV data:", error);
     throw error;
@@ -480,15 +391,11 @@ export async function getCVBookStudentData(
 
 export async function getCVBookById(id: string) {
   try {
-    const client = await getCVBookClient();
-    return client.request(
-      readItem("CV_Book" as any, id, {
-        fields: [
-          "*",
-          { year: ["*"], form: ["id", "name", "slug"] } as any
-        ],
-      } as any)
-    ) as unknown as CVBook;
+    const row = await prisma.cvBook.findUnique({
+      where: { id: num(id) },
+      include: CV_BOOK_INCLUDE,
+    });
+    return shapeCVBook(row) as CVBook;
   } catch (error) {
     console.error("[getCVBookById] Error getting CV book:", error);
     throw error;
@@ -513,16 +420,18 @@ export async function createCVBook(data: {
   active?: boolean;
 }) {
   try {
-    const client = await getCVBookClient();
-    console.log("[createCVBook] Creating CV book with data:", data);
-    const result = await client.request(
-      createItem("CV_Book" as any, {
-        ...data,
+    const { year, form, ...rest } = data;
+    const row = await prisma.cvBook.create({
+      data: {
+        ...rest,
+        year_id: num(year),
+        form_id: num(form),
         active: data.active ?? false, // Default to false if not provided
-      })
-    ) as unknown as CVBook;
-    console.log("[createCVBook] Created CV book:", result);
-    return result;
+        date_created: new Date(),
+      },
+      include: CV_BOOK_INCLUDE,
+    });
+    return shapeCVBook(row) as CVBook;
   } catch (error) {
     console.error("[createCVBook] Error creating CV book:", error);
     throw error;
@@ -531,10 +440,20 @@ export async function createCVBook(data: {
 
 export async function updateCVBook(id: string, data: Partial<CVBook>) {
   try {
-    const client = await getCVBookClient();
-    return client.request(
-      updateItem("CV_Book" as any, id, data)
-    ) as unknown as CVBook;
+    const { year, form, id: _id, ...rest } = data as Record<string, any>;
+    const idOf = (v: any) => (v && typeof v === "object" ? v.id : v);
+
+    const row = await prisma.cvBook.update({
+      where: { id: num(id) },
+      data: {
+        ...rest,
+        ...(year !== undefined ? { year_id: year == null ? null : num(idOf(year)) } : {}),
+        ...(form !== undefined ? { form_id: form == null ? null : num(idOf(form)) } : {}),
+        date_updated: new Date(),
+      },
+      include: CV_BOOK_INCLUDE,
+    });
+    return shapeCVBook(row) as CVBook;
   } catch (error) {
     console.error("[updateCVBook] Error updating CV book:", error);
     throw error;
@@ -543,12 +462,16 @@ export async function updateCVBook(id: string, data: Partial<CVBook>) {
 
 export async function deleteCVBook(id: string) {
   try {
-    const client = await getCVBookClient();
-    await client.request(deleteItem("CV_Book" as any, id));
+    const bookId = num(id);
+    // Favourites and screening records reference the book and do not cascade.
+    await prisma.$transaction(async (tx) => {
+      await tx.cvBookFavourite.deleteMany({ where: { cv_book: bookId } });
+      await tx.cvBookScreening.deleteMany({ where: { cv_book: bookId } });
+      await tx.cvBook.delete({ where: { id: bookId } });
+    });
     return true;
   } catch (error) {
     console.error("[deleteCVBook] Error deleting CV book:", error);
     throw error;
   }
 }
-
