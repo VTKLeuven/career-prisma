@@ -15,6 +15,9 @@ docker compose up -d database
 npm ci
 npx prisma migrate deploy # creates all 56 tables
 npx prisma generate
+mkdir -p directus-uploads
+# Linux Docker hosts: make the bind mount writable by the image's nextjs user
+sudo chown -R 1001:1001 directus-uploads
 docker compose up -d --build
 ```
 
@@ -50,6 +53,8 @@ rsync -avz <directus-host>:/vtk/directus-postgis/uploads/ ./directus-uploads/
 ```
 
 Filenames on disk are UUIDs matching the `files` table, so keep them intact.
+The same directory is mounted into every app replica. New uploads are written
+there, so include it in backups together with PostgreSQL.
 
 ## Environment
 
@@ -58,7 +63,9 @@ Filenames on disk are UUIDs matching the `files` table, so keep them intact.
 | `DATABASE_URL` | Postgres connection string. Used by the app and the Prisma CLI. |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Consumed by the `database` service in `docker-compose.yml`. `POSTGRES_PASSWORD` is required and has no default. |
 | `POSTGRES_PORT` | Host port for Postgres. Defaults to `5434`, bound to loopback only. |
-| `AUTH_SECRET`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL` | NextAuth. |
+| `AUTH_SECRET`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL` | Signed application sessions and NextAuth. Generate strong random secrets. |
+| `NEXT_PUBLIC_APP_URL` | Public origin used in invitation and reset links. |
+| `UPLOADS_DIR` | Local file storage path. Defaults to `./directus-uploads`; Compose sets the mounted container path. |
 | `KULEUVEN_*`, `LITUS_*` | OAuth providers. |
 | `SMTP_*` | Outbound mail. |
 | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN` | Sentry. |
@@ -88,9 +95,8 @@ The client is constructed with a driver adapter (`@prisma/adapter-pg`) in
   `directus_files`, `directus_roles`) but hold real application data — 612
   company representatives, 2,236 uploads, and four roles whose UUIDs are
   compared directly in `src/lib/auth-server.ts`. They are now first-class tables.
-- **Passwords carried over unchanged.** `users.password` is argon2id and
-  `students.password` is bcrypt; both algorithms are already dependencies, so
-  no password reset was needed.
+- **Passwords carried over unchanged.** Both `users.password` and
+  `students.password` are argon2id, so no password reset was needed.
 - **`career_event_page.location`** was a PostGIS `geometry(Point,4326)`. It is
   now `latitude` / `longitude`. Nothing performed spatial queries — the column
   was only ever destructured into two numbers to centre a Leaflet map.

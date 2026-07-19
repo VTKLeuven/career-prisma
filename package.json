@@ -10,7 +10,6 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@directus/sdk": "^20.0.2",
     "@heroicons/react": "^2.2.0",
     "@iconify/react": "^6.0.2",
     "@prisma/adapter-pg": "^7.8.0",
@@ -36,7 +35,6 @@
     "@xmldom/xmldom": "^0.8.11",
     "archiver": "^7.0.1",
     "argon2": "^0.44.0",
-    "bcryptjs": "^3.0.3",
     "canvas": "^3.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

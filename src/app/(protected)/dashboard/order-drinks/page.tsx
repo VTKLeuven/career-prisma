@@ -1,5 +1,4 @@
-import { directus, getAdminDirectusClient } from "@/lib/directus";
-import { readItems } from "@directus/sdk";
+import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import BoothClient from "@/app/(public)/booth/[id]/client";
 import { listDrinks } from "@/lib/repos/drinks";
@@ -21,28 +20,11 @@ export default async function DashboardOrderDrinksPage() {
     }
 
     // Fetch booth details (same logic as public booth page)
-    let booth;
-    try {
-        const adminClient = getAdminDirectusClient();
-        const client = adminClient || directus;
-
-        booth = await client.request(
-            readItems("Booths", {
-                filter: { id: { _eq: boothId } },
-                fields: ["*", { company: ["name", "id"], zone: ["*"] }],
-                limit: 1,
-            })
-        ) as any[];
-    } catch (e: any) {
-        console.error("[DashboardOrderDrinks] Fetch failed.", e?.errors?.[0]?.message || e);
-        booth = [{ id: boothId, booth_number: "?", company: undefined }];
-    }
-
-    if (!booth || booth.length === 0) {
-        booth = [{ id: boothId, booth_number: "?" }];
-    }
-
-    const boothData = booth[0];
+    const boothData = await prisma.booth.findUnique({
+        where: { id: Number(boothId) },
+        include: { company: true },
+    });
+    if (!boothData) redirect("/dashboard");
     const drinks = await listDrinks({ visible_only: true });
 
     let activeOrder = null;
@@ -64,7 +46,7 @@ export default async function DashboardOrderDrinksPage() {
 
             <BoothClient
                 boothId={boothId}
-                companyId={boothData.company?.id}
+                companyId={boothData.company?.id ?? ""}
                 initialDrinks={drinks}
                 initialActiveOrder={activeOrder}
             />

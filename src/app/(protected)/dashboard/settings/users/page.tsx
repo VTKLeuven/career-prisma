@@ -7,7 +7,7 @@ import { Company, CompanyRep } from '@/lib/schema';
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { IconPlus } from "@tabler/icons-react";
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import { motion } from 'framer-motion';
 import {
   Dialog,
@@ -92,7 +92,7 @@ function UsersOverview({ company }: { company?: Company }) {
                 <div className="mx-auto h-24 w-24 overflow-hidden rounded-full ring-4 ring-vtk-light transition-transform duration-300 group-hover:scale-105">
                   {user.avatar ? (
                     <Image
-                      src={getDirectusImageUrl(user.avatar)!}
+                      src={getFileUrl(user.avatar)!}
                       alt={`${user.first_name ?? ""} ${user.last_name ?? ""}`}
                       width={96}
                       height={96}

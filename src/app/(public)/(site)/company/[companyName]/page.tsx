@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Company, Master, CareerEventOption, CareerEvent, Speaker } from "@/lib/schema";
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import Image from "next/image";
 import Link from "next/link";
 import { validateExistingPageImage } from "@/lib/utils/image-validation";
@@ -138,7 +138,7 @@ export default function CompanyPage() {
   }, [companyName, router]);
 
   // Validate page image when company or page_image changes
-  const bgUrl = company ? getDirectusImageUrl(company.page_image) : null;
+  const bgUrl = company ? getFileUrl(company.page_image) : null;
   useEffect(() => {
     if (bgUrl) {
       validateExistingPageImage(bgUrl)
@@ -181,7 +181,7 @@ export default function CompanyPage() {
     );
   }
 
-  const logoUrl = company ? getDirectusImageUrl(company.logo) : null;
+  const logoUrl = company ? getFileUrl(company.logo) : null;
   const categories = company ? ((company.category as Master[] | undefined) ?? []) : [];
   
   // Extract event IDs from company options using the same logic as dashboard
@@ -321,7 +321,7 @@ export default function CompanyPage() {
                 {categories.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-3 justify-center sm:justify-start">
                     {categories.map((cat) => {
-                      const catLogo = getDirectusImageUrl(cat.logo);
+                      const catLogo = getFileUrl(cat.logo);
                       if (!catLogo) return null;
                       return (
                         <span
@@ -382,7 +382,7 @@ export default function CompanyPage() {
                               <div className="aspect-[4/3]">
                                 {event.image && (
                                   <Image
-                                    src={getDirectusImageUrl(event.image)!}
+                                    src={getFileUrl(event.image)!}
                                     alt={event.name}
                                     fill
                                     className="object-cover transition-transform duration-300 group-hover:scale-105"
@@ -477,10 +477,10 @@ function CompanySpeakersSection({ speakers }: { speakers: Array<Speaker & { even
 
 function CompanySpeakerCard({ speaker, eventSlug, allSpeakers }: { speaker: Speaker; eventSlug: string; allSpeakers: Speaker[] }) {
   const rep = speaker.representative;
-  const avatarUrl = rep?.avatar ? getDirectusImageUrl(rep.avatar) : undefined;
+  const avatarUrl = rep?.avatar ? getFileUrl(rep.avatar) : undefined;
   const company = rep?.company;
   const displayCompany = company ?? { name: "KU Leuven", logo: KU_LEUVEN_LOGO_ID };
-  const companyLogoUrl = displayCompany.logo ? getDirectusImageUrl(displayCompany.logo) : undefined;
+  const companyLogoUrl = displayCompany.logo ? getFileUrl(displayCompany.logo) : undefined;
   const startHour = speaker.time?.start_time;
   const endHour = speaker.time?.end_time;
   const timeLabel = startHour && endHour ? `${startHour} - ${endHour}` : startHour ?? endHour ?? null;
@@ -528,7 +528,7 @@ function CompanySpeakerCardMulti({ speakers, eventSlug, allSpeakers }: { speaker
       <div className="relative aspect-square w-full flex">
         {speakers.map((speaker) => {
           const rep = speaker.representative;
-          const avatarUrl = rep?.avatar ? getDirectusImageUrl(rep.avatar) : undefined;
+          const avatarUrl = rep?.avatar ? getFileUrl(rep.avatar) : undefined;
           return (
             <Link
               key={speaker.id}
@@ -556,7 +556,7 @@ function CompanySpeakerCardMulti({ speakers, eventSlug, allSpeakers }: { speaker
           const rep = speaker.representative;
           const company = rep?.company;
           const displayCompany = company ?? { name: "KU Leuven", logo: KU_LEUVEN_LOGO_ID };
-          const companyLogoUrl = displayCompany.logo ? getDirectusImageUrl(displayCompany.logo) : undefined;
+          const companyLogoUrl = displayCompany.logo ? getFileUrl(displayCompany.logo) : undefined;
           return (
             <Link
               key={speaker.id}

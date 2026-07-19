@@ -1,8 +1,7 @@
 "use server"
 
 import { createOrder, getActiveOrderForBooth } from "@/lib/repos/orders";
-import { getAdminDirectusClient } from "@/lib/directus";
-import { deleteItem, readItem } from "@directus/sdk";
+import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 
 export async function placeOrderAction(boothId: string, companyId: string | null | undefined, items: { drink_id: string; name: string; quantity: number }[]) {
@@ -45,13 +44,10 @@ export async function checkOrderStatusAction(boothId: string) {
 
 export async function cancelOrderAction(boothId: string, orderId: string) {
     try {
-        const client = getAdminDirectusClient();
-        if (!client) return { success: false, error: "Server configuration error" };
-
-        const order = await client.request(readItem("orders" as any, orderId)) as any;
+        const order = await prisma.order.findUnique({ where: { id: Number(orderId) } });
         if (!order) return { success: false, error: "Order not found" };
 
-        const orderBoothId = typeof order.booth === "object" ? order.booth?.id : order.booth;
+        const orderBoothId = order.booth_id;
         if (String(orderBoothId) !== String(boothId)) {
             return { success: false, error: "Order does not belong to this booth" };
         }
@@ -60,7 +56,7 @@ export async function cancelOrderAction(boothId: string, orderId: string) {
             return { success: false, error: "Only pending orders can be cancelled" };
         }
 
-        await client.request(deleteItem("orders" as any, orderId));
+        await prisma.order.delete({ where: { id: Number(orderId) } });
         revalidatePath(`/booth/${boothId}`);
         return { success: true };
     } catch (error) {

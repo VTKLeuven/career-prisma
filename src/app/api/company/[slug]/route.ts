@@ -21,7 +21,7 @@ export async function GET(
       return NextResponse.json(cached, { headers: CACHE_HEADERS });
     }
 
-    // Fetch from Directus
+    // Fetch from PostgreSQL through the company action.
     const result = await fetchCompanyBySlugWithSubOptionsAction(slug);
 
     if (!result.company) {

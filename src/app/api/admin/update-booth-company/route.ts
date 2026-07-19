@@ -1,21 +1,16 @@
 // app/api/admin/update-booth-company/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { updateBoothCompany, getBoothsForFloorplan } from "@/lib/repos/floorplan";
 import { invalidateFloorplanCache } from "@/lib/floorplan-cache";
 import { getCompanyById } from "@/lib/repos/company";
 import { getCompanySubOptionAnyStatus } from "@/lib/utils/company-access";
-import { readItems } from "@directus/sdk";
-import { getDirectusForAdminOperations } from "@/lib/directus";
-import type { Booth } from "@/lib/schema";
+import { getUserFromCookies } from "@/lib/auth-server";
+import prisma from "@/lib/prisma";
 
 export async function POST(req: Request) {
   try {
-    const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
-    const cookieStore = await cookies();
-    const token = cookieStore.get(ACCESS_COOKIE)?.value;
-
-    if (!token) {
+    const user = await getUserFromCookies();
+    if (!user?.admin) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -32,33 +27,18 @@ export async function POST(req: Request) {
     // If assigning a company, check if it's already assigned to another booth
     if (companyId) {
       // Get the booth first to find its floorplan (use admin client for elevated permissions)
-      const client = await getDirectusForAdminOperations();
-      if (!client) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-
-      const currentBooth = await client.request(
-        readItems("Booths" as any, {
-          fields: ["*", { Floorplan: ["id"] }],
-          filter: {
-            id: {
-              _eq: boothId,
-            },
-          },
-          limit: 1,
-        })
-      ) as unknown as Booth[];
-
-      if (!currentBooth || currentBooth.length === 0) {
+      const currentBooth = await prisma.booth.findUnique({
+        where: { id: Number(boothId) },
+        select: { floorplan_id: true },
+      });
+      if (!currentBooth) {
         return NextResponse.json(
           { error: "Booth not found" },
           { status: 404 }
         );
       }
 
-      const floorplanId = typeof currentBooth[0].Floorplan === "string"
-        ? currentBooth[0].Floorplan
-        : currentBooth[0].Floorplan.id;
+      const floorplanId = String(currentBooth.floorplan_id);
 
       // Get all booths for the same floorplan
       const floorplanBooths = await getBoothsForFloorplan(floorplanId);
@@ -102,4 +82,3 @@ export async function POST(req: Request) {
     );
   }
 }
-

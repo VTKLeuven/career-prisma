@@ -6,7 +6,7 @@
  *
  * This is unauthenticated traffic — anyone with the booth QR code can order.
  * The main pressure points are:
- *   - SSR booth page load (fetches booth + drinks + active order from Directus)
+ *   - SSR booth page load (fetches booth + drinks + active order from PostgreSQL)
  *   - Status polling (every 5 seconds while order is active)
  *
  * Run:  k6 run k6/scenarios/drink-ordering.js

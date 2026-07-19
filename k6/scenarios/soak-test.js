@@ -2,7 +2,7 @@
  * Soak test: sustained moderate load over a long period.
  *
  * Validates that the system doesn't degrade over time (memory leaks,
- * connection pool exhaustion, Directus token expiry, cache growth, etc.).
+ * connection pool exhaustion, session failures, cache growth, etc.).
  * Runs at a lower VU count but for much longer.
  *
  * Run:  k6 run k6/scenarios/soak-test.js

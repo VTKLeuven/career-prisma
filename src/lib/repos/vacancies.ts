@@ -12,10 +12,9 @@ import type {
 /**
  * The Directus implementation carried three workarounds that are gone here:
  *
- *  - The sectors junction FK name was configurable through
- *    DIRECTUS_VACANCY_SECTORS_JUNCTION_FK / _SECTOR_FKS because nobody was sure
- *    which column the junction used. It is vacancies_vacancy_sectors.
- *    vacancy_sectors_id; those env vars are no longer read.
+ *  - The sectors junction FK name was configurable because nobody was sure
+ *    which column the junction used. It is now fixed as
+ *    vacancies_vacancy_sectors.vacancy_sectors_id.
  *  - Company data was fetched in a second query and merged in, because Directus
  *    policies allowed a direct `company` read but forbade expanding
  *    `company.*` from `vacancies`. It is now a plain include.

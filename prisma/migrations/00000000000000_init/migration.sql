@@ -18,7 +18,7 @@ CREATE TABLE "attendant_scans" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "attendant_uuid" VARCHAR(255),
     "form_response_id" INTEGER,
-    "company_id" INTEGER,
+    "company_id" UUID,
     "scanned_by" UUID,
     "scanned_at" TIMESTAMPTZ(6),
     "liked" BOOLEAN NOT NULL DEFAULT false,
@@ -578,6 +578,7 @@ CREATE TABLE "students" (
     "verified" BOOLEAN,
     "password" VARCHAR(255),
     "password_reset_token" VARCHAR(255),
+    "password_reset_token_created" TIMESTAMP(6),
     "is_shifter" BOOLEAN DEFAULT false,
 
     CONSTRAINT "students_pkey" PRIMARY KEY ("id")
@@ -633,6 +634,9 @@ CREATE TABLE "users" (
     "tel" VARCHAR(255),
     "company_id" UUID,
     "password_reset_token" VARCHAR(255),
+    "password_reset_token_created" TIMESTAMPTZ(6),
+    "invite_token_hash" VARCHAR(64),
+    "invite_token_created" TIMESTAMPTZ(6),
 
     CONSTRAINT "directus_users_pkey" PRIMARY KEY ("id")
 );
@@ -741,6 +745,8 @@ ALTER TABLE "attendant_scans" ADD CONSTRAINT "attendant_scans_form_response_id_f
 
 -- AddForeignKey
 ALTER TABLE "attendant_scans" ADD CONSTRAINT "attendant_scans_scanned_by_foreign" FOREIGN KEY ("scanned_by") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+ALTER TABLE "attendant_scans" ADD CONSTRAINT "attendant_scans_company_id_foreign" FOREIGN KEY ("company_id") REFERENCES "companies"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "booths" ADD CONSTRAINT "booths_company_foreign" FOREIGN KEY ("company_id") REFERENCES "companies"("id") ON DELETE SET NULL ON UPDATE NO ACTION;

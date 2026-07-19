@@ -11,7 +11,7 @@ import type { Company, Master } from "@/lib/schema";
 import { fetchMastersAction } from "@/app/actions/features";
 import { updateCompanyAction, fetchCompanyByIdAction, uploadCompanyLogo } from "@/app/actions/companies";
 import { useUser } from "@/providers/UserProvider";
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import NextImage from "next/image";
 import { Textarea } from "@/components/ui/textarea";
 import { validatePageImageDimensions, validateExistingPageImage } from "@/lib/utils/image-validation";
@@ -134,8 +134,8 @@ export default function CompanyForm() {
             }
           }
           setSelectedMasters(categoryIds);
-          setLogoPreview(typeof fetchedCompany.logo === "string" ? getDirectusImageUrl(fetchedCompany.logo) ?? null : null);
-          const pageImageUrl = typeof fetchedCompany.page_image === "string" ? getDirectusImageUrl(fetchedCompany.page_image) ?? null : null;
+          setLogoPreview(typeof fetchedCompany.logo === "string" ? getFileUrl(fetchedCompany.logo) ?? null : null);
+          const pageImageUrl = typeof fetchedCompany.page_image === "string" ? getFileUrl(fetchedCompany.page_image) ?? null : null;
           setPageImagePreview(pageImageUrl);
           
           // Validate existing page image dimensions
@@ -471,11 +471,11 @@ export default function CompanyForm() {
         setSelectedMasters(persistedMasters);
         setLogoPreview(
           typeof updated.logo === "string"
-            ? getDirectusImageUrl(updated.logo) ?? null
+            ? getFileUrl(updated.logo) ?? null
             : null
         );
         const newPageImageUrl = typeof updated.page_image === "string"
-          ? getDirectusImageUrl(updated.page_image) ?? null
+          ? getFileUrl(updated.page_image) ?? null
           : null;
         setPageImagePreview(newPageImageUrl);
         
@@ -521,8 +521,8 @@ export default function CompanyForm() {
     if (!savedSnapshot) return;
     setCompany({ ...savedSnapshot.company });
     setSelectedMasters([...savedSnapshot.selectedMasters]);
-    setLogoPreview(typeof savedSnapshot.company.logo === "string" ? getDirectusImageUrl(savedSnapshot.company.logo) ?? null : null);
-    setPageImagePreview(typeof savedSnapshot.company.page_image === "string" ? getDirectusImageUrl(savedSnapshot.company.page_image) ?? null : null);
+    setLogoPreview(typeof savedSnapshot.company.logo === "string" ? getFileUrl(savedSnapshot.company.logo) ?? null : null);
+    setPageImagePreview(typeof savedSnapshot.company.page_image === "string" ? getFileUrl(savedSnapshot.company.page_image) ?? null : null);
     // Reset textarea values to saved HTML converted to text
     setShortDescriptionText(htmlToPlainText(savedSnapshot.company.short_description));
     setLongDescriptionText(htmlToPlainText(savedSnapshot.company.long_description));
@@ -587,7 +587,7 @@ export default function CompanyForm() {
                     />
                   ) : formCompany.logo ? (
                     <NextImage
-                      src={getDirectusImageUrl(formCompany.logo) ?? ""}
+                      src={getFileUrl(formCompany.logo) ?? ""}
                       alt="Company Logo"
                       width={320}
                       height={180}
@@ -660,7 +660,7 @@ export default function CompanyForm() {
                     />
                   ) : formCompany.page_image ? (
                     <NextImage
-                      src={getDirectusImageUrl(formCompany.page_image) ?? ""}
+                      src={getFileUrl(formCompany.page_image) ?? ""}
                       alt="Page Background"
                       width={320}
                       height={180}

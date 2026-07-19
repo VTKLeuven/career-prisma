@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import { MapPin, Building2 } from "lucide-react";
 import type { Vacancy, VacancyType, Master, Company } from "@/lib/schema";
 import {
@@ -35,7 +35,7 @@ export function VacancyCard({ vacancy }: VacancyCardProps) {
       .filter(Boolean) ?? [];
 
   const logoUrl = company?.logo
-    ? getDirectusImageUrl(company.logo, {
+    ? getFileUrl(company.logo, {
         width: 112,
         height: 112,
         fit: "inside",

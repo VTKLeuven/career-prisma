@@ -1,4 +1,4 @@
-import { sendEmail } from "@/lib/repos/directus";
+import { sendEmail } from "@/lib/email";
 import { getVacancyById } from "@/lib/repos/vacancies";
 import type { Company } from "@/lib/schema";
 

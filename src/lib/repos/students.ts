@@ -1,108 +1,48 @@
-// lib/repos/students.ts
-"use server"
+"use server";
 
-import { cookies } from "next/headers";
-import { Student } from "@/lib/schema";
+import { randomBytes, createHash } from "crypto";
+import type { Student } from "@/lib/schema";
+import prisma from "@/lib/prisma";
 
-const STUDENT_COLLECTION = "students";
+type StudentRow = Awaited<ReturnType<typeof prisma.student.findUnique>>;
 
-/**
- * Find student by email
- */
+function shapeStudent(row: NonNullable<StudentRow>): Student {
+  return {
+    ...row,
+    id: String(row.id),
+    full_name: row.full_name ?? undefined,
+    university_status: row.university_status ?? undefined,
+    university: row.university ?? undefined,
+    organization_status: row.organization_status ?? undefined,
+    in_workinggroup: row.in_workinggroup ?? undefined,
+    litus_access_token: row.litus_access_token ?? undefined,
+    litus_token_expires_at: row.litus_token_expires_at?.toISOString(),
+    password: row.password ?? undefined,
+    verified: row.verified ?? undefined,
+    verification_token_hash: row.verification_token_hash ?? undefined,
+    verification_token_created: row.verification_token_created?.toISOString(),
+    date_created: row.date_created?.toISOString(),
+    date_updated: row.date_updated?.toISOString(),
+    is_shifter: row.is_shifter ?? undefined,
+  };
+}
+
 export async function findStudentByEmail(email: string): Promise<Student | null> {
-  try {
-    const baseUrl = process.env.DIRECTUS_URL;
-    if (!baseUrl) {
-      console.error("[findStudentByEmail] DIRECTUS_URL not configured");
-      return null;
-    }
-
-    const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
-
-    // Use server token if available for data access
-    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-    const authToken = serverToken;
-
-    if (!authToken) {
-      console.error("[findStudentByEmail] DIRECTUS_SERVER_TOKEN not configured");
-      return null;
-    }
-
-    const res = await fetch(
-      `${normalizedBase}items/${STUDENT_COLLECTION}?filter[email][_eq]=${encodeURIComponent(email)}&fields=*,is_shifter&limit=1`,
-      {
-        headers: {
-          "Authorization": `Bearer ${authToken}`,
-        },
-      }
-    );
-
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => null);
-      console.error(`[findStudentByEmail] Failed to fetch student:`, res.status, errorData);
-      return null;
-    }
-
-    const json = await res.json();
-    const students = json.data || [];
-    
-    return students.length > 0 ? students[0] as Student : null;
-  } catch (err) {
-    console.error("[findStudentByEmail] Exception:", err);
-    return null;
-  }
+  const row = await prisma.student.findUnique({
+    where: { email: email.trim().toLowerCase() },
+  });
+  return row ? shapeStudent(row) : null;
 }
 
-/**
- * Find student by LITUS username
- */
-export async function findStudentByUsername(username: string): Promise<Student | null> {
-  try {
-    const baseUrl = process.env.DIRECTUS_URL;
-    if (!baseUrl) {
-      console.error("[findStudentByUsername] DIRECTUS_URL not configured");
-      return null;
-    }
-
-    const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
-
-    // Use server token if available for data access
-    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-    const authToken = serverToken;
-
-    if (!authToken) {
-      console.error("[findStudentByUsername] DIRECTUS_SERVER_TOKEN not configured");
-      return null;
-    }
-
-    const res = await fetch(
-      `${normalizedBase}items/${STUDENT_COLLECTION}?filter[username][_eq]=${encodeURIComponent(username)}&limit=1`,
-      {
-        headers: {
-          "Authorization": `Bearer ${authToken}`,
-        },
-      }
-    );
-
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => null);
-      console.error(`[findStudentByUsername] Failed to fetch student:`, res.status, errorData);
-      return null;
-    }
-
-    const json = await res.json();
-    const students = json.data || [];
-    
-    return students.length > 0 ? students[0] as Student : null;
-  } catch (err) {
-    console.error("[findStudentByUsername] Exception:", err);
-    return null;
-  }
+export async function findStudentByUsername(
+  username: string
+): Promise<Student | null> {
+  const row = await prisma.student.findUnique({
+    where: { username: username.trim() },
+  });
+  return row ? shapeStudent(row) : null;
 }
 
-/**
- * Create student from OAuth data
- */
 export async function createStudentFromOAuth(
   oauthData: {
     username: string;
@@ -113,375 +53,122 @@ export async function createStudentFromOAuth(
     organization_status?: string;
     in_workinggroup?: boolean;
   },
-  tokenData: {
-    access_token: string;
-    expires_in?: number;
-  }
+  tokenData: { access_token: string; expires_in?: number }
 ): Promise<Student | null> {
+  const nameParts = oauthData.full_name?.trim().split(/\s+/) || [];
   try {
-    const baseUrl = process.env.DIRECTUS_URL;
-    if (!baseUrl) {
-      console.error("[createStudentFromOAuth] DIRECTUS_URL not configured");
-      return null;
-    }
-
-    const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
-
-    // Use server token for student creation
-    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-    const authToken = serverToken;
-
-    if (!authToken) {
-      console.error("[createStudentFromOAuth] DIRECTUS_SERVER_TOKEN not configured");
-      return null;
-    }
-
-    // Parse full_name into first_name and last_name
-    const nameParts = oauthData.full_name?.trim().split(/\s+/) || [];
-    const first_name = nameParts.length > 0 ? nameParts[0] : null;
-    const last_name = nameParts.length > 1 ? nameParts.slice(1).join(" ") : null;
-
-    // Calculate token expiration
-    const expiresIn = tokenData.expires_in || 3600; // Default 1 hour
-    const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
-
-    const studentData = {
-      username: oauthData.username,
-      email: oauthData.email,
-      first_name,
-      last_name,
-      full_name: oauthData.full_name || null,
-      university_status: oauthData.university_status || null,
-      university: oauthData.university || "KU Leuven", // Default to KU Leuven for LITUS OAuth
-      organization_status: oauthData.organization_status || null,
-      in_workinggroup: oauthData.in_workinggroup ?? false,
-      litus_access_token: tokenData.access_token,
-      litus_token_expires_at: tokenExpiresAt,
-    };
-
-    const res = await fetch(`${normalizedBase}items/${STUDENT_COLLECTION}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${authToken}`,
+    const row = await prisma.student.create({
+      data: {
+        username: oauthData.username.trim(),
+        email: oauthData.email.trim().toLowerCase(),
+        first_name: nameParts[0] || null,
+        last_name: nameParts.length > 1 ? nameParts.slice(1).join(" ") : null,
+        full_name: oauthData.full_name || null,
+        university_status: oauthData.university_status || null,
+        university: oauthData.university || "KU Leuven",
+        organization_status: oauthData.organization_status || null,
+        in_workinggroup: oauthData.in_workinggroup ?? false,
+        litus_access_token: tokenData.access_token,
+        litus_token_expires_at: new Date(
+          Date.now() + (tokenData.expires_in || 3600) * 1000
+        ),
+        date_created: new Date(),
+        date_updated: new Date(),
+        verified: true,
       },
-      body: JSON.stringify(studentData),
     });
-
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => null);
-      const errorMessage = errorData?.errors?.[0]?.message || await res.text().catch(() => "Unknown error");
-      console.error(`[createStudentFromOAuth] Failed to create student:`, res.status, errorMessage);
-      return null;
-    }
-
-    const json = await res.json();
-    const student = json.data as Student;
-
-    console.log(`[createStudentFromOAuth] Successfully created student ${student.id} for ${oauthData.email}`);
-    return student;
-  } catch (err) {
-    console.error("[createStudentFromOAuth] Exception:", err);
+    return shapeStudent(row);
+  } catch (error) {
+    console.error("[createStudentFromOAuth] Failed:", error);
     return null;
   }
 }
 
-/**
- * Update student OAuth token
- */
 export async function updateStudentOAuthToken(
   studentId: string,
-  tokenData: {
-    access_token: string;
-    expires_in?: number;
-  }
+  tokenData: { access_token: string; expires_in?: number }
 ): Promise<Student | null> {
+  const id = Number(studentId);
+  if (!Number.isSafeInteger(id)) return null;
   try {
-    const baseUrl = process.env.DIRECTUS_URL;
-    if (!baseUrl) {
-      console.error("[updateStudentOAuthToken] DIRECTUS_URL not configured");
-      return null;
-    }
-
-    const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
-
-    // Use server token for updates
-    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-    const authToken = serverToken;
-
-    if (!authToken) {
-      console.error("[updateStudentOAuthToken] DIRECTUS_SERVER_TOKEN not configured");
-      return null;
-    }
-
-    // Calculate token expiration
-    const expiresIn = tokenData.expires_in || 3600; // Default 1 hour
-    const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
-
-    const res = await fetch(`${normalizedBase}items/${STUDENT_COLLECTION}/${studentId}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${authToken}`,
-      },
-      body: JSON.stringify({
+    const row = await prisma.student.update({
+      where: { id },
+      data: {
         litus_access_token: tokenData.access_token,
-        litus_token_expires_at: tokenExpiresAt,
-        date_updated: new Date().toISOString(),
-      }),
+        litus_token_expires_at: new Date(
+          Date.now() + (tokenData.expires_in || 3600) * 1000
+        ),
+        date_updated: new Date(),
+      },
     });
-
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => null);
-      console.error(`[updateStudentOAuthToken] Failed to update student:`, res.status, errorData);
-      return null;
-    }
-
-    const json = await res.json();
-    return json.data as Student;
-  } catch (err) {
-    console.error("[updateStudentOAuthToken] Exception:", err);
+    return shapeStudent(row);
+  } catch {
     return null;
   }
 }
 
-/**
- * Generate verification token for student
- */
 export async function generateStudentVerificationToken(
   studentId: string
 ): Promise<{ token: string; email: string } | null> {
-  try {
-    const baseUrl = process.env.DIRECTUS_URL;
-    if (!baseUrl) {
-      console.error("[generateStudentVerificationToken] DIRECTUS_URL not configured");
-      return null;
-    }
+  const id = Number(studentId);
+  if (!Number.isSafeInteger(id)) return null;
 
-    const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
-    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
+  const student = await prisma.student.findUnique({ where: { id } });
+  if (!student) return null;
 
-    if (!serverToken) {
-      console.error("[generateStudentVerificationToken] DIRECTUS_SERVER_TOKEN not configured");
-      return null;
-    }
+  const randomToken = randomBytes(32).toString("base64url");
+  await prisma.student.update({
+    where: { id },
+    data: {
+      verification_token_hash: createHash("sha256")
+        .update(randomToken)
+        .digest("hex"),
+      verification_token_created: new Date(),
+      verified: false,
+    },
+  });
 
-    // Fetch student to get email
-    const studentRes = await fetch(
-      `${normalizedBase}items/${STUDENT_COLLECTION}/${studentId}?fields=id,email`,
-      {
-        headers: {
-          "Authorization": `Bearer ${serverToken}`,
-        },
-      }
-    );
-
-    if (!studentRes.ok) {
-      console.error(`[generateStudentVerificationToken] Failed to fetch student ${studentId}`);
-      return null;
-    }
-
-    const studentData = await studentRes.json();
-    const student = studentData.data;
-
-    if (!student || !student.email) {
-      console.error(`[generateStudentVerificationToken] Student ${studentId} not found or missing email`);
-      return null;
-    }
-
-    // Generate secure random token
-    const crypto = await import("crypto");
-    const randomToken = crypto.randomBytes(32).toString("base64url");
-    const tokenHash = crypto
-      .createHash("sha256")
-      .update(randomToken)
-      .digest("hex");
-
-    // Create verification token: base64(studentId:randomToken)
-    const verificationToken = Buffer.from(`${student.id}:${randomToken}`).toString("base64url");
-
-    // Store token hash and creation time
-    // Try direct fields first (preferred), then fallback to metadata if that fails
-    try {
-      // First attempt: store as direct fields
-      const directFieldsRes = await fetch(
-        `${normalizedBase}items/${STUDENT_COLLECTION}/${student.id}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Authorization": `Bearer ${serverToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            verification_token_hash: tokenHash,
-            verification_token_created: new Date().toISOString(),
-            verified: false,
-          }),
-        }
-      );
-
-      if (directFieldsRes.ok) {
-        // Verify the fields were actually stored
-        const verifyRes = await fetch(
-          `${normalizedBase}items/${STUDENT_COLLECTION}/${student.id}?fields=verification_token_hash,verification_token_created`,
-          {
-            headers: {
-              "Authorization": `Bearer ${serverToken}`,
-            },
-          }
-        );
-        if (verifyRes.ok) {
-          const verifyData = await verifyRes.json();
-          const hasHash = !!verifyData.data?.verification_token_hash;
-          console.log(`[generateStudentVerificationToken] Successfully stored token hash as direct fields for student ${student.id}`);
-          console.log(`[generateStudentVerificationToken] Verification: hash present = ${hasHash}`);
-        } else {
-          console.warn(`[generateStudentVerificationToken] Update succeeded but could not verify - fields may not exist in schema`);
-        }
-      } else {
-        const errorData = await directFieldsRes.json().catch(() => null);
-        const errorMessage = errorData?.errors?.[0]?.message || await directFieldsRes.text().catch(() => "Unknown error");
-        console.warn(`[generateStudentVerificationToken] Failed to store as direct fields (${directFieldsRes.status}):`, errorMessage);
-        console.log(`[generateStudentVerificationToken] Attempting to store in metadata (fallback)`);
-        
-        // Fallback: try metadata
-        try {
-          // Get current metadata to merge with new values
-          const currentStudentRes = await fetch(
-            `${normalizedBase}items/${STUDENT_COLLECTION}/${student.id}?fields=metadata`,
-            {
-              headers: {
-                "Authorization": `Bearer ${serverToken}`,
-              },
-            }
-          );
-          
-          let currentMetadata = {};
-          if (currentStudentRes.ok) {
-            const currentData = await currentStudentRes.json();
-            currentMetadata = currentData.data?.metadata || {};
-          }
-          
-          // Merge with new token data
-          const updatedMetadata = {
-            ...currentMetadata,
-            verification_token_hash: tokenHash,
-            verification_token_created: new Date().toISOString(),
-          };
-          
-          const metadataRes = await fetch(
-            `${normalizedBase}items/${STUDENT_COLLECTION}/${student.id}`,
-            {
-              method: "PATCH",
-              headers: {
-                "Authorization": `Bearer ${serverToken}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                metadata: updatedMetadata,
-              }),
-            }
-          );
-          
-          if (metadataRes.ok) {
-            console.log(`[generateStudentVerificationToken] Successfully stored token hash in metadata for student ${student.id}`);
-          } else {
-            const metadataError = await metadataRes.json().catch(() => null);
-            console.error(`[generateStudentVerificationToken] Metadata storage also failed:`, metadataError);
-          }
-        } catch (metadataErr) {
-          console.error(`[generateStudentVerificationToken] Metadata storage exception:`, metadataErr);
-        }
-      }
-    } catch (err) {
-      console.error(`[generateStudentVerificationToken] Exception storing token:`, err);
-    }
-
-    console.log(`[generateStudentVerificationToken] Successfully generated verification token for student ${studentId}`);
-    return {
-      token: verificationToken,
-      email: student.email,
-    };
-  } catch (err) {
-    console.error("[generateStudentVerificationToken] Exception:", err);
-    return null;
-  }
+  return {
+    token: Buffer.from(`${id}:${randomToken}`).toString("base64url"),
+    email: student.email,
+  };
 }
 
-/**
- * Create student without OAuth (for manual registration)
- */
-export async function createNonOAuthStudent(
-  studentData: {
-    username: string;
-    first_name: string;
-    last_name: string;
-    full_name?: string;
-    email: string;
-    university_status?: string | null;
-    university?: string | null;
-    in_workinggroup?: boolean;
-  }
-): Promise<Student | null> {
+export async function createNonOAuthStudent(studentData: {
+  username: string;
+  first_name: string;
+  last_name: string;
+  full_name?: string;
+  email: string;
+  university_status?: string | null;
+  university?: string | null;
+  in_workinggroup?: boolean;
+}): Promise<Student | null> {
   try {
-    const baseUrl = process.env.DIRECTUS_URL;
-    if (!baseUrl) {
-      console.error("[createNonOAuthStudent] DIRECTUS_URL not configured");
-      return null;
-    }
-
-    const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
-
-    // Use server token for student creation
-    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-    const authToken = serverToken;
-
-    if (!authToken) {
-      console.error("[createNonOAuthStudent] DIRECTUS_SERVER_TOKEN not configured");
-      return null;
-    }
-
-    const payload = {
-      username: studentData.username,
-      email: studentData.email,
-      first_name: studentData.first_name,
-      last_name: studentData.last_name,
-      full_name: studentData.full_name || `${studentData.first_name} ${studentData.last_name}`,
-      university_status: studentData.university_status || null,
-      university: studentData.university || null,
-      in_workinggroup: studentData.in_workinggroup ?? false,
-    };
-
-    const res = await fetch(`${normalizedBase}items/${STUDENT_COLLECTION}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${authToken}`,
+    const row = await prisma.student.create({
+      data: {
+        username: studentData.username.trim(),
+        email: studentData.email.trim().toLowerCase(),
+        first_name: studentData.first_name,
+        last_name: studentData.last_name,
+        full_name:
+          studentData.full_name ||
+          `${studentData.first_name} ${studentData.last_name}`,
+        university_status: studentData.university_status || null,
+        university: studentData.university || null,
+        in_workinggroup: studentData.in_workinggroup ?? false,
+        verified: false,
+        date_created: new Date(),
+        date_updated: new Date(),
       },
-      body: JSON.stringify(payload),
     });
-
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => null);
-      const errorMessage = errorData?.errors?.[0]?.message || await res.text().catch(() => "Unknown error");
-      console.error(`[createNonOAuthStudent] Failed to create student:`, res.status, errorMessage);
-      return null;
-    }
-
-    const json = await res.json();
-    const student = json.data as Student;
-
-    console.log(`[createNonOAuthStudent] Successfully created student ${student.id} for ${studentData.email}`);
-    return student;
-  } catch (err) {
-    console.error("[createNonOAuthStudent] Exception:", err);
+    return shapeStudent(row);
+  } catch (error) {
+    console.error("[createNonOAuthStudent] Failed:", error);
     return null;
   }
 }
 
-/**
- * Update student OAuth data (for refreshing user info)
- */
 export async function updateStudentOAuthData(
   studentId: string,
   oauthData: {
@@ -493,68 +180,34 @@ export async function updateStudentOAuthData(
     in_workinggroup?: boolean;
   }
 ): Promise<Student | null> {
+  const id = Number(studentId);
+  if (!Number.isSafeInteger(id)) return null;
+
+  const data: Record<string, unknown> = { date_updated: new Date() };
+  if (oauthData.full_name) {
+    const nameParts = oauthData.full_name.trim().split(/\s+/);
+    data.first_name = nameParts[0] || null;
+    data.last_name =
+      nameParts.length > 1 ? nameParts.slice(1).join(" ") : null;
+    data.full_name = oauthData.full_name;
+  }
+  if (oauthData.email) data.email = oauthData.email.trim().toLowerCase();
+  if (oauthData.university_status !== undefined)
+    data.university_status = oauthData.university_status;
+  data.university = oauthData.university ?? "KU Leuven";
+  if (oauthData.organization_status !== undefined)
+    data.organization_status = oauthData.organization_status;
+  if (oauthData.in_workinggroup !== undefined)
+    data.in_workinggroup = oauthData.in_workinggroup;
+
   try {
-    const baseUrl = process.env.DIRECTUS_URL;
-    if (!baseUrl) {
-      console.error("[updateStudentOAuthData] DIRECTUS_URL not configured");
-      return null;
-    }
-
-    const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
-
-    // Use server token for updates
-    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-    const authToken = serverToken;
-
-    if (!authToken) {
-      console.error("[updateStudentOAuthData] DIRECTUS_SERVER_TOKEN not configured");
-      return null;
-    }
-
-    // Parse full_name into first_name and last_name if provided
-    const updates: Record<string, unknown> = {
-      date_updated: new Date().toISOString(),
-    };
-
-    if (oauthData.full_name) {
-      const nameParts = oauthData.full_name.trim().split(/\s+/);
-      updates.first_name = nameParts.length > 0 ? nameParts[0] : null;
-      updates.last_name = nameParts.length > 1 ? nameParts.slice(1).join(" ") : null;
-      updates.full_name = oauthData.full_name;
-    }
-
-    if (oauthData.email) updates.email = oauthData.email;
-    if (oauthData.university_status !== undefined) updates.university_status = oauthData.university_status;
-    // Always set university to KU Leuven for OAuth students (or use provided value)
-    if (oauthData.university !== undefined) {
-      updates.university = oauthData.university;
-    } else {
-      // If not provided, default to KU Leuven for LITUS OAuth
-      updates.university = "KU Leuven";
-    }
-    if (oauthData.organization_status !== undefined) updates.organization_status = oauthData.organization_status;
-    if (oauthData.in_workinggroup !== undefined) updates.in_workinggroup = oauthData.in_workinggroup;
-
-    const res = await fetch(`${normalizedBase}items/${STUDENT_COLLECTION}/${studentId}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${authToken}`,
-      },
-      body: JSON.stringify(updates),
+    const row = await prisma.student.update({
+      where: { id },
+      data,
     });
-
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => null);
-      console.error(`[updateStudentOAuthData] Failed to update student:`, res.status, errorData);
-      return null;
-    }
-
-    const json = await res.json();
-    return json.data as Student;
-  } catch (err) {
-    console.error("[updateStudentOAuthData] Exception:", err);
+    return shapeStudent(row);
+  } catch (error) {
+    console.error("[updateStudentOAuthData] Failed:", error);
     return null;
   }
 }
-

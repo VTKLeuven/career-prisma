@@ -1,8 +1,8 @@
-/** Shown when Directus rejects a stale token or when we normalize token errors for the user. */
+/** Shown when a stale application session interrupts form submission. */
 export const FORM_SUBMIT_SESSION_TIMEOUT_MESSAGE =
   "Your session timed out. Your answers are still here—please try submitting again.";
 
-export function isDirectusTokenExpiredError(error: unknown): boolean {
+export function isSessionTokenExpiredError(error: unknown): boolean {
   if (error == null) return false;
   if (typeof error === "object") {
     const e = error as Record<string, unknown>;
@@ -27,9 +27,9 @@ export function isDirectusTokenExpiredError(error: unknown): boolean {
   return false;
 }
 
-/** Maps server-action / SDK errors to short, user-safe copy (keeps form state on the client). */
+/** Maps server-action errors to short, user-safe copy (keeps form state on the client). */
 export function userFacingFormSubmitErrorMessage(error: unknown): string {
-  if (isDirectusTokenExpiredError(error)) {
+  if (isSessionTokenExpiredError(error)) {
     return FORM_SUBMIT_SESSION_TIMEOUT_MESSAGE;
   }
   if (error instanceof Error && error.message) {

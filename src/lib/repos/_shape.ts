@@ -220,7 +220,7 @@ export function shapeEventPage(row: Nullable<CompanyRow>): any {
 
   return {
     ...rest,
-    // Consumers pass these straight to getDirectusImageUrl / check for a string.
+    // Consumers pass these straight to getFileUrl / check for a string.
     image: image_id ?? null,
     timetable: junction(careerEventPageTimetables, "timetable_id", (r: any) =>
       r.timetable

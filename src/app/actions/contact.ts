@@ -1,6 +1,6 @@
 "use server";
 
-import { sendEmail } from "@/lib/repos/directus";
+import { sendEmail } from "@/lib/email";
 
 export async function submitContactFormAction(data: {
   name: string;

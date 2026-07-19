@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Image from 'next/image'
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import { fetchCompanyByIdAction } from "@/app/actions/companies";
 import { fetchEventsAction } from "@/app/actions/events";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -475,7 +475,7 @@ function EventCard({ event, i }: { event: CareerEvent; i: number }) {
           <div className="aspect-[4/3]">
             {event.image && (
               <Image
-                src={getDirectusImageUrl(event.image)!}
+                src={getFileUrl(event.image)!}
                 alt={event.name}
                 fill
                 className="object-cover transition-transform duration-300 group-hover:scale-105"

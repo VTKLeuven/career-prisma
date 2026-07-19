@@ -15,7 +15,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useParams } from "next/navigation"
 import { fetchEventPageBySlugAction, fetchEventsAction } from "@/app/actions/events"
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import { slugifyCompanyName, slugifyEventName, getSpeakerSlug } from "@/lib/utils/slugify";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
 import { CompanyLikeButton } from "@/components/CompanyLikeButton";
@@ -1106,7 +1106,7 @@ function Hero({
     offset: ["start end", "end start"],
   })
   const y = useTransform(scrollYProgress, [0, 1], ["-8%", "8%"])
-  const imageUrl = page?.image ? getDirectusImageUrl(page.image) : null
+  const imageUrl = page?.image ? getFileUrl(page.image) : null
 
   const handleRegisterClick = (e: React.MouseEvent<HTMLElement, MouseEvent>) => {
     if (!page?.registration_link) {
@@ -1201,7 +1201,7 @@ function Hero({
             <div className="md:hidden absolute inset-0 overflow-hidden">
               <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[200vw] h-full">
                 <Image
-                  src="https://directustest.vtk.be/assets/1be725c7-bc66-47ba-b956-e7ae59978983.jpg"
+                  src="/api/files/1be725c7-bc66-47ba-b956-e7ae59978983"
                   alt="VTK Career events crowd"
                   fill
                   priority
@@ -1216,7 +1216,7 @@ function Hero({
             {/* Desktop: Normal display */}
             <div className="hidden md:block absolute inset-0">
               <Image
-                src="https://directustest.vtk.be/assets/1be725c7-bc66-47ba-b956-e7ae59978983.jpg"
+                src="/api/files/1be725c7-bc66-47ba-b956-e7ae59978983"
                 alt="VTK Career events crowd"
                 fill
                 priority
@@ -1324,7 +1324,7 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
   const scrollPositionRef = useRef<number>(0)
 
   // Companies with logos (grid order) for arrow navigation
-  const companiesWithLogos = companies.filter((c) => c.logo && getDirectusImageUrl(c.logo))
+  const companiesWithLogos = companies.filter((c) => c.logo && getFileUrl(c.logo))
 
   // Restore scroll position when returning to grid
   useEffect(() => {
@@ -1455,7 +1455,7 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
         className={`grid gap-3 ${gridCols}`}
       >
         {companies.map((company, i) => {
-          const logoUrl = company.logo ? getDirectusImageUrl(company.logo) : undefined
+          const logoUrl = company.logo ? getFileUrl(company.logo) : undefined
           if (!logoUrl) return null
           return (
             <motion.div
@@ -1783,11 +1783,11 @@ const KU_LEUVEN_LOGO_ID = "d93c21e6-1145-4d4e-96d2-7e8daa640b9f"
 // ---------------- SpeakerCard ----------------
 function SpeakerCard({ speaker, eventSlug, allSpeakers }: { speaker: Speaker; eventSlug: string; allSpeakers: Speaker[] }) {
   const rep = speaker.representative
-  const avatarUrl = rep?.avatar ? getDirectusImageUrl(rep.avatar) : undefined
+  const avatarUrl = rep?.avatar ? getFileUrl(rep.avatar) : undefined
   const company = rep?.company
   // PhD fallback: no company → assume KU Leuven
   const displayCompany = company ?? { name: "KU Leuven", logo: KU_LEUVEN_LOGO_ID }
-  const companyLogoUrl = displayCompany.logo ? getDirectusImageUrl(displayCompany.logo) : undefined
+  const companyLogoUrl = displayCompany.logo ? getFileUrl(displayCompany.logo) : undefined
   const startHour = speaker.time?.start_time
   const endHour = speaker.time?.end_time
   const timeLabel = startHour && endHour ? `${startHour} - ${endHour}` : startHour ?? endHour ?? null
@@ -1850,7 +1850,7 @@ function SpeakerCardMulti({ speakers, eventSlug, allSpeakers }: { speakers: Spea
       <div className="relative aspect-square w-full flex">
         {speakers.map((speaker) => {
           const rep = speaker.representative
-          const avatarUrl = rep?.avatar ? getDirectusImageUrl(rep.avatar) : undefined
+          const avatarUrl = rep?.avatar ? getFileUrl(rep.avatar) : undefined
           return (
             <Link
               key={speaker.id}
@@ -1884,7 +1884,7 @@ function SpeakerCardMulti({ speakers, eventSlug, allSpeakers }: { speakers: Spea
           const rep = speaker.representative
           const company = rep?.company
           const displayCompany = company ?? { name: "KU Leuven", logo: KU_LEUVEN_LOGO_ID }
-          const companyLogoUrl = displayCompany.logo ? getDirectusImageUrl(displayCompany.logo) : undefined
+          const companyLogoUrl = displayCompany.logo ? getFileUrl(displayCompany.logo) : undefined
           return (
             <Link
               key={speaker.id}

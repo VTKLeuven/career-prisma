@@ -55,7 +55,7 @@ import {
 } from "lucide-react";
 import type { Form, FormVersion, FormField, FormSchema } from "@/lib/schema";
 import Link from "next/link";
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import NextImage from "next/image";
 
 type FieldType = "text" | "textarea" | "email" | "number" | "select" | "checkbox" | "radio" | "file" | "date" | "date-range" | "time" | "linkedin" | "master-degrees";
@@ -358,7 +358,7 @@ export default function FormBuilderPage() {
                         <div key={`row-${rowIndex}`} className="grid grid-cols-1 md:grid-cols-12 gap-4">
                           {row.map((field) => {
                             const layout = field.layout || 'full';
-                            const imageUrl = field.image ? getDirectusImageUrl(field.image) : null;
+                            const imageUrl = field.image ? getFileUrl(field.image) : null;
                             return (
                               <div key={field.id} className={`space-y-2 ${getColSpanClass(layout)}`}>
                                 <Label>
@@ -436,7 +436,7 @@ function FieldEditor({
   // Load image preview when field.image changes
   useEffect(() => {
     if (field.image) {
-      const imageUrl = getDirectusImageUrl(field.image);
+      const imageUrl = getFileUrl(field.image);
       setImagePreview(imageUrl || null);
     } else {
       setImagePreview(null);
@@ -625,7 +625,7 @@ function FieldEditor({
             {field.type === "master-degrees" && (
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">
-                  Master degrees are loaded from Directus. Options come from the master and faculty collections.
+                  Options come from the configured master and faculty records.
                 </p>
                 <div className="flex flex-wrap gap-4">
                   <div className="flex items-center space-x-2">
@@ -1039,4 +1039,3 @@ function SaveVersionDialog({
     </Dialog>
   );
 }
-

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromCookies } from "@/lib/auth-server";
-import { getServerDirectusClient } from "@/lib/directus";
-import { readItems } from "@directus/sdk";
 import archiver from "archiver";
 import type { FormVersion, FormResponse } from "@/lib/schema";
+import prisma from "@/lib/prisma";
+import { getStoredFile } from "@/lib/file-storage";
+import { readFile } from "fs/promises";
 
 /** Map content-type to file extension for naming */
 function getExtensionFromContentType(contentType: string | null): string {
@@ -144,22 +145,15 @@ export async function GET(
       );
     }
 
-    const client = await getServerDirectusClient();
-    if (!client) {
-      return NextResponse.json(
-        { error: "Failed to connect to database" },
-        { status: 500 }
-      );
-    }
-
-    // Fetch all versions for this form
-    const versions = (await client.request(
-      readItems("form_versions" as any, {
-        fields: ["id", "schema"],
-        filter: { form_id: { _eq: formId } },
-        sort: "-version_number",
-      })
-    )) as unknown as FormVersion[];
+    const versionRows = await prisma.formVersion.findMany({
+      where: { form_id: Number(formId) },
+      select: { id: true, schema: true },
+      orderBy: { version_number: "desc" },
+    });
+    const versions = versionRows.map((version) => ({
+      ...version,
+      id: String(version.id),
+    })) as unknown as FormVersion[];
 
     if (versions.length === 0) {
       return NextResponse.json(
@@ -171,14 +165,18 @@ export async function GET(
     const versionIds = versions.map((v) => v.id);
 
     // Fetch all responses for all versions (exclude archived)
-    const NOT_ARCHIVED = { _or: [{ archived: { _null: true } }, { archived: { _eq: false } }] };
-    const responses = (await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id", "data", "form_version_id"],
-        filter: { _and: [{ form_version_id: { _in: versionIds } }, NOT_ARCHIVED] },
-        limit: -1,
-      })
-    )) as unknown as FormResponse[];
+    const responseRows = await prisma.formResponse.findMany({
+      where: {
+        form_version_id: { in: versionIds.map(Number) },
+        archived: { not: true },
+      },
+      select: { id: true, data: true, form_version_id: true },
+    });
+    const responses = responseRows.map((response) => ({
+      ...response,
+      id: String(response.id),
+      form_version_id: String(response.form_version_id),
+    })) as unknown as FormResponse[];
 
     const fileIds = collectFileIds(responses, versions);
 
@@ -186,18 +184,6 @@ export async function GET(
       return NextResponse.json(
         { error: "No files found in form responses" },
         { status: 404 }
-      );
-    }
-
-    const directusUrl = (
-      process.env.NEXT_PUBLIC_DIRECTUS_URL || process.env.DIRECTUS_URL
-    )?.replace(/\/$/, "");
-    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-
-    if (!directusUrl) {
-      return NextResponse.json(
-        { error: "Directus URL not configured" },
-        { status: 500 }
       );
     }
 
@@ -219,22 +205,10 @@ export async function GET(
       seenIds.add(fileId);
 
       try {
-        const assetUrl = `${directusUrl}/assets/${fileId}`;
-        const headers: Record<string, string> = {};
-        if (serverToken) {
-          headers["Authorization"] = `Bearer ${serverToken}`;
-        }
-
-        const res = await fetch(assetUrl, { headers });
-        if (!res.ok) {
-          console.warn(`[download-all-files] Failed to fetch file ${fileId}: ${res.status}`);
-          continue;
-        }
-
-        const blob = await res.blob();
-        const buffer = Buffer.from(await blob.arrayBuffer());
-        const contentType = res.headers.get("content-type");
-        const ext = getExtensionFromContentType(contentType);
+        const stored = await getStoredFile(fileId);
+        if (!stored) continue;
+        const buffer = await readFile(stored.filePath);
+        const ext = getExtensionFromContentType(stored.metadata.type);
         const filename = `${fileId}${ext}`;
 
         archive.append(buffer, { name: filename });
@@ -249,14 +223,11 @@ export async function GET(
     const zipBuffer = Buffer.concat(chunks);
 
     // Get form slug for download filename
-    const form = await client.request(
-      readItems("forms" as any, {
-        fields: ["slug"],
-        filter: { id: { _eq: formId } },
-        limit: 1,
-      })
-    ) as unknown as Array<{ slug?: string }>;
-    const slug = form?.[0]?.slug ?? formId;
+    const form = await prisma.form.findUnique({
+      where: { id: Number(formId) },
+      select: { slug: true },
+    });
+    const slug = form?.slug ?? formId;
 
     return new NextResponse(zipBuffer, {
       status: 200,

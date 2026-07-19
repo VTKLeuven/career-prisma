@@ -1,15 +1,16 @@
 // app/actions/companies.ts
 "use server";
 import { listCompanies, getCompanyById, createCompany, updateCompany, getCompaniesForEvent } from "@/lib/repos/company";
-import { createRep, updateRep, waitForApproval, deleteUser, fetchPendingApprovalRequests, type PendingApprovalRequest } from "@/lib/repos/users";
-import { Company, CompanyRep, CareerEventOption } from "@/lib/schema";
-import { uploadDirectusFile, sendEmail } from "@/lib/repos/directus";
-import { getUserFromCookies } from "@/lib/auth-server";
-import { cookies } from "next/headers";
+import { createRep, updateRep, waitForApproval, deleteUser, fetchPendingApprovalRequests, fetchSalespersonByID, type PendingApprovalRequest } from "@/lib/repos/users";
+import { Company, CompanyRep, CareerEventOption, type UserSummary } from "@/lib/schema";
+import { sendEmail } from "@/lib/email";
+import { uploadFile } from "@/lib/file-storage";
+import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
 import { fetchMastersAction } from "@/app/actions/features";
 import { generateCompanyPageRequestEmailHtml, generateCVBookRequestEmailHtml } from "@/lib/email-templates";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
-import { DirectusUser } from "@directus/sdk";
+import prisma from "@/lib/prisma";
+type AppUser = UserSummary;
 
 
 
@@ -213,35 +214,10 @@ export async function fetchCompanyOptionsDebugAction(companyId: string): Promise
     if (!company) return { options: null, error: "Company not found" };
     const ids = extractSubOptionIdsFromCompany(company);
     const byIds = ids.length > 0 ? await getCareerSubOptionsByIds(ids) : [];
-    const junctionDiscovery: Record<string, unknown> = {};
-    if (ids.length > 0 && byIds.length === 0) {
-      const { getServerDirectusClient } = await import("@/lib/directus");
-      const directusUrl = process.env.DIRECTUS_URL || "http://localhost:8055";
-      const client = await getServerDirectusClient();
-      try {
-        const collRes = await fetch(`${directusUrl.replace(/\/$/, "")}/collections?limit=-1`, {
-          headers: { "Content-Type": "application/json", ...(process.env.DIRECTUS_SERVER_TOKEN ? { Authorization: `Bearer ${process.env.DIRECTUS_SERVER_TOKEN}` } : {}) },
-        });
-        const collData = (await collRes.json()) as { data?: Array<{ collection: string }> };
-        const allCollections = (collData?.data ?? []).map((c) => c.collection).filter(Boolean);
-        const junctionCandidates = allCollections.filter(
-          (c) => c.includes("sub_option") || (c.includes("career_event_option") && c.includes("career_sub"))
-        );
-        junctionDiscovery["_collectionsContainingSubOption"] = junctionCandidates;
-        const toTry = ["career_event_option_sub_options", "career_event_option_career_sub_option", ...junctionCandidates];
-        for (const jn of toTry) {
-          if (junctionDiscovery[jn] !== undefined) continue;
-          try {
-            const r = await client.request((await import("@directus/sdk")).readItem(jn as any, ids[0], { fields: ["*"] })) as unknown;
-            junctionDiscovery[jn] = r;
-          } catch (e) {
-            junctionDiscovery[jn] = (e as Error).message;
-          }
-        }
-      } catch (e) {
-        junctionDiscovery["_error"] = (e as Error).message;
-      }
-    }
+    const junctionDiscovery: Record<string, unknown> =
+      ids.length > 0 && byIds.length === 0
+        ? { error: "No matching career sub-options found in Prisma" }
+        : {};
     return { options: company.options ?? [], allSubOptions: allSubOptions ?? [], junctionDiscovery: Object.keys(junctionDiscovery).length ? junctionDiscovery : undefined };
   } catch (e) {
     return { options: null, error: String(e) };
@@ -376,6 +352,7 @@ export async function fetchSpeakersForCompanyAction(companyId: string) {
 }
 
 export async function createCompanyAction(companyPayload: Partial<Company>, repPayload?: Partial<CompanyRep>) {
+  await requireAdminUser();
 
   if (repPayload && (repPayload.email || repPayload.first_name || repPayload.last_name)) {
     let newRep: any;
@@ -408,14 +385,15 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
     };
 
     const createdCompany = await createCompany(payload as Partial<Company>);
+    await prisma.user.update({
+      where: { id: repIdForCompany },
+      data: { company_id: createdCompany.id },
+    });
 
     // Send invitation email to the representative
     if (repPayload.email && newRep?.id) {
       try {
         console.log(`[createCompanyAction] Generating invite token for user ${newRep.id} (${repPayload.email})`);
-
-        // Small delay to ensure user is fully created in Directus
-        await new Promise(resolve => setTimeout(resolve, 500));
 
         // Generate secure invite token
         const { generateInviteToken } = await import("@/lib/repos/users");
@@ -427,12 +405,12 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
           // Build accept invite URL with token
           const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL
             || process.env.NEXT_PUBLIC_FORM_DOMAIN
-            || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
+            || "http://localhost:3000";
 
           const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(tokenData.token)}`;
 
           // Send custom invitation email using our SMTP setup
-          const { sendEmail } = await import("@/lib/repos/directus");
+          const { sendEmail } = await import("@/lib/email");
           const { generateInvitationEmailHtml } = await import("@/lib/email-templates");
 
           const emailHtml = generateInvitationEmailHtml({
@@ -467,6 +445,7 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
 }
 
 export async function createCompanyRepAction(companyId: string, repPayload: Partial<CompanyRep>) {
+  await requireAdminUser();
   if (!repPayload) return null;
   let newRep: any;
   try {
@@ -479,6 +458,7 @@ export async function createCompanyRepAction(companyId: string, repPayload: Part
   await updateRep(newRep.id, {
     first_name: repPayload.first_name,
     last_name: repPayload.last_name,
+    company: { id: companyId } as Company,
   });
 
   const company = await fetchCompanyByIdAction(companyId);
@@ -507,9 +487,6 @@ export async function createCompanyRepAction(companyId: string, repPayload: Part
     try {
       console.log(`[createCompanyRepAction] Generating invite token for user ${newRep.id} (${repPayload.email})`);
 
-      // Small delay to ensure user is fully created in Directus
-      await new Promise(resolve => setTimeout(resolve, 500));
-
       // Generate secure invite token
       const { generateInviteToken } = await import("@/lib/repos/users");
       const tokenData = await generateInviteToken(newRep.id);
@@ -520,12 +497,12 @@ export async function createCompanyRepAction(companyId: string, repPayload: Part
         // Build accept invite URL with token
         const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL
           || process.env.NEXT_PUBLIC_FORM_DOMAIN
-          || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
+          || "http://localhost:3000";
 
         const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(tokenData.token)}`;
 
         // Send custom invitation email using our SMTP setup
-        const { sendEmail } = await import("@/lib/repos/directus");
+        const { sendEmail } = await import("@/lib/email");
         const { generateInvitationEmailHtml } = await import("@/lib/email-templates");
 
         const emailHtml = generateInvitationEmailHtml({
@@ -559,6 +536,10 @@ export async function createCompanyRepAction(companyId: string, repPayload: Part
 
 export async function requestRepAction(repPayload: Partial<CompanyRep>) {
   if (!repPayload) throw new Error("No rep payload");
+  const currentUser = await getUserFromCookies();
+  if (!currentUser?.company || currentUser.company.id !== repPayload.company?.id) {
+    throw new Error("Unauthorized");
+  }
 
   const salespersonId = typeof repPayload?.company?.salesperson === "string"
     ? repPayload.company.salesperson
@@ -582,31 +563,8 @@ export async function requestRepAction(repPayload: Partial<CompanyRep>) {
   const approved = await waitForApproval(salespersonId, repPayload);
 
   if (!approved) {
-    console.log("Rep request was rejected or expired");
-    return { status: "rejected" };
+    return { status: "pending" };
   }
-
-  // 2️⃣ Once approved, check if user was already created by approveRepRequestAction
-  // If not, create it. This handles the case where approval happens via the admin UI
-  // and createUserFromApprovedRequest already created the user.
-  const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? 'directus'}_access`;
-  const cookieStore = await cookies();
-  const token = cookieStore.get(ACCESS_COOKIE)?.value;
-
-  if (!token) {
-    throw new Error("No token available");
-  }
-
-  const baseUrl = process.env.DIRECTUS_URL;
-  if (!baseUrl) {
-    throw new Error("DIRECTUS_URL not configured");
-  }
-
-  const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
-
-  // Use server token if available for user operations (more reliable permissions)
-  const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-  const authToken = serverToken || token;
 
   // Fetch company details (needed for email and adding to representatives)
   const company = await fetchCompanyByIdAction(repPayload.company.id);
@@ -615,27 +573,10 @@ export async function requestRepAction(repPayload: Partial<CompanyRep>) {
   }
 
   // Check if user already exists (might have been created by approveRepRequestAction)
-  const checkUserRes = await fetch(
-    `${normalizedBase}users?filter[email][_eq]=${encodeURIComponent(repPayload.email)}&fields=id`,
-    {
-      headers: {
-        "Authorization": `Bearer ${authToken}`,
-      },
-    }
-  );
-
-  let userId: string | undefined;
-
-  if (checkUserRes.ok) {
-    const userData = await checkUserRes.json();
-    const existingUser = userData.data?.[0];
-
-    if (existingUser) {
-      // User already exists (created by approveRepRequestAction)
-      userId = existingUser.id;
-      console.log(`[requestRepAction] User already exists: ${userId} (${repPayload.email})`);
-    }
-  }
+  const existingUser = await prisma.user.findUnique({
+    where: { email: repPayload.email.trim().toLowerCase() },
+  });
+  let userId: string | undefined = existingUser?.id;
 
   // If user doesn't exist, create it (fallback for cases where approval happened but user wasn't created)
   if (!userId) {
@@ -663,9 +604,6 @@ export async function requestRepAction(repPayload: Partial<CompanyRep>) {
       try {
         console.log(`[requestRepAction] Generating invite token for user ${newRep.id} (${repPayload.email})`);
 
-        // Small delay to ensure user is fully created in Directus
-        await new Promise(resolve => setTimeout(resolve, 500));
-
         // Generate secure invite token
         const { generateInviteToken } = await import("@/lib/repos/users");
         const tokenData = await generateInviteToken(newRep.id);
@@ -676,12 +614,12 @@ export async function requestRepAction(repPayload: Partial<CompanyRep>) {
           // Build accept invite URL with token
           const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL
             || process.env.NEXT_PUBLIC_FORM_DOMAIN
-            || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
+            || "http://localhost:3000";
 
           const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(tokenData.token)}`;
 
           // Send custom invitation email using our SMTP setup
-          const { sendEmail } = await import("@/lib/repos/directus");
+          const { sendEmail } = await import("@/lib/email");
           const { generateInvitationEmailHtml } = await import("@/lib/email-templates");
 
           const emailHtml = generateInvitationEmailHtml({
@@ -733,6 +671,10 @@ export async function updateCompanyAction(
   id: string,
   payload: Partial<Company>
 ): Promise<Company | null> {
+  const user = await getUserFromCookies();
+  if (!user?.admin && user?.company?.id !== id) {
+    throw new Error("Unauthorized");
+  }
   const res = await updateCompany(id, payload);
   return res as Company | null;
 }
@@ -743,6 +685,10 @@ export async function setupCompanyAction(
   selectedMasters: string[]
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const user = await getUserFromCookies();
+    if (!user?.admin && user?.company?.id !== companyId) {
+      return { success: false, error: "Unauthorized" };
+    }
     // Fetch masters to get full master objects
     const masters = await fetchMastersAction();
 
@@ -775,10 +721,13 @@ export async function setupCompanyAction(
 }
 
 export async function uploadCompanyLogo(file: File) {
-  return await uploadDirectusFile(file);
+  const user = await getUserFromCookies();
+  if (!user) throw new Error("Unauthorized");
+  return await uploadFile(file, user.id);
 }
 
 export async function addOptionToCompanyAction(companyId: string, optionId: string, subOptionIds?: string[]) {
+  await requireAdminUser();
   const company = await fetchCompanyByIdAction(companyId);
 
   if (!company) return null;
@@ -846,102 +795,43 @@ function buildOptionJunctions(company: Company): Array<{ id?: string | number; c
 
 /** Add sub-option via company_career_sub_option junction (company.sub_options M2M) */
 async function addSubOptionViaJunction(companyId: string, subOptionId: string): Promise<boolean> {
-  const baseUrl = (process.env.DIRECTUS_URL || "http://localhost:8055").replace(/\/$/, "");
-  const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-  const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
-  const cookieStore = await cookies();
-  const userToken = cookieStore.get(ACCESS_COOKIE)?.value;
-  const token = serverToken || userToken;
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  if (!token) console.warn("[addSubOptionViaJunction] No auth token (server or user)");
-
-  const junctionName = "company_career_sub_option";
-  const fkVariants = [
-    { company: "company_id", sub: "career_sub_option_id" },
-    { company: "company", sub: "career_sub_option" },
-    { company: "company_id", sub: "career_sub_option" },
-  ];
-
-  for (const fk of fkVariants) {
-    try {
-      const body = JSON.stringify({ [fk.company]: companyId, [fk.sub]: subOptionId });
-      const res = await fetch(`${baseUrl}/items/${junctionName}`, {
-        method: "POST",
-        headers,
-        body,
-      });
-      const text = await res.text();
-      if (res.ok) {
-        console.log("[addSubOptionViaJunction] Success via", junctionName, fk.company, fk.sub);
-        return true;
-      }
-      console.warn("[addSubOptionViaJunction] POST failed", junctionName, fk.company, fk.sub, "status:", res.status, "body:", text.slice(0, 300));
-    } catch (e) {
-      console.warn("[addSubOptionViaJunction] Error", junctionName, fk.company, fk.sub, e);
-      continue;
-    }
+  const subOption = Number(subOptionId);
+  if (!Number.isSafeInteger(subOption)) return false;
+  const existing = await prisma.companyCareerSubOption.findFirst({
+    where: { company_id: companyId, career_sub_option_id: subOption },
+  });
+  if (!existing) {
+    await prisma.companyCareerSubOption.create({
+      data: { company_id: companyId, career_sub_option_id: subOption },
+    });
   }
-  return false;
+  return true;
 }
 
 /** Remove sub-option via company_career_sub_option junction */
 async function removeSubOptionViaJunction(companyId: string, subOptionId: string): Promise<boolean> {
-  const baseUrl = (process.env.DIRECTUS_URL || "http://localhost:8055").replace(/\/$/, "");
-  const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-  const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
-  const cookieStore = await cookies();
-  const userToken = cookieStore.get(ACCESS_COOKIE)?.value;
-  const token = serverToken || userToken;
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  const junctionName = "company_career_sub_option";
-  const fkVariants = [
-    { company: "company_id", sub: "career_sub_option_id" },
-    { company: "company", sub: "career_sub_option" },
-  ];
-
-  for (const fk of fkVariants) {
-    try {
-      const filter = `filter[${fk.company}][_eq]=${encodeURIComponent(companyId)}&filter[${fk.sub}][_eq]=${encodeURIComponent(subOptionId)}`;
-      const listRes = await fetch(`${baseUrl}/items/${junctionName}?${filter}&fields=id&limit=1`, { headers });
-      if (!listRes.ok) {
-        console.warn("[removeSubOptionViaJunction] List failed", junctionName, fk.company, "status:", listRes.status);
-        continue;
-      }
-      const listJson = (await listRes.json()) as { data?: Array<{ id: string | number }> };
-      const rows = listJson.data ?? [];
-      if (rows.length === 0) continue;
-
-      const deleteRes = await fetch(`${baseUrl}/items/${junctionName}/${rows[0].id}`, {
-        method: "DELETE",
-        headers,
-      });
-      if (deleteRes.ok) {
-        console.log("[removeSubOptionViaJunction] Success via", junctionName);
-        return true;
-      }
-      console.warn("[removeSubOptionViaJunction] DELETE failed", junctionName, "status:", deleteRes.status);
-    } catch (e) {
-      console.warn("[removeSubOptionViaJunction] Error", junctionName, fk.company, e);
-      continue;
-    }
-  }
-  return false;
+  const subOption = Number(subOptionId);
+  if (!Number.isSafeInteger(subOption)) return false;
+  await prisma.companyCareerSubOption.deleteMany({
+    where: { company_id: companyId, career_sub_option_id: subOption },
+  });
+  return true;
 }
 
 /** Add sub-option to company without requiring an option (company-level only). */
 export async function addSubOptionToCompanyOnlyAction(companyId: string, subOptionId: string): Promise<Company | null> {
+  await requireAdminUser();
   return addSubOptionToCompanyAction(companyId, "", subOptionId);
 }
 
 /** Remove sub-option from company (works for both option-scoped and company-level). */
 export async function removeSubOptionFromCompanyOnlyAction(companyId: string, subOptionId: string): Promise<Company | null> {
+  await requireAdminUser();
   return removeSubOptionFromCompanyAction(companyId, "", subOptionId);
 }
 
 export async function addSubOptionToCompanyAction(companyId: string, optionId: string, subOptionId: string): Promise<Company | null> {
+  await requireAdminUser();
   console.log("[addSubOptionToCompanyAction] Called", { companyId, optionId, subOptionId });
   const company = await fetchCompanyByIdAction(companyId);
   if (!company) {
@@ -982,6 +872,7 @@ export async function addSubOptionToCompanyAction(companyId: string, optionId: s
 }
 
 export async function removeSubOptionFromCompanyAction(companyId: string, optionId: string, subOptionId: string): Promise<Company | null> {
+  await requireAdminUser();
   const company = await fetchCompanyByIdAction(companyId);
   if (!company) return null;
 
@@ -1012,6 +903,7 @@ export async function removeSubOptionFromCompanyAction(companyId: string, option
 }
 
 export async function removeOptionFromCompanyAction(companyId: string, optionId: string) {
+  await requireAdminUser();
   const company = await fetchCompanyByIdAction(companyId);
 
   if (!company) return null;
@@ -1028,6 +920,7 @@ export async function removeOptionFromCompanyAction(companyId: string, optionId:
 }
 
 export async function removeUserFromCompanyAction(companyId: string, userId: string) {
+  await requireAdminUser();
   const company = await fetchCompanyByIdAction(companyId);
 
   if (!company) return { success: false, error: "Company not found" };
@@ -1061,15 +954,8 @@ export async function removeUserFromCompanyAction(companyId: string, userId: str
     return { success: false, error: "Failed to update company" };
   }
 
-  // Try to delete the user from Directus
-  // Files will be automatically reassigned to the company's salesperson (or current admin) before deletion
+  // Archive the user and reassign owned files to the salesperson when possible.
   const deleteResult = await deleteUser(userId, reassignToUserId || undefined);
-
-  if (!deleteResult.success && deleteResult.error === "CONSTRAINT_ERROR") {
-    // User couldn't be deleted due to foreign key constraints in other tables (not just files)
-    // But they're already removed from the company
-    return { success: true, warning: "User removed from company but could not be fully deleted from Directus due to existing references in other tables" };
-  }
 
   return deleteResult.success
     ? { success: true }
@@ -1079,6 +965,7 @@ export async function removeUserFromCompanyAction(companyId: string, userId: str
 // Resend invitation email to a user
 export async function resendInviteAction(userId: string, companyId: string): Promise<{ success: boolean; error?: string }> {
   try {
+    await requireAdminUser();
     // Verify user exists and is in "invited" status
     const company = await fetchCompanyByIdAction(companyId);
     if (!company) {
@@ -1123,7 +1010,7 @@ export async function resendInviteAction(userId: string, companyId: string): Pro
     // Build accept invite URL with token
     const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL
       || process.env.NEXT_PUBLIC_FORM_DOMAIN
-      || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
+      || "http://localhost:3000";
 
     const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(tokenData.token)}`;
 
@@ -1164,32 +1051,9 @@ export async function fetchPendingApprovalRequestsAction(): Promise<PendingAppro
       return [];
     }
 
-    // Check if user is admin or salesperson before calling
-    // This prevents permission errors for company reps
-    if (!user.admin) {
-      // Check if user is a salesperson by checking their role
-      const { getDirectusWithToken } = await import("@/lib/directus");
-      const userDirectus = await getDirectusWithToken();
-      if (userDirectus) {
-        try {
-          const { readMe } = await import("@directus/sdk");
-          const me = await userDirectus.request(readMe({ fields: ["role.id"] as any })) as { role?: { id: string } | string | null };
-          const salespersonRoleId = "7b128ef4-f530-47d2-8f4c-ef82518eb313";
-          const isSalesperson = typeof me.role !== "string" && me.role?.id === salespersonRoleId;
-
-          if (!isSalesperson) {
-            // User is neither admin nor salesperson - return empty array silently
-            return [];
-          }
-        } catch (error) {
-          // If we can't check role, assume not authorized
-          return [];
-        }
-      } else {
-        // Can't check role - return empty array silently
-        return [];
-      }
-    }
+    const isSalesperson = user.role === "Administrator" ||
+      user.role === "VTK Career";
+    if (!user.admin && !isSalesperson) return [];
 
     // fetchPendingApprovalRequests will validate authorization server-side
     // and ensure the user can only see their own requests (unless they're an admin)
@@ -1206,7 +1070,7 @@ export async function fetchPendingApprovalRequestsAction(): Promise<PendingAppro
 
 // Helper function to create user from approved request (can be called from multiple places)
 // This follows the same process as the first representative: creates user, sends invitation email with token
-export async function createUserFromApprovedRequest(request: any): Promise<void> {
+async function createUserFromApprovedRequest(request: any): Promise<void> {
   try {
     if (!request.company?.id) {
       console.error("[createUserFromApprovedRequest] No company ID in request");
@@ -1217,27 +1081,6 @@ export async function createUserFromApprovedRequest(request: any): Promise<void>
       console.error("[createUserFromApprovedRequest] No email in request");
       return;
     }
-
-    const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? 'directus'}_access`;
-    const cookieStore = await cookies();
-    const token = cookieStore.get(ACCESS_COOKIE)?.value;
-
-    if (!token) {
-      console.error("[createUserFromApprovedRequest] No token available");
-      return;
-    }
-
-    const baseUrl = process.env.DIRECTUS_URL;
-    if (!baseUrl) {
-      console.error("[createUserFromApprovedRequest] DIRECTUS_URL not configured");
-      return;
-    }
-
-    const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
-
-    // Use server token if available for user operations (more reliable permissions)
-    const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-    const authToken = serverToken || token;
 
     // Fetch company details
     const company = await fetchCompanyByIdAction(request.company.id);
@@ -1251,23 +1094,14 @@ export async function createUserFromApprovedRequest(request: any): Promise<void>
     const userRole = request.role || DEFAULT_COMPANY_REP_ROLE;
 
     // Check if user already exists
-    const checkUserRes = await fetch(
-      `${normalizedBase}users?filter[email][_eq]=${encodeURIComponent(request.email)}&fields=id,status,role`,
-      {
-        headers: {
-          "Authorization": `Bearer ${authToken}`,
-        },
-      }
-    );
+    const existingUser = await prisma.user.findUnique({
+      where: { email: request.email.trim().toLowerCase() },
+    });
 
     let userId: string | undefined;
     let isNewUser = false;
 
-    if (checkUserRes.ok) {
-      const userData = await checkUserRes.json();
-      const existingUser = userData.data?.[0];
-
-      if (existingUser) {
+    if (existingUser) {
         // User already exists - use existing user ID
         userId = existingUser.id;
         console.log(`[createUserFromApprovedRequest] User already exists: ${userId} (${request.email})`);
@@ -1279,31 +1113,20 @@ export async function createUserFromApprovedRequest(request: any): Promise<void>
           if (existingUser.status !== "invited") {
             updatePayload.status = "invited";
           }
-          if (existingUser.role !== userRole) {
-            updatePayload.role = userRole;
+          if (existingUser.role_id !== userRole) {
+            updatePayload.role_id = userRole;
           }
 
           if (Object.keys(updatePayload).length > 0) {
-            const updateUserRes = await fetch(
-              `${normalizedBase}users/${userId}`,
-              {
-                method: "PATCH",
-                headers: {
-                  "Authorization": `Bearer ${authToken}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify(updatePayload),
-              }
-            );
-
-            if (!updateUserRes.ok) {
-              console.warn(`[createUserFromApprovedRequest] Failed to update user status/role for ${userId}`);
-            }
+            await prisma.user.update({
+              where: { id: userId },
+              data: updatePayload,
+            });
           }
         } catch (err) {
           console.warn(`[createUserFromApprovedRequest] Error updating existing user:`, err);
         }
-      } else {
+    } else {
         // User doesn't exist, create it
         isNewUser = true;
         console.log(`[createUserFromApprovedRequest] Creating new user for ${request.email}`);
@@ -1336,10 +1159,6 @@ export async function createUserFromApprovedRequest(request: any): Promise<void>
           tel: request.tel || undefined,
           title: request.title || undefined,
         });
-      }
-    } else {
-      console.error(`[createUserFromApprovedRequest] Failed to check if user exists:`, checkUserRes.status);
-      return;
     }
 
     if (!userId) {
@@ -1347,29 +1166,10 @@ export async function createUserFromApprovedRequest(request: any): Promise<void>
       return;
     }
 
-    // Ensure user is in company's representatives list
-    let representativeIds: string[] = [];
-    if (company.representatives) {
-      representativeIds = (company.representatives as (CompanyRep | string)[]).map((item: CompanyRep | string) => {
-        return typeof item === 'string' ? item : item?.id ?? '';
-      }).filter(Boolean);
-    }
-
-    if (!representativeIds.includes(userId)) {
-      representativeIds.push(userId);
-      await updateCompanyAction(request.company.id, {
-        representatives: representativeIds as unknown as CompanyRep[]
-      });
-      console.log(`[createUserFromApprovedRequest] Added user ${userId} to company ${request.company.id}`);
-    }
-
     // Send invitation email with invite token (same process as first rep)
     if (request.email && userId) {
       try {
         console.log(`[createUserFromApprovedRequest] Generating invite token for user ${userId} (${request.email})`);
-
-        // Small delay to ensure user is fully created/updated in Directus
-        await new Promise(resolve => setTimeout(resolve, 500));
 
         // Generate secure invite token
         const { generateInviteToken } = await import("@/lib/repos/users");
@@ -1381,12 +1181,12 @@ export async function createUserFromApprovedRequest(request: any): Promise<void>
           // Build accept invite URL with token
           const frontendBaseUrl = process.env.NEXT_PUBLIC_APP_URL
             || process.env.NEXT_PUBLIC_FORM_DOMAIN
-            || (process.env.DIRECTUS_URL ? process.env.DIRECTUS_URL.replace(/\/api.*$/, "") : "http://localhost:3000");
+            || "http://localhost:3000";
 
           const acceptInviteUrl = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(tokenData.token)}`;
 
           // Send custom invitation email using our SMTP setup
-          const { sendEmail } = await import("@/lib/repos/directus");
+          const { sendEmail } = await import("@/lib/email");
           const { generateInvitationEmailHtml } = await import("@/lib/email-templates");
 
           const emailHtml = generateInvitationEmailHtml({
@@ -1428,65 +1228,55 @@ export async function approveRepRequestAction(
   action: 'approve' | 'reject'
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? 'directus'}_access`;
-    const cookieStore = await cookies();
-    const token = cookieStore.get(ACCESS_COOKIE)?.value;
-
-    if (!token) {
-      return { success: false, error: "No token available" };
+    const user = await getUserFromCookies();
+    if (!user) return { success: false, error: "Unauthorized" };
+    const id = Number(requestId);
+    if (!Number.isSafeInteger(id)) {
+      return { success: false, error: "Invalid request ID" };
     }
-
-    const baseUrl = process.env.DIRECTUS_URL;
-    if (!baseUrl) {
-      return { success: false, error: "DIRECTUS_URL not configured" };
-    }
-
-    const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
-
-    // Fetch the request to get details
-    const getRequestRes = await fetch(
-      `${normalizedBase}items/company_user_requests/${requestId}?fields=*,company.id`,
-      {
-        headers: {
-          "Authorization": `Bearer ${token}`,
-        },
-      }
-    );
-
-    if (!getRequestRes.ok) {
-      return { success: false, error: "Failed to fetch request" };
-    }
-
-    const requestData = await getRequestRes.json();
-    const request = requestData.data;
-
+    const request = await prisma.companyUserRequest.findUnique({
+      where: { id },
+      include: { company: true },
+    });
     if (!request) {
       return { success: false, error: "Request not found" };
     }
-
-    // Update status
-    const status = action === "approve" ? "approved" : "rejected";
-    const updateRes = await fetch(
-      `${normalizedBase}items/company_user_requests/${requestId}`,
-      {
-        method: "PATCH",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ status }),
-      }
-    );
-
-    if (!updateRes.ok) {
-      const error = await updateRes.json().catch(() => null);
-      console.error("Failed to update request status:", error);
-      return { success: false, error: "Failed to update request status" };
+    if (
+      !user.admin &&
+      request.company?.salesperson_id !== user.id
+    ) {
+      return { success: false, error: "Unauthorized" };
     }
 
-    // If approved, create the user and add to company (if not already created)
+    const status = action === "approve" ? "approved" : "rejected";
+    if (action === "approve" && request.email) {
+      const duplicate = await prisma.user.findUnique({
+        where: { email: request.email.trim().toLowerCase() },
+        select: { id: true },
+      });
+      if (duplicate) {
+        await prisma.companyUserRequest.update({
+          where: { id },
+          data: { status: "rejected" },
+        });
+        return {
+          success: false,
+          error: "A user with this email already exists",
+        };
+      }
+    }
+    await prisma.companyUserRequest.update({
+      where: { id },
+      data: { status },
+    });
+
     if (action === "approve") {
-      await createUserFromApprovedRequest(request);
+      await createUserFromApprovedRequest({
+        ...request,
+        company: request.company
+          ? { id: request.company.id, name: request.company.name }
+          : null,
+      });
     }
 
     return { success: true };
@@ -1525,42 +1315,19 @@ export async function requestCompanyPageAction(): Promise<{ success: boolean; er
     let salespersonName: string = "Salesperson";
 
     if (company.salesperson) {
-      const baseUrl = process.env.DIRECTUS_URL;
-      if (!baseUrl) {
-        return { success: false, error: "DIRECTUS_URL not configured" };
-      }
-
-      const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
-      const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-
-      if (!serverToken) {
-        return { success: false, error: "Server configuration error" };
-      }
-
       const salespersonId = typeof company.salesperson === "string"
         ? company.salesperson
         : company.salesperson.id;
-
-      try {
-        const salespersonRes = await fetch(
-          `${normalizedBase}users/${salespersonId}?fields=id,email,first_name,last_name`,
-          {
-            headers: {
-              "Authorization": `Bearer ${serverToken}`,
-            },
-          }
-        );
-
-        if (salespersonRes.ok) {
-          const salespersonData = await salespersonRes.json();
-          const salesperson = salespersonData.data;
-          salespersonEmail = salesperson.email;
-          salespersonName = [salesperson.first_name, salesperson.last_name]
+      const salesperson = await prisma.user.findUnique({
+        where: { id: salespersonId },
+        select: { email: true, first_name: true, last_name: true },
+      });
+      if (salesperson) {
+        salespersonEmail = salesperson.email;
+        salespersonName =
+          [salesperson.first_name, salesperson.last_name]
             .filter(Boolean)
             .join(" ") || "Salesperson";
-        }
-      } catch (err) {
-        console.error("Error fetching salesperson:", err);
       }
     }
 
@@ -1620,42 +1387,19 @@ export async function requestCVBookAccessAction(): Promise<{ success: boolean; e
     let salespersonName: string = "Salesperson";
 
     if (company.salesperson) {
-      const baseUrl = process.env.DIRECTUS_URL;
-      if (!baseUrl) {
-        return { success: false, error: "DIRECTUS_URL not configured" };
-      }
-
-      const normalizedBase = baseUrl.replace(/\/+$/, "") + "/";
-      const serverToken = process.env.DIRECTUS_SERVER_TOKEN;
-
-      if (!serverToken) {
-        return { success: false, error: "Server configuration error" };
-      }
-
       const salespersonId = typeof company.salesperson === "string"
         ? company.salesperson
         : company.salesperson.id;
-
-      try {
-        const salespersonRes = await fetch(
-          `${normalizedBase}users/${salespersonId}?fields=id,email,first_name,last_name`,
-          {
-            headers: {
-              "Authorization": `Bearer ${serverToken}`,
-            },
-          }
-        );
-
-        if (salespersonRes.ok) {
-          const salespersonData = await salespersonRes.json();
-          const salesperson = salespersonData.data;
-          salespersonEmail = salesperson.email;
-          salespersonName = [salesperson.first_name, salesperson.last_name]
+      const salesperson = await prisma.user.findUnique({
+        where: { id: salespersonId },
+        select: { email: true, first_name: true, last_name: true },
+      });
+      if (salesperson) {
+        salespersonEmail = salesperson.email;
+        salespersonName =
+          [salesperson.first_name, salesperson.last_name]
             .filter(Boolean)
             .join(" ") || "Salesperson";
-        }
-      } catch (err) {
-        console.error("Error fetching salesperson:", err);
       }
     }
 
@@ -1776,7 +1520,7 @@ function parseCSV(csvContent: string): Record<string, string>[] {
 /**
  * Find salesperson by name (case-insensitive, supports "First Last" or "First Middle Last")
  */
-function findSalespersonByName(salespersons: DirectusUser[], name: string): string | null {
+function findSalespersonByName(salespersons: AppUser[], name: string): string | null {
   const normalizedName = name.trim().toLowerCase();
   const nameParts = normalizedName.split(/\s+/).filter(p => p.length > 0);
 
@@ -1902,6 +1646,7 @@ export async function processCompaniesCSVAction(formData: FormData): Promise<{
   message?: string;
   error?: string;
 }> {
+  await requireAdminUser();
   try {
     const file = formData.get('file') as File | null;
     if (!file) {
@@ -1963,7 +1708,7 @@ export async function processCompaniesCSVAction(formData: FormData): Promise<{
     }
 
     // Fetch salespersons to create name-to-ID mapping
-    let salespersons: DirectusUser[] = [];
+    let salespersons: AppUser[] = [];
     try {
       salespersons = await fetchSalespersonsAction() ?? [];
     } catch (error) {

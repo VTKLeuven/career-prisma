@@ -17,6 +17,8 @@ dist
 
 # Production
 *.log
+directus-uploads
+directus-export-*
 
 # Misc
 .DS_Store
@@ -57,4 +59,3 @@ docker-compose.yml
 
 # Husky
 .husky
-

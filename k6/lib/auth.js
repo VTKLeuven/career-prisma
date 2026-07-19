@@ -1,6 +1,6 @@
 import http from "k6/http";
 import { check } from "k6";
-import { BASE_URL, AUTH_COOKIE_PREFIX, COMPANY_REP_EMAIL, COMPANY_REP_PASSWORD, STUDENT_EMAIL, STUDENT_PASSWORD } from "../config.js";
+import { BASE_URL, COMPANY_REP_EMAIL, COMPANY_REP_PASSWORD, STUDENT_EMAIL, STUDENT_PASSWORD } from "../config.js";
 
 /**
  * Log in as a company representative and return the cookie jar.
@@ -58,13 +58,4 @@ export function loginAsStudent(jar, email, password) {
   });
 
   return { ok, response: res, jar };
-}
-
-/**
- * Extract the access token cookie value from a jar (useful for Authorization headers).
- */
-export function getAccessToken(jar) {
-  const cookies = jar.cookiesForURL(BASE_URL);
-  const cookieName = `${AUTH_COOKIE_PREFIX}_access`;
-  return cookies[cookieName] ? cookies[cookieName][0] : null;
 }

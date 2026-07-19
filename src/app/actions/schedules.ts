@@ -2,8 +2,9 @@
 
 import { getSchedulesForEvent, hasSchedulesForEvent, createSchedule, deleteSchedule } from "@/lib/repos/schedule";
 import { getCompanySubOptionAnyStatus } from "@/lib/utils/company-access";
-import { uploadDirectusFile } from "@/lib/repos/directus";
+import { uploadFile } from "@/lib/file-storage";
 import type { Company, Schedule, Master } from "@/lib/schema";
+import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
 
 /** Extract master IDs from company.category (handles junction { master_id } or { category_id } and direct Master[]). */
 function getCompanyMasterIds(company: Company | null | undefined): string[] {
@@ -32,6 +33,8 @@ export async function fetchSchedulesForEventAction(
   company?: Company | null
 ): Promise<Array<Schedule & { master?: Master; pdf?: { id?: string } }>> {
   try {
+    const user = await getUserFromCookies();
+    if (!user?.company || user.company.id !== company?.id) return [];
     // Companies with "Student Schedules" sub-option get schedules (filtered by category when set)
     const hasStudentSchedules = company ? getCompanySubOptionAnyStatus(company, "Student Schedules") !== null : false;
 
@@ -57,11 +60,13 @@ export async function hasSchedulesForEventAction(eventId: string): Promise<boole
 export async function fetchSchedulesForEventAdminAction(
   eventId: string
 ): Promise<Array<Schedule & { master?: Master; pdf?: { id?: string } }>> {
+  await requireAdminUser();
   return getSchedulesForEvent(eventId);
 }
 
 /** Delete a schedule (admin only). */
 export async function deleteScheduleAction(id: string): Promise<{ success: boolean; error?: string }> {
+  await requireAdminUser();
   return deleteSchedule(id);
 }
 
@@ -71,10 +76,11 @@ export async function createScheduleWithFileAction(
   masterId: string,
   file: File
 ): Promise<{ success: boolean; error?: string }> {
+  const user = await requireAdminUser();
   if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
     return { success: false, error: "File must be a PDF" };
   }
-  const pdfId = await uploadDirectusFile(file);
+  const pdfId = await uploadFile(file, user.id);
   if (!pdfId) return { success: false, error: "Failed to upload PDF" };
   return createSchedule({ event: eventId, master: masterId, pdf: pdfId });
 }

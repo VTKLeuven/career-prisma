@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import type { Master } from "@/lib/schema"
-import { getDirectusImageUrl } from "@/components/Images"
+import { getFileUrl } from "@/components/Images"
 import DOMPurify from "isomorphic-dompurify"
 
 export default function OurStudentsPage() {
@@ -46,7 +46,7 @@ export default function OurStudentsPage() {
         <div 
           className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat"
           style={{
-            backgroundImage: 'url(https://directustest.vtk.be/assets/b2d5f309-d041-4c57-a4a9-ab5cd60f0b60)',
+            backgroundImage: 'url(/api/files/b2d5f309-d041-4c57-a4a9-ab5cd60f0b60)',
             backgroundAttachment: 'fixed',
           }}
         >
@@ -68,7 +68,7 @@ export default function OurStudentsPage() {
       <div 
         className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat"
         style={{
-          backgroundImage: 'url(https://directustest.vtk.be/assets/b2d5f309-d041-4c57-a4a9-ab5cd60f0b60)',
+          backgroundImage: 'url(/api/files/b2d5f309-d041-4c57-a4a9-ab5cd60f0b60)',
           backgroundAttachment: 'fixed',
         }}
       >
@@ -133,7 +133,7 @@ export default function OurStudentsPage() {
 
             <div className="space-y-8">
               {masters.map((master, index) => {
-                const logoUrl = master.logo ? getDirectusImageUrl(master.logo) : null
+                const logoUrl = master.logo ? getFileUrl(master.logo) : null
                 const hasModules = master.modules && master.modules.trim().length > 0
                 const isEven = index % 2 === 0
 

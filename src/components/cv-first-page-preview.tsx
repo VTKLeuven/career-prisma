@@ -51,7 +51,7 @@ export function CVFirstPagePreview({ fileUrl, fileId, className = '', title }: C
         return
       }
 
-      // Strategy 1: Directus server-side thumbnail transform (returns small webp image)
+      // Strategy 1: request a pre-rendered image if the file service supports it.
       try {
         const res = await fetch(
           `/api/cv-file/${resolvedFileId}?w=${THUMBNAIL_WIDTH}&q=${THUMBNAIL_QUALITY}&format=webp`,

@@ -34,7 +34,7 @@ function isVisibleNow(drink: Drink): boolean {
     return now >= from || now < until;
 }
 
-/** Consumers pass `image` straight to getDirectusImageUrl(), so it stays a bare file id. */
+/** Consumers pass `image` straight to getFileUrl(), so it stays a bare file id. */
 function shapeDrink(row: Record<string, any>): Drink {
     const { image_id, ...rest } = row;
     return { ...rest, image: image_id ?? undefined } as Drink;

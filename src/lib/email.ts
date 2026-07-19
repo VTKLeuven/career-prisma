@@ -1,83 +1,7 @@
-// lib/repos/directus.ts
+// Shared server-side email transport.
 "use server";
 
-import { cookies } from "next/headers";
 import nodemailer from "nodemailer";
-import { getFormUploadsFolderId } from "@/lib/directus";
-
-export async function uploadDirectusFile(file: File): Promise<string | null> {
-  const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
-  const cookieStore = await cookies();
-  const token = cookieStore.get(ACCESS_COOKIE)?.value;
-
-  if (!token) {
-    console.error("No Directus access token found");
-    return null;
-  }
-
-  // Get Form_uploads folder ID
-  const folderId = await getFormUploadsFolderId();
-
-  const formData = new FormData();
-  formData.append("file", file);
-  // Add folder parameter if folder ID is available
-  if (folderId) {
-    formData.append("folder", folderId);
-  }
-
-  try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_DIRECTUS_URL}files`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      console.error("Directus file upload failed:", data);
-      return null;
-    }
-
-    const fileId = data?.data?.id ?? null;
-    if (!fileId) {
-      return null;
-    }
-
-    // Update the file to set the folder if needed (fallback in case folder parameter wasn't processed during upload)
-    const uploadedFolderId = data?.data?.folder || data?.folder;
-    if (folderId && token && uploadedFolderId !== folderId) {
-      try {
-        const directusUrl = process.env.NEXT_PUBLIC_DIRECTUS_URL || process.env.DIRECTUS_URL;
-        if (directusUrl) {
-          const updateUrl = `${directusUrl.replace(/\/$/, '')}/files/${fileId}`;
-          const updateRes = await fetch(updateUrl, {
-            method: 'PATCH',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ folder: folderId }),
-          });
-
-          if (!updateRes.ok) {
-            const updateError = await updateRes.json().catch(() => ({ message: 'Update failed' }));
-            console.warn("Failed to update file folder:", updateError);
-          }
-        }
-      } catch (updateErr) {
-        console.warn("Error updating file folder:", updateErr);
-        // Don't fail the upload if folder update fails
-      }
-    }
-
-    return fileId;
-  } catch (err) {
-    console.error("Error uploading file to Directus:", err);
-    return null;
-  }
-}
 
 // Singleton transporter with connection pooling to avoid rate limiting
 let cachedTransporter: nodemailer.Transporter | null = null;
@@ -762,4 +686,3 @@ export async function sendEmail({
     processEmailQueue().catch(reject);
   });
 }
-

@@ -1,24 +1,14 @@
 import { getUserFromCookies } from "@/lib/auth-server";
-import { getAdminDirectusClient } from "@/lib/directus";
-import { readItems } from "@directus/sdk";
 import type { CareerEvent } from "@/lib/schema";
 import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { listEvents } from "@/lib/repos/event";
 
 export default async function AdminCheckinsIndexPage() {
   const user = await getUserFromCookies();
   if (!user?.admin) return <p>NO ACCESS</p>;
 
-  const client = getAdminDirectusClient();
-  const events: CareerEvent[] = client
-    ? ((await client.request(
-        readItems("career_event" as any, {
-          fields: ["id", "name", "date", "location"],
-          sort: ["-date"],
-          limit: -1,
-        })
-      )) as unknown as CareerEvent[])
-    : [];
+  const events = (await listEvents({ limit: 1000, sort: "-date" })) || [];
 
   return (
     <div className="container mx-auto py-6 space-y-6">

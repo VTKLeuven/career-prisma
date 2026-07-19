@@ -160,6 +160,9 @@ DROP SCHEMA IF EXISTS topology CASCADE;
 -- PascalCase and singular regardless (via @@map), so this only affects SQL
 -- readability -- but it makes the database legible on its own terms.
 ALTER TABLE IF EXISTS directus_users        RENAME TO users;
+ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS invite_token_hash varchar(64);
+ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS invite_token_created timestamptz;
+ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS password_reset_token_created timestamptz;
 ALTER TABLE IF EXISTS directus_files        RENAME TO files;
 ALTER TABLE IF EXISTS directus_roles        RENAME TO roles;
 ALTER TABLE IF EXISTS "Booths"              RENAME TO booths;
@@ -169,6 +172,12 @@ ALTER TABLE IF EXISTS "CV_Book"             RENAME TO cv_books;
 ALTER TABLE IF EXISTS "CV_Book_screening"   RENAME TO cv_book_screenings;
 ALTER TABLE IF EXISTS "zones_Booths"        RENAME TO zone_booths;
 ALTER TABLE IF EXISTS company               RENAME TO companies;
+ALTER TABLE IF EXISTS attendant_scans
+  ALTER COLUMN company_id TYPE uuid USING NULL;
+ALTER TABLE IF EXISTS attendant_scans
+  DROP CONSTRAINT IF EXISTS attendant_scans_company_id_foreign,
+  ADD CONSTRAINT attendant_scans_company_id_foreign
+    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL;
 ALTER TABLE IF EXISTS career_event          RENAME TO career_events;
 ALTER TABLE IF EXISTS career_event_page     RENAME TO career_event_pages;
 ALTER TABLE IF EXISTS career_event_option   RENAME TO career_event_options;
@@ -182,6 +191,7 @@ ALTER TABLE IF EXISTS cv_book_favourite     RENAME TO cv_book_favourites;
 ALTER TABLE IF EXISTS vacancy_section_config RENAME TO vacancy_section_configs;
 ALTER TABLE IF EXISTS student_matching_response RENAME TO student_matching_responses;
 ALTER TABLE IF EXISTS company_matching_response RENAME TO company_matching_responses;
+ALTER TABLE IF EXISTS students ADD COLUMN IF NOT EXISTS password_reset_token_created timestamp;
 
 -- ---------------------------------------------------------------------------
 -- 7. Foreign key columns -> *_id

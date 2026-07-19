@@ -98,7 +98,7 @@ fi
 
 # shellcheck disable=SC2086
 docker run -d --name "$TMP_CONTAINER" $PLATFORM \
-  -e POSTGRES_PASSWORD=import postgis/postgis:16-master >/dev/null \
+  -e POSTGRES_PASSWORD=import "$PGIS_IMAGE" >/dev/null \
   || die "Could not start $PGIS_IMAGE"
 
 # The official Postgres images start a throwaway server to run the init scripts,
@@ -163,13 +163,15 @@ docker exec "$TMP_CONTAINER" pg_dump -U postgres -d import --no-owner --no-privi
 info "loaded"
 
 # ---------------------------------------------------------------------------
-# 5. Baseline Prisma migrations
+# 5. Baseline and apply Prisma migrations
 # ---------------------------------------------------------------------------
 # The tables already exist, so `prisma migrate deploy` must not try to create
 # them. Resolving the baseline records it as applied without running it.
-say "[5/5] Baselining Prisma migrations"
-( cd "$ROOT" && npx prisma migrate resolve --applied 00000000000000_init 2>&1 | tail -1 ) || \
-  warn "Could not baseline automatically; run: npx prisma migrate resolve --applied 00000000000000_init"
+say "[5/5] Baselining and applying Prisma migrations"
+( cd "$ROOT" && \
+  npx prisma migrate resolve --applied 00000000000000_init >/dev/null && \
+  npx prisma migrate deploy ) || \
+  die "Could not apply Prisma migrations"
 
 say "Loaded"
 psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -tAF'  ' -c "

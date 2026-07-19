@@ -37,8 +37,8 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Cache images from Directus
-  if (url.hostname.includes('directustest.vtk.be') && url.pathname.includes('/assets/')) {
+  // Cache immutable files served by the local file API.
+  if (url.origin === self.location.origin && url.pathname.startsWith('/api/files/')) {
     event.respondWith(
       caches.open(IMAGE_CACHE_NAME).then((cache) => {
         return cache.match(request).then((cachedResponse) => {
@@ -124,4 +124,3 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
-

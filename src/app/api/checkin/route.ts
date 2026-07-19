@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminDirectusClient } from "@/lib/directus";
-import { readItems, createItem } from "@directus/sdk";
+import prisma from "@/lib/prisma";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -68,52 +67,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Body must be a JSON object or array" }, { status: 400 });
   }
 
-  const client = getAdminDirectusClient();
-  if (!client) {
-    return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
-  }
-
   const results: { barcode: string; status: string }[] = [];
 
   for (const entry of entries) {
     const uuid = barcodeToUuid(entry.barcode);
 
-    const responses = (await client.request(
-      readItems("form_responses" as any, {
-        fields: ["id"],
-        filter: { attendant_uuid: { _eq: uuid } },
-        limit: 1,
-      })
-    )) as unknown as Array<{ id: string }>;
-
-    if (responses.length === 0) {
+    const response = await prisma.formResponse.findFirst({
+      where: { attendant_uuid: uuid, archived: { not: true } },
+      select: { id: true },
+    });
+    if (!response) {
       results.push({ barcode: entry.barcode, status: "not_found" });
       continue;
     }
 
-    const existing = (await client.request(
-      readItems("event_checkins" as any, {
-        fields: ["id"],
-        filter: {
-          barcode: { _eq: entry.barcode },
-          event_id: { _eq: eventId },
-        },
-        limit: 1,
-      })
-    )) as unknown as Array<{ id: string }>;
-
-    if (existing.length > 0) {
+    const existing = await prisma.eventCheckin.findFirst({
+      where: { barcode: entry.barcode, event_id: eventId },
+    });
+    if (existing) {
       results.push({ barcode: entry.barcode, status: "already_checked_in" });
       continue;
     }
 
-    await client.request(
-      createItem("event_checkins" as any, {
+    await prisma.eventCheckin.create({
+      data: {
         barcode: entry.barcode,
         event_id: eventId,
-        checked_in_at: new Date(entry.checked_in_at).toISOString(),
-      })
-    );
+        checked_in_at: new Date(entry.checked_in_at),
+      },
+    });
 
     results.push({ barcode: entry.barcode, status: "checked_in" });
   }

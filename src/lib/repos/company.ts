@@ -136,7 +136,7 @@ function toCompanyWrite(payload: Partial<Company>): Record<string, unknown> {
   return {
     ...rest,
     ...(logo !== undefined ? { logo_id: logo || null } : {}),
-    ...(page_image !== undefined ? { page_image_id: page_image || null } : {}),
+    ...(page_image !== undefined ? { page_image: page_image || null } : {}),
     ...(salesperson !== undefined
       ? {
           salesperson_id:

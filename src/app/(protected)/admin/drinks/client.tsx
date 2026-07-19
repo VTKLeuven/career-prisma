@@ -399,7 +399,7 @@ export default function DrinksClient({
                                         <img
                                             src={typeof formData.image === 'string' && formData.image.startsWith('blob:')
                                                 ? formData.image
-                                                : `${process.env.NEXT_PUBLIC_DIRECTUS_URL}assets/${formData.image}`}
+                                                : `/api/files/${formData.image}`}
                                             alt="Preview"
                                             className="h-full w-full object-cover"
                                             onError={(e) => {

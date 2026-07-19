@@ -3,14 +3,8 @@
 
 export const BASE_URL = __ENV.BASE_URL || "http://localhost:3000";
 
-// Directus URL (used for direct backend pressure testing)
-export const DIRECTUS_URL = __ENV.DIRECTUS_URL || "http://localhost:8055";
-
-// Auth cookie prefix (must match your .env / next.config)
-export const AUTH_COOKIE_PREFIX = __ENV.AUTH_COOKIE_PREFIX || "directus";
-
 // ---------------------------------------------------------------------------
-// Test credentials – create dedicated load-test accounts in Directus first!
+// Test credentials – create dedicated load-test accounts first!
 // NEVER use real production credentials here.
 // Supports both COMPANY_REP_* and K6_COMPANY_REP_* (matches .env naming).
 // k6 does NOT load .env – run with: set -a && source .env && set +a && k6 run ...
@@ -27,7 +21,7 @@ export const STUDENT_PASSWORD =
   __ENV.STUDENT_PASSWORD || __ENV.K6_STUDENT_PASSWORD || "loadtest123";
 
 // ---------------------------------------------------------------------------
-// Test data IDs – replace these with real IDs from your Directus instance
+// Test data IDs – replace these with real IDs from the test database
 // ---------------------------------------------------------------------------
 export const TEST_EVENT_SLUG = __ENV.TEST_EVENT_SLUG || "vtk-jobfair";
 export const TEST_ATTENDANT_UUIDS = (__ENV.TEST_ATTENDANT_UUIDS || "").split(",").filter(Boolean);

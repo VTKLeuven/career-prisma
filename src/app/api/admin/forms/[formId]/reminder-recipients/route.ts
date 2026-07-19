@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerDirectusClient } from "@/lib/directus";
-import { readItems } from "@directus/sdk";
 import { getUserFromCookies } from "@/lib/auth-server";
-import { cookies } from "next/headers";
+import prisma from "@/lib/prisma";
 
 export async function POST(
   request: NextRequest,
@@ -26,34 +24,16 @@ export async function POST(
       );
     }
 
-    const client = await getServerDirectusClient();
-    if (!client) {
-      return NextResponse.json(
-        { error: "Failed to connect to database" },
-        { status: 500 }
-      );
-    }
-
-    // Get all companies with their representatives
-    const companies = await client.request(
-      readItems("company" as any, {
-        fields: [
-          "id",
-          "name",
-          { representatives: ["id", "email", "first_name", "last_name"] } as any,
-        ],
-        filter: {
-          id: { _in: companyIds },
-        },
-        limit: -1,
-      })
-    ) as any[];
+    const companies = await prisma.company.findMany({
+      where: { id: { in: companyIds } },
+      include: { users: true },
+    });
 
     // Format recipients
     const recipients = companies.map((company) => ({
       companyId: company.id,
       companyName: company.name,
-      representatives: (company.representatives || []).map((rep: any) => ({
+      representatives: company.users.map((rep) => ({
         id: rep.id,
         email: rep.email || null,
         firstName: rep.first_name || "",
@@ -77,4 +57,3 @@ export async function POST(
     );
   }
 }
-

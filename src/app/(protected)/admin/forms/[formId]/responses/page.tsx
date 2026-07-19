@@ -42,7 +42,7 @@ import type { FormVersion, FormResponse, FormField } from "@/lib/schema";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 import { CSV_UTF8_BOM } from "@/lib/utils/slugify";
 import { FormFieldRenderer } from "@/components/FormFieldRenderer";
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import NextImage from "next/image";
 import { resolveMasterDegreeValueToDisplayLabel, normalizeFaculties, type FacultyItem } from "@/lib/utils/master-degree-options";
 import type { Master } from "@/lib/schema";
@@ -2720,7 +2720,7 @@ export default function FormResponsesPage() {
                     <div key={`row-${rowIndex}`} className="grid grid-cols-1 md:grid-cols-12 gap-4">
                       {row.map((field) => {
                         const layout = field.layout || "full";
-                        const imageUrl = field.image ? getDirectusImageUrl(field.image) : null;
+                        const imageUrl = field.image ? getFileUrl(field.image) : null;
                         const isEditing = responseToEdit && editingField?.responseId === responseToEdit.id && editingField?.fieldName === field.name;
                         const fieldValue = editFormData[field.name];
                         return (

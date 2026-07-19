@@ -1,15 +1,12 @@
 // app/api/admin/delete-floorplan/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { deleteFloorplan } from "@/lib/repos/floorplan";
+import { getUserFromCookies } from "@/lib/auth-server";
 
 export async function POST(req: Request) {
   try {
-    const ACCESS_COOKIE = `${process.env.AUTH_COOKIE_PREFIX ?? "directus"}_access`;
-    const cookieStore = await cookies();
-    const token = cookieStore.get(ACCESS_COOKIE)?.value;
-
-    if (!token) {
+    const user = await getUserFromCookies();
+    if (!user?.admin) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -46,7 +43,6 @@ export async function POST(req: Request) {
     );
   }
 }
-
 
 
 

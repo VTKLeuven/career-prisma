@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { emailJobManager } from "@/lib/email-job-manager";
-import { getSmtpQueueStats } from "@/lib/repos/directus";
+import { getSmtpQueueStats } from "@/lib/email";
 
 export async function GET() {
   const user = await getUserFromCookies();

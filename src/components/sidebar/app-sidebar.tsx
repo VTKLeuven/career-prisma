@@ -28,7 +28,7 @@ import { useUser } from "@/providers/UserProvider";
 import { fetchPendingApprovalRequestsAction, fetchCompanyByIdAction } from "@/app/actions/companies";
 import { getCompanyOrderingTabInfo } from "@/app/actions/ordering";
 import { validateExistingPageImage } from "@/lib/utils/image-validation";
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import { fetchEventsAction } from "@/app/actions/events";
 import type { CareerEvent, Company } from "@/lib/schema";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
@@ -128,7 +128,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         return;
       }
 
-      const pageImageUrl = company.page_image ? getDirectusImageUrl(company.page_image) : null;
+      const pageImageUrl = company.page_image ? getFileUrl(company.page_image) : null;
       if (pageImageUrl) {
         const validation = await validateExistingPageImage(pageImageUrl);
         setPageImageInvalid(!validation.valid);

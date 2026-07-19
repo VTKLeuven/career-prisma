@@ -40,6 +40,11 @@ services:
       # so this overrides whatever host-facing DATABASE_URL is in .env.
       - DATABASE_URL=postgresql://${POSTGRES_USER:-career}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-career}?schema=public
       - NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}
+      - UPLOADS_DIR=/app/directus-uploads
+    volumes:
+      # Shared by every app replica. Preserve UUID filenames from the old
+      # export; new uploads are written here too.
+      - ./directus-uploads:/app/directus-uploads
     restart: unless-stopped
     env_file:
       - .env

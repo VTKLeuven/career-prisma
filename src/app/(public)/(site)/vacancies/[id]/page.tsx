@@ -11,7 +11,7 @@ import {
   fetchPublicVacancyByIdAction,
   fetchVacancySectionConfigsAction,
 } from "@/app/actions/vacancies";
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import type {
   Vacancy,
   VacancyType,
@@ -121,7 +121,7 @@ export default function VacancyDetailPage() {
       .filter(Boolean) ?? [];
 
   const logoUrl = company?.logo
-    ? getDirectusImageUrl(company.logo, {
+    ? getFileUrl(company.logo, {
         width: 160,
         height: 160,
         fit: "inside",

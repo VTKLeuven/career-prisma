@@ -1,60 +1,48 @@
-import { NextRequest, NextResponse } from "next/server";
-import { readItems, updateItem, deleteItem } from "@directus/sdk";
-import { getAdminDirectusClient } from "@/lib/directus";
+import { NextResponse, type NextRequest } from "next/server";
 import { getUserFromRequestWithRefresh } from "@/lib/auth-server";
+import prisma from "@/lib/prisma";
 
-function extractCompanyId(company: unknown): string | undefined {
-  if (!company) return undefined;
-  if (typeof company === "string") return company;
-  if (typeof company === "object" && company !== null && "id" in company) {
-    const id = (company as { id?: unknown }).id;
-    return typeof id === "string" ? id : undefined;
-  }
-  return undefined;
+async function authorize(request: NextRequest, scanId: string) {
+  const { user } = await getUserFromRequestWithRefresh(request);
+  const companyId =
+    typeof user?.company === "string" ? user.company : user?.company?.id;
+  if (!user || !companyId) return null;
+  return prisma.attendantScan.findFirst({
+    where: {
+      id: scanId,
+      OR: [
+        { company_id: companyId },
+        { scannedBy: { is: { company_id: companyId } } },
+      ],
+    },
+    include: { scannedBy: true, formResponse: true },
+  });
 }
 
-function extractId(value: unknown): string | undefined {
-  if (!value) return undefined;
-  if (typeof value === "string") return value;
-  if (typeof value === "object" && value !== null && "id" in value) {
-    const id = (value as { id?: unknown }).id;
-    return typeof id === "string" ? id : undefined;
-  }
-  return undefined;
-}
-
-async function scanBelongsToCompany(opts: {
-  client: ReturnType<typeof getAdminDirectusClient>;
-  scan: { company_id?: unknown; scanned_by?: unknown };
-  companyId: string;
-  userId: string;
-}): Promise<boolean> {
-  const { client, scan, companyId, userId } = opts;
-
-  const scanCompanyId = extractCompanyId(scan.company_id);
-  if (scanCompanyId) return scanCompanyId === companyId;
-
-  const scannedById = extractId(scan.scanned_by);
-  if (!scannedById) return false;
-  if (scannedById === userId) return true;
-
-  try {
-    const companies = (await client!.request(
-      readItems("company", {
-        fields: ["id", { representatives: ["id"] }],
-        filter: { id: { _eq: companyId } },
-        limit: 1,
-      })
-    )) as unknown as Array<{
-      id: string;
-      representatives?: Array<{ id?: string } | string>;
-    }>;
-
-    const reps = companies?.[0]?.representatives ?? [];
-    return reps.some((r) => (typeof r === "string" ? r === scannedById : r?.id === scannedById));
-  } catch {
-    return false;
-  }
+function shapeScan(scan: NonNullable<Awaited<ReturnType<typeof authorize>>>) {
+  return {
+    id: scan.id,
+    attendant_uuid: scan.attendant_uuid,
+    scanned_at: scan.scanned_at?.toISOString(),
+    liked: scan.liked,
+    comment: scan.comment,
+    feedback_updated_at: scan.feedback_updated_at?.toISOString(),
+    scanned_by: {
+      name:
+        [scan.scannedBy?.first_name, scan.scannedBy?.last_name]
+          .filter(Boolean)
+          .join(" ") ||
+        scan.scannedBy?.email ||
+        "Unknown",
+      email: scan.scannedBy?.email || "",
+    },
+    form_response_id: scan.formResponse
+      ? {
+          data: scan.formResponse.data,
+          submitted_at: scan.formResponse.submitted_at?.toISOString(),
+        }
+      : null,
+  };
 }
 
 export async function GET(
@@ -62,104 +50,10 @@ export async function GET(
   context: { params: Promise<{ scanId: string }> }
 ) {
   const { scanId } = await context.params;
-
-  const { user, cookiesToSet } = await getUserFromRequestWithRefresh(request);
-  if (!user) {
-    const res = NextResponse.json(
-      { error: "Unauthorized. Please log in as a company representative." },
-      { status: 401 }
-    );
-    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-    return res;
-  }
-  if (!user.company) {
-    const res = NextResponse.json(
-      { error: "Your account is signed in, but it is not linked to a company." },
-      { status: 403 }
-    );
-    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-    return res;
-  }
-
-  const companyId = extractCompanyId(user.company);
-  if (!companyId) {
-    const res = NextResponse.json({ error: "Company ID not found." }, { status: 400 });
-    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-    return res;
-  }
-
-  const client = getAdminDirectusClient();
-  if (!client) {
-    const res = NextResponse.json(
-      { error: "Failed to connect to database. Please try again later." },
-      { status: 500 }
-    );
-    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-    return res;
-  }
-
-  const scans = (await client.request(
-    readItems("attendant_scans", {
-      fields: [
-        "id",
-        "attendant_uuid",
-        "scanned_at",
-        "liked",
-        "comment",
-        "feedback_updated_at",
-        { company_id: ["id"] },
-        { scanned_by: ["id", "first_name", "last_name", "email"] },
-        { form_response_id: ["data", "submitted_at"] },
-      ],
-      filter: { id: { _eq: scanId } },
-      limit: 1,
-    })
-  )) as unknown as Array<{
-    id: string;
-    attendant_uuid: string;
-    scanned_at: string;
-    liked?: boolean;
-    comment?: string | null;
-    feedback_updated_at?: string | null;
-    company_id?: string | { id: string } | null;
-    scanned_by?: { id?: string; first_name: string | null; last_name: string | null; email: string } | null;
-    form_response_id?: { data: Record<string, unknown>; submitted_at: string } | null;
-  }>;
-
-  if (!scans.length) {
-    const res = NextResponse.json({ error: "Scan not found" }, { status: 404 });
-    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-    return res;
-  }
-
-  const scan = scans[0];
-  const belongs = await scanBelongsToCompany({
-    client,
-    scan,
-    companyId,
-    userId: user.id,
-  });
-  if (!belongs) {
-    const res = NextResponse.json({ error: "Scan not found" }, { status: 404 });
-    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-    return res;
-  }
-
-  const scannedByEmail = scan.scanned_by?.email ?? "";
-  const scannedByName =
-    scan.scanned_by?.first_name || scan.scanned_by?.last_name
-      ? `${scan.scanned_by?.first_name ?? ""} ${scan.scanned_by?.last_name ?? ""}`.trim()
-      : scannedByEmail || "Unknown";
-
-  const res = NextResponse.json({
-    ...scan,
-    scanned_by: {
-      name: scannedByName || "Unknown",
-      email: scannedByEmail || "Unknown",
-    },
-  });
-  for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-  return res;
+  const scan = await authorize(request, scanId);
+  return scan
+    ? NextResponse.json(shapeScan(scan))
+    : NextResponse.json({ error: "Scan not found" }, { status: 404 });
 }
 
 export async function PATCH(
@@ -167,82 +61,19 @@ export async function PATCH(
   context: { params: Promise<{ scanId: string }> }
 ) {
   const { scanId } = await context.params;
-
-  const { user, cookiesToSet } = await getUserFromRequestWithRefresh(request);
-  if (!user) {
-    const res = NextResponse.json(
-      { error: "Unauthorized. Please log in as a company representative." },
-      { status: 401 }
-    );
-    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-    return res;
+  const scan = await authorize(request, scanId);
+  if (!scan) {
+    return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
-  if (!user.company) {
-    const res = NextResponse.json(
-      { error: "Your account is signed in, but it is not linked to a company." },
-      { status: 403 }
-    );
-    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-    return res;
-  }
-
-  const companyId = extractCompanyId(user.company);
-  if (!companyId) {
-    const res = NextResponse.json({ error: "Company ID not found." }, { status: 400 });
-    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-    return res;
-  }
-
-  const client = getAdminDirectusClient();
-  if (!client) {
-    const res = NextResponse.json(
-      { error: "Failed to connect to database. Please try again later." },
-      { status: 500 }
-    );
-    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-    return res;
-  }
-
-  const body = (await request.json().catch(() => ({}))) as { liked?: unknown; comment?: unknown };
-  const liked = typeof body.liked === "boolean" ? body.liked : undefined;
-  const comment = typeof body.comment === "string" ? body.comment : undefined;
-
-  // Ensure scan belongs to this company
-  const existing = (await client.request(
-    readItems("attendant_scans", {
-      fields: ["id", { company_id: ["id"] }, { scanned_by: ["id"] }],
-      filter: { id: { _eq: scanId } },
-      limit: 1,
-    })
-  )) as unknown as Array<{ id: string; company_id?: unknown; scanned_by?: unknown }>;
-
-  if (!existing.length) {
-    const res = NextResponse.json({ error: "Scan not found" }, { status: 404 });
-    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-    return res;
-  }
-
-  const belongs = await scanBelongsToCompany({
-    client,
-    scan: existing[0],
-    companyId,
-    userId: user.id,
+  const body = (await request.json()) as { liked?: unknown; comment?: unknown };
+  await prisma.attendantScan.update({
+    where: { id: scanId },
+    data: {
+      ...(typeof body.liked === "boolean" && { liked: body.liked }),
+      ...(typeof body.comment === "string" && { comment: body.comment }),
+      feedback_updated_at: new Date(),
+    },
   });
-  if (!belongs) {
-    const res = NextResponse.json({ error: "Scan not found" }, { status: 404 });
-    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-    return res;
-  }
-
-  await client.request(
-    updateItem("attendant_scans", scanId, {
-      ...(typeof liked === "boolean" ? { liked } : {}),
-      ...(typeof comment === "string" ? { comment } : {}),
-      feedback_updated_at: new Date().toISOString(),
-    })
-  );
-
-  // Return updated scan payload
   return GET(request, context);
 }
 
@@ -251,72 +82,10 @@ export async function DELETE(
   context: { params: Promise<{ scanId: string }> }
 ) {
   const { scanId } = await context.params;
-
-  const { user, cookiesToSet } = await getUserFromRequestWithRefresh(request);
-  if (!user) {
-    const res = NextResponse.json(
-      { error: "Unauthorized. Please log in as a company representative." },
-      { status: 401 }
-    );
-    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-    return res;
+  const scan = await authorize(request, scanId);
+  if (!scan) {
+    return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
-  if (!user.company) {
-    const res = NextResponse.json(
-      { error: "Your account is signed in, but it is not linked to a company." },
-      { status: 403 }
-    );
-    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-    return res;
-  }
-
-  const companyId = extractCompanyId(user.company);
-  if (!companyId) {
-    const res = NextResponse.json({ error: "Company ID not found." }, { status: 400 });
-    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-    return res;
-  }
-
-  const client = getAdminDirectusClient();
-  if (!client) {
-    const res = NextResponse.json(
-      { error: "Failed to connect to database. Please try again later." },
-      { status: 500 }
-    );
-    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-    return res;
-  }
-
-  const existing = (await client.request(
-    readItems("attendant_scans", {
-      fields: ["id", { company_id: ["id"] }, { scanned_by: ["id"] }],
-      filter: { id: { _eq: scanId } },
-      limit: 1,
-    })
-  )) as unknown as Array<{ id: string; company_id?: unknown; scanned_by?: unknown }>;
-
-  if (!existing.length) {
-    const res = NextResponse.json({ error: "Scan not found" }, { status: 404 });
-    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-    return res;
-  }
-
-  const belongs = await scanBelongsToCompany({
-    client,
-    scan: existing[0],
-    companyId,
-    userId: user.id,
-  });
-  if (!belongs) {
-    const res = NextResponse.json({ error: "Scan not found" }, { status: 404 });
-    for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-    return res;
-  }
-
-  await client.request(deleteItem("attendant_scans", scanId));
-
-  const res = NextResponse.json({ success: true });
-  for (const cookie of cookiesToSet) res.cookies.set(cookie.name, cookie.value, cookie.options);
-  return res;
+  await prisma.attendantScan.delete({ where: { id: scanId } });
+  return NextResponse.json({ success: true });
 }
-

@@ -65,7 +65,7 @@ import { Label } from "@/components/ui/label";
 import { IconBuilding, IconColumns, IconMail, IconPlus, IconTaxEuro, IconFileCv } from "@tabler/icons-react";
 import type { CareerEvent, Company, CompanyRep, CareerEventOption, CareerEventPage, Booth, HeaderButtonType, CareerSubOption } from "@/lib/schema";
 import { useUser } from "@/providers/UserProvider";
-import { DirectusUser } from "@directus/sdk";
+import type { UserSummary as AppUser } from "@/lib/schema";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
 
 /**
@@ -1762,25 +1762,17 @@ function RemoveOptionDialog({ option, companyId, onRemove }: { option: CareerEve
 function RemoveUserDialog({ user, companyId, onRemove }: { user: Partial<CompanyRep>; companyId: string; onRemove: () => void }) {
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [warning, setWarning] = React.useState<string | null>(null);
 
   const handleRemove = () => {
     if (!user?.id) return;
 
     setError(null);
-    setWarning(null);
 
     removeUserFromCompanyAction(companyId, user.id)
       .then((result) => {
         if (result?.success) {
           onRemove();
-          if (result.warning) {
-            setWarning(result.warning);
-            // Still close after a short delay to show the warning
-            setTimeout(() => setOpen(false), 2000);
-          } else {
-            setOpen(false);
-          }
+          setOpen(false);
         } else {
           setError(result?.error || "Failed to remove user");
         }
@@ -1800,7 +1792,6 @@ function RemoveUserDialog({ user, companyId, onRemove }: { user: Partial<Company
       setOpen(isOpen);
       if (!isOpen) {
         setError(null);
-        setWarning(null);
       }
     }}>
       <DialogTrigger asChild>
@@ -1812,7 +1803,7 @@ function RemoveUserDialog({ user, companyId, onRemove }: { user: Partial<Company
         <DialogHeader>
           <DialogTitle>Remove User</DialogTitle>
           <DialogDescription>
-            Are you sure you want to remove {userName} from this company? This will attempt to delete the user from Directus. If the user has uploaded files or other references, they will only be removed from this company.
+            Are you sure you want to remove {userName} from this company? The account will be archived and its uploaded files reassigned where possible.
           </DialogDescription>
         </DialogHeader>
         {error && (
@@ -1820,16 +1811,10 @@ function RemoveUserDialog({ user, companyId, onRemove }: { user: Partial<Company
             {error}
           </div>
         )}
-        {warning && (
-          <div className="text-sm text-amber-600 bg-amber-50 p-3 rounded-md">
-            {warning}
-          </div>
-        )}
         <DialogFooter className="flex-col sm:flex-row gap-2">
           <Button variant="outline" onClick={() => {
             setOpen(false);
             setError(null);
-            setWarning(null);
           }} className="w-full sm:w-auto">Cancel</Button>
           <Button variant="destructive" onClick={handleRemove} className="w-full sm:w-auto">Remove</Button>
         </DialogFooter>
@@ -2364,7 +2349,7 @@ function CompanyFormDialog({ onCreate, onRefresh }: { onCreate: (row: CompanyRow
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   // Because shadcn Select is not a native select, keep a local state so it lands in FormData-equivalent
   const [salesperson, setSalesperson] = React.useState<string>("");
-  const [salespersons, setSalespersons] = React.useState<DirectusUser[]>([]);
+  const [salespersons, setSalespersons] = React.useState<AppUser[]>([]);
 
   React.useEffect(() => {
     async function fetchSalespersons() {
@@ -2935,7 +2920,7 @@ function EventCard({ event }: { event: CareerEvent }) {
     } catch (err) {
       console.error("Failed to update header buttons:", err);
       setHeaderButtons(headerButtons); // Revert
-      alert(err instanceof Error ? err.message : "Failed to save. Add header_buttons JSON field to career_event_page in Directus.");
+      alert(err instanceof Error ? err.message : "Failed to save header buttons.");
     } finally {
       setSavingHeaderButtons(false);
     }
@@ -3652,4 +3637,3 @@ function AddCompanyGuideDialog({ event, hasCompanyGuide }: { event: CareerEvent;
     </Dialog>
   );
 }
-

@@ -6,7 +6,7 @@ import Image from "next/image";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CompanyLikeButton } from "@/components/CompanyLikeButton";
-import { getDirectusImageUrl } from "@/components/Images";
+import { getFileUrl } from "@/components/Images";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
 import { fetchLikedCompaniesAction } from "@/app/actions/student-liked-companies";
@@ -109,7 +109,7 @@ export default function LikedCompaniesPage() {
                 .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", undefined, { sensitivity: "base" }))
                 .map((c) => {
                 const hasPage = hasCompanyPageAccess(c);
-                const logoUrl = c.logo ? getDirectusImageUrl(c.logo) : null;
+                const logoUrl = c.logo ? getFileUrl(c.logo) : null;
                 const cardInner = (
                   <div className="group relative flex h-full min-h-[200px] flex-col items-center rounded-xl border border-border/60 bg-card p-5 text-center transition-colors hover:border-vtk-blue/30 hover:bg-muted/30">
                     <div className="flex h-14 shrink-0 items-center justify-center">

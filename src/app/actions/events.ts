@@ -11,8 +11,8 @@ import type { Company, CareerEvent, CareerEventOption, Speaker, TimeSlot, Timeta
 import { listCareerEventOptions } from "@/lib/repos/option";
 import { listCompanies } from "@/lib/repos/company";
 import { getOrCreateEventPage } from "@/lib/repos/floorplan";
-import { getDirectusWithToken } from "@/lib/directus";
-import { updateItem, readItems } from "@directus/sdk";
+import { getUserFromCookies } from "@/lib/auth-server";
+import prisma from "@/lib/prisma";
 
 export async function fetchEventsAction() {
     const events = await listEvents({ limit: 50, sort: "date" }) ?? [];
@@ -33,19 +33,7 @@ export async function fetchEventsAction() {
 
 export async function fetchOptionsForEventAction(eventId: string) {
   try {
-    const client = await getDirectusWithToken();
-    if (!client) {
-      return [];
-    }
-
-    // Fetch all options with their events relationship loaded
-    // This is more reliable than querying the junction table directly
-    const allOptions = await client.request(
-      readItems("career_event_option", {
-        fields: ["id", "name", "description", { events: ["*", { career_event_id: ["*"], career_event: ["*"] }], event: ["*", "id"] } as any],
-        limit: 1000,
-      })
-    ) as unknown as CareerEventOption[];
+    const allOptions = await listCareerEventOptions({ limit: 1000 }) ?? [];
 
     if (!allOptions || allOptions.length === 0) {
       return [];
@@ -327,9 +315,9 @@ export async function addCompaniesToEventPageAction(
       return { success: false, error: "No companies selected" };
     }
 
-    const client = await getDirectusWithToken();
-    if (!client) {
-      return { success: false, error: "Not authenticated" };
+    const user = await getUserFromCookies();
+    if (!user?.admin) {
+      return { success: false, error: "Unauthorized" };
     }
 
     // Get or create event page
@@ -339,18 +327,12 @@ export async function addCompaniesToEventPageAction(
     }
 
     // Get current companies on the event page
-    const currentPage = await client.request(
-      readItems("career_event_page", {
-        fields: ["companies.company_id.id" as any],
-        filter: {
-          id: { _eq: eventPage.id },
-        },
-        limit: 1,
-      })
-    ) as unknown as Array<{ companies?: Array<{ company_id: { id: string } }> }>;
-
+    const currentLinks = await prisma.careerEventPageCompany.findMany({
+      where: { career_event_page_id: Number(eventPage.id) },
+      select: { company_id: true },
+    });
     const existingCompanyIds = new Set(
-      (currentPage[0]?.companies ?? []).map((item) => item.company_id.id)
+      currentLinks.map((item) => item.company_id).filter(Boolean) as string[]
     );
 
     // Filter out companies that are already on the page
@@ -360,19 +342,12 @@ export async function addCompaniesToEventPageAction(
       return { success: true }; // All companies already added
     }
 
-    // Get all current company IDs (existing + new)
-    const allCompanyIds = [
-      ...Array.from(existingCompanyIds),
-      ...newCompanyIds,
-    ];
-
-    // Update the event page with all companies
-    // In Directus, many-to-many relationships are updated by passing an array of IDs
-    await client.request(
-      updateItem("career_event_page", eventPage.id, {
-        companies: allCompanyIds.map((id) => ({ company_id: id })),
-      })
-    );
+    await prisma.careerEventPageCompany.createMany({
+      data: newCompanyIds.map((companyId) => ({
+        career_event_page_id: Number(eventPage.id),
+        company_id: companyId,
+      })),
+    });
 
     return { success: true };
   } catch (error) {
