@@ -38,14 +38,14 @@ You need real IDs from the test database for meaningful tests:
 
 ```bash
 # Option 1: Use the run script (loads .env and passes K6_* credentials)
-./k6/run-stress-test.sh -e BASE_URL=http://localhost:3002
+./k6/run-stress-test.sh -e BASE_URL=http://localhost:3003
 
 # Option 2: Source .env manually, then run k6
-set -a && source .env && set +a && k6 run -e BASE_URL=http://localhost:3002 k6/stress-test.js
+set -a && source .env && set +a && k6 run -e BASE_URL=http://localhost:3003 k6/stress-test.js
 
 # Option 3: Pass credentials explicitly
 k6 run \
-  -e BASE_URL=http://localhost:3002 \
+  -e BASE_URL=http://localhost:3003 \
   -e K6_COMPANY_REP_EMAIL=your@company.com \
   -e K6_COMPANY_REP_PASSWORD=secret \
   -e K6_STUDENT_EMAIL=student@example.com \
@@ -71,7 +71,7 @@ Verify student login, company login, scans list, and scan flow before running th
 ```bash
 # Start your app (e.g. npm run dev), then:
 ./k6/run-smoke-test.sh
-./k6/run-smoke-test.sh -e BASE_URL=http://localhost:3002
+./k6/run-smoke-test.sh -e BASE_URL=http://localhost:3003
 ```
 
 Runs 1 iteration in ~3 seconds. For the "scan accepted" check, add at least one valid `attendant_uuid` from `form_responses` to `.env`:

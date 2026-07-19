@@ -21,7 +21,7 @@ sudo chown -R 1001:1001 directus-uploads
 docker compose up -d --build
 ```
 
-The app is served by Caddy on port `3002`.
+The single app container is served directly on port `3003`.
 
 ## Loading the data from the old Directus instance
 
@@ -53,8 +53,8 @@ rsync -avz <directus-host>:/vtk/directus-postgis/uploads/ ./directus-uploads/
 ```
 
 Filenames on disk are UUIDs matching the `files` table, so keep them intact.
-The same directory is mounted into every app replica. New uploads are written
-there, so include it in backups together with PostgreSQL.
+The directory is mounted into the app container. New uploads are written there,
+so include it in backups together with PostgreSQL.
 
 ## Environment
 
@@ -62,7 +62,8 @@ there, so include it in backups together with PostgreSQL.
 |---|---|
 | `DATABASE_URL` | Postgres connection string. Used by the app and the Prisma CLI. |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Consumed by the `database` service in `docker-compose.yml`. `POSTGRES_PASSWORD` is required and has no default. |
-| `POSTGRES_PORT` | Host port for Postgres. Defaults to `5434`, bound to loopback only. |
+| `POSTGRES_PORT` | Host port for Postgres. Defaults to `5437`, bound to loopback only. |
+| `APP_PORT` | Host port for the application. Defaults to `3003`. |
 | `AUTH_SECRET`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL` | Signed application sessions and NextAuth. Generate strong random secrets. |
 | `NEXT_PUBLIC_APP_URL` | Public origin used in invitation and reset links. |
 | `UPLOADS_DIR` | Local file storage path. Defaults to `./directus-uploads`; Compose sets the mounted container path. |

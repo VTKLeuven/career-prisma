@@ -76,7 +76,7 @@ the company-representative credential session.
 - UUID filenames unchanged from the old Directus upload directory.
 
 Local development defaults to `./directus-uploads`. Compose mounts that
-directory into every application replica and sets
+directory into the application container and sets
 `UPLOADS_DIR=/app/directus-uploads`.
 
 Sync the exported files before starting the application:

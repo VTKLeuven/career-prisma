@@ -9,10 +9,10 @@
  *
  * Run:
  *   ./k6/run-smoke-test.sh
- *   ./k6/run-smoke-test.sh -e BASE_URL=http://localhost:3002
+ *   ./k6/run-smoke-test.sh -e BASE_URL=http://localhost:3003
  *
  * Or manually (k6 does NOT load .env):
- *   set -a && source .env && set +a && k6 run -e BASE_URL=http://localhost:3002 k6/smoke-test.js
+ *   set -a && source .env && set +a && k6 run -e BASE_URL=http://localhost:3003 k6/smoke-test.js
  */
 
 import http from "k6/http";

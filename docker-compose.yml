@@ -15,7 +15,7 @@ services:
     ports:
       # Exposed on the host for migrations and psql. Bound to loopback so the
       # database is never reachable from outside the machine.
-      - "127.0.0.1:${POSTGRES_PORT:-5434}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5437}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-career} -d ${POSTGRES_DB:-career}"]
       interval: 10s
@@ -31,9 +31,9 @@ services:
       args:
         NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN}
         SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN}
-    # No 'ports' mapping: the replicas would clash on the host port.
-    expose:
-      - "3000"
+    # Serve the single application container directly on the host.
+    ports:
+      - "${APP_PORT:-3003}:3000"
     environment:
       - NODE_ENV=production
       # Inside the compose network the database is reachable by service name,
@@ -42,8 +42,8 @@ services:
       - NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}
       - UPLOADS_DIR=/app/directus-uploads
     volumes:
-      # Shared by every app replica. Preserve UUID filenames from the old
-      # export; new uploads are written here too.
+      # Preserve UUID filenames from the old export; new uploads are written
+      # here too.
       - ./directus-uploads:/app/directus-uploads
     restart: unless-stopped
     env_file:
@@ -51,38 +51,12 @@ services:
     depends_on:
       database:
         condition: service_healthy
-    # Scale to 8 replicas (leaves the remaining cores for Postgres and the OS)
-    deploy:
-      mode: replicated
-      replicas: 8
     ulimits:
       nofile:
         soft: 65536
         hard: 65536
     sysctls:
       - net.core.somaxconn=8192
-      - net.ipv4.tcp_tw_reuse=1
-
-  # The Load Balancer handles the host port mapping and distributes traffic
-  loadbalancer:
-    image: caddy:2-alpine
-    ports:
-      # Maps external 3002 to internal 80
-      - "3002:80"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-    # Caddy acts as a reverse proxy. Docker's internal DNS automatically
-    # round-robins requests to 'app:3000' across all 8 replicas.
-    command: caddy run --config /etc/caddy/Caddyfile
-    restart: unless-stopped
-    depends_on:
-      - app
-    ulimits:
-      nofile:
-        soft: 65536
-        hard: 65536
-    sysctls:
-      - net.core.somaxconn=65535
       - net.ipv4.tcp_tw_reuse=1
 
 volumes:

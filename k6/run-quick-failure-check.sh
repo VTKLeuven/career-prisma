@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Quick failure check (~1.5 min) – sources .env so login credentials work.
-# Run: ./k6/run-quick-failure-check.sh -e BASE_URL=http://localhost:3002
+# Run: ./k6/run-quick-failure-check.sh -e BASE_URL=http://localhost:3003
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -16,5 +16,5 @@ if [ -f .env ]; then
   set +a
 fi
 
-# Run k6 with any extra args (e.g. -e BASE_URL=http://localhost:3002)
+# Run k6 with any extra args (e.g. -e BASE_URL=http://localhost:3003)
 exec k6 run "$@" "$SCRIPT_DIR/stress-test.js"
