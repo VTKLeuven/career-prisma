@@ -1,9 +1,16 @@
 "use server"
 
-import { readItems, createItem, updateItem } from "@directus/sdk";
-import { directus, getAuthedDirectusOrThrow, getAdminDirectusClient } from "@/lib/directus";
+import { prisma } from "@/lib/prisma";
+import { ORDER_INCLUDE, shapeOrder } from "@/lib/repos/_shape";
 import type { Order } from "@/lib/schema";
 
+/**
+ * Note on the `zone_id` option: orders never carried a usable zone.
+ * The `orders.zone` column was NULL across all 374 production rows and has been
+ * dropped; zone membership is resolved through the zones<->booths join instead
+ * (see getOrderZoneId in app/actions/orders.ts). The parameter is kept so
+ * callers do not need to change, but filtering by it now goes through booths.
+ */
 export async function listOrders(opts?: {
     status?: string;
     zone_id?: string;
@@ -11,33 +18,23 @@ export async function listOrders(opts?: {
     shifter_id?: string;
 }) {
     try {
-        const filter: Record<string, any> = {};
+        const zoneId = opts?.zone_id ? Number(opts.zone_id) : undefined;
 
-        if (opts?.status) {
-            filter.status = { _eq: opts.status };
-        }
-        if (opts?.zone_id) {
-            // Assuming orders have a snapshot of zone, or we link via booth
-            // For simplicity, let's assume 'zone' field on order is populated or we filter by booth's zone
-            // If schema has zone relation:
-            filter.zone = { _eq: opts.zone_id };
-        }
-        if (opts?.shifter_id) {
-            filter.shifter = { _eq: opts.shifter_id };
-        }
+        const rows = await prisma.order.findMany({
+            where: {
+                ...(opts?.status ? { status: opts.status } : {}),
+                ...(opts?.shifter_id ? { shifter_id: opts.shifter_id } : {}),
+                ...(zoneId !== undefined && !Number.isNaN(zoneId)
+                    ? { booth: { zoneBooths: { some: { zone_id: zoneId } } } }
+                    : {}),
+            },
+            include: ORDER_INCLUDE,
+            // Newest first. No limit: the statistics views need full history,
+            // which is what Directus' `limit: -1` was doing here.
+            orderBy: { date_created: "desc" },
+        });
 
-        const client = getAdminDirectusClient() || directus; // Orders might be sensitive? Use Admin or Authed
-
-        return client.request(
-            readItems("orders" as any, {
-                fields: ["*", "booth.*" as any, "booth.company.*" as any, "booth.zone.*" as any, "shifter.*" as any],
-                filter,
-                sort: ["-date_created"] as any, // Newest first
-                // For statistics we want to be able to see the full history,
-                // so explicitly request all orders instead of Directus' default limit.
-                limit: -1 as any,
-            })
-        ) as unknown as Promise<Order[]>;
+        return rows.map(shapeOrder) as Order[];
     } catch (error) {
         console.error("Error listing orders:", error);
         return [];
@@ -45,29 +42,55 @@ export async function listOrders(opts?: {
 }
 
 export async function createOrder(data: Partial<Order>) {
-    // Use admin client to bypass public permission restrictions
-    // This allows booth visitors (unauthenticated users) to place orders via the QR code
-    const client = getAdminDirectusClient() || directus;
-    return client.request(createItem("orders" as any, data)) as Promise<Order>;
+    // Booth visitors place orders over the QR code without logging in, so this
+    // deliberately performs no auth check -- as before.
+    const { booth, shifter, id, ...rest } = data as Record<string, any>;
+
+    const row = await prisma.order.create({
+        data: {
+            ...rest,
+            ...(booth != null
+                ? { booth_id: typeof booth === "object" ? Number(booth.id) : Number(booth) }
+                : {}),
+            ...(shifter != null
+                ? { shifter_id: typeof shifter === "object" ? shifter.id : shifter }
+                : {}),
+        },
+        include: ORDER_INCLUDE,
+    });
+
+    return shapeOrder(row) as Order;
 }
 
 export async function updateOrder(id: string, data: Partial<Order>) {
-    const client = await getAuthedDirectusOrThrow();
-    return client.request(updateItem("orders" as any, id, data)) as Promise<Order>;
+    const { booth, shifter, id: _ignored, ...rest } = data as Record<string, any>;
+
+    const row = await prisma.order.update({
+        where: { id: Number(id) },
+        data: {
+            ...rest,
+            ...(booth !== undefined
+                ? { booth_id: booth == null ? null : typeof booth === "object" ? Number(booth.id) : Number(booth) }
+                : {}),
+            ...(shifter !== undefined
+                ? { shifter_id: shifter == null ? null : typeof shifter === "object" ? shifter.id : shifter }
+                : {}),
+            date_updated: new Date(),
+        },
+        include: ORDER_INCLUDE,
+    });
+
+    return shapeOrder(row) as Order;
 }
 
 export async function getActiveOrderForBooth(boothId: string) {
-    // Use admin client to check for active orders - this allows unauthenticated booth visitors
-    const client = getAdminDirectusClient() || directus;
-    const boothIdInt = parseInt(boothId, 10);
-    const orders = await client.request(
-        readItems("orders" as any, {
-            filter: {
-                booth: { _eq: boothIdInt },
-                status: { _in: ["pending", "preparing"] }
-            },
-            limit: 1,
-        })
-    ) as Order[];
-    return orders[0] || null;
+    const row = await prisma.order.findFirst({
+        where: {
+            booth_id: Number(boothId),
+            status: { in: ["pending", "preparing"] },
+        },
+        include: ORDER_INCLUDE,
+    });
+
+    return (shapeOrder(row) as Order) ?? null;
 }

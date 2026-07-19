@@ -20,7 +20,7 @@ model AcademicYear {
 }
 
 model AttendantScan {
-  id                  String        @id @db.Uuid
+  id                  String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   attendant_uuid      String?       @db.VarChar(255)
   form_response_id    Int?
   company_id          Int?
@@ -70,7 +70,7 @@ model CareerEventOptionSubOption {
 }
 
 model CareerEventOption {
-  id                          String                       @id(map: "career_event_option_pkey") @db.Uuid
+  id                          String                       @id(map: "career_event_option_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   date_created                DateTime?                    @db.Timestamptz(6)
   date_updated                DateTime?                    @db.Timestamptz(6)
   name                        String?                      @db.VarChar(255)
@@ -142,7 +142,7 @@ model CareerEventPage {
 }
 
 model CareerEvent {
-  id                      String                   @id(map: "career_event_pkey") @db.Uuid
+  id                      String                   @id(map: "career_event_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   status                  String                   @default("draft") @db.VarChar(255)
   date_created            DateTime?                @db.Timestamptz(6)
   date_updated            DateTime?                @db.Timestamptz(6)
@@ -178,7 +178,7 @@ model CareerSubOption {
 }
 
 model Company {
-  id                               String                           @id(map: "company_pkey") @db.Uuid
+  id                               String                           @id(map: "company_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   status                           String                           @default("draft") @db.VarChar(255)
   date_created                     DateTime?                        @db.Timestamptz(6)
   date_updated                     DateTime?                        @db.Timestamptz(6)
@@ -344,7 +344,7 @@ model CvBook {
 }
 
 model Drink {
-  id            String    @id @db.Uuid
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name          String?   @db.VarChar(255)
   type          String?   @db.VarChar(255)
   is_active     Boolean?  @default(true)
@@ -389,7 +389,7 @@ model FacultyMaster {
 }
 
 model File {
-  id                      String            @id(map: "directus_files_pkey") @db.Uuid
+  id                      String            @id(map: "directus_files_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   storage                 String            @db.VarChar(255)
   filename_disk           String?           @db.VarChar(255)
   filename_download       String            @db.VarChar(255)
@@ -556,7 +556,7 @@ model Order {
 }
 
 model Role {
-  id          String  @id(map: "directus_roles_pkey") @db.Uuid
+  id          String  @id(map: "directus_roles_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name        String  @db.VarChar(100)
   icon        String  @default("supervised_user_circle") @db.VarChar(64)
   description String?
@@ -726,7 +726,7 @@ model Timetable {
 }
 
 model User {
-  id                   String            @id(map: "directus_users_pkey") @db.Uuid
+  id                   String            @id(map: "directus_users_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   first_name           String?           @db.VarChar(50)
   last_name            String?           @db.VarChar(50)
   email                String?           @unique(map: "directus_users_email_unique") @db.VarChar(128)
@@ -754,7 +754,7 @@ model User {
 }
 
 model Vacancy {
-  id                 String              @id @db.Uuid
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   status             String?             @default("draft") @db.VarChar(255)
   date_created       DateTime?           @db.Timestamptz(6)
   date_updated       DateTime?           @db.Timestamptz(6)
@@ -797,7 +797,7 @@ model VacancySectorLink {
 }
 
 model VacancySectionConfig {
-  id       String  @id(map: "vacancy_section_config_pkey") @db.Uuid
+  id       String  @id(map: "vacancy_section_config_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   key      String? @db.VarChar(255)
   label    String? @db.VarChar(255)
   sort     Int?
@@ -808,7 +808,7 @@ model VacancySectionConfig {
 }
 
 model VacancySector {
-  id                 String              @id @db.Uuid
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name               String?             @db.VarChar(255)
   sort               String?             @db.VarChar(255)
   active             Boolean             @default(true)
@@ -819,7 +819,7 @@ model VacancySector {
 }
 
 model VacancyType {
-  id        String    @id @db.Uuid
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   active    Boolean   @default(true)
   name      String?   @db.VarChar(255)
   sort      Int?

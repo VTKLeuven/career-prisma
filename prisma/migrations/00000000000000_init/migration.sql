@@ -15,7 +15,7 @@ CREATE TABLE "academic_years" (
 
 -- CreateTable
 CREATE TABLE "attendant_scans" (
-    "id" UUID NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "attendant_uuid" VARCHAR(255),
     "form_response_id" INTEGER,
     "company_id" INTEGER,
@@ -59,7 +59,7 @@ CREATE TABLE "career_event_option_sub_options" (
 
 -- CreateTable
 CREATE TABLE "career_event_options" (
-    "id" UUID NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "date_created" TIMESTAMPTZ(6),
     "date_updated" TIMESTAMPTZ(6),
     "name" VARCHAR(255),
@@ -119,7 +119,7 @@ CREATE TABLE "career_event_pages" (
 
 -- CreateTable
 CREATE TABLE "career_events" (
-    "id" UUID NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "status" VARCHAR(255) NOT NULL DEFAULT 'draft',
     "date_created" TIMESTAMPTZ(6),
     "date_updated" TIMESTAMPTZ(6),
@@ -150,7 +150,7 @@ CREATE TABLE "career_sub_options" (
 
 -- CreateTable
 CREATE TABLE "companies" (
-    "id" UUID NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "status" VARCHAR(255) NOT NULL DEFAULT 'draft',
     "date_created" TIMESTAMPTZ(6),
     "date_updated" TIMESTAMPTZ(6),
@@ -288,7 +288,7 @@ CREATE TABLE "cv_books" (
 
 -- CreateTable
 CREATE TABLE "drinks" (
-    "id" UUID NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "name" VARCHAR(255),
     "type" VARCHAR(255),
     "is_active" BOOLEAN DEFAULT true,
@@ -332,7 +332,7 @@ CREATE TABLE "faculty_master" (
 
 -- CreateTable
 CREATE TABLE "files" (
-    "id" UUID NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "storage" VARCHAR(255) NOT NULL,
     "filename_disk" VARCHAR(255),
     "filename_download" VARCHAR(255) NOT NULL,
@@ -468,7 +468,7 @@ CREATE TABLE "orders" (
 
 -- CreateTable
 CREATE TABLE "roles" (
-    "id" UUID NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "name" VARCHAR(100) NOT NULL,
     "icon" VARCHAR(64) NOT NULL DEFAULT 'supervised_user_circle',
     "description" TEXT,
@@ -619,7 +619,7 @@ CREATE TABLE "timetables" (
 
 -- CreateTable
 CREATE TABLE "users" (
-    "id" UUID NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "first_name" VARCHAR(50),
     "last_name" VARCHAR(50),
     "email" VARCHAR(128),
@@ -639,7 +639,7 @@ CREATE TABLE "users" (
 
 -- CreateTable
 CREATE TABLE "vacancies" (
-    "id" UUID NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "status" VARCHAR(255) DEFAULT 'draft',
     "date_created" TIMESTAMPTZ(6),
     "date_updated" TIMESTAMPTZ(6),
@@ -676,7 +676,7 @@ CREATE TABLE "vacancies_vacancy_sectors" (
 
 -- CreateTable
 CREATE TABLE "vacancy_section_configs" (
-    "id" UUID NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "key" VARCHAR(255),
     "label" VARCHAR(255),
     "sort" INTEGER,
@@ -688,7 +688,7 @@ CREATE TABLE "vacancy_section_configs" (
 
 -- CreateTable
 CREATE TABLE "vacancy_sectors" (
-    "id" UUID NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "name" VARCHAR(255),
     "sort" VARCHAR(255),
     "active" BOOLEAN NOT NULL DEFAULT true,
@@ -698,7 +698,7 @@ CREATE TABLE "vacancy_sectors" (
 
 -- CreateTable
 CREATE TABLE "vacancy_types" (
-    "id" UUID NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "active" BOOLEAN NOT NULL DEFAULT true,
     "name" VARCHAR(255),
     "sort" INTEGER,

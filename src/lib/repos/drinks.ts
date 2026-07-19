@@ -1,7 +1,6 @@
 "use server"
 
-import { readItems, createItem, updateItem, deleteItem } from "@directus/sdk";
-import { directus, getAuthedDirectusOrThrow, getAdminDirectusClient } from "@/lib/directus";
+import { prisma } from "@/lib/prisma";
 import type { Drink } from "@/lib/schema";
 
 function getBrusselsTimeMinutes(): number {
@@ -35,30 +34,26 @@ function isVisibleNow(drink: Drink): boolean {
     return now >= from || now < until;
 }
 
+/** Consumers pass `image` straight to getDirectusImageUrl(), so it stays a bare file id. */
+function shapeDrink(row: Record<string, any>): Drink {
+    const { image_id, ...rest } = row;
+    return { ...rest, image: image_id ?? undefined } as Drink;
+}
+
 export async function listDrinks(opts?: {
     visible_only?: boolean;
 }) {
     try {
-        const filter: Record<string, any> = {};
-        if (opts?.visible_only) {
-            filter.is_active = { _eq: true };
-        }
+        const rows = await prisma.drink.findMany({
+            // Directus enforced `is_active = true` for the public role too. That
+            // rule now lives here, because Prisma has no policy layer to fall
+            // back on.
+            where: opts?.visible_only ? { is_active: true } : undefined,
+            orderBy: { name: "asc" },
+        });
 
-        const client = getAdminDirectusClient() || directus;
-
-        const drinks = await client.request(
-            readItems("drinks" as any, {
-                fields: ["*", "image.*" as any],
-                filter,
-                sort: ["name"] as any,
-            })
-        ) as unknown as Drink[];
-
-        if (opts?.visible_only) {
-            return drinks.filter(isVisibleNow);
-        }
-
-        return drinks;
+        const drinks = rows.map(shapeDrink);
+        return opts?.visible_only ? drinks.filter(isVisibleNow) : drinks;
     } catch (error) {
         console.error("Error listing drinks:", error);
         return [];
@@ -66,16 +61,22 @@ export async function listDrinks(opts?: {
 }
 
 export async function createDrink(data: Partial<Drink>) {
-    const client = getAdminDirectusClient() || await getAuthedDirectusOrThrow();
-    return client.request(createItem("drinks" as any, data)) as Promise<Drink>;
+    const { image, id: _id, ...rest } = data as Record<string, any>;
+    const row = await prisma.drink.create({
+        data: { ...rest, ...(image !== undefined ? { image_id: image || null } : {}) },
+    });
+    return shapeDrink(row);
 }
 
 export async function updateDrink(id: string, data: Partial<Drink>) {
-    const client = getAdminDirectusClient() || await getAuthedDirectusOrThrow();
-    return client.request(updateItem("drinks" as any, id, data)) as Promise<Drink>;
+    const { image, id: _id, ...rest } = data as Record<string, any>;
+    const row = await prisma.drink.update({
+        where: { id },
+        data: { ...rest, ...(image !== undefined ? { image_id: image || null } : {}) },
+    });
+    return shapeDrink(row);
 }
 
 export async function deleteDrink(id: string) {
-    const client = getAdminDirectusClient() || await getAuthedDirectusOrThrow();
-    return client.request(deleteItem("drinks" as any, id));
+    return prisma.drink.delete({ where: { id } });
 }

@@ -240,6 +240,34 @@ ALTER TABLE IF EXISTS career_event_option_career_event    RENAME TO career_event
 ALTER TABLE IF EXISTS career_event_option_career_sub_option RENAME TO career_event_option_sub_options;
 ALTER TABLE IF EXISTS student_matching_response_company   RENAME TO student_matching_response_companies;
 
+-- ---------------------------------------------------------------------------
+-- 8. Default values for UUID primary keys
+-- ---------------------------------------------------------------------------
+-- Directus generated row ids in application code, so these columns have no
+-- database default. Without one, every Prisma `create` on these tables fails
+-- with "Property 'id' is missing". gen_random_uuid() is built into PostgreSQL
+-- 13 and later, so no extension is needed.
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN
+    SELECT c.relname AS tbl, a.attname AS col
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+    JOIN pg_type t ON t.oid = a.atttypid
+    JOIN pg_index i ON i.indrelid = c.oid AND i.indisprimary AND a.attnum = ANY(i.indkey)
+    LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
+    WHERE n.nspname = 'public'
+      AND c.relkind = 'r'
+      AND t.typname = 'uuid'
+      AND d.adbin IS NULL
+  LOOP
+    EXECUTE format(
+      'ALTER TABLE %I ALTER COLUMN %I SET DEFAULT gen_random_uuid()', r.tbl, r.col);
+  END LOOP;
+END $$;
+
 COMMIT;
 
 -- ---------------------------------------------------------------------------
