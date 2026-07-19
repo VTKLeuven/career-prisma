@@ -21,6 +21,19 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci
 
+# Prisma migration image. This keeps production imports independent of the
+# host's Node/npm version while still using the repository's pinned lockfile.
+FROM base AS migrator
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json prisma.config.ts ./
+COPY prisma ./prisma
+COPY scripts/run-prisma-migrations.mjs ./scripts/run-prisma-migrations.mjs
+CMD ["node", "scripts/run-prisma-migrations.mjs"]
+
 # Rebuild the source code only when needed
 FROM base AS builder
 # Install build dependencies for native modules

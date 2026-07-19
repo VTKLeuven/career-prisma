@@ -6,15 +6,14 @@ external CMS: the database is the source of truth and its shape lives in
 
 ## New server, from scratch
 
-Requires Docker and Node 20+.
+Requires Docker.
 
 ```bash
 git clone <repo> career && cd career
 cp .env.example .env      # then fill in the secrets, see below
 docker compose up -d database
-npm ci
-npx prisma migrate deploy # creates all 56 tables
-npx prisma generate
+# Runs the pinned Prisma CLI in a one-off Docker container.
+docker compose --profile tools run --rm migration
 mkdir -p directus-uploads
 # Linux Docker hosts: make the bind mount writable by the image's nextjs user
 sudo chown -R 1001:1001 directus-uploads
@@ -35,7 +34,8 @@ It restores the Directus dump, converts it to the Prisma schema, loads it into
 the PostgreSQL database configured by Docker Compose, and marks the baseline
 migration as applied. **It drops and recreates that database**, so only run it
 on a fresh install. If the app is already running, the loader stops it during
-the import and starts it again after a successful load.
+the import and starts it again after a successful load. Host-side npm
+dependencies are not required; the pinned Prisma CLI runs in Docker.
 
 The conversion runs inside a temporary `postgis/postgis` container that the
 script starts and removes on its own. This is not optional: the Directus dump

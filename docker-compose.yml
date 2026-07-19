@@ -63,5 +63,24 @@ services:
       - net.core.somaxconn=8192
       - net.ipv4.tcp_tw_reuse=1
 
+  # One-off Prisma CLI container. The profile keeps it out of normal
+  # `docker compose up`; the import script invokes it when needed.
+  migration:
+    profiles:
+      - tools
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+    environment:
+      - DATABASE_HOST=database
+      - DATABASE_PORT=5432
+      - DATABASE_USER=${POSTGRES_USER:-career}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD}
+      - DATABASE_NAME=${POSTGRES_DB:-career}
+    depends_on:
+      database:
+        condition: service_healthy
+
 volumes:
   db-data:

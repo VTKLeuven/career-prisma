@@ -68,8 +68,6 @@ MIGRATION="$ROOT/prisma/migrate-from-directus.sql"
 command -v docker >/dev/null || die "docker is required (the conversion runs in a temporary container)"
 command -v psql   >/dev/null || die "psql not found (install postgresql-client)"
 command -v node   >/dev/null || die "node is required"
-[ -x "$ROOT/node_modules/.bin/prisma" ] \
-  || die "Project dependencies are missing. Run 'npm ci' in $ROOT before importing."
 
 # ---------------------------------------------------------------------------
 # Resolve the target database from Docker Compose
@@ -204,17 +202,8 @@ info "loaded"
 # The tables already exist, so `prisma migrate deploy` must not try to create
 # them. Resolving the baseline records it as applied without running it.
 say "[5/5] Baselining and applying Prisma migrations"
-export DB_USER DB_PASS DB_HOST DB_PORT DB_NAME
-PRISMA_DATABASE_URL="$(node -e '
-  const encode = encodeURIComponent;
-  process.stdout.write(
-    `postgresql://${encode(process.env.DB_USER)}:${encode(process.env.DB_PASS)}` +
-    `@${process.env.DB_HOST}:${process.env.DB_PORT}/${encode(process.env.DB_NAME)}?schema=public`
-  );
-')"
-( cd "$ROOT" && \
-  DATABASE_URL="$PRISMA_DATABASE_URL" npx prisma migrate resolve --applied 00000000000000_init >/dev/null && \
-  DATABASE_URL="$PRISMA_DATABASE_URL" npx prisma migrate deploy ) || \
+( cd "$ROOT" && docker compose --profile tools run --rm \
+    -e BASELINE_EXISTING_SCHEMA=1 migration ) || \
   die "Could not apply Prisma migrations"
 
 say "Loaded"
