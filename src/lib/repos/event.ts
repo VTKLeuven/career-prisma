@@ -13,6 +13,68 @@ import {
 import type { CareerEvent, CareerEventPage } from "@/lib/schema";
 import { slugifyEventName } from "@/lib/utils/slugify";
 
+/** Converts a "YYYY-MM-DD" string (or Date) to a Date for a `@db.Date` column. */
+function dateValue(value: unknown): Date | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (value instanceof Date) return value;
+  const text = String(value).slice(0, 10);
+  const d = new Date(`${text}T00:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) throw new Error(`Invalid date: ${String(value)}`);
+  return d;
+}
+
+/** Converts an "HH:mm[:ss]" string (or Date) to a Date for a `@db.Time` column. */
+function timeValue(value: unknown): Date | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (value instanceof Date) return value;
+  const match = String(value).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (!match) throw new Error(`Invalid time: ${String(value)}`);
+  const [, hour, minute, second = "00"] = match;
+  return new Date(`1970-01-01T${hour.padStart(2, "0")}:${minute}:${second}.000Z`);
+}
+
+function toEventWrite(payload: Record<string, any>): Record<string, unknown> {
+  const { id: _id, image, date, start_hour, end_hour, href: _href, options: _options, ...rest } = payload;
+  return {
+    ...rest,
+    ...(payload.num_of_companies !== undefined
+      ? { num_of_companies: payload.num_of_companies == null || payload.num_of_companies === "" ? null : Number(payload.num_of_companies) }
+      : {}),
+    ...(payload.num_of_students !== undefined
+      ? { num_of_students: payload.num_of_students == null || payload.num_of_students === "" ? null : Number(payload.num_of_students) }
+      : {}),
+    ...(image !== undefined ? { image_id: image || null } : {}),
+    ...(date !== undefined ? { date: dateValue(date) } : {}),
+    ...(start_hour !== undefined ? { start_hour: timeValue(start_hour) } : {}),
+    ...(end_hour !== undefined ? { end_hour: timeValue(end_hour) } : {}),
+  };
+}
+
+export async function createEvent(payload: Record<string, any>): Promise<CareerEvent> {
+  const row = await prisma.careerEvent.create({
+    data: { ...toEventWrite(payload), date_created: new Date() },
+  });
+  return shapeCareerEvent(row) as CareerEvent;
+}
+
+export async function updateEvent(id: string, payload: Record<string, any>): Promise<CareerEvent> {
+  const row = await prisma.careerEvent.update({
+    where: { id },
+    data: { ...toEventWrite(payload), date_updated: new Date() },
+  });
+  return shapeCareerEvent(row) as CareerEvent;
+}
+
+/** Removes the event and its option links. Blocks if event pages/matching/schedules exist. */
+export async function deleteEvent(id: string): Promise<void> {
+  await prisma.$transaction([
+    prisma.careerEventOptionEvent.deleteMany({ where: { career_event_id: id } }),
+    prisma.careerEvent.delete({ where: { id } }),
+  ]);
+}
+
 export async function listEvents(opts?: {
   search?: string;
   limit?: number;

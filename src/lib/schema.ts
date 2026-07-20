@@ -107,7 +107,9 @@ export type CareerEvent = {
   start_hour: string;
   end_hour: string;
   max_companies: number;
+  num_of_companies?: number;
   num_of_students: number;
+  status?: string;
   options: CareerEventOption[];
   href?: string;
 }

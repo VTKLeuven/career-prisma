@@ -34,6 +34,52 @@ export async function findStudentByEmail(email: string): Promise<Student | null>
   return row ? shapeStudent(row) : null;
 }
 
+/* ------------------------------------------------------------------ *
+ * Admin student management
+ * ------------------------------------------------------------------ */
+
+export async function listStudents(opts?: { limit?: number }): Promise<Student[]> {
+  const rows = await prisma.student.findMany({
+    orderBy: [{ first_name: "asc" }, { last_name: "asc" }],
+    take: opts?.limit ?? 2000,
+  });
+  return rows.map(shapeStudent);
+}
+
+function toStudentWrite(payload: Record<string, any>): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  const passthrough = ["first_name", "last_name", "full_name", "university"] as const;
+  for (const key of passthrough) {
+    if (payload[key] !== undefined) data[key] = payload[key] || null;
+  }
+  if (payload.email !== undefined) data.email = String(payload.email).trim().toLowerCase();
+  if (payload.username !== undefined) data.username = String(payload.username).trim();
+  if (payload.verified !== undefined) data.verified = Boolean(payload.verified);
+  if (payload.is_shifter !== undefined) data.is_shifter = Boolean(payload.is_shifter);
+  return data;
+}
+
+export async function updateStudent(id: number, payload: Record<string, any>): Promise<Student> {
+  const row = await prisma.student.update({
+    where: { id },
+    data: { ...toStudentWrite(payload), date_updated: new Date() },
+  });
+  return shapeStudent(row);
+}
+
+/** Removes the student and all of their matching/company associations. */
+export async function deleteStudent(id: number): Promise<void> {
+  await prisma.$transaction([
+    prisma.studentMatchingResponseCompany.deleteMany({
+      where: { studentMatchingResponse: { student_id: id } },
+    }),
+    prisma.studentMatchingResponse.deleteMany({ where: { student_id: id } }),
+    prisma.companyMatchingResponseStudent.deleteMany({ where: { students_id: id } }),
+    prisma.studentCompany.deleteMany({ where: { students_id: id } }),
+    prisma.student.delete({ where: { id } }),
+  ]);
+}
+
 export async function findStudentByUsername(
   username: string
 ): Promise<Student | null> {

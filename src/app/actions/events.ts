@@ -2,8 +2,11 @@
 // File to do data manipulation 
 
 "use server";
-import { listEvents } from "@/lib/repos/event";
+import { revalidatePath } from "next/cache";
+import { listEvents, createEvent, updateEvent, deleteEvent } from "@/lib/repos/event";
 import { listEventPages, getEventPageBySlug } from "@/lib/repos/event";
+import { requireAdminUser } from "@/lib/auth-server";
+import type { ActionResult } from "@/components/admin/types";
 import { slugifyEventName } from "@/lib/utils/slugify";
 import { getActiveMatchingSoftwareForEvent } from "@/lib/repos/matching-software";
 import DOMPurify from 'isomorphic-dompurify';
@@ -355,6 +358,53 @@ export async function addCompaniesToEventPageAction(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to add companies",
+    };
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Career event writes
+ * ------------------------------------------------------------------ */
+
+export async function createEventAction(data: Record<string, unknown>): Promise<ActionResult<CareerEvent>> {
+  try {
+    await requireAdminUser();
+    const event = await createEvent(data);
+    revalidatePath("/admin");
+    revalidatePath("/event");
+    return { success: true, data: event };
+  } catch (error) {
+    console.error("[createEventAction]", error);
+    return { success: false, error: error instanceof Error ? error.message : "Failed to create event" };
+  }
+}
+
+export async function updateEventAction(id: string, data: Record<string, unknown>): Promise<ActionResult<CareerEvent>> {
+  try {
+    await requireAdminUser();
+    const event = await updateEvent(id, data);
+    revalidatePath("/admin");
+    revalidatePath("/event");
+    return { success: true, data: event };
+  } catch (error) {
+    console.error("[updateEventAction]", error);
+    return { success: false, error: error instanceof Error ? error.message : "Failed to update event" };
+  }
+}
+
+export async function deleteEventAction(id: string): Promise<ActionResult> {
+  try {
+    await requireAdminUser();
+    await deleteEvent(id);
+    revalidatePath("/admin");
+    revalidatePath("/event");
+    return { success: true };
+  } catch (error) {
+    console.error("[deleteEventAction]", error);
+    return {
+      success: false,
+      error:
+        "Could not delete this event. It still has an event page, matching software or schedules linked — remove those first.",
     };
   }
 }

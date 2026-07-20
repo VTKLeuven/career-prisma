@@ -447,6 +447,38 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             title: "Digital Signage",
             url: "/admin/signage",
           },
+          {
+            title: "Master Categories",
+            url: "/admin/masters",
+          },
+          {
+            title: "Faculties",
+            url: "/admin/faculties",
+          },
+          {
+            title: "Career Options",
+            url: "/admin/career-options",
+          },
+          {
+            title: "Timetable",
+            url: "/admin/timetable",
+          },
+          {
+            title: "Speakers",
+            url: "/admin/speakers",
+          },
+          {
+            title: "Event Pages",
+            url: "/admin/event-pages",
+          },
+          {
+            title: "User Management",
+            url: "/admin/users",
+          },
+          {
+            title: "Students",
+            url: "/admin/students",
+          },
         ],
       });
     }

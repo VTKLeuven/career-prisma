@@ -44,6 +44,122 @@ export async function createRep(payload: Partial<CompanyRep>) {
   });
 }
 
+/** Minimal user list for relation dropdowns (e.g. picking a speaker's representative). */
+export async function listUsersBasic(): Promise<
+  { id: string; first_name: string | null; last_name: string | null; email: string | null }[]
+> {
+  await requireUser();
+  return prisma.user.findMany({
+    where: { status: { not: "archived" } },
+    select: { id: true, first_name: true, last_name: true, email: true },
+    orderBy: [{ first_name: "asc" }, { last_name: "asc" }],
+  });
+}
+
+export type AdminUserRow = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  title: string | null;
+  tel: string | null;
+  status: string;
+  role_id: string | null;
+  role_name: string | null;
+  company_id: string | null;
+  company_name: string | null;
+};
+
+/** Full platform-user list for the admin users table. */
+export async function listUsers(): Promise<AdminUserRow[]> {
+  await requireUser();
+  const rows = await prisma.user.findMany({
+    include: {
+      role: { select: { id: true, name: true } },
+      company: { select: { id: true, name: true } },
+    },
+    orderBy: [{ status: "asc" }, { first_name: "asc" }],
+  });
+  return rows.map((u) => ({
+    id: u.id,
+    first_name: u.first_name,
+    last_name: u.last_name,
+    email: u.email,
+    title: u.title,
+    tel: u.tel,
+    status: u.status,
+    role_id: u.role_id,
+    role_name: u.role?.name ?? null,
+    company_id: u.company_id,
+    company_name: u.company?.name ?? null,
+  }));
+}
+
+/** Roles for the user-form dropdown. */
+export async function listRoles(): Promise<{ id: string; name: string }[]> {
+  await requireUser();
+  return prisma.role.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } });
+}
+
+function toUserWrite(payload: Record<string, any>): Record<string, unknown> {
+  const { id: _id, role, role_id, company, company_id, email, ...rest } = payload;
+  const roleRef = role_id ?? role;
+  const companyRef = company_id ?? (company && typeof company === "object" ? company.id : company);
+  return {
+    ...rest,
+    ...(email !== undefined ? { email: email ? String(email).trim().toLowerCase() : null } : {}),
+    ...(roleRef !== undefined ? { role_id: roleRef || null } : {}),
+    ...(companyRef !== undefined ? { company_id: companyRef || null } : {}),
+  };
+}
+
+/** Creates a platform user (admin flow). Defaults new accounts to `invited`. */
+export async function createUser(payload: Record<string, any>): Promise<AdminUserRow> {
+  await requireUser();
+  const email = payload.email ? String(payload.email).trim().toLowerCase() : null;
+  if (!email) throw new Error("Email is required");
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) throw new Error("A user with this email already exists");
+
+  const created = await prisma.user.create({
+    data: {
+      ...toUserWrite({ ...payload, email }),
+      status: payload.status || "invited",
+    },
+  });
+  return (await listUsersRow(created.id)) as AdminUserRow;
+}
+
+export async function updateUser(id: string, payload: Record<string, any>): Promise<AdminUserRow> {
+  await requireUser();
+  await prisma.user.update({ where: { id }, data: toUserWrite(payload) });
+  return (await listUsersRow(id)) as AdminUserRow;
+}
+
+async function listUsersRow(id: string): Promise<AdminUserRow | null> {
+  const u = await prisma.user.findUnique({
+    where: { id },
+    include: {
+      role: { select: { id: true, name: true } },
+      company: { select: { id: true, name: true } },
+    },
+  });
+  if (!u) return null;
+  return {
+    id: u.id,
+    first_name: u.first_name,
+    last_name: u.last_name,
+    email: u.email,
+    title: u.title,
+    tel: u.tel,
+    status: u.status,
+    role_id: u.role_id,
+    role_name: u.role?.name ?? null,
+    company_id: u.company_id,
+    company_name: u.company?.name ?? null,
+  };
+}
+
 export async function generateInviteToken(
   userId: string
 ): Promise<{ token: string; email: string } | null> {

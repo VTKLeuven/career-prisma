@@ -111,3 +111,107 @@ export async function listFaculties(
     return null
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * Master (study programme) writes
+ * ------------------------------------------------------------------ */
+
+/** Maps the legacy write shape (`logo` id, string ids) to Prisma columns. */
+function toMasterWrite(payload: Record<string, any>): Record<string, unknown> {
+  const { logo, id: _id, ...rest } = payload
+  return {
+    ...rest,
+    ...(payload.students !== undefined
+      ? { students: payload.students == null ? null : Number(payload.students) }
+      : {}),
+    ...(logo !== undefined ? { logo_id: logo || null } : {}),
+  }
+}
+
+export async function createMaster(payload: Record<string, any>): Promise<Master> {
+  const row = await prisma.master.create({ data: toMasterWrite(payload) })
+  return shapeMaster(row) as Master
+}
+
+export async function updateMaster(
+  id: number,
+  payload: Record<string, any>
+): Promise<Master> {
+  const row = await prisma.master.update({
+    where: { id },
+    data: toMasterWrite(payload),
+  })
+  return shapeMaster(row) as Master
+}
+
+export async function deleteMaster(id: number): Promise<void> {
+  await prisma.master.delete({ where: { id } })
+}
+
+/* ------------------------------------------------------------------ *
+ * Faculty writes (+ faculty_master junction)
+ * ------------------------------------------------------------------ */
+
+function toFacultyWrite(payload: Record<string, any>): Record<string, unknown> {
+  const { logo, id: _id, masters: _masters, masterIds: _masterIds, ...rest } = payload
+  return {
+    ...rest,
+    ...(logo !== undefined ? { logo_id: logo || null } : {}),
+  }
+}
+
+/** Replaces a faculty's master associations with exactly `masterIds`. */
+export async function setFacultyMasters(
+  facultyId: number,
+  masterIds: number[]
+): Promise<void> {
+  const ids = [...new Set(masterIds.map(Number).filter(Number.isFinite))]
+  await prisma.$transaction([
+    prisma.facultyMaster.deleteMany({ where: { faculty_id: facultyId } }),
+    ...(ids.length
+      ? [
+          prisma.facultyMaster.createMany({
+            data: ids.map((master_id) => ({ faculty_id: facultyId, master_id })),
+          }),
+        ]
+      : []),
+  ])
+}
+
+export async function createFaculty(payload: Record<string, any>): Promise<Faculty> {
+  const row = await prisma.faculty.create({
+    data: { ...toFacultyWrite(payload), date_created: new Date() },
+  })
+  const masterIds = Array.isArray(payload.masterIds) ? payload.masterIds : []
+  if (masterIds.length) await setFacultyMasters(row.id, masterIds.map(Number))
+  return getFacultyById(row.id) as Promise<Faculty>
+}
+
+export async function updateFaculty(
+  id: number,
+  payload: Record<string, any>
+): Promise<Faculty> {
+  await prisma.faculty.update({
+    where: { id },
+    data: { ...toFacultyWrite(payload), date_updated: new Date() },
+  })
+  if (Array.isArray(payload.masterIds)) {
+    await setFacultyMasters(id, payload.masterIds.map(Number))
+  }
+  return getFacultyById(id) as Promise<Faculty>
+}
+
+export async function deleteFaculty(id: number): Promise<void> {
+  await prisma.$transaction([
+    prisma.facultyMaster.deleteMany({ where: { faculty_id: id } }),
+    prisma.faculty.delete({ where: { id } }),
+  ])
+}
+
+async function getFacultyById(id: number): Promise<Faculty | null> {
+  const row = await prisma.faculty.findUnique({
+    where: { id },
+    include: FACULTY_INCLUDE,
+  })
+  return shapeFaculty(row) as Faculty | null
+}

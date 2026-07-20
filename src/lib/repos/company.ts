@@ -42,6 +42,19 @@ export async function getCompaniesBasicByIds(
   }
 }
 
+/** id + name for company dropdowns. */
+export async function listCompaniesBasic(): Promise<{ id: string; name: string | null }[]> {
+  try {
+    return await prisma.company.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+  } catch (error) {
+    console.error("[listCompaniesBasic]", error);
+    return [];
+  }
+}
+
 export async function listCompanies(opts?: {
   search?: string;
   limit?: number;

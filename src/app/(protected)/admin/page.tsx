@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { fetchCompaniesAction, fetchCompaniesWithSubOptionsAction, createCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, addSubOptionToCompanyAction, removeSubOptionFromCompanyAction, addSubOptionToCompanyOnlyAction, removeSubOptionFromCompanyOnlyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction, fetchCompanyOptionsDebugAction } from "@/app/actions/companies";
-import { fetchEventsAction, findCompaniesWithEventOptions, addCompaniesToEventPageAction } from "@/app/actions/events";
+import { fetchCompaniesAction, fetchCompaniesWithSubOptionsAction, createCompanyAction, updateCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, addSubOptionToCompanyAction, removeSubOptionFromCompanyAction, addSubOptionToCompanyOnlyAction, removeSubOptionFromCompanyOnlyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction, fetchCompanyOptionsDebugAction } from "@/app/actions/companies";
+import { fetchEventsAction, findCompaniesWithEventOptions, addCompaniesToEventPageAction, createEventAction, updateEventAction, deleteEventAction } from "@/app/actions/events";
+import { uploadFileAction } from "@/app/actions/media";
 import { listMatchingSoftwareAction, createMatchingSoftwareAction } from "@/app/actions/matching-software";
 import { fetchAcademicYearsAction } from "@/app/actions/cv-book";
 import { fetchFormsAction } from "@/app/actions/forms";
@@ -296,6 +297,7 @@ function CompaniesSection() {
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = React.useState({});
   const [selectedCompany, setSelectedCompany] = React.useState<CompanyRow | null>(null);
+  const [editingCompany, setEditingCompany] = React.useState<CompanyRow | null>(null);
   const [viewMode, setViewMode] = React.useState<"companies" | "users" | "options">("companies");
   const [allSubOptions, setAllSubOptions] = React.useState<CareerSubOption[]>([]);
 
@@ -540,7 +542,8 @@ function CompaniesSection() {
     data,
     columns: getCompanyColumns(
       (company) => { setSelectedCompany(company); setViewMode("users"); },
-      (company) => { setSelectedCompany(company); setViewMode("options"); }
+      (company) => { setSelectedCompany(company); setViewMode("options"); },
+      (company) => { setEditingCompany(company); }
     ),
     state: { sorting, columnFilters, columnVisibility, rowSelection, globalFilter },
     onSortingChange: setSorting,
@@ -651,6 +654,11 @@ function CompaniesSection() {
         </div>
       </CardHeader>
       <CardContent>
+        <EditCompanyDialog
+          company={editingCompany}
+          onClose={() => setEditingCompany(null)}
+          onSaved={refreshCompanies}
+        />
         {!selectedCompany ? (
           <>
             <div className="flex items-center gap-2 flex-wrap">
@@ -673,8 +681,7 @@ function CompaniesSection() {
                 </SelectContent>
               </Select>
 
-              <CompanyFormDialog 
-                onCreate={(newRow) => setData(prev => [newRow, ...prev])} 
+              <CompanyFormDialog
                 onRefresh={refreshCompanies}
               />
 
@@ -796,7 +803,7 @@ function CompaniesSection() {
 /** ------------------------------------------------------------------
  * Company columns
  * ------------------------------------------------------------------ */
-function getCompanyColumns(onViewUsers: (company: CompanyRow) => void, onViewOptions: (company: CompanyRow) => void): ColumnDef<CompanyRow>[] {
+function getCompanyColumns(onViewUsers: (company: CompanyRow) => void, onViewOptions: (company: CompanyRow) => void, onEditCompany: (company: CompanyRow) => void): ColumnDef<CompanyRow>[] {
   return [
     {
       id: "select",
@@ -849,7 +856,7 @@ function getCompanyColumns(onViewUsers: (company: CompanyRow) => void, onViewOpt
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => console.log("Vacancies for", company.id)}>View vacancies</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => console.log("Edit", company.id)}>Edit Company</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onEditCompany(company)}>Edit Company</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         );
@@ -2332,7 +2339,7 @@ function OptionFormDialog({ company, onCreate }: {
 }
 
 /** Add Company Dialog (controlled) -- unchanged aside from typing */
-function CompanyFormDialog({ onCreate, onRefresh }: { onCreate: (row: CompanyRow) => void; onRefresh?: () => void }) {
+function CompanyFormDialog({ onRefresh }: { onRefresh?: () => void }) {
   const [open, setOpen] = React.useState(false);
   const [csvUploadOpen, setCsvUploadOpen] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
@@ -2350,6 +2357,8 @@ function CompanyFormDialog({ onCreate, onRefresh }: { onCreate: (row: CompanyRow
   // Because shadcn Select is not a native select, keep a local state so it lands in FormData-equivalent
   const [salesperson, setSalesperson] = React.useState<string>("");
   const [salespersons, setSalespersons] = React.useState<AppUser[]>([]);
+  const [creating, setCreating] = React.useState(false);
+  const [createError, setCreateError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     async function fetchSalespersons() {
@@ -2359,9 +2368,10 @@ function CompanyFormDialog({ onCreate, onRefresh }: { onCreate: (row: CompanyRow
     fetchSalespersons();
   }, []);
 
-  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
+    const formEl = e.currentTarget;
+    const fd = new FormData(formEl);
     const companyName = String(fd.get("companyName") ?? "").trim();
     const vat = String(fd.get("vatNumber") ?? "").trim();
     const firstName = String(fd.get("firstName") ?? "").trim();
@@ -2377,14 +2387,10 @@ function CompanyFormDialog({ onCreate, onRefresh }: { onCreate: (row: CompanyRow
       .filter(Boolean)
       .join(", ");
 
-    const newRow: CompanyRow = {
-      id: crypto.randomUUID(),
-      name: companyName,
-      VAT: vat,
-      address: addr,
-      salesperson,
-      representatives: [],
-    };
+    if (!salesperson) {
+      setCreateError("Please select a salesperson.");
+      return;
+    }
 
     const newCompany: Partial<Company> = {
       name: companyName,
@@ -2409,14 +2415,20 @@ function CompanyFormDialog({ onCreate, onRefresh }: { onCreate: (row: CompanyRow
       };
     }
 
-    // TODO: call a server action to persist (create Company + create User and relate)
-    createCompanyAction(newCompany, newRep)
-
-    onCreate(newRow);
-    setOpen(false);
-    (e.target as HTMLFormElement).reset();
-    setSalesperson("");
-    console.log({ companyName, vat, firstName, lastName, email, salesperson, street, number, zip, city, country });
+    setCreating(true);
+    setCreateError(null);
+    try {
+      await createCompanyAction(newCompany, newRep);
+      // Reload from the server so the persisted row (with its real id) shows up.
+      onRefresh?.();
+      setOpen(false);
+      formEl.reset();
+      setSalesperson("");
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Failed to create company");
+    } finally {
+      setCreating(false);
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2624,8 +2636,11 @@ function CompanyFormDialog({ onCreate, onRefresh }: { onCreate: (row: CompanyRow
               <DialogDescription>
                 By clicking &quot;Save&quot; an onboarding email will be sent to the &quot;Account Owner&quot;.
               </DialogDescription>
+              {createError ? <p className="text-sm text-destructive">{createError}</p> : null}
               <div className="flex flex-col sm:flex-row gap-2">
-                <Button type="submit" disabled={!salesperson} className="w-full sm:w-auto">Save</Button>
+                <Button type="submit" disabled={!salesperson || creating} className="w-full sm:w-auto">
+                  {creating ? "Saving..." : "Save"}
+                </Button>
                 <DialogClose asChild>
                   <Button type="button" variant="outline" className="w-full sm:w-auto">
                     Cancel
@@ -2807,6 +2822,104 @@ function CompanyFormDialog({ onCreate, onRefresh }: { onCreate: (row: CompanyRow
   );
 }
 
+/** Edit an existing company's core fields (name, VAT, status, salesperson). */
+function EditCompanyDialog({ company, onClose, onSaved }: {
+  company: CompanyRow | null;
+  onClose: () => void;
+  onSaved?: () => void;
+}) {
+  const [salespersons, setSalespersons] = React.useState<AppUser[]>([]);
+  const [form, setForm] = React.useState({ name: "", VAT: "", status: "draft", salesperson: "" });
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    fetchSalespersonsAction().then((users) => { if (users) setSalespersons(users); }).catch(() => {});
+  }, []);
+
+  React.useEffect(() => {
+    if (!company) return;
+    const sp = company.salesperson as unknown;
+    const salespersonId =
+      sp && typeof sp === "object" && "id" in sp ? String((sp as { id: string }).id) : (typeof sp === "string" ? sp : "");
+    setForm({
+      name: company.name ?? "",
+      VAT: company.VAT ?? "",
+      status: company.status || "draft",
+      salesperson: salespersonId,
+    });
+    setError(null);
+  }, [company]);
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!company) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await updateCompanyAction(company.id, {
+        name: form.name,
+        VAT: form.VAT,
+        status: form.status,
+        ...(form.salesperson ? { salesperson: form.salesperson } : {}),
+      } as Partial<Company>);
+      onSaved?.();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update company");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={!!company} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Company</DialogTitle>
+          <DialogDescription>Update the company details below.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-name">Company name*</Label>
+            <Input id="edit-name" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} required />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-vat">VAT</Label>
+            <Input id="edit-vat" value={form.VAT} onChange={(e) => setForm((p) => ({ ...p, VAT: e.target.value }))} />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-status">Status</Label>
+            <Select value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: v }))}>
+              <SelectTrigger id="edit-status"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="published">Published</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-salesperson">Salesperson</Label>
+            <Select value={form.salesperson} onValueChange={(v) => setForm((p) => ({ ...p, salesperson: v }))}>
+              <SelectTrigger id="edit-salesperson" className="w-full"><SelectValue placeholder="Select a salesperson" /></SelectTrigger>
+              <SelectContent>
+                {salespersons.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>{u.first_name} {u.last_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /** ------------------------------------------------------------------
  * Helpers
  * ------------------------------------------------------------------ */
@@ -2827,6 +2940,12 @@ function EventsSection() {
   const [events, setEvents] = React.useState<CareerEvent[]>([]);
   const [loading, setLoading] = React.useState(true);
 
+  const refresh = React.useCallback(() => {
+    return fetchEventsAction()
+      .then(rows => { setEvents(rows ?? []); })
+      .catch(console.error);
+  }, []);
+
   React.useEffect(() => {
     let alive = true;
     fetchEventsAction()
@@ -2838,15 +2957,16 @@ function EventsSection() {
 
   return (
     <Card className="rounded-2xl shadow-md">
-      <CardHeader className="flex justify-between">
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-2xl">Manage Events</CardTitle>
+        <EventFormDialog onSaved={refresh} />
       </CardHeader>
       <CardContent>
         {loading ? (
           <div className="h-24 grid place-items-center text-sm text-muted-foreground">Loading events…</div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
-            {events.map(e => <EventCard key={e.id ?? e.name} event={e} />)}
+            {events.map(e => <EventCard key={e.id ?? e.name} event={e} onChanged={refresh} />)}
           </div>
         )}
       </CardContent>
@@ -2854,7 +2974,195 @@ function EventsSection() {
   );
 }
 
-function EventCard({ event }: { event: CareerEvent }) {
+/** Create/Edit dialog for a career event. Omitting `event` makes it a create form. */
+function EventFormDialog({ event, onSaved }: { event?: CareerEvent; onSaved?: () => void }) {
+  const [open, setOpen] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
+  const isEdit = !!event;
+
+  const [form, setForm] = React.useState({
+    name: "",
+    description: "",
+    location: "",
+    date: "",
+    start_hour: "",
+    end_hour: "",
+    shout: "",
+    status: "draft",
+    num_of_companies: "",
+    num_of_students: "",
+    image: "" as string | undefined,
+  });
+
+  React.useEffect(() => {
+    if (!open) return;
+    setError(null);
+    setSelectedFile(null);
+    setForm({
+      name: event?.name ?? "",
+      description: (event?.description as string) ?? "",
+      location: (event?.location as string) ?? "",
+      date: event?.date ? String(event.date).slice(0, 10) : "",
+      start_hour: event?.start_hour ? String(event.start_hour).slice(0, 5) : "",
+      end_hour: event?.end_hour ? String(event.end_hour).slice(0, 5) : "",
+      shout: (event?.shout as string) ?? "",
+      status: (event?.status as string) ?? "draft",
+      num_of_companies: event?.num_of_companies != null ? String(event.num_of_companies) : "",
+      num_of_students: event?.num_of_students != null ? String(event.num_of_students) : "",
+      image: (event?.image as string) ?? "",
+    });
+  }, [open, event]);
+
+  const set = (key: keyof typeof form, value: string) => setForm(prev => ({ ...prev, [key]: value }));
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      let imageId = form.image;
+      if (selectedFile) {
+        const fd = new FormData();
+        fd.append("file", selectedFile);
+        const res = await uploadFileAction(fd);
+        if (!res.success || !res.data) {
+          setError("Failed to upload image: " + (res.error ?? "unknown error"));
+          setSaving(false);
+          return;
+        }
+        imageId = res.data.id;
+      }
+
+      const payload = {
+        name: form.name,
+        description: form.description,
+        location: form.location || null,
+        date: form.date || null,
+        start_hour: form.start_hour || null,
+        end_hour: form.end_hour || null,
+        shout: form.shout || null,
+        status: form.status,
+        num_of_companies: form.num_of_companies,
+        num_of_students: form.num_of_students,
+        image: imageId || null,
+      };
+
+      const result = isEdit
+        ? await updateEventAction(event!.id, payload)
+        : await createEventAction(payload);
+      if (!result.success) {
+        setError(result.error ?? "Something went wrong");
+        setSaving(false);
+        return;
+      }
+      setOpen(false);
+      onSaved?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        {isEdit ? (
+          <Button variant="outline" size="sm">Edit</Button>
+        ) : (
+          <Button size="sm"><IconPlus className="mr-1 h-4 w-4" /> Add Event</Button>
+        )}
+      </DialogTrigger>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? "Edit Event" : "Add Event"}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="ev-name">Name*</Label>
+            <Input id="ev-name" value={form.name} onChange={e => set("name", e.target.value)} required />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="ev-desc">Description</Label>
+            <textarea
+              id="ev-desc"
+              className="flex min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+              rows={3}
+              value={form.description}
+              onChange={e => set("description", e.target.value)}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ev-location">Location</Label>
+              <Input id="ev-location" value={form.location} onChange={e => set("location", e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ev-date">Date</Label>
+              <Input id="ev-date" type="date" value={form.date} onChange={e => set("date", e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ev-start">Start hour</Label>
+              <Input id="ev-start" type="time" value={form.start_hour} onChange={e => set("start_hour", e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ev-end">End hour</Label>
+              <Input id="ev-end" type="time" value={form.end_hour} onChange={e => set("end_hour", e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ev-companies"># Companies</Label>
+              <Input id="ev-companies" type="number" value={form.num_of_companies} onChange={e => set("num_of_companies", e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ev-students"># Students</Label>
+              <Input id="ev-students" type="number" value={form.num_of_students} onChange={e => set("num_of_students", e.target.value)} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="ev-shout">Shout</Label>
+            <Input id="ev-shout" value={form.shout} onChange={e => set("shout", e.target.value)} placeholder="Short highlight banner text" />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="ev-status">Status</Label>
+            <Select value={form.status} onValueChange={v => set("status", v)}>
+              <SelectTrigger id="ev-status"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="published">Published</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="ev-image">Image</Label>
+            <div className="flex items-center gap-3">
+              {(selectedFile || form.image) && (
+                <div className="h-16 w-16 overflow-hidden rounded border bg-muted shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={selectedFile ? URL.createObjectURL(selectedFile) : `/api/files/${form.image}`}
+                    alt="Preview"
+                    className="h-full w-full object-cover"
+                    onError={e => ((e.target as HTMLImageElement).style.display = "none")}
+                  />
+                </div>
+              )}
+              <Input id="ev-image" type="file" accept="image/*" onChange={e => setSelectedFile(e.target.files?.[0] ?? null)} />
+            </div>
+          </div>
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button type="submit" disabled={saving}>{saving ? "Saving..." : isEdit ? "Save changes" : "Create Event"}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EventCard({ event, onChanged }: { event: CareerEvent; onChanged?: () => void }) {
   const hours = [event.start_hour, event.end_hour].filter(Boolean).join(" – ");
   const [hasFloorplan, setHasFloorplan] = React.useState<boolean | null>(null);
   const [hasCompanyGuide, setHasCompanyGuide] = React.useState<boolean | null>(null);
@@ -2926,10 +3234,26 @@ function EventCard({ event }: { event: CareerEvent }) {
     }
   };
 
+  const handleDelete = async () => {
+    if (!confirm(`Delete event "${event.name}"? This cannot be undone.`)) return;
+    const res = await deleteEventAction(event.id);
+    if (!res.success) {
+      alert(res.error ?? "Failed to delete event");
+      return;
+    }
+    onChanged?.();
+  };
+
   return (
     <Card className="border rounded-lg shadow-sm">
-      <CardHeader>
+      <CardHeader className="flex flex-row items-start justify-between gap-2">
         <CardTitle>{event.name}</CardTitle>
+        <div className="flex items-center gap-1 shrink-0">
+          <EventFormDialog event={event} onSaved={onChanged} />
+          <Button variant="ghost" size="icon" className="text-destructive" onClick={handleDelete} aria-label="Delete event">
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="grid grid-cols-2 gap-4">
         <div className="grid grid-cols-2 gap-1 text-sm text-muted-foreground">
