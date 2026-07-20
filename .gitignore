@@ -50,6 +50,7 @@ next-env.d.ts
 /directus-export-*/
 /directus-export-*.tar.gz
 /directus-uploads/
+/uploads/
 
 
 /docs/

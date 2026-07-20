@@ -77,14 +77,14 @@ the company-representative credential session.
 - bytes under `UPLOADS_DIR`;
 - UUID filenames unchanged from the old Directus upload directory.
 
-Local development defaults to `./directus-uploads`. Compose mounts that
-directory into the application container and sets
+Local development outside Compose defaults to `./directus-uploads`. Compose
+mounts the host `./uploads` directory into the application container and sets
 `UPLOADS_DIR=/app/directus-uploads`.
 
 Sync the exported files before starting the application:
 
 ```bash
-rsync -avz <directus-host>:/vtk/directus-postgis/uploads/ ./directus-uploads/
+rsync -avz <directus-host>:/vtk/directus-postgis/uploads/ ./uploads/
 ```
 
 The 2026-07-19 export was checked: all 2,236 manifest files are present

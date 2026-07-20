@@ -14,9 +14,9 @@ cp .env.example .env      # then fill in the secrets, see below
 docker compose up -d database
 # Runs the pinned Prisma CLI in a one-off Docker container.
 docker compose --profile tools run --rm --build migration
-mkdir -p directus-uploads
+mkdir -p uploads
 # Linux Docker hosts: make the bind mount writable by the image's nextjs user
-sudo chown -R 1001:1001 directus-uploads
+sudo chown -R 1001:1001 uploads
 docker compose up -d --build
 ```
 
@@ -50,7 +50,7 @@ erroring loudly. The conversion turns that column into plain `latitude` /
 Files are not in the database. Sync them separately:
 
 ```bash
-rsync -avz <directus-host>:/vtk/directus-postgis/uploads/ ./directus-uploads/
+rsync -avz <directus-host>:/vtk/directus-postgis/uploads/ ./uploads/
 ```
 
 Filenames on disk are UUIDs matching the `files` table, so keep them intact.
@@ -67,7 +67,7 @@ so include it in backups together with PostgreSQL.
 | `APP_PORT` | Host port for the application. Defaults to `3003`. |
 | `AUTH_SECRET`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL` | Signed application sessions and NextAuth. Generate strong random secrets. |
 | `NEXT_PUBLIC_APP_URL` | Public origin used in invitation and reset links. |
-| `UPLOADS_DIR` | Local file storage path. Defaults to `./directus-uploads`; Compose sets the mounted container path. |
+| `UPLOADS_DIR` | Local file storage path. Compose mounts host `./uploads` at the configured container path. |
 | `KULEUVEN_*`, `LITUS_*` | OAuth providers. |
 | `SMTP_*` | Outbound mail. |
 | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN` | Sentry. |

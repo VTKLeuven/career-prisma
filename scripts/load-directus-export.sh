@@ -212,6 +212,6 @@ cat <<'EOF'
     docker compose up -d --build app
 
   Uploaded files live outside the database. Sync them separately:
-    rsync -avz <directus-host>:/vtk/directus-postgis/uploads/ ./directus-uploads/
+    rsync -avz <directus-host>:/vtk/directus-postgis/uploads/ ./uploads/
 
 EOF

@@ -48,7 +48,7 @@ services:
     volumes:
       # Preserve UUID filenames from the old export; new uploads are written
       # here too.
-      - ./directus-uploads:/app/directus-uploads
+      - ./uploads:/app/directus-uploads
     restart: unless-stopped
     env_file:
       - .env

@@ -470,7 +470,7 @@ stack run on a plain \`postgres\` image, which builds natively on arm64.")
 ${FILE_COUNT:-0} files are NOT in this archive. Sync them separately:
 
 \`\`\`bash
-rsync -avz --progress <directus-host>:/path/to/directus/uploads/ ./directus-uploads/
+rsync -avz --progress <directus-host>:/path/to/directus/uploads/ ./uploads/
 \`\`\`
 
 Filenames on disk are UUIDs matching \`files-manifest.tsv\`. Keep them intact:

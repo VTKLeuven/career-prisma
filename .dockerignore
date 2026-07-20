@@ -18,6 +18,7 @@ dist
 # Production
 *.log
 directus-uploads
+uploads
 directus-export-*
 
 # Misc
