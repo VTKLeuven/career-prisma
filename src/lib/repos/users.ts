@@ -58,6 +58,7 @@ export async function listUsersBasic(): Promise<
 
 export type AdminUserRow = {
   id: string;
+  avatar: string | null;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
@@ -82,6 +83,7 @@ export async function listUsers(): Promise<AdminUserRow[]> {
   });
   return rows.map((u) => ({
     id: u.id,
+    avatar: u.avatar,
     first_name: u.first_name,
     last_name: u.last_name,
     email: u.email,
@@ -102,12 +104,13 @@ export async function listRoles(): Promise<{ id: string; name: string }[]> {
 }
 
 function toUserWrite(payload: Record<string, any>): Record<string, unknown> {
-  const { id: _id, role, role_id, company, company_id, email, ...rest } = payload;
+  const { id: _id, role, role_id, company, company_id, email, avatar, ...rest } = payload;
   const roleRef = role_id ?? role;
   const companyRef = company_id ?? (company && typeof company === "object" ? company.id : company);
   return {
     ...rest,
     ...(email !== undefined ? { email: email ? String(email).trim().toLowerCase() : null } : {}),
+    ...(avatar !== undefined ? { avatar: avatar || null } : {}),
     ...(roleRef !== undefined ? { role_id: roleRef || null } : {}),
     ...(companyRef !== undefined ? { company_id: companyRef || null } : {}),
   };
@@ -147,6 +150,7 @@ async function listUsersRow(id: string): Promise<AdminUserRow | null> {
   if (!u) return null;
   return {
     id: u.id,
+    avatar: u.avatar,
     first_name: u.first_name,
     last_name: u.last_name,
     email: u.email,

@@ -2,6 +2,18 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { updateTimetable } from "@/lib/repos/timetable";
+
+export type AdminEventPageTimetableItem = {
+  id: string;
+  title: string;
+  description: string;
+  start_time: string;
+  end_time: string;
+  icon: string;
+  type: string[];
+  speaker_id: string;
+};
 
 export type AdminEventPageRow = {
   id: string;
@@ -23,14 +35,38 @@ export type AdminEventPageRow = {
   companyIds: string[];
   speakerIds: string[];
   timetableIds: string[];
+  timetableItems: AdminEventPageTimetableItem[];
 };
 
 const ADMIN_INCLUDE = {
   event: { select: { id: true, name: true } },
   careerEventPageCompanies: { select: { company_id: true } },
   careerEventPageSpeakers: { select: { speaker_id: true } },
-  careerEventPageTimetables: { select: { timetable_id: true } },
+  careerEventPageTimetables: {
+    include: { timetable: true },
+    orderBy: { timetable: { start_time: "asc" } },
+  },
 } as const;
+
+function timeString(value: unknown): string {
+  if (!(value instanceof Date)) return value ? String(value).slice(0, 5) : "";
+  return value.toISOString().slice(11, 16);
+}
+
+function timetableItem(row: Record<string, any>): AdminEventPageTimetableItem | null {
+  const slot = row.timetable;
+  if (!slot) return null;
+  return {
+    id: String(slot.id),
+    title: slot.title ?? "",
+    description: slot.description ?? "",
+    start_time: timeString(slot.start_time),
+    end_time: timeString(slot.end_time),
+    icon: slot.icon ?? "",
+    type: Array.isArray(slot.type) ? slot.type.map(String) : [],
+    speaker_id: slot.speaker_id != null ? String(slot.speaker_id) : "",
+  };
+}
 
 function toRow(row: Record<string, any>): AdminEventPageRow {
   return {
@@ -62,6 +98,9 @@ function toRow(row: Record<string, any>): AdminEventPageRow {
       .map((j: any) => j.timetable_id)
       .filter((v: unknown) => v != null)
       .map(String),
+    timetableItems: (row.careerEventPageTimetables ?? [])
+      .map(timetableItem)
+      .filter((item: AdminEventPageTimetableItem | null): item is AdminEventPageTimetableItem => item !== null),
   };
 }
 
@@ -92,6 +131,7 @@ function toEventPageWrite(payload: Record<string, any>): Record<string, unknown>
     companyIds: _companyIds,
     speakerIds: _speakerIds,
     timetableIds: _timetableIds,
+    timetableItems: _timetableItems,
     event_name: _event_name,
     ...rest
   } = payload;
@@ -149,7 +189,46 @@ async function setTimetables(pageId: number, timetableIds: string[]): Promise<vo
 async function applyRelations(pageId: number, payload: Record<string, any>): Promise<void> {
   if (Array.isArray(payload.companyIds)) await setCompanies(pageId, payload.companyIds.map(String));
   if (Array.isArray(payload.speakerIds)) await setSpeakers(pageId, payload.speakerIds.map(String));
-  if (Array.isArray(payload.timetableIds)) await setTimetables(pageId, payload.timetableIds.map(String));
+  if (Array.isArray(payload.timetableItems)) {
+    await setTimetables(
+      pageId,
+      payload.timetableItems.map((item: Record<string, unknown>) => String(item.id ?? ""))
+    );
+  } else if (Array.isArray(payload.timetableIds)) {
+    await setTimetables(pageId, payload.timetableIds.map(String));
+  }
+}
+
+async function updateEventName(eventId: string | null, value: unknown): Promise<void> {
+  if (!eventId || value === undefined) return;
+  const name = String(value).trim();
+  // A newly-created page starts with an empty form value; in that case retain
+  // the selected event's existing name instead of overwriting it.
+  if (!name) return;
+  await prisma.careerEvent.update({
+    where: { id: eventId },
+    data: { name, date_updated: new Date() },
+  });
+}
+
+async function updateTimetableItems(value: unknown): Promise<void> {
+  if (!Array.isArray(value)) return;
+  await Promise.all(
+    value.map((raw) => {
+      const item = raw as Record<string, unknown>;
+      const id = Number(item.id);
+      if (!Number.isFinite(id)) throw new Error("Invalid timetable element");
+      return updateTimetable(id, {
+        title: item.title,
+        description: item.description,
+        start_time: item.start_time,
+        end_time: item.end_time,
+        icon: item.icon,
+        type: item.type,
+        speaker_id: item.speaker_id,
+      });
+    })
+  );
 }
 
 export async function createEventPage(payload: Record<string, any>): Promise<AdminEventPageRow> {
@@ -157,12 +236,16 @@ export async function createEventPage(payload: Record<string, any>): Promise<Adm
     data: { ...toEventPageWrite(payload), description_EN: payload.description_EN ?? "" },
   });
   await applyRelations(created.id, payload);
+  await updateEventName(created.event_id, payload.event_name);
+  await updateTimetableItems(payload.timetableItems);
   return (await getRow(created.id))!;
 }
 
 export async function updateEventPage(id: number, payload: Record<string, any>): Promise<AdminEventPageRow> {
-  await prisma.careerEventPage.update({ where: { id }, data: toEventPageWrite(payload) });
+  const page = await prisma.careerEventPage.update({ where: { id }, data: toEventPageWrite(payload) });
   await applyRelations(id, payload);
+  await updateEventName(page.event_id, payload.event_name);
+  await updateTimetableItems(payload.timetableItems);
   return (await getRow(id))!;
 }
 

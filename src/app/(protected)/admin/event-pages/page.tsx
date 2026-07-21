@@ -4,6 +4,7 @@ import { listEvents } from "@/lib/repos/event";
 import { listCompaniesBasic } from "@/lib/repos/company";
 import { listSpeakers } from "@/lib/repos/speakers";
 import { listTimetables } from "@/lib/repos/timetable";
+import type { AdminEventPageTimetableItem } from "@/lib/repos/event-page";
 import EventPagesClient from "./client";
 
 export default async function AdminEventPagesPage() {
@@ -31,9 +32,15 @@ export default async function AdminEventPagesPage() {
       [s.representative?.first_name, s.representative?.last_name].filter(Boolean).join(" ") ||
       `Speaker #${s.id}`,
   }));
-  const timetableOptions = slots.map((s) => ({
-    value: String(s.id),
-    label: s.title || `Slot #${s.id}`,
+  const timetableItems: AdminEventPageTimetableItem[] = slots.map((slot) => ({
+    id: String(slot.id),
+    title: slot.title || "",
+    description: slot.description || "",
+    start_time: slot.start_time?.slice(0, 5) || "",
+    end_time: slot.end_time?.slice(0, 5) || "",
+    icon: slot.icon || "",
+    type: Array.isArray(slot.type) ? slot.type : [],
+    speaker_id: slot.speaker?.id ? String(slot.speaker.id) : "",
   }));
 
   return (
@@ -50,7 +57,7 @@ export default async function AdminEventPagesPage() {
         floorplanOptions={floorplanOptions}
         companyOptions={companyOptions}
         speakerOptions={speakerOptions}
-        timetableOptions={timetableOptions}
+        timetableItems={timetableItems}
       />
     </div>
   );

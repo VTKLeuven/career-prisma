@@ -8,6 +8,7 @@ import {
   deleteUserAction,
 } from "@/app/actions/admin-users";
 import type { AdminUserRow } from "@/lib/repos/users";
+import { UserRound } from "lucide-react";
 
 const STATUS_OPTIONS: SelectOption[] = [
   { value: "active", label: "Active" },
@@ -34,6 +35,23 @@ export default function UsersClient({
     getLabel: (u) => fullName(u),
     searchKeys: ["first_name", "last_name", "email"],
     columns: [
+      {
+        key: "avatar",
+        label: "Photo",
+        render: (u) =>
+          u.avatar ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`/api/files/${u.avatar}`}
+              alt={fullName(u)}
+              className="h-10 w-10 rounded-full border object-cover"
+            />
+          ) : (
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+              <UserRound className="h-5 w-5 text-muted-foreground" />
+            </span>
+          ),
+      },
       { key: "name", label: "Name", render: (u) => fullName(u) },
       { key: "email", label: "Email", render: (u) => u.email || "—" },
       { key: "role_name", label: "Role", render: (u) => u.role_name || "—" },
@@ -57,6 +75,7 @@ export default function UsersClient({
       { key: "company_name", label: "Company", render: (u) => u.company_name || "—" },
     ],
     fields: [
+      { name: "avatar", label: "Photo", type: "image" },
       { name: "first_name", label: "First name", type: "text" },
       { name: "last_name", label: "Last name", type: "text" },
       { name: "email", label: "Email", type: "text", required: true },

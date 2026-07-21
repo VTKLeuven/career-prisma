@@ -379,6 +379,19 @@ function FieldInput({
     );
   }
 
+  if (field.renderInput) {
+    return (
+      <div className="flex flex-col gap-2">
+        <Label htmlFor={id}>
+          {field.label}
+          {field.required ? <span className="text-destructive"> *</span> : null}
+        </Label>
+        {field.renderInput({ value, options, onChange })}
+        {field.help ? <p className="text-xs text-muted-foreground">{field.help}</p> : null}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-2">
       <Label htmlFor={id}>
@@ -510,6 +523,17 @@ function ImageInput({
 }) {
   const [preview, setPreview] = React.useState<string | null>(null);
 
+  React.useEffect(() => {
+    setPreview(null);
+  }, [value]);
+
+  React.useEffect(
+    () => () => {
+      if (preview) URL.revokeObjectURL(preview);
+    },
+    [preview]
+  );
+
   const src =
     preview ??
     (typeof value === "string" && value ? `/api/files/${value}` : null);
@@ -518,6 +542,7 @@ function ImageInput({
     const file = e.target.files?.[0];
     if (!file) return;
     onFile(file);
+    if (preview) URL.revokeObjectURL(preview);
     const url = URL.createObjectURL(file);
     setPreview(url);
   };

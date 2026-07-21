@@ -41,6 +41,12 @@ export type FieldConfig<T = Record<string, unknown>> = {
   defaultValue?: unknown;
   /** Extracts the current value from a row when editing. Defaults to `row[name]`. */
   getEditValue?: (row: T) => unknown;
+  /** Optional domain-specific editor while keeping the shared dialog and save flow. */
+  renderInput?: (props: {
+    value: unknown;
+    options: SelectOption[];
+    onChange: (value: unknown) => void;
+  }) => React.ReactNode;
 };
 
 export type ColumnConfig<T> = {
