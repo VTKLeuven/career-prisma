@@ -423,15 +423,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       }
     }
 
-    // Admins get a single entry point into the separate admin area.
-    if (user?.admin) {
-      items.push({
-        title: "Admin Panel",
-        url: "/admin",
-        icon: IconColumns,
-      });
-    }
-
     // Add Ordering section
     const orderingItems: { title: string; url: string }[] = [];
     if (user?.is_shifter || user?.admin) {
@@ -474,6 +465,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavMain items={navItems} />
       </SidebarContent>
       <SidebarFooter>
+        {!inAdminArea && user?.admin && (
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild tooltip="Admin Panel">
+                <Link href="/admin">
+                  <IconColumns />
+                  <span>Admin Panel</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
         <NavUser />
       </SidebarFooter>
       <SidebarRail />
