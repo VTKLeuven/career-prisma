@@ -346,12 +346,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const navItems = React.useMemo(() => {
     // --- Admin area: show only admin navigation ---
     if (inAdminArea && user?.admin) {
-      const adminItems = ADMIN_NAV_ITEMS.map((item) => ({
-        title: item.title,
-        url: item.url,
-        icon: item.icon,
-        ...(item.url === "/admin/approvals" && pendingCount > 0 ? { badge: pendingCount } : {}),
-      }));
+      const adminItems = [...ADMIN_NAV_ITEMS]
+        .sort((a, b) => a.title.localeCompare(b.title, "en", { sensitivity: "base" }))
+        .map((item) => ({
+          title: item.title,
+          url: item.url,
+          icon: item.icon,
+          ...(item.url === "/admin/approvals" && pendingCount > 0 ? { badge: pendingCount } : {}),
+        }));
 
       return [
         {
@@ -441,6 +443,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         items: orderingItems,
       });
     }
+
+    // Sort the top-level sections alphabetically by title.
+    items.sort((a, b) => a.title.localeCompare(b.title, "en", { sensitivity: "base" }));
 
     return items;
   }, [inAdminArea, user?.admin, user?.company, user?.is_shifter, pendingCount, pageImageInvalid, companyEvents, companyOrderingBoothId]);
