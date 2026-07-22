@@ -2,7 +2,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { updateTimetable } from "@/lib/repos/timetable";
+import { createTimetable, updateTimetable } from "@/lib/repos/timetable";
 
 export type AdminEventPageTimetableItem = {
   id: string;
@@ -189,12 +189,7 @@ async function setTimetables(pageId: number, timetableIds: string[]): Promise<vo
 async function applyRelations(pageId: number, payload: Record<string, any>): Promise<void> {
   if (Array.isArray(payload.companyIds)) await setCompanies(pageId, payload.companyIds.map(String));
   if (Array.isArray(payload.speakerIds)) await setSpeakers(pageId, payload.speakerIds.map(String));
-  if (Array.isArray(payload.timetableItems)) {
-    await setTimetables(
-      pageId,
-      payload.timetableItems.map((item: Record<string, unknown>) => String(item.id ?? ""))
-    );
-  } else if (Array.isArray(payload.timetableIds)) {
+  if (!Array.isArray(payload.timetableItems) && Array.isArray(payload.timetableIds)) {
     await setTimetables(pageId, payload.timetableIds.map(String));
   }
 }
@@ -211,24 +206,59 @@ async function updateEventName(eventId: string | null, value: unknown): Promise<
   });
 }
 
-async function updateTimetableItems(value: unknown): Promise<void> {
+function timetablePayload(item: Record<string, unknown>): Record<string, unknown> {
+  return {
+    title: item.title,
+    description: item.description,
+    start_time: item.start_time,
+    end_time: item.end_time,
+    icon: item.icon,
+    type: item.type,
+    speaker_id: item.speaker_id,
+  };
+}
+
+/**
+ * Keeps timetable editing scoped to one event page. Existing items must already
+ * be linked to this page; client-side temporary ids are created and linked here.
+ */
+async function syncTimetableItems(pageId: number, value: unknown): Promise<void> {
   if (!Array.isArray(value)) return;
-  await Promise.all(
-    value.map((raw) => {
-      const item = raw as Record<string, unknown>;
-      const id = Number(item.id);
-      if (!Number.isFinite(id)) throw new Error("Invalid timetable element");
-      return updateTimetable(id, {
-        title: item.title,
-        description: item.description,
-        start_time: item.start_time,
-        end_time: item.end_time,
-        icon: item.icon,
-        type: item.type,
-        speaker_id: item.speaker_id,
-      });
-    })
+
+  const currentLinks = await prisma.careerEventPageTimetable.findMany({
+    where: { career_event_page_id: pageId },
+    select: { timetable_id: true },
+  });
+  const linkedIds = new Set(
+    currentLinks
+      .map((link) => link.timetable_id)
+      .filter((id): id is number => id != null)
   );
+  const savedIds: string[] = [];
+  const seenExistingIds = new Set<number>();
+
+  for (const raw of value) {
+    const item = raw as Record<string, unknown>;
+    const rawId = String(item.id ?? "");
+    const existingId = /^\d+$/.test(rawId) ? Number(rawId) : null;
+
+    if (existingId != null) {
+      if (!linkedIds.has(existingId)) {
+        throw new Error("A timetable element does not belong to this event page");
+      }
+      if (seenExistingIds.has(existingId)) continue;
+      await updateTimetable(existingId, timetablePayload(item));
+      seenExistingIds.add(existingId);
+      savedIds.push(String(existingId));
+      continue;
+    }
+
+    if (!rawId.startsWith("new-")) throw new Error("Invalid timetable element");
+    const created = await createTimetable(timetablePayload(item));
+    savedIds.push(String(created.id));
+  }
+
+  await setTimetables(pageId, savedIds);
 }
 
 export async function createEventPage(payload: Record<string, any>): Promise<AdminEventPageRow> {
@@ -237,7 +267,7 @@ export async function createEventPage(payload: Record<string, any>): Promise<Adm
   });
   await applyRelations(created.id, payload);
   await updateEventName(created.event_id, payload.event_name);
-  await updateTimetableItems(payload.timetableItems);
+  await syncTimetableItems(created.id, payload.timetableItems);
   return (await getRow(created.id))!;
 }
 
@@ -245,7 +275,7 @@ export async function updateEventPage(id: number, payload: Record<string, any>):
   const page = await prisma.careerEventPage.update({ where: { id }, data: toEventPageWrite(payload) });
   await applyRelations(id, payload);
   await updateEventName(page.event_id, payload.event_name);
-  await updateTimetableItems(payload.timetableItems);
+  await syncTimetableItems(id, payload.timetableItems);
   return (await getRow(id))!;
 }
 

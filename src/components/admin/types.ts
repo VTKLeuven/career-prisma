@@ -33,6 +33,10 @@ export type FieldConfig<T = Record<string, unknown>> = {
   required?: boolean;
   placeholder?: string;
   help?: string;
+  /** Optional heading used to group related fields in larger forms. */
+  section?: string;
+  /** Layout classes for this field's wrapper (for example `md:col-span-2`). */
+  className?: string;
   /** Static choices for `select` / `multiselect`. */
   options?: SelectOption[];
   /** Async choices for `select` / `multiselect` (relations). Loaded once on mount. */
@@ -67,6 +71,9 @@ export type ResourceConfig<T> = {
   searchKeys?: string[];
   /** Hides the "Add" button when creation isn't supported (e.g. students self-register). */
   hideCreate?: boolean;
+  /** Optional layout overrides for resources with larger edit forms. */
+  dialogClassName?: string;
+  fieldsClassName?: string;
   actions: {
     create?: (data: Record<string, unknown>) => Promise<ActionResult>;
     update: (id: string, data: Record<string, unknown>) => Promise<ActionResult>;

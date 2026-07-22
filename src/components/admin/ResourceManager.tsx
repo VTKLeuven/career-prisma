@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/select";
 import { uploadFileAction } from "@/app/actions/media";
 import type { FieldConfig, ResourceConfig, SelectOption } from "@/components/admin/types";
+import { cn } from "@/lib/utils";
 
 type FormValues = Record<string, unknown>;
 
@@ -304,29 +305,46 @@ export function ResourceManager<T extends Record<string, unknown>>({
           if (!o) setEditing(null);
         }}
       >
-        <DialogContent className="max-h-[90dvh] overflow-y-auto">
+        <DialogContent
+          className={cn("max-h-[90dvh] overflow-hidden", config.dialogClassName)}
+        >
           <DialogHeader>
             <DialogTitle>
               {editing ? `Edit ${config.singular}` : `Add ${config.singular}`}
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {config.fields.map((field) => (
-              <FieldInput
-                key={field.name}
-                field={field}
-                value={values[field.name]}
-                options={optionsFor(field)}
-                onChange={(v) => setValue(field.name, v)}
-                onFile={(f) => setFiles((prev) => ({ ...prev, [field.name]: f }))}
-              />
-            ))}
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
+            <div
+              className={cn(
+                "min-h-0 overflow-y-auto pr-1",
+                config.fieldsClassName ?? "space-y-4"
+              )}
+            >
+              {config.fields.map((field, index) => (
+                <React.Fragment key={field.name}>
+                  {field.section && field.section !== config.fields[index - 1]?.section ? (
+                    <div className="col-span-full border-b pb-2 pt-2 first:pt-0">
+                      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                        {field.section}
+                      </h3>
+                    </div>
+                  ) : null}
+                  <FieldInput
+                    field={field}
+                    value={values[field.name]}
+                    options={optionsFor(field)}
+                    onChange={(v) => setValue(field.name, v)}
+                    onFile={(f) => setFiles((prev) => ({ ...prev, [field.name]: f }))}
+                  />
+                </React.Fragment>
+              ))}
+            </div>
 
             {error ? (
-              <p className="text-sm text-destructive">{error}</p>
+              <p className="mt-4 text-sm text-destructive">{error}</p>
             ) : null}
 
-            <DialogFooter>
+            <DialogFooter className="mt-4 shrink-0 border-t pt-4">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
@@ -368,7 +386,7 @@ function FieldInput({
 
   if (field.type === "boolean") {
     return (
-      <div className="flex items-center gap-2">
+      <div className={cn("flex items-center gap-2", field.className)}>
         <Checkbox
           id={id}
           checked={Boolean(value)}
@@ -381,7 +399,7 @@ function FieldInput({
 
   if (field.renderInput) {
     return (
-      <div className="flex flex-col gap-2">
+      <div className={cn("flex flex-col gap-2", field.className)}>
         <Label htmlFor={id}>
           {field.label}
           {field.required ? <span className="text-destructive"> *</span> : null}
@@ -393,7 +411,7 @@ function FieldInput({
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className={cn("flex flex-col gap-2", field.className)}>
       <Label htmlFor={id}>
         {field.label}
         {field.required ? <span className="text-destructive"> *</span> : null}
