@@ -369,14 +369,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           })),
       }));
 
-      return [
-        {
-          title: "Company Dashboard",
-          url: "/dashboard",
-          icon: LayoutDashboard,
-        },
-        ...adminGroups,
-      ];
+      return adminGroups;
     }
 
     // --- Company dashboard context ---
@@ -484,13 +477,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavMain items={navItems} label={inAdminArea ? "Administration" : "Platform"} />
       </SidebarContent>
       <SidebarFooter>
-        {!inAdminArea && user?.admin && (
+        {user?.admin && (
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild tooltip="Admin Panel">
-                <Link href="/admin">
-                  <IconColumns />
-                  <span>Admin Panel</span>
+              <SidebarMenuButton
+                asChild
+                tooltip={inAdminArea ? "Company Dashboard" : "Admin Panel"}
+              >
+                <Link href={inAdminArea ? "/dashboard" : "/admin"}>
+                  {inAdminArea ? <LayoutDashboard /> : <IconColumns />}
+                  <span>{inAdminArea ? "Company Dashboard" : "Admin Panel"}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
