@@ -1,18 +1,11 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { ResourceManager } from "@/components/admin/ResourceManager";
 import type { ResourceConfig, SelectOption } from "@/components/admin/types";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -28,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { CalendarDays, Loader2, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   createSubOptionAction,
@@ -42,8 +35,6 @@ import type { CareerSubOption, CareerEventOption, CareerEvent } from "@/lib/sche
 import type { AcademicYear } from "@/lib/schema";
 import type { AdminOptionSale } from "@/lib/repos/option-sales";
 import {
-  copyAnnualCatalogAction,
-  createAcademicYearAction,
   createCatalogSaleAction,
   deleteOptionSaleAction,
 } from "@/app/actions/annual-catalog";
@@ -105,14 +96,6 @@ export default function CareerOptionsClient({
   const [selectedYearId, setSelectedYearId] = React.useState(
     currentAcademicYearId || String(academicYears[0]?.id ?? "")
   );
-  const [copySourceYearId, setCopySourceYearId] = React.useState("");
-  const [copying, setCopying] = React.useState(false);
-  const [message, setMessage] = React.useState<string | null>(null);
-  const [yearDialogOpen, setYearDialogOpen] = React.useState(false);
-  const [yearName, setYearName] = React.useState("");
-  const [yearStart, setYearStart] = React.useState("");
-  const [yearEnd, setYearEnd] = React.useState("");
-  const [creatingYear, setCreatingYear] = React.useState(false);
   const router = useRouter();
 
   const yearOptions: SelectOption[] = academicYears.map((year) => ({
@@ -240,46 +223,20 @@ export default function CareerOptionsClient({
                 ))}
               </SelectContent>
             </Select>
-            <Button type="button" variant="outline" onClick={() => setYearDialogOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" /> Year
+            <Button type="button" variant="outline" asChild>
+              <Link href="/admin/academic-years">Manage years</Link>
             </Button>
           </div>
         </div>
         <div className="space-y-2 lg:ml-auto">
-          <Label>Start from a previous year</Label>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Select value={copySourceYearId} onValueChange={setCopySourceYearId}>
-              <SelectTrigger className="w-full sm:w-56">
-                <SelectValue placeholder="Choose source year" />
-              </SelectTrigger>
-              <SelectContent>
-                {yearOptions.filter((year) => year.value !== selectedYearId).map((year) => (
-                  <SelectItem key={year.value} value={year.value}>{year.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={!copySourceYearId || !selectedYearId || copying || isPastYear}
-              onClick={async () => {
-                if (!confirm("Copy events and options into the selected year? Company sales will not be copied.")) return;
-                setCopying(true);
-                setMessage(null);
-                const result = await copyAnnualCatalogAction(copySourceYearId, selectedYearId);
-                setCopying(false);
-                if (!result.success) return setMessage(result.error ?? "Copy failed");
-                setMessage(`${result.data?.eventsCreated ?? 0} events and ${result.data?.optionsCreated ?? 0} options copied.`);
-                router.refresh();
-              }}
-            >
-              {copying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Copy catalog
-            </Button>
-          </div>
+          <Label>Annual event setup</Label>
+          <Button variant="outline" asChild>
+            <Link href="/admin/events">
+              <CalendarDays className="mr-2 h-4 w-4" /> Manage event editions
+            </Link>
+          </Button>
         </div>
       </div>
-      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
       {isPastYear ? (
         <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
           This academic year is historical and read-only.
@@ -327,35 +284,6 @@ export default function CareerOptionsClient({
           sales={sales.filter((sale) => sale.academic_year_id === selectedYearId)}
         />
       )}
-
-      <Dialog open={yearDialogOpen} onOpenChange={setYearDialogOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Add academic year</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2"><Label>Name</Label><Input value={yearName} onChange={(event) => setYearName(event.target.value)} placeholder="2026–2027" /></div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2"><Label>Starts</Label><Input type="date" value={yearStart} onChange={(event) => setYearStart(event.target.value)} /></div>
-              <div className="space-y-2"><Label>Ends</Label><Input type="date" value={yearEnd} onChange={(event) => setYearEnd(event.target.value)} /></div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setYearDialogOpen(false)}>Cancel</Button>
-            <Button type="button" disabled={!yearName || !yearStart || !yearEnd || creatingYear} onClick={async () => {
-              setCreatingYear(true);
-              setMessage(null);
-              const result = await createAcademicYearAction({ name: yearName, startOfYear: yearStart, endOfYear: yearEnd });
-              setCreatingYear(false);
-              if (!result.success) return setMessage(result.error ?? "Failed to create academic year");
-              setYearDialogOpen(false);
-              setYearName(""); setYearStart(""); setYearEnd("");
-              router.refresh();
-            }}>
-              {creatingYear ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Add year
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

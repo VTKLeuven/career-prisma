@@ -218,6 +218,7 @@ export type CompanyMatchingResponse = {
 
 export type CareerEventPage = {
   id: string;
+  status?: string;
   event: CareerEvent;
   description_EN: string;
   image: string;

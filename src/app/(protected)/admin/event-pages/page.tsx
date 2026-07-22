@@ -5,10 +5,18 @@ import { listCompaniesBasic } from "@/lib/repos/company";
 import { listSpeakers } from "@/lib/repos/speakers";
 import EventPagesClient from "./client";
 import { getCurrentAcademicYear, listAcademicYearsForAdmin } from "@/lib/repos/academic-year";
+import Link from "next/link";
+import { ArrowLeft, ClipboardCheck, Mic2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
-export default async function AdminEventPagesPage() {
+export default async function AdminEventPagesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ year?: string; event?: string }>;
+}) {
   const user = await getUserFromCookies();
   if (!user?.admin) return <p>NO ACCESS</p>;
+  const query = await searchParams;
 
   const [pages, events, floorplans, companies, speakers, academicYears, currentYear] = await Promise.all([
     listEventPagesAdmin(),
@@ -38,12 +46,21 @@ export default async function AdminEventPagesPage() {
   }));
   return (
     <div className="container mx-auto py-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Event Pages & Timetables</h1>
-        <p className="text-muted-foreground">
-          Timetables are event-specific. Edit an event page to manage its companies,
-          speakers and timetable elements in one place.
-        </p>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <Button variant="ghost" size="sm" asChild className="-ml-3 mb-2">
+            <Link href="/admin/events"><ArrowLeft className="mr-2 h-4 w-4" /> Event editions</Link>
+          </Button>
+          <h1 className="text-3xl font-bold">Event Pages & Timetables</h1>
+          <p className="text-muted-foreground">
+            Every row belongs to one annual event edition. Its public content, companies,
+            speakers and timetable are edited together here.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" asChild><Link href="/admin/speakers"><Mic2 className="mr-2 h-4 w-4" /> Speakers</Link></Button>
+          <Button variant="outline" asChild><Link href="/admin/checkins"><ClipboardCheck className="mr-2 h-4 w-4" /> Check-ins</Link></Button>
+        </div>
       </div>
       <EventPagesClient
         initialPages={pages}
@@ -57,6 +74,8 @@ export default async function AdminEventPagesPage() {
           endOfYear: year.end_of_year,
         }))}
         currentAcademicYearId={currentYear?.id ? String(currentYear.id) : ""}
+        initialAcademicYearId={query.year}
+        focusedEventId={query.event}
       />
     </div>
   );

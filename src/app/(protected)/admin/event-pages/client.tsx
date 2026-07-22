@@ -54,6 +54,8 @@ export default function EventPagesClient({
   speakerOptions,
   academicYears,
   currentAcademicYearId,
+  initialAcademicYearId,
+  focusedEventId,
 }: {
   initialPages: AdminEventPageRow[];
   eventOptions: Array<SelectOption & { academicYearId: string }>;
@@ -62,11 +64,15 @@ export default function EventPagesClient({
   speakerOptions: SelectOption[];
   academicYears: Array<SelectOption & { endOfYear?: string }>;
   currentAcademicYearId: string;
+  initialAcademicYearId?: string;
+  focusedEventId?: string;
 }) {
   const [selectedYearId, setSelectedYearId] = React.useState(
-    currentAcademicYearId || academicYears[0]?.value || ""
+    initialAcademicYearId || currentAcademicYearId || academicYears[0]?.value || ""
   );
-  const visiblePages = initialPages.filter((page) => page.academic_year_id === selectedYearId);
+  const visiblePages = initialPages
+    .filter((page) => page.academic_year_id === selectedYearId)
+    .sort((a, b) => Number(b.event_id === focusedEventId) - Number(a.event_id === focusedEventId));
   const visibleEventOptions = eventOptions.filter((event) => event.academicYearId === selectedYearId);
   const selectedYear = academicYears.find((year) => year.value === selectedYearId);
   const isPastYear = selectedYear?.endOfYear
@@ -156,6 +162,11 @@ export default function EventPagesClient({
           </SelectContent>
         </Select>
       </div>
+      {focusedEventId ? (
+        <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+          The selected event edition is shown first. Its public page and timetable are managed together below.
+        </p>
+      ) : null}
       <ResourceManager config={config} initialRows={visiblePages} />
     </div>
   );

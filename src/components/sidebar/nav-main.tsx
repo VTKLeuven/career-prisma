@@ -2,7 +2,7 @@
 
 import { ChevronRight } from "lucide-react"
 import Link from "next/link"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import type { ComponentType } from "react"
 
 import {
@@ -38,6 +38,7 @@ type NavItem = {
     icon?: NavIcon
     badge?: number
     hasWarning?: boolean
+    isActive?: boolean
   }[]
 }
 
@@ -48,7 +49,11 @@ function NavMainItem({ item }: { item: NavItem }) {
   const hasWarningInSubItems = item.items?.some(subItem => subItem.hasWarning) ?? false;
 
   // Events: label navigates to dashboard, only arrow toggles collapsible
-  const isEventsItem = item.title === "Events";
+  const isEventsItem = item.title === "Events" && item.url === "/dashboard";
+
+  useEffect(() => {
+    if (item.isActive) setIsOpen(true);
+  }, [item.isActive]);
 
   return (
     <Collapsible
@@ -110,7 +115,7 @@ function NavMainItem({ item }: { item: NavItem }) {
               <SidebarMenuSub>
                 {item.items?.map((subItem) => (
                   <SidebarMenuSubItem key={subItem.title}>
-                    <SidebarMenuSubButton asChild>
+                    <SidebarMenuSubButton asChild isActive={subItem.isActive}>
                       <Link href={subItem.url} className="flex items-center gap-2">
                         {subItem.icon && <subItem.icon className="h-4 w-4 shrink-0" />}
                         <span>{subItem.title}</span>
@@ -145,12 +150,14 @@ function NavMainItem({ item }: { item: NavItem }) {
 
 export function NavMain({
   items,
+  label = "Platform",
 }: {
   items: NavItem[]
+  label?: string
 }) {
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>Platform</SidebarGroupLabel>
+      <SidebarGroupLabel>{label}</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => (
           <NavMainItem key={item.title} item={item} />

@@ -18,8 +18,13 @@ import { getUserFromCookies } from "@/lib/auth-server";
 import prisma from "@/lib/prisma";
 import { compareTimetableItems } from "@/lib/utils/timetable";
 
-export async function fetchEventsAction() {
-    const events = await listEvents({ limit: 50, sort: "date" }) ?? [];
+export async function fetchEventsAction(opts?: { academicYearId?: string; includeHistory?: boolean }) {
+    const events = await listEvents({
+      limit: 200,
+      sort: "date",
+      academicYearId: opts?.academicYearId,
+      includeHistory: opts?.includeHistory,
+    }) ?? [];
     events.map(el => {
         el.href = `/event/${slugifyEventName(el.name)}`;
         if (el.start_hour) el.start_hour = el.start_hour.slice(0, -3)
@@ -372,6 +377,8 @@ export async function createEventAction(data: Record<string, unknown>): Promise<
     await requireAdminUser();
     const event = await createEvent(data);
     revalidatePath("/admin/companies-events");
+    revalidatePath("/admin/events");
+    revalidatePath("/admin/event-pages");
     revalidatePath("/event");
     return { success: true, data: event };
   } catch (error) {
@@ -385,6 +392,8 @@ export async function updateEventAction(id: string, data: Record<string, unknown
     await requireAdminUser();
     const event = await updateEvent(id, data);
     revalidatePath("/admin/companies-events");
+    revalidatePath("/admin/events");
+    revalidatePath("/admin/event-pages");
     revalidatePath("/event");
     return { success: true, data: event };
   } catch (error) {
@@ -398,6 +407,8 @@ export async function deleteEventAction(id: string): Promise<ActionResult> {
     await requireAdminUser();
     await deleteEvent(id);
     revalidatePath("/admin/companies-events");
+    revalidatePath("/admin/events");
+    revalidatePath("/admin/event-pages");
     revalidatePath("/event");
     return { success: true };
   } catch (error) {

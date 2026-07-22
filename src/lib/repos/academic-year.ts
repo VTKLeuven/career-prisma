@@ -65,15 +65,24 @@ export async function createAcademicYear(input: {
   }
   if (start.getTime() > end.getTime()) throw new Error("The end date must be after the start date");
 
-  const conflict = await prisma.academicYear.findFirst({
-    where: {
-      OR: [
-        { name: { equals: name, mode: "insensitive" } },
-        { start_of_year: { lte: end }, end_of_year: { gte: start } },
-      ],
-    },
+  const duplicateName = await prisma.academicYear.findFirst({
+    where: { name: { equals: name, mode: "insensitive" } },
   });
-  if (conflict) throw new Error("An academic year with this name or date range already exists");
+  if (duplicateName) throw new Error(`Academic year “${name}” already exists`);
+
+  const overlap = await prisma.academicYear.findFirst({
+    where: { start_of_year: { lte: end }, end_of_year: { gte: start } },
+    orderBy: { start_of_year: "asc" },
+  });
+  if (overlap) {
+    const formatDate = (value: Date | null) => value
+      ? value.toLocaleDateString("en-GB", { timeZone: "UTC" })
+      : "unknown date";
+    throw new Error(
+      `This period overlaps ${overlap.name ?? "another academic year"} `
+      + `(${formatDate(overlap.start_of_year)}–${formatDate(overlap.end_of_year)})`
+    );
+  }
 
   return (await prisma.academicYear.create({
     data: {
@@ -81,6 +90,61 @@ export async function createAcademicYear(input: {
       start_of_year: start,
       end_of_year: end,
       date_created: new Date(),
+    },
+  })) as unknown as AcademicYear;
+}
+
+export async function updateAcademicYear(input: {
+  id: string | number;
+  name: string;
+  startOfYear: string;
+  endOfYear: string;
+}): Promise<AcademicYear> {
+  const id = Number(input.id);
+  if (!Number.isSafeInteger(id)) throw new Error("Invalid academic year");
+
+  const existing = await prisma.academicYear.findUnique({ where: { id } });
+  if (!existing) throw new Error("Academic year not found");
+
+  const name = input.name.trim();
+  const start = new Date(`${input.startOfYear}T00:00:00.000Z`);
+  const end = new Date(`${input.endOfYear}T23:59:59.999Z`);
+  if (!name) throw new Error("Academic year name is required");
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    throw new Error("Enter valid start and end dates");
+  }
+  if (start.getTime() > end.getTime()) throw new Error("The end date must be after the start date");
+
+  const duplicateName = await prisma.academicYear.findFirst({
+    where: { id: { not: id }, name: { equals: name, mode: "insensitive" } },
+  });
+  if (duplicateName) throw new Error(`Academic year “${name}” already exists`);
+
+  const overlap = await prisma.academicYear.findFirst({
+    where: {
+      id: { not: id },
+      start_of_year: { lte: end },
+      end_of_year: { gte: start },
+    },
+    orderBy: { start_of_year: "asc" },
+  });
+  if (overlap) {
+    const formatDate = (value: Date | null) => value
+      ? value.toLocaleDateString("en-GB", { timeZone: "UTC" })
+      : "unknown date";
+    throw new Error(
+      `This period overlaps ${overlap.name ?? "another academic year"} `
+      + `(${formatDate(overlap.start_of_year)}–${formatDate(overlap.end_of_year)})`
+    );
+  }
+
+  return (await prisma.academicYear.update({
+    where: { id },
+    data: {
+      name,
+      start_of_year: start,
+      end_of_year: end,
+      date_updated: new Date(),
     },
   })) as unknown as AcademicYear;
 }

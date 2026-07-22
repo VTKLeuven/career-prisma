@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAdminUser } from "@/lib/auth-server";
 import { copyAnnualCatalog } from "@/lib/repos/annual-catalog";
-import { createAcademicYear } from "@/lib/repos/academic-year";
+import { createAcademicYear, updateAcademicYear } from "@/lib/repos/academic-year";
 import {
   createOptionSale,
   createSubOptionSale,
@@ -17,6 +17,7 @@ export async function copyAnnualCatalogAction(sourceYearId: string, targetYearId
     const result = await copyAnnualCatalog(Number(sourceYearId), Number(targetYearId));
     revalidatePath("/admin/career-options");
     revalidatePath("/admin/event-pages");
+    revalidatePath("/admin/events");
     revalidatePath("/event");
     return { success: true, data: result };
   } catch (error) {
@@ -32,12 +33,35 @@ export async function createAcademicYearAction(data: {
   try {
     await requireAdminUser();
     const year = await createAcademicYear(data);
+    revalidatePath("/admin/academic-years");
     revalidatePath("/admin/career-options");
     revalidatePath("/admin/event-pages");
     revalidatePath("/admin/companies-events");
+    revalidatePath("/admin/events");
     return { success: true, data: year };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Failed to create academic year" };
+  }
+}
+
+export async function updateAcademicYearAction(data: {
+  id: string;
+  name: string;
+  startOfYear: string;
+  endOfYear: string;
+}) {
+  try {
+    await requireAdminUser();
+    const year = await updateAcademicYear(data);
+    revalidatePath("/admin/academic-years");
+    revalidatePath("/admin/career-options");
+    revalidatePath("/admin/event-pages");
+    revalidatePath("/admin/events");
+    revalidatePath("/admin");
+    revalidatePath("/event");
+    return { success: true, data: year };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Failed to update academic year" };
   }
 }
 
@@ -51,6 +75,7 @@ export async function createOptionSaleAction(data: {
     const sale = await createOptionSale(data);
     revalidatePath("/admin/career-options");
     revalidatePath("/admin/companies-events");
+    revalidatePath("/admin/events");
     return { success: true, data: sale };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Failed to record sale" };

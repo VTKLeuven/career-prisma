@@ -26,7 +26,11 @@ import {
 import { LayoutDashboard } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ADMIN_NAV_ITEMS } from "./admin-nav";
+import {
+  ADMIN_NAV_GROUP_ICONS,
+  ADMIN_NAV_GROUP_ORDER,
+  ADMIN_NAV_ITEMS,
+} from "./admin-nav";
 import { useUser } from "@/providers/UserProvider";
 import { fetchPendingApprovalRequestsAction, fetchCompanyByIdAction } from "@/app/actions/companies";
 import { getCompanyOrderingTabInfo } from "@/app/actions/ordering";
@@ -346,14 +350,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const navItems = React.useMemo(() => {
     // --- Admin area: show only admin navigation ---
     if (inAdminArea && user?.admin) {
-      const adminItems = [...ADMIN_NAV_ITEMS]
-        .sort((a, b) => a.title.localeCompare(b.title, "en", { sensitivity: "base" }))
-        .map((item) => ({
-          title: item.title,
-          url: item.url,
-          icon: item.icon,
-          ...(item.url === "/admin/approvals" && pendingCount > 0 ? { badge: pendingCount } : {}),
-        }));
+      const adminGroups = ADMIN_NAV_GROUP_ORDER.map((group) => ({
+        title: group,
+        url: "#",
+        icon: ADMIN_NAV_GROUP_ICONS[group],
+        isActive: ADMIN_NAV_ITEMS.some(
+          (item) => item.group === group && pathname.startsWith(item.url)
+        ),
+        items: ADMIN_NAV_ITEMS
+          .filter((item) => item.group === group)
+          .sort((a, b) => a.title.localeCompare(b.title, "en", { sensitivity: "base" }))
+          .map((item) => ({
+            title: item.title,
+            url: item.url,
+            icon: item.icon,
+            isActive: pathname.startsWith(item.url),
+            ...(item.url === "/admin/approvals" && pendingCount > 0 ? { badge: pendingCount } : {}),
+          })),
+      }));
 
       return [
         {
@@ -361,7 +375,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           url: "/dashboard",
           icon: LayoutDashboard,
         },
-        ...adminItems,
+        ...adminGroups,
       ];
     }
 
@@ -448,7 +462,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     items.sort((a, b) => a.title.localeCompare(b.title, "en", { sensitivity: "base" }));
 
     return items;
-  }, [inAdminArea, user?.admin, user?.company, user?.is_shifter, pendingCount, pageImageInvalid, companyEvents, companyOrderingBoothId]);
+  }, [inAdminArea, pathname, user?.admin, user?.company, user?.is_shifter, pendingCount, pageImageInvalid, companyEvents, companyOrderingBoothId]);
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -467,7 +481,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={navItems} />
+        <NavMain items={navItems} label={inAdminArea ? "Administration" : "Platform"} />
       </SidebarContent>
       <SidebarFooter>
         {!inAdminArea && user?.admin && (

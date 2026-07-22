@@ -63,9 +63,44 @@ export async function createEvent(payload: Record<string, any>): Promise<CareerE
   const academicYearId = await assertAcademicYearWritable(
     await resolveAcademicYearId(payload.academic_year_id)
   );
-  const row = await prisma.careerEvent.create({
-    data: { ...toEventWrite(payload), academic_year_id: academicYearId, date_created: new Date() },
+  const seriesKey = payload.series_key || slugifyEventName(String(payload.name ?? ""));
+  if (!seriesKey) throw new Error("Event name is required");
+
+  const existingSeries = await prisma.careerEvent.findFirst({
+    where: {
+      OR: [
+        { series_key: seriesKey },
+        { name: { equals: String(payload.name ?? ""), mode: "insensitive" } },
+      ],
+    },
     include: { academicYear: true },
+  });
+  if (existingSeries) {
+    throw new Error(
+      `“${existingSeries.name}” is an existing event series`
+      + `${existingSeries.academicYear?.name ? ` (${existingSeries.academicYear.name})` : ""}. `
+      + "Use ‘Create annual editions’ on the Events page instead."
+    );
+  }
+
+  const row = await prisma.$transaction(async (tx) => {
+    const created = await tx.careerEvent.create({
+      data: {
+        ...toEventWrite(payload),
+        academic_year_id: academicYearId,
+        series_key: seriesKey,
+        date_created: new Date(),
+      },
+      include: { academicYear: true },
+    });
+    await tx.careerEventPage.create({
+      data: {
+        event_id: created.id,
+        status: "draft",
+        description_EN: "",
+      },
+    });
+    return created;
   });
   return shapeCareerEvent(row) as CareerEvent;
 }
