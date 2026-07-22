@@ -64,7 +64,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { IconBuilding, IconCalendarEvent, IconColumns, IconMail, IconPlus, IconTaxEuro, IconFileCv } from "@tabler/icons-react";
-import type { CareerEvent, Company, CompanyRep, CareerEventOption, CareerEventPage, Booth, HeaderButtonType, CareerSubOption } from "@/lib/schema";
+import type { AcademicYear, CareerEvent, Company, CompanyRep, CareerEventOption, CareerEventPage, Booth, HeaderButtonType, CareerSubOption } from "@/lib/schema";
 import { useUser } from "@/providers/UserProvider";
 import type { UserSummary as AppUser } from "@/lib/schema";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
@@ -89,6 +89,8 @@ type CompanyRow = Pick<Company, "id" | "name" | "VAT" | "address" | "salesperson
   options?: CareerEventOptionWithCompanySubOptions[];
   /** Company-level sub-options (from company.sub_options junction) */
   sub_options?: CareerSubOption[];
+  option_history?: NonNullable<Company["option_history"]>;
+  sub_option_history?: NonNullable<Company["sub_option_history"]>;
 };
 
 export default function LegacyCompaniesEventsClient() {
@@ -332,6 +334,8 @@ export function CompaniesSection() {
           status: r.status ?? "",
           representatives: (r.representatives ?? []).map((rep) => ({ ...rep })) as Partial<CompanyRep>[],
           sub_options: resolveCompanySubOptions(r, allSubOptions ?? []),
+          option_history: r.option_history ?? [],
+          sub_option_history: r.sub_option_history ?? [],
           options: (r.options ?? []).map((opt, optIndex) => {
             // Handle both direct CareerEventOption and junction table format
             let rawOption: CareerEventOption | null = null;
@@ -453,6 +457,8 @@ export function CompaniesSection() {
           status: r.status ?? "",
           representatives: (r.representatives ?? []).map((rep) => ({ ...rep })) as Partial<CompanyRep>[],
           sub_options: resolveCompanySubOptions(r, allSubOptions ?? []),
+          option_history: r.option_history ?? [],
+          sub_option_history: r.sub_option_history ?? [],
           options: (r.options ?? []).map((opt, optIndex) => {
             // Handle both direct CareerEventOption and junction table format
             let rawOption: CareerEventOption | null = null;
@@ -794,23 +800,32 @@ export function CompaniesSection() {
             }}
           />
         ) : viewMode === "options" ? (
-          <>
-            <CompanySubOptionsSection
-              company={selectedCompany}
-              allSubOptions={allSubOptions}
-              onSubOptionsChange={() => refreshCompanies()}
-            />
-            <CompanyOptionsTable
-              company={selectedCompany}
-              onAddOption={(newOption) => {
-                addOptionToCompany(selectedCompany.id, newOption);
-              }}
-              onRemoveOption={(optionId) => {
-                removeOptionFromCompany(selectedCompany.id, optionId);
-              }}
-              onSubOptionsChange={() => refreshCompanies()}
-            />
-          </>
+          <div className="space-y-8">
+            <section className="space-y-3">
+              <div>
+                <h3 className="text-lg font-semibold">Current academic year</h3>
+                <p className="text-sm text-muted-foreground">
+                  These purchases are active and can be changed here.
+                </p>
+              </div>
+              <CompanySubOptionsSection
+                company={selectedCompany}
+                allSubOptions={allSubOptions}
+                onSubOptionsChange={() => refreshCompanies()}
+              />
+              <CompanyOptionsTable
+                company={selectedCompany}
+                onAddOption={(newOption) => {
+                  addOptionToCompany(selectedCompany.id, newOption);
+                }}
+                onRemoveOption={(optionId) => {
+                  removeOptionFromCompany(selectedCompany.id, optionId);
+                }}
+                onSubOptionsChange={() => refreshCompanies()}
+              />
+            </section>
+            <CompanyOptionHistory company={selectedCompany} />
+          </div>
         ) : null}
       </CardContent>
     </Card>
@@ -1417,6 +1432,174 @@ function CompanyOptionsTable({ company, onAddOption, onRemoveOption, onSubOption
         </div>
       </div>
     </>
+  );
+}
+
+type CompanyOptionHistoryRow = {
+  id: string;
+  kind: "Option" | "Sub-option";
+  name: string;
+  price: number | string | null;
+  status: string;
+  dateCreated: string | null;
+  academicYear: AcademicYear | null;
+  events: string[];
+};
+
+function getHistoryEventNames(option: CareerEventOption | null | undefined): string[] {
+  if (!option) return [];
+
+  const readName = (eventOrJunction: unknown): string | null => {
+    if (!eventOrJunction || typeof eventOrJunction !== "object") return null;
+
+    const record = eventOrJunction as Record<string, unknown>;
+    for (const field of ["career_event_id", "career_event", "event_id", "event"]) {
+      const event = record[field];
+      if (event && typeof event === "object" && "name" in event) {
+        return String((event as { name: unknown }).name);
+      }
+    }
+
+    return "name" in record ? String(record.name) : null;
+  };
+
+  const events = Array.isArray(option.events)
+    ? option.events.map(readName).filter((name): name is string => Boolean(name))
+    : [];
+
+  if (events.length > 0) return Array.from(new Set(events));
+  const fallback = readName(option.event);
+  return fallback ? [fallback] : [];
+}
+
+function academicYearHasEnded(year: AcademicYear | null): boolean {
+  if (!year?.end_of_year) return true;
+  const endValue = /^\d{4}-\d{2}-\d{2}$/.test(year.end_of_year)
+    ? `${year.end_of_year}T23:59:59.999`
+    : year.end_of_year;
+  const endDate = new Date(endValue);
+  return Number.isNaN(endDate.getTime()) || endDate.getTime() < Date.now();
+}
+
+function formatHistoricalPrice(price: number | string | null): string {
+  if (price === null || price === undefined || String(price).trim() === "") return "—";
+  const value = String(price).trim();
+  if (/^[€$£]/.test(value) || /free/i.test(value)) return value;
+  return `€${value}`;
+}
+
+function formatHistoryDate(value: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(date);
+}
+
+/** Read-only reference of purchases from completed academic years. */
+function CompanyOptionHistory({ company }: { company: CompanyRow }) {
+  const rows: CompanyOptionHistoryRow[] = [
+    ...(company.option_history ?? []).map((entry) => ({
+      id: `option-${entry.id}`,
+      kind: "Option" as const,
+      name: entry.name_at_sale || entry.option?.name || "Unknown option",
+      price: entry.price_at_sale,
+      status: entry.status,
+      dateCreated: entry.date_created ?? null,
+      academicYear: entry.academic_year,
+      events: getHistoryEventNames(entry.option),
+    })),
+    ...(company.sub_option_history ?? []).map((entry) => ({
+      id: `sub-option-${entry.id}`,
+      kind: "Sub-option" as const,
+      name: entry.name_at_sale || entry.sub_option?.name || "Unknown sub-option",
+      price: entry.price_at_sale,
+      status: entry.status,
+      dateCreated: entry.date_created ?? null,
+      academicYear: entry.academic_year,
+      events: [],
+    })),
+  ].filter((entry) => academicYearHasEnded(entry.academicYear));
+
+  const yearGroups = Array.from(
+    rows.reduce((groups, row) => {
+      const key = row.academicYear?.id ? String(row.academicYear.id) : "unknown";
+      const existing = groups.get(key);
+      if (existing) existing.rows.push(row);
+      else groups.set(key, { academicYear: row.academicYear, rows: [row] });
+      return groups;
+    }, new Map<string, { academicYear: AcademicYear | null; rows: CompanyOptionHistoryRow[] }>()).values()
+  ).sort((a, b) => {
+    const aStart = a.academicYear?.start_of_year ? new Date(a.academicYear.start_of_year).getTime() : 0;
+    const bStart = b.academicYear?.start_of_year ? new Date(b.academicYear.start_of_year).getTime() : 0;
+    return bStart - aStart;
+  });
+
+  for (const group of yearGroups) {
+    group.rows.sort((a, b) => {
+      const dateDifference = new Date(b.dateCreated ?? 0).getTime() - new Date(a.dateCreated ?? 0).getTime();
+      return dateDifference || a.name.localeCompare(b.name);
+    });
+  }
+
+  return (
+    <section className="space-y-3 border-t pt-6">
+      <div>
+        <h3 className="text-lg font-semibold">Previous academic years</h3>
+        <p className="text-sm text-muted-foreground">
+          Read-only purchase history. Names and prices are the values recorded at the time of sale.
+        </p>
+      </div>
+
+      {yearGroups.length === 0 ? (
+        <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+          No purchases recorded for previous academic years.
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {yearGroups.map((group) => (
+            <div key={group.academicYear?.id ?? "unknown"} className="overflow-hidden rounded-md border">
+              <div className="border-b bg-muted/40 px-4 py-3">
+                <h4 className="font-semibold">{group.academicYear?.name ?? "Legacy / unknown academic year"}</h4>
+              </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Events</TableHead>
+                      <TableHead>Sale price</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Recorded</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {group.rows.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell className="min-w-56 font-medium">{row.name}</TableCell>
+                        <TableCell className="whitespace-nowrap">{row.kind}</TableCell>
+                        <TableCell className="min-w-48">{row.events.length > 0 ? row.events.join(", ") : "—"}</TableCell>
+                        <TableCell className="whitespace-nowrap">{formatHistoricalPrice(row.price)}</TableCell>
+                        <TableCell>
+                          <span className={row.status === "sold"
+                            ? "inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+                            : "inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
+                          }>
+                            {row.status === "sold" ? "Purchased" : row.status}
+                          </span>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">{formatHistoryDate(row.dateCreated)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

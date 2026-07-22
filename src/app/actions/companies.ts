@@ -106,6 +106,8 @@ export async function fetchCompaniesAction() {
     // Include options and sub_options (company_career_sub_option junction)
     options: c.options ?? [],
     sub_options: (c as { sub_options?: unknown[] }).sub_options ?? [],
+    option_history: c.option_history ?? [],
+    sub_option_history: c.sub_option_history ?? [],
     category: c.category ?? [],
     representatives: c.representatives ?? [],
   }));
