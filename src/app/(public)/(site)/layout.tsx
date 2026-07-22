@@ -70,7 +70,7 @@ function Header() {
   const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
   const [menuOpenedViaClick, setMenuOpenedViaClick] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [companyRep, setCompanyRep] = useState<{ authenticated: boolean; name: string; is_shifter?: boolean } | null>(null)
+  const [companyRep, setCompanyRep] = useState<{ authenticated: boolean; name: string; is_shifter?: boolean; admin?: boolean } | null>(null)
   const [student, setStudent] = useState<{ authenticated: boolean; firstName: string | null; lastName: string | null; is_shifter?: boolean } | null>(null)
   const router = useRouter()
   const pathname = usePathname()
@@ -229,6 +229,11 @@ function Header() {
             </nav>
 
             <div className="ml-auto flex items-center gap-2">
+              {companyRep?.admin && (
+                <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white">
+                  <Link href="/admin">Admin</Link>
+                </Button>
+              )}
               {!student && (
                 <Button asChild variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex">
                   <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>
@@ -382,6 +387,15 @@ function Header() {
                     >
                       <Link href="/our-students">Our students</Link>
                     </Button>
+                    {companyRep?.admin && (
+                      <Button
+                        asChild
+                        className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <Link href="/admin">Admin</Link>
+                      </Button>
+                    )}
                     {!student && (
                       <Button
                         asChild

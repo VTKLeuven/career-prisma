@@ -34,7 +34,7 @@ export async function createAcademicYearAction(data: {
     const year = await createAcademicYear(data);
     revalidatePath("/admin/career-options");
     revalidatePath("/admin/event-pages");
-    revalidatePath("/admin");
+    revalidatePath("/admin/companies-events");
     return { success: true, data: year };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Failed to create academic year" };
@@ -50,7 +50,7 @@ export async function createOptionSaleAction(data: {
     await requireAdminUser();
     const sale = await createOptionSale(data);
     revalidatePath("/admin/career-options");
-    revalidatePath("/admin");
+    revalidatePath("/admin/companies-events");
     return { success: true, data: sale };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Failed to record sale" };
@@ -79,7 +79,7 @@ export async function createCatalogSaleAction(data: {
       });
     }
     revalidatePath("/admin/career-options");
-    revalidatePath("/admin");
+    revalidatePath("/admin/companies-events");
     return { success: true };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Failed to record sale" };
@@ -92,7 +92,7 @@ export async function deleteOptionSaleAction(id: string, kind: "option" | "sub-o
     if (kind === "option") await deleteOptionSale(Number(id));
     else await deleteSubOptionSale(Number(id));
     revalidatePath("/admin/career-options");
-    revalidatePath("/admin");
+    revalidatePath("/admin/companies-events");
     return { success: true };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Failed to remove sale" };

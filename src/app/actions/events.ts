@@ -371,7 +371,7 @@ export async function createEventAction(data: Record<string, unknown>): Promise<
   try {
     await requireAdminUser();
     const event = await createEvent(data);
-    revalidatePath("/admin");
+    revalidatePath("/admin/companies-events");
     revalidatePath("/event");
     return { success: true, data: event };
   } catch (error) {
@@ -384,7 +384,7 @@ export async function updateEventAction(id: string, data: Record<string, unknown
   try {
     await requireAdminUser();
     const event = await updateEvent(id, data);
-    revalidatePath("/admin");
+    revalidatePath("/admin/companies-events");
     revalidatePath("/event");
     return { success: true, data: event };
   } catch (error) {
@@ -397,7 +397,7 @@ export async function deleteEventAction(id: string): Promise<ActionResult> {
   try {
     await requireAdminUser();
     await deleteEvent(id);
-    revalidatePath("/admin");
+    revalidatePath("/admin/companies-events");
     revalidatePath("/event");
     return { success: true };
   } catch (error) {

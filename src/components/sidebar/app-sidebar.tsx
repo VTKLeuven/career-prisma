@@ -23,7 +23,10 @@ import {
   IconColumns,
   IconGlassCocktail,
 } from "@tabler/icons-react";
+import { LayoutDashboard } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { ADMIN_NAV_ITEMS } from "./admin-nav";
 import { useUser } from "@/providers/UserProvider";
 import { fetchPendingApprovalRequestsAction, fetchCompanyByIdAction } from "@/app/actions/companies";
 import { getCompanyOrderingTabInfo } from "@/app/actions/ordering";
@@ -32,26 +35,6 @@ import { getFileUrl } from "@/components/Images";
 import { fetchEventsAction } from "@/app/actions/events";
 import type { CareerEvent, Company } from "@/lib/schema";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
-import {
-  BookUser,
-  Briefcase,
-  BriefcaseBusiness,
-  Building2,
-  CalendarClock,
-  ClipboardCheck,
-  CupSoda,
-  FileText,
-  GraduationCap,
-  Mail,
-  MapPinned,
-  Mic2,
-  MonitorPlay,
-  School,
-  Tags,
-  UserRoundCheck,
-  Users,
-  UsersRound,
-} from "lucide-react";
 
 // Updated sidebar data
 const data = {
@@ -128,6 +111,7 @@ const data = {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { open } = useSidebar();
   const { user } = useUser();
+  const pathname = usePathname();
   const [pendingCount, setPendingCount] = React.useState<number>(0);
   const [pageImageInvalid, setPageImageInvalid] = React.useState<boolean>(false);
   const [companyEvents, setCompanyEvents] = React.useState<CareerEvent[]>([]);
@@ -353,8 +337,33 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     };
   }, [user?.company?.id]);
 
-  // Add admin sections if user is admin
+  // Whether the user is currently browsing the admin area (/admin/*).
+  const inAdminArea = pathname === "/admin" || pathname.startsWith("/admin/");
+
+  // Build the sidebar navigation. Admin management and the company dashboard are
+  // kept separate: inside /admin/* we show only the admin navigation, everywhere
+  // else we show only the company dashboard sections.
   const navItems = React.useMemo(() => {
+    // --- Admin area: show only admin navigation ---
+    if (inAdminArea && user?.admin) {
+      const adminItems = ADMIN_NAV_ITEMS.map((item) => ({
+        title: item.title,
+        url: item.url,
+        icon: item.icon,
+        ...(item.url === "/admin/approvals" && pendingCount > 0 ? { badge: pendingCount } : {}),
+      }));
+
+      return [
+        {
+          title: "Company Dashboard",
+          url: "/dashboard",
+          icon: LayoutDashboard,
+        },
+        ...adminItems,
+      ];
+    }
+
+    // --- Company dashboard context ---
     let items: any[] = [];
 
     // Only show Company Dashboard (navMain) to Admins or Company Representatives
@@ -414,107 +423,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       }
     }
 
-    // Add Forms section for admins
+    // Admins get a single entry point into the separate admin area.
     if (user?.admin) {
-      const adminItems = [
-        {
-          title: "Forms Management",
-          url: "/admin/forms",
-          icon: FileText,
-        },
-        {
-          title: "Companies & Events",
-          url: "/admin",
-          icon: Building2,
-        },
-        {
-          title: "CV Book",
-          url: "/admin/cv-book",
-          icon: BookUser,
-        },
-        {
-          title: "Vacancies",
-          url: "/admin/vacancies",
-          icon: Briefcase,
-        },
-        {
-          title: "Pending Approvals",
-          url: "/admin/approvals",
-          icon: UserRoundCheck,
-          ...(pendingCount > 0 && { badge: pendingCount }),
-        },
-        {
-          title: "Drinks & Snacks",
-          url: "/admin/drinks",
-          icon: CupSoda,
-        },
-        {
-          title: "Zones & Booths",
-          url: "/admin/zones",
-          icon: MapPinned,
-        },
-        {
-          title: "Shifters",
-          url: "/admin/shifters",
-          icon: UsersRound,
-        },
-        {
-          title: "Email Queue",
-          url: "/admin/email-queue",
-          icon: Mail,
-        },
-        {
-          title: "Check-ins",
-          url: "/admin/checkins",
-          icon: ClipboardCheck,
-        },
-        {
-          title: "Digital Signage",
-          url: "/admin/signage",
-          icon: MonitorPlay,
-        },
-        {
-          title: "Master Categories",
-          url: "/admin/masters",
-          icon: Tags,
-        },
-        {
-          title: "Faculties",
-          url: "/admin/faculties",
-          icon: School,
-        },
-        {
-          title: "Career Options",
-          url: "/admin/career-options",
-          icon: BriefcaseBusiness,
-        },
-        {
-          title: "Speakers",
-          url: "/admin/speakers",
-          icon: Mic2,
-        },
-        {
-          title: "Event Pages & Timetables",
-          url: "/admin/event-pages",
-          icon: CalendarClock,
-        },
-        {
-          title: "User Management",
-          url: "/admin/users",
-          icon: Users,
-        },
-        {
-          title: "Students",
-          url: "/admin/students",
-          icon: GraduationCap,
-        },
-      ].sort((a, b) => a.title.localeCompare(b.title, "en", { sensitivity: "base" }));
-
       items.push({
-        title: "Admin",
-        url: "#",
+        title: "Admin Panel",
+        url: "/admin",
         icon: IconColumns,
-        items: adminItems,
       });
     }
 
@@ -538,7 +452,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
 
     return items;
-  }, [user?.admin, user?.company, user?.is_shifter, pendingCount, pageImageInvalid, companyEvents, companyOrderingBoothId]);
+  }, [inAdminArea, user?.admin, user?.company, user?.is_shifter, pendingCount, pageImageInvalid, companyEvents, companyOrderingBoothId]);
 
   return (
     <Sidebar collapsible="icon" {...props}>
