@@ -149,7 +149,7 @@ export async function fetchEventPagesAction(lim = 50) {
     }
 
     // ✅ Build href
-    page.event.href = `/event/${slugifyEventName(page.event.name)}`;
+    page.event.href = `/event/${page.event.series_key || slugifyEventName(page.event.name)}`;
   });
 
   return pages;
@@ -216,7 +216,7 @@ export async function fetchEventPageBySlugAction(slug: string) {
   }
 
   // ✅ Build href
-  page.event.href = `/event/${slugifyEventName(page.event.name)}`;
+  page.event.href = `/event/${page.event.series_key || slugifyEventName(page.event.name)}`;
 
   // Check if matching software is active for this event (for header button visibility)
   const hasActiveMatchingSoftware = !!(await getActiveMatchingSoftwareForEvent(page.event.id));

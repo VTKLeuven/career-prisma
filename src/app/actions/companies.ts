@@ -728,27 +728,9 @@ export async function uploadCompanyLogo(file: File) {
 
 export async function addOptionToCompanyAction(companyId: string, optionId: string, subOptionIds?: string[]) {
   await requireAdminUser();
-  const company = await fetchCompanyByIdAction(companyId);
-
-  if (!company) return null;
-
-  // Build options array as junction table format (preserves sub_options)
-  let optionJunctions = buildOptionJunctions(company);
-
-  // Add the new option (check if it's not already there)
-  if (!optionJunctions.some(j => j.career_event_option_id === optionId)) {
-    const newJunction: { career_event_option_id: string; sub_options?: string[] } = { career_event_option_id: optionId };
-    if (subOptionIds && subOptionIds.length > 0) {
-      newJunction.sub_options = subOptionIds;
-    }
-    optionJunctions.push(newJunction);
-  }
-
-  const updatePayload: Partial<Company> = {
-    options: optionJunctions as unknown as Company['options']
-  };
-
-  return await updateCompanyAction(companyId, updatePayload);
+  const { createOptionSale } = await import("@/lib/repos/option-sales");
+  await createOptionSale({ companyId, optionId, subOptionIds });
+  return fetchCompanyByIdAction(companyId);
 }
 
 /** Extract sub_option IDs from a junction entry (handles various Directus formats) */
@@ -797,14 +779,32 @@ function buildOptionJunctions(company: Company): Array<{ id?: string | number; c
 async function addSubOptionViaJunction(companyId: string, subOptionId: string): Promise<boolean> {
   const subOption = Number(subOptionId);
   if (!Number.isSafeInteger(subOption)) return false;
-  const existing = await prisma.companyCareerSubOption.findFirst({
-    where: { company_id: companyId, career_sub_option_id: subOption },
+  const { assertAcademicYearWritable, resolveAcademicYearId } = await import("@/lib/repos/academic-year");
+  const academicYearId = await assertAcademicYearWritable(await resolveAcademicYearId());
+  const definition = await prisma.careerSubOption.findUnique({ where: { id: subOption } });
+  if (!definition) return false;
+  await prisma.companyCareerSubOption.upsert({
+    where: {
+      company_id_career_sub_option_id_academic_year_id: {
+        company_id: companyId,
+        career_sub_option_id: subOption,
+        academic_year_id: academicYearId,
+      },
+    },
+    create: {
+      company_id: companyId,
+      career_sub_option_id: subOption,
+      academic_year_id: academicYearId,
+      price_at_sale: definition.price,
+      name_at_sale: definition.name,
+    },
+    update: {
+      status: "sold",
+      price_at_sale: definition.price,
+      name_at_sale: definition.name,
+      date_created: new Date(),
+    },
   });
-  if (!existing) {
-    await prisma.companyCareerSubOption.create({
-      data: { company_id: companyId, career_sub_option_id: subOption },
-    });
-  }
   return true;
 }
 
@@ -812,8 +812,11 @@ async function addSubOptionViaJunction(companyId: string, subOptionId: string): 
 async function removeSubOptionViaJunction(companyId: string, subOptionId: string): Promise<boolean> {
   const subOption = Number(subOptionId);
   if (!Number.isSafeInteger(subOption)) return false;
-  await prisma.companyCareerSubOption.deleteMany({
-    where: { company_id: companyId, career_sub_option_id: subOption },
+  const { assertAcademicYearWritable, resolveAcademicYearId } = await import("@/lib/repos/academic-year");
+  const academicYearId = await assertAcademicYearWritable(await resolveAcademicYearId());
+  await prisma.companyCareerSubOption.updateMany({
+    where: { company_id: companyId, career_sub_option_id: subOption, academic_year_id: academicYearId },
+    data: { status: "cancelled" },
   });
   return true;
 }
@@ -832,42 +835,18 @@ export async function removeSubOptionFromCompanyOnlyAction(companyId: string, su
 
 export async function addSubOptionToCompanyAction(companyId: string, optionId: string, subOptionId: string): Promise<Company | null> {
   await requireAdminUser();
-  console.log("[addSubOptionToCompanyAction] Called", { companyId, optionId, subOptionId });
   const company = await fetchCompanyByIdAction(companyId);
-  if (!company) {
-    console.warn("[addSubOptionToCompanyAction] Company not found:", companyId);
-    return null;
-  }
+  if (!company) return null;
 
   const subIdStr = String(subOptionId);
   const existingIds = extractSubOptionIdsFromCompany(company);
   if (existingIds.some((id) => String(id) === subIdStr)) return company; // Already has it
 
-  // Try 1: PATCH company.sub_options - use junction objects so Directus links correct career_sub_option
-  // (raw IDs [1,2,3] can be misinterpreted as junction row IDs; objects { career_sub_option_id: X } are explicit)
-  try {
-    const payload = [
-      ...existingIds.map((id) => ({ career_sub_option_id: id })),
-      { career_sub_option_id: subIdStr },
-    ];
-    const viaCompany = await updateCompanyAction(companyId, {
-      sub_options: payload,
-    } as Partial<Company>);
-    if (viaCompany) {
-      console.log("[addSubOptionToCompanyAction] Success via company PATCH");
-      return viaCompany;
-    }
-  } catch (e) {
-    console.warn("[addSubOptionToCompanyAction] Company PATCH failed:", e);
-  }
-
-  // Try 2: Add row to company_career_sub_option junction
   const viaJunction = await addSubOptionViaJunction(companyId, subIdStr);
   if (viaJunction) {
     return fetchCompanyByIdAction(companyId);
   }
 
-  console.warn("[addSubOptionToCompanyAction] All methods failed for companyId:", companyId, "subOptionId:", subIdStr);
   return null;
 }
 
@@ -880,20 +859,6 @@ export async function removeSubOptionFromCompanyAction(companyId: string, option
   const existingIds = extractSubOptionIdsFromCompany(company);
   if (!existingIds.some((id) => String(id) === subIdStr)) return company; // Already doesn't have it
 
-  const remainingIds = existingIds.filter((id) => String(id) !== subIdStr);
-
-  // Try 1: PATCH company.sub_options - use junction objects for correct Directus interpretation
-  try {
-    const payload = remainingIds.map((id) => ({ career_sub_option_id: id }));
-    const viaCompany = await updateCompanyAction(companyId, {
-      sub_options: payload,
-    } as Partial<Company>);
-    if (viaCompany) return viaCompany;
-  } catch {
-    // Fall through to junction
-  }
-
-  // Try 2: Delete row from company_career_sub_option junction
   const viaJunction = await removeSubOptionViaJunction(companyId, subIdStr);
   if (viaJunction) {
     return fetchCompanyByIdAction(companyId);
@@ -904,19 +869,17 @@ export async function removeSubOptionFromCompanyAction(companyId: string, option
 
 export async function removeOptionFromCompanyAction(companyId: string, optionId: string) {
   await requireAdminUser();
-  const company = await fetchCompanyByIdAction(companyId);
-
-  if (!company) return null;
-
-  const optionJunctions = buildOptionJunctions(company).filter(
-    (j) => j.career_event_option_id && j.career_event_option_id !== optionId
-  );
-
-  const updatePayload: Partial<Company> = {
-    options: optionJunctions as unknown as Company['options']
-  };
-
-  return await updateCompanyAction(companyId, updatePayload);
+  const { assertAcademicYearWritable, resolveAcademicYearId } = await import("@/lib/repos/academic-year");
+  const academicYearId = await assertAcademicYearWritable(await resolveAcademicYearId());
+  await prisma.companyCareerEventOption.updateMany({
+    where: {
+      company_id: companyId,
+      career_event_option_id: optionId,
+      academic_year_id: academicYearId,
+    },
+    data: { status: "cancelled" },
+  });
+  return fetchCompanyByIdAction(companyId);
 }
 
 export async function removeUserFromCompanyAction(companyId: string, userId: string) {

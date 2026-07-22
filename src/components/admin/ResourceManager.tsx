@@ -234,7 +234,7 @@ export function ResourceManager<T extends Record<string, unknown>>({
             />
           </div>
         ) : null}
-        {!config.hideCreate && config.actions.create ? (
+        {!config.readOnly && !config.hideCreate && config.actions.create ? (
           <Button className="sm:ml-auto" onClick={openCreate}>
             <Plus className="mr-2 h-4 w-4" /> Add {config.singular}
           </Button>
@@ -250,7 +250,7 @@ export function ResourceManager<T extends Record<string, unknown>>({
                   {col.label}
                 </TableHead>
               ))}
-              <TableHead className="text-right">Actions</TableHead>
+              {!config.readOnly ? <TableHead className="text-right">Actions</TableHead> : null}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -264,31 +264,33 @@ export function ResourceManager<T extends Record<string, unknown>>({
                         {col.render ? col.render(row) : String(row[col.key] ?? "—")}
                       </TableCell>
                     ))}
-                    <TableCell className="text-right whitespace-nowrap">
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(row)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive"
-                        onClick={() => handleDelete(row)}
-                        disabled={deletingId === id}
-                      >
-                        {deletingId === id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </TableCell>
+                    {!config.readOnly ? (
+                      <TableCell className="text-right whitespace-nowrap">
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(row)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive"
+                          onClick={() => handleDelete(row)}
+                          disabled={deletingId === id}
+                        >
+                          {deletingId === id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 );
               })
             ) : (
               <TableRow>
                 <TableCell
-                  colSpan={config.columns.length + 1}
+                  colSpan={config.columns.length + (config.readOnly ? 0 : 1)}
                   className="h-24 text-center text-muted-foreground"
                 >
                   No {config.singular.toLowerCase()}s yet.

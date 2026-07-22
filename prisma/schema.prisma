@@ -7,14 +7,18 @@ datasource db {
 }
 
 model AcademicYear {
-  id                Int                @id(map: "Academic_Year_pkey") @default(autoincrement())
-  date_created      DateTime?          @db.Timestamptz(6)
-  date_updated      DateTime?          @db.Timestamptz(6)
-  start_of_year     DateTime?          @db.Timestamp(6)
-  name              String?            @db.VarChar(255)
-  end_of_year       DateTime?          @db.Timestamp(6)
-  cvBooks           CvBook[]
-  matchingSoftwares MatchingSoftware[]
+  id                        Int                        @id(map: "Academic_Year_pkey") @default(autoincrement())
+  date_created              DateTime?                  @db.Timestamptz(6)
+  date_updated              DateTime?                  @db.Timestamptz(6)
+  start_of_year             DateTime?                  @db.Timestamp(6)
+  name                      String?                    @db.VarChar(255)
+  end_of_year               DateTime?                  @db.Timestamp(6)
+  cvBooks                   CvBook[]
+  matchingSoftwares         MatchingSoftware[]
+  careerEvents              CareerEvent[]
+  careerEventOptions        CareerEventOption[]
+  companyCareerEventOptions CompanyCareerEventOption[]
+  companyCareerSubOptions   CompanyCareerSubOption[]
 
   @@map("academic_years")
 }
@@ -77,10 +81,15 @@ model CareerEventOption {
   name                        String?                      @db.VarChar(255)
   description                 String?
   price                       Int?
+  academic_year_id            Int?
+  series_key                  String?                      @db.VarChar(255)
+  academicYear                AcademicYear?                @relation(fields: [academic_year_id], references: [id], onUpdate: NoAction, map: "career_event_options_academic_year_id_foreign")
   careerEventOptionEvents     CareerEventOptionEvent[]
   careerEventOptionSubOptions CareerEventOptionSubOption[]
   companyCareerEventOptions   CompanyCareerEventOption[]
 
+  @@index([academic_year_id])
+  @@index([series_key])
   @@map("career_event_options")
 }
 
@@ -157,12 +166,17 @@ model CareerEvent {
   num_of_students         Int?
   image_id                String?                  @db.Uuid
   shout                   String?                  @db.VarChar(255)
+  academic_year_id        Int?
+  series_key              String?                  @db.VarChar(255)
   careerEventOptionEvents CareerEventOptionEvent[]
   careerEventPages        CareerEventPage[]
   image                   File?                    @relation(fields: [image_id], references: [id], onUpdate: NoAction, map: "career_event_image_foreign")
   matchingSoftwares       MatchingSoftware[]
   schedules               Schedule[]
+  academicYear            AcademicYear?            @relation(fields: [academic_year_id], references: [id], onUpdate: NoAction, map: "career_events_academic_year_id_foreign")
 
+  @@index([academic_year_id])
+  @@index([series_key])
   @@map("career_events")
 }
 
@@ -219,22 +233,38 @@ model Company {
 }
 
 model CompanyCareerEventOption {
-  id                     Int                @id @default(autoincrement())
-  company_id             String?            @db.Uuid
-  career_event_option_id String?            @db.Uuid
-  careerEventOption      CareerEventOption? @relation(fields: [career_event_option_id], references: [id], onUpdate: NoAction, map: "company_career_event_option_career_event_option_id_foreign")
-  company                Company?           @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "company_career_event_option_company_id_foreign")
+  id                     Int               @id @default(autoincrement())
+  company_id             String            @db.Uuid
+  career_event_option_id String            @db.Uuid
+  academic_year_id       Int
+  price_at_sale          Int?
+  name_at_sale           String?           @db.VarChar(255)
+  date_created           DateTime          @default(now()) @db.Timestamptz(6)
+  status                 String            @default("sold") @db.VarChar(32)
+  careerEventOption      CareerEventOption @relation(fields: [career_event_option_id], references: [id], onUpdate: NoAction, map: "company_career_event_option_career_event_option_id_foreign")
+  company                Company           @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "company_career_event_option_company_id_foreign")
+  academicYear           AcademicYear      @relation(fields: [academic_year_id], references: [id], onUpdate: NoAction, map: "company_career_event_option_academic_year_id_foreign")
 
+  @@unique([company_id, career_event_option_id, academic_year_id])
+  @@index([academic_year_id])
   @@map("company_career_event_option")
 }
 
 model CompanyCareerSubOption {
-  id                   Int              @id @default(autoincrement())
-  company_id           String?          @db.Uuid
-  career_sub_option_id Int?
-  careerSubOption      CareerSubOption? @relation(fields: [career_sub_option_id], references: [id], onUpdate: NoAction, map: "company_career_sub_option_career_sub_option_id_foreign")
-  company              Company?         @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "company_career_sub_option_company_id_foreign")
+  id                   Int             @id @default(autoincrement())
+  company_id           String          @db.Uuid
+  career_sub_option_id Int
+  academic_year_id     Int
+  price_at_sale        String?         @db.VarChar(255)
+  name_at_sale         String?         @db.VarChar(255)
+  date_created         DateTime        @default(now()) @db.Timestamptz(6)
+  status               String          @default("sold") @db.VarChar(32)
+  careerSubOption      CareerSubOption @relation(fields: [career_sub_option_id], references: [id], onUpdate: NoAction, map: "company_career_sub_option_career_sub_option_id_foreign")
+  company              Company         @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "company_career_sub_option_company_id_foreign")
+  academicYear         AcademicYear    @relation(fields: [academic_year_id], references: [id], onUpdate: NoAction, map: "company_career_sub_option_academic_year_id_foreign")
 
+  @@unique([company_id, career_sub_option_id, academic_year_id])
+  @@index([academic_year_id])
   @@map("company_career_sub_option")
 }
 

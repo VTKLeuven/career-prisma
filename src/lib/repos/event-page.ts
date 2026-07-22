@@ -3,6 +3,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { createTimetable, updateTimetable } from "@/lib/repos/timetable";
+import { assertAcademicYearWritable } from "@/lib/repos/academic-year";
 
 export type AdminEventPageTimetableItem = {
   id: string;
@@ -19,6 +20,8 @@ export type AdminEventPageRow = {
   id: string;
   event_id: string | null;
   event_name: string | null;
+  academic_year_id: string | null;
+  academic_year_name: string | null;
   status: string;
   shout: string | null;
   tagline: string | null;
@@ -39,7 +42,7 @@ export type AdminEventPageRow = {
 };
 
 const ADMIN_INCLUDE = {
-  event: { select: { id: true, name: true } },
+  event: { include: { academicYear: true } },
   careerEventPageCompanies: { select: { company_id: true } },
   careerEventPageSpeakers: { select: { speaker_id: true } },
   careerEventPageTimetables: {
@@ -73,6 +76,8 @@ function toRow(row: Record<string, any>): AdminEventPageRow {
     id: String(row.id),
     event_id: row.event_id ?? null,
     event_name: row.event?.name ?? null,
+    academic_year_id: row.event?.academic_year_id != null ? String(row.event.academic_year_id) : null,
+    academic_year_name: row.event?.academicYear?.name ?? null,
     status: row.status ?? "draft",
     shout: row.shout ?? null,
     tagline: row.tagline ?? null,
@@ -262,6 +267,12 @@ async function syncTimetableItems(pageId: number, value: unknown): Promise<void>
 }
 
 export async function createEventPage(payload: Record<string, any>): Promise<AdminEventPageRow> {
+  const event = await prisma.careerEvent.findUnique({
+    where: { id: String(payload.event_id ?? "") },
+    select: { academic_year_id: true },
+  });
+  if (!event) throw new Error("Event not found");
+  if (event.academic_year_id != null) await assertAcademicYearWritable(event.academic_year_id);
   const created = await prisma.careerEventPage.create({
     data: { ...toEventPageWrite(payload), description_EN: payload.description_EN ?? "" },
   });
@@ -272,6 +283,24 @@ export async function createEventPage(payload: Record<string, any>): Promise<Adm
 }
 
 export async function updateEventPage(id: number, payload: Record<string, any>): Promise<AdminEventPageRow> {
+  const existing = await prisma.careerEventPage.findUnique({
+    where: { id },
+    select: { event: { select: { academic_year_id: true } } },
+  });
+  if (!existing) throw new Error("Event page not found");
+  if (existing.event?.academic_year_id != null) {
+    await assertAcademicYearWritable(existing.event.academic_year_id);
+  }
+  if (payload.event_id !== undefined) {
+    const targetEvent = await prisma.careerEvent.findUnique({
+      where: { id: String(payload.event_id) },
+      select: { academic_year_id: true },
+    });
+    if (!targetEvent) throw new Error("Event not found");
+    if (targetEvent.academic_year_id != null) {
+      await assertAcademicYearWritable(targetEvent.academic_year_id);
+    }
+  }
   const page = await prisma.careerEventPage.update({ where: { id }, data: toEventPageWrite(payload) });
   await applyRelations(id, payload);
   await updateEventName(page.event_id, payload.event_name);
@@ -280,6 +309,14 @@ export async function updateEventPage(id: number, payload: Record<string, any>):
 }
 
 export async function deleteEventPage(id: number): Promise<void> {
+  const existing = await prisma.careerEventPage.findUnique({
+    where: { id },
+    select: { event: { select: { academic_year_id: true } } },
+  });
+  if (!existing) return;
+  if (existing.event?.academic_year_id != null) {
+    await assertAcademicYearWritable(existing.event.academic_year_id);
+  }
   await prisma.$transaction([
     prisma.careerEventPageCompany.deleteMany({ where: { career_event_page_id: id } }),
     prisma.careerEventPageSpeaker.deleteMany({ where: { career_event_page_id: id } }),

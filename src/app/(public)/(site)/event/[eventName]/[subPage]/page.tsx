@@ -1119,7 +1119,7 @@ function Floorplan({
                 Refresh
               </Button>
               <Button asChild className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark">
-                <Link href={`/event/${slugifyEventName(page.event.name)}`}>Back to event</Link>
+                <Link href={`/event/${page.event.series_key || slugifyEventName(page.event.name)}`}>Back to event</Link>
               </Button>
             </div>
           </div>

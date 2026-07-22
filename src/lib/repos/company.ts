@@ -4,6 +4,7 @@
 import { prisma } from "@/lib/prisma";
 import { COMPANY_INCLUDE, shapeCompany } from "@/lib/repos/_shape";
 import type { Company } from "@/lib/schema";
+import { resolveAcademicYearId } from "@/lib/repos/academic-year";
 
 /** Minimal company shape for vacancy cards / public listing. */
 export type CompanyBasicForVacancy = Pick<Company, "id" | "name" | "logo" | "website">;
@@ -170,10 +171,17 @@ function toCompanyWrite(payload: Partial<Company>): Record<string, unknown> {
  */
 export async function getCompaniesForEvent(eventId: string, _usePublic = false) {
   try {
+    const event = await prisma.careerEvent.findUnique({
+      where: { id: eventId },
+      select: { academic_year_id: true },
+    });
+    const academicYearId = event?.academic_year_id ?? await resolveAcademicYearId();
     const rows = await prisma.company.findMany({
       where: {
         companyCareerEventOptions: {
           some: {
+            academic_year_id: academicYearId,
+            status: "sold",
             careerEventOption: {
               careerEventOptionEvents: { some: { career_event_id: eventId } },
             },

@@ -4,6 +4,8 @@
 import { prisma } from "@/lib/prisma";
 import { shapeCareerEventOption } from "@/lib/repos/_shape";
 import type { CareerEventOption, CareerSubOption } from "@/lib/schema";
+import { assertAcademicYearWritable, resolveAcademicYearId } from "@/lib/repos/academic-year";
+import { slugifyEventName } from "@/lib/utils/slugify";
 
 /**
  * Fetch all career event options with their events and sub-options.
@@ -16,13 +18,20 @@ import type { CareerEventOption, CareerSubOption } from "@/lib/schema";
  */
 export async function listCareerEventOptions(opts?: {
   limit?: number;
+  academicYearId?: string | number;
+  includeHistory?: boolean;
 }) {
   try {
-    const { limit = 1000 } = opts ?? {};
+    const { limit = 1000, includeHistory = false } = opts ?? {};
+    const academicYearId = includeHistory
+      ? undefined
+      : await resolveAcademicYearId(opts?.academicYearId);
 
     const rows = await prisma.careerEventOption.findMany({
+      where: academicYearId ? { academic_year_id: academicYearId } : undefined,
       include: {
-        careerEventOptionEvents: { include: { careerEvent: true } },
+        academicYear: true,
+        careerEventOptionEvents: { include: { careerEvent: { include: { academicYear: true } } } },
         careerEventOptionSubOptions: { include: { careerSubOption: true } },
       },
       take: limit,
@@ -142,11 +151,16 @@ export async function updateCareerSubOption(
   return row as unknown as CareerSubOption;
 }
 
-/** Removes the sub-option and its option/company associations. */
+/** Removes an unused sub-option. Sold sub-options are retained for history. */
 export async function deleteCareerSubOption(id: number): Promise<void> {
+  const sales = await prisma.companyCareerSubOption.count({
+    where: { career_sub_option_id: id },
+  });
+  if (sales > 0) {
+    throw new Error("This sub-option has sales history and cannot be deleted");
+  }
   await prisma.$transaction([
     prisma.careerEventOptionSubOption.deleteMany({ where: { career_sub_option_id: id } }),
-    prisma.companyCareerSubOption.deleteMany({ where: { career_sub_option_id: id } }),
     prisma.careerSubOption.delete({ where: { id } }),
   ]);
 }
@@ -166,6 +180,12 @@ function toOptionWrite(payload: Record<string, any>): Record<string, unknown> {
   } = payload;
   return {
     ...rest,
+    ...(payload.academic_year_id !== undefined
+      ? { academic_year_id: payload.academic_year_id ? Number(payload.academic_year_id) : null }
+      : {}),
+    ...(payload.name !== undefined && payload.series_key === undefined
+      ? { series_key: slugifyEventName(String(payload.name)) }
+      : {}),
     ...(payload.price !== undefined
       ? { price: payload.price == null || payload.price === "" ? null : Number(payload.price) }
       : {}),
@@ -176,6 +196,23 @@ function toOptionWrite(payload: Record<string, any>): Record<string, unknown> {
 /** Replaces an option's linked events with exactly `eventIds`. */
 export async function setOptionEvents(optionId: string, eventIds: string[]): Promise<void> {
   const ids = [...new Set(eventIds.filter(Boolean))];
+  const option = await prisma.careerEventOption.findUnique({
+    where: { id: optionId },
+    select: { academic_year_id: true },
+  });
+  if (!option) throw new Error("Option not found");
+  if (ids.length) {
+    const events = await prisma.careerEvent.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, academic_year_id: true },
+    });
+    if (
+      events.length !== ids.length
+      || events.some((event) => event.academic_year_id !== option.academic_year_id)
+    ) {
+      throw new Error("Options can only link to events from the same academic year");
+    }
+  }
   await prisma.$transaction([
     prisma.careerEventOptionEvent.deleteMany({ where: { career_event_option_id: optionId } }),
     ...(ids.length
@@ -210,8 +247,11 @@ export async function setOptionSubOptions(optionId: string, subOptionIds: number
 }
 
 export async function createCareerEventOption(payload: Record<string, any>): Promise<CareerEventOption> {
+  const academicYearId = await assertAcademicYearWritable(
+    await resolveAcademicYearId(payload.academic_year_id)
+  );
   const row = await prisma.careerEventOption.create({
-    data: { ...toOptionWrite(payload), date_created: new Date() },
+    data: { ...toOptionWrite(payload), academic_year_id: academicYearId, date_created: new Date() },
   });
   if (Array.isArray(payload.eventIds)) await setOptionEvents(row.id, payload.eventIds.map(String));
   if (Array.isArray(payload.subOptionIds)) await setOptionSubOptions(row.id, payload.subOptionIds.map(Number));
@@ -222,18 +262,38 @@ export async function updateCareerEventOption(
   id: string,
   payload: Record<string, any>
 ): Promise<CareerEventOption> {
+  const existing = await prisma.careerEventOption.findUnique({
+    where: { id },
+    select: { academic_year_id: true },
+  });
+  if (!existing) throw new Error("Option not found");
+  await assertAcademicYearWritable(existing.academic_year_id ?? await resolveAcademicYearId());
+  if (payload.academic_year_id !== undefined) {
+    const targetYearId = await assertAcademicYearWritable(payload.academic_year_id);
+    if (existing.academic_year_id != null && targetYearId !== existing.academic_year_id) {
+      throw new Error("An option cannot be moved to another academic year; copy it instead");
+    }
+  }
   await prisma.careerEventOption.update({ where: { id }, data: toOptionWrite(payload) });
   if (Array.isArray(payload.eventIds)) await setOptionEvents(id, payload.eventIds.map(String));
   if (Array.isArray(payload.subOptionIds)) await setOptionSubOptions(id, payload.subOptionIds.map(Number));
   return getCareerEventOptionById(id) as Promise<CareerEventOption>;
 }
 
-/** Removes the option and its event/sub-option/company associations. */
+/** Removes an unused option. Sold options are retained for history. */
 export async function deleteCareerEventOption(id: string): Promise<void> {
+  const option = await prisma.careerEventOption.findUnique({
+    where: { id },
+    select: { academic_year_id: true, _count: { select: { companyCareerEventOptions: true } } },
+  });
+  if (!option) return;
+  if (option.academic_year_id != null) await assertAcademicYearWritable(option.academic_year_id);
+  if (option._count.companyCareerEventOptions > 0) {
+    throw new Error("This option has sales history and cannot be deleted");
+  }
   await prisma.$transaction([
     prisma.careerEventOptionEvent.deleteMany({ where: { career_event_option_id: id } }),
     prisma.careerEventOptionSubOption.deleteMany({ where: { career_event_option_id: id } }),
-    prisma.companyCareerEventOption.deleteMany({ where: { career_event_option_id: id } }),
     prisma.careerEventOption.delete({ where: { id } }),
   ]);
 }
@@ -242,7 +302,8 @@ async function getCareerEventOptionById(id: string): Promise<CareerEventOption |
   const row = await prisma.careerEventOption.findUnique({
     where: { id },
     include: {
-      careerEventOptionEvents: { include: { careerEvent: true } },
+      academicYear: true,
+      careerEventOptionEvents: { include: { careerEvent: { include: { academicYear: true } } } },
       careerEventOptionSubOptions: { include: { careerSubOption: true } },
     },
   });

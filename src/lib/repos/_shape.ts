@@ -51,12 +51,14 @@ export const COMPANY_INCLUDE = {
   users: true,
   salesperson: { select: { id: true, first_name: true, last_name: true } },
   companyMasters: { include: { master: true } },
-  companyCareerSubOptions: { include: { careerSubOption: true } },
+  companyCareerSubOptions: { include: { careerSubOption: true, academicYear: true } },
   companyCareerEventOptions: {
     include: {
+      academicYear: true,
       careerEventOption: {
         include: {
-          careerEventOptionEvents: { include: { careerEvent: true } },
+          academicYear: true,
+          careerEventOptionEvents: { include: { careerEvent: { include: { academicYear: true } } } },
           careerEventOptionSubOptions: { include: { careerSubOption: true } },
         },
       },
@@ -82,6 +84,20 @@ export function shapeCompany(row: Nullable<CompanyRow>): any {
     ...rest
   } = row;
 
+  const now = Date.now();
+  const isCurrentYear = (year: Record<string, any> | null | undefined) => {
+    if (!year?.start_of_year || !year?.end_of_year) return false;
+    return new Date(year.start_of_year).getTime() <= now && new Date(year.end_of_year).getTime() >= now;
+  };
+  const currentOptionLinks = (companyCareerEventOptions ?? []).filter(
+    (link: Record<string, any>) =>
+      (link.status ?? "sold") === "sold" && (!link.academicYear || isCurrentYear(link.academicYear))
+  );
+  const currentSubOptionLinks = (companyCareerSubOptions ?? []).filter(
+    (link: Record<string, any>) =>
+      (link.status ?? "sold") === "sold" && (!link.academicYear || isCurrentYear(link.academicYear))
+  );
+
   return {
     ...rest,
     // Directus exposed these as bare file/user ids under the un-suffixed name.
@@ -92,24 +108,43 @@ export function shapeCompany(row: Nullable<CompanyRow>): any {
     representatives: users ?? [],
     category: junction(companyMasters, "master_id", (r: any) => r.master),
     sub_options: junction(
-      companyCareerSubOptions,
+      currentSubOptionLinks,
       "career_sub_option_id",
       (r: any) => r.careerSubOption
     ),
     options: junction(
-      companyCareerEventOptions,
+      currentOptionLinks,
       "career_event_option_id",
       (r: any) => shapeCareerEventOption(r.careerEventOption)
     ),
+    option_history: (companyCareerEventOptions ?? []).map((link: Record<string, any>) => ({
+      id: String(link.id),
+      academic_year: link.academicYear ?? null,
+      price_at_sale: link.price_at_sale ?? null,
+      name_at_sale: link.name_at_sale ?? link.careerEventOption?.name ?? null,
+      status: link.status ?? "sold",
+      date_created: link.date_created ?? null,
+      option: shapeCareerEventOption(link.careerEventOption),
+    })),
+    sub_option_history: (companyCareerSubOptions ?? []).map((link: Record<string, any>) => ({
+      id: String(link.id),
+      academic_year: link.academicYear ?? null,
+      price_at_sale: link.price_at_sale ?? null,
+      name_at_sale: link.name_at_sale ?? link.careerSubOption?.name ?? null,
+      status: link.status ?? "sold",
+      date_created: link.date_created ?? null,
+      sub_option: link.careerSubOption ?? null,
+    })),
   };
 }
 
 /** Maps a Prisma career event option, including its nested junctions. */
 export function shapeCareerEventOption(row: Nullable<CompanyRow>): any {
   if (!row) return null;
-  const { careerEventOptionEvents, careerEventOptionSubOptions, ...rest } = row;
+  const { careerEventOptionEvents, careerEventOptionSubOptions, academicYear, ...rest } = row;
   return {
     ...rest,
+    academic_year: academicYear ?? null,
     events: junction(
       careerEventOptionEvents,
       "career_event_id",
@@ -133,10 +168,12 @@ export function shapeCareerEvent(row: Nullable<CompanyRow>): any {
     image_id,
     image: _image,
     careerEventOptionEvents: _careerEventOptionEvents,
+    academicYear,
     ...rest
   } = row;
   return {
     ...rest,
+    academic_year: academicYear ?? null,
     date: shapeDate(date),
     start_hour: shapeTime(start_hour),
     end_hour: shapeTime(end_hour),
@@ -244,7 +281,7 @@ export function shapeTimetable(row: Nullable<CompanyRow>): any {
  * timetable_career_event_page backs `timetable.events` (33 rows).
  */
 export const EVENT_PAGE_INCLUDE = {
-  event: true,
+  event: { include: { academicYear: true } },
   floorplan: true,
   careerEventPageTimetables: {
     include: { timetable: { include: { speaker: { include: SPEAKER_INCLUDE } } } },

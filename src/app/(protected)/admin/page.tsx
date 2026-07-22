@@ -2995,7 +2995,9 @@ function EventFormDialog({ event, onSaved }: { event?: CareerEvent; onSaved?: ()
     num_of_companies: "",
     num_of_students: "",
     image: "" as string | undefined,
+    academic_year_id: "",
   });
+  const [eventAcademicYears, setEventAcademicYears] = React.useState<Array<{ id: string; name: string; start_of_year: string; end_of_year: string }>>([]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -3013,6 +3015,19 @@ function EventFormDialog({ event, onSaved }: { event?: CareerEvent; onSaved?: ()
       num_of_companies: event?.num_of_companies != null ? String(event.num_of_companies) : "",
       num_of_students: event?.num_of_students != null ? String(event.num_of_students) : "",
       image: (event?.image as string) ?? "",
+      academic_year_id: String(event?.academic_year_id ?? event?.academic_year?.id ?? ""),
+    });
+    fetchAcademicYearsAction().then((years) => {
+      const available = years ?? [];
+      setEventAcademicYears(available);
+      setForm((current) => {
+        if (current.academic_year_id) return current;
+        const now = Date.now();
+        const active = available.find((year) =>
+          new Date(year.start_of_year).getTime() <= now && new Date(year.end_of_year).getTime() >= now
+        ) ?? available[0];
+        return { ...current, academic_year_id: active ? String(active.id) : "" };
+      });
     });
   }, [open, event]);
 
@@ -3048,6 +3063,7 @@ function EventFormDialog({ event, onSaved }: { event?: CareerEvent; onSaved?: ()
         num_of_companies: form.num_of_companies,
         num_of_students: form.num_of_students,
         image: imageId || null,
+        academic_year_id: form.academic_year_id,
       };
 
       const result = isEdit
@@ -3084,6 +3100,17 @@ function EventFormDialog({ event, onSaved }: { event?: CareerEvent; onSaved?: ()
           <div className="flex flex-col gap-2">
             <Label htmlFor="ev-name">Name*</Label>
             <Input id="ev-name" value={form.name} onChange={e => set("name", e.target.value)} required />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label>Academic year*</Label>
+            <Select value={form.academic_year_id} onValueChange={value => set("academic_year_id", value)} required disabled={isEdit}>
+              <SelectTrigger><SelectValue placeholder="Select academic year" /></SelectTrigger>
+              <SelectContent>
+                {eventAcademicYears.map((year) => (
+                  <SelectItem key={year.id} value={String(year.id)}>{year.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="ev-desc">Description</Label>

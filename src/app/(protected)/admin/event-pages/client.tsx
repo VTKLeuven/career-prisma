@@ -52,15 +52,29 @@ export default function EventPagesClient({
   floorplanOptions,
   companyOptions,
   speakerOptions,
+  academicYears,
+  currentAcademicYearId,
 }: {
   initialPages: AdminEventPageRow[];
-  eventOptions: SelectOption[];
+  eventOptions: Array<SelectOption & { academicYearId: string }>;
   floorplanOptions: SelectOption[];
   companyOptions: SelectOption[];
   speakerOptions: SelectOption[];
+  academicYears: Array<SelectOption & { endOfYear?: string }>;
+  currentAcademicYearId: string;
 }) {
+  const [selectedYearId, setSelectedYearId] = React.useState(
+    currentAcademicYearId || academicYears[0]?.value || ""
+  );
+  const visiblePages = initialPages.filter((page) => page.academic_year_id === selectedYearId);
+  const visibleEventOptions = eventOptions.filter((event) => event.academicYearId === selectedYearId);
+  const selectedYear = academicYears.find((year) => year.value === selectedYearId);
+  const isPastYear = selectedYear?.endOfYear
+    ? new Date(selectedYear.endOfYear).getTime() < Date.now()
+    : false;
   const config: ResourceConfig<AdminEventPageRow> = {
     singular: "Event Page",
+    readOnly: isPastYear,
     getId: (p) => p.id,
     getLabel: (p) => p.event_name ?? `Page #${p.id}`,
     searchKeys: ["event_name", "tagline", "shout"],
@@ -82,12 +96,12 @@ export default function EventPagesClient({
     dialogClassName: "sm:max-w-5xl h-[90dvh]",
     fieldsClassName: "grid grid-cols-1 gap-5 md:grid-cols-2",
     fields: [
-      { name: "event_id", label: "Event", type: "select", options: eventOptions, required: true, section: "Basics" },
+      { name: "event_id", label: "Event", type: "select", options: visibleEventOptions, required: true, section: "Basics" },
       {
         name: "event_name",
         label: "Event name",
         type: "text",
-        help: "Changing this also updates the event name and its public URL.",
+        help: "Changing this updates the edition name. The stable public URL is retained for SEO.",
       },
       { name: "status", label: "Status", type: "select", options: STATUS_OPTIONS, defaultValue: "draft" },
       { name: "shout", label: "Shout", type: "text" },
@@ -129,7 +143,22 @@ export default function EventPagesClient({
     },
   };
 
-  return <ResourceManager config={config} initialRows={initialPages} />;
+  return (
+    <div className="space-y-4">
+      <div className="max-w-xs space-y-2">
+        <Label>Academic year</Label>
+        <Select value={selectedYearId} onValueChange={setSelectedYearId}>
+          <SelectTrigger><SelectValue placeholder="Select academic year" /></SelectTrigger>
+          <SelectContent>
+            {academicYears.map((year) => (
+              <SelectItem key={year.value} value={year.value}>{year.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <ResourceManager config={config} initialRows={visiblePages} />
+    </div>
+  );
 }
 
 const TIMETABLE_TYPE_OPTIONS: SelectOption[] = [

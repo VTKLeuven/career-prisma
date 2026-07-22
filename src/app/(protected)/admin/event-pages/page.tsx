@@ -4,20 +4,27 @@ import { listEvents } from "@/lib/repos/event";
 import { listCompaniesBasic } from "@/lib/repos/company";
 import { listSpeakers } from "@/lib/repos/speakers";
 import EventPagesClient from "./client";
+import { getCurrentAcademicYear, listAcademicYearsForAdmin } from "@/lib/repos/academic-year";
 
 export default async function AdminEventPagesPage() {
   const user = await getUserFromCookies();
   if (!user?.admin) return <p>NO ACCESS</p>;
 
-  const [pages, events, floorplans, companies, speakers] = await Promise.all([
+  const [pages, events, floorplans, companies, speakers, academicYears, currentYear] = await Promise.all([
     listEventPagesAdmin(),
-    listEvents({ limit: 200, sort: "-date" }),
+    listEvents({ limit: 500, sort: "-date", includeHistory: true }),
     listFloorplansBasic(),
     listCompaniesBasic(),
     listSpeakers({ limit: 1000 }),
+    listAcademicYearsForAdmin(),
+    getCurrentAcademicYear(),
   ]);
 
-  const eventOptions = (events ?? []).map((e) => ({ value: String(e.id), label: e.name ?? "(untitled)" }));
+  const eventOptions = (events ?? []).map((e) => ({
+    value: String(e.id),
+    label: e.name ?? "(untitled)",
+    academicYearId: String(e.academic_year_id ?? e.academic_year?.id ?? ""),
+  }));
   const floorplanOptions = floorplans.map((f) => ({
     value: String(f.id),
     label: [f.name, f.year].filter(Boolean).join(" ") || `Floorplan #${f.id}`,
@@ -44,6 +51,12 @@ export default async function AdminEventPagesPage() {
         floorplanOptions={floorplanOptions}
         companyOptions={companyOptions}
         speakerOptions={speakerOptions}
+        academicYears={academicYears.map((year) => ({
+          value: String(year.id),
+          label: year.name,
+          endOfYear: year.end_of_year,
+        }))}
+        currentAcademicYearId={currentYear?.id ? String(currentYear.id) : ""}
       />
     </div>
   );

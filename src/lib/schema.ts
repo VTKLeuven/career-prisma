@@ -94,6 +94,24 @@ export type Company = {
   representatives?: CompanyRep[];
   category?: Master[] | { master_id: string }[];
   options?: CareerEventOption[];
+  option_history?: Array<{
+    id: string;
+    academic_year: AcademicYear | null;
+    price_at_sale: number | null;
+    name_at_sale: string | null;
+    status: string;
+    date_created?: string | null;
+    option: CareerEventOption;
+  }>;
+  sub_option_history?: Array<{
+    id: string;
+    academic_year: AcademicYear | null;
+    price_at_sale: string | null;
+    name_at_sale: string | null;
+    status: string;
+    date_created?: string | null;
+    sub_option: CareerSubOption;
+  }>;
 };
 
 export type CareerEvent = {
@@ -110,6 +128,9 @@ export type CareerEvent = {
   num_of_companies?: number;
   num_of_students: number;
   status?: string;
+  academic_year_id?: string | number;
+  academic_year?: AcademicYear | null;
+  series_key?: string;
   options: CareerEventOption[];
   href?: string;
 }
@@ -130,6 +151,9 @@ export type CareerEventOption = {
   events?: CareerEvent[];
   event?: CareerEvent; // Deprecated: use events instead (kept for backward compatibility)
   sub_options?: CareerSubOption[];
+  academic_year_id?: string | number;
+  academic_year?: AcademicYear | null;
+  series_key?: string;
 }
 
 /** Header button types that can be shown on the event page header */

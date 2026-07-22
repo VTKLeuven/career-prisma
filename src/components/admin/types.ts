@@ -72,6 +72,8 @@ export type ResourceConfig<T> = {
   searchKeys?: string[];
   /** Hides the "Add" button when creation isn't supported (e.g. students self-register). */
   hideCreate?: boolean;
+  /** Shows the resource without create, edit, or delete controls. */
+  readOnly?: boolean;
   /** Optional layout overrides for resources with larger edit forms. */
   dialogClassName?: string;
   fieldsClassName?: string;

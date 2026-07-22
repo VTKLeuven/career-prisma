@@ -12,6 +12,7 @@ import {
 } from "@/lib/repos/_shape";
 import type { CareerEvent, CareerEventPage } from "@/lib/schema";
 import { slugifyEventName } from "@/lib/utils/slugify";
+import { assertAcademicYearWritable, resolveAcademicYearId } from "@/lib/repos/academic-year";
 
 /** Converts a "YYYY-MM-DD" string (or Date) to a Date for a `@db.Date` column. */
 function dateValue(value: unknown): Date | null | undefined {
@@ -39,6 +40,12 @@ function toEventWrite(payload: Record<string, any>): Record<string, unknown> {
   const { id: _id, image, date, start_hour, end_hour, href: _href, options: _options, ...rest } = payload;
   return {
     ...rest,
+    ...(payload.academic_year_id !== undefined
+      ? { academic_year_id: payload.academic_year_id ? Number(payload.academic_year_id) : null }
+      : {}),
+    ...(payload.name !== undefined && payload.series_key === undefined
+      ? { series_key: slugifyEventName(String(payload.name)) }
+      : {}),
     ...(payload.num_of_companies !== undefined
       ? { num_of_companies: payload.num_of_companies == null || payload.num_of_companies === "" ? null : Number(payload.num_of_companies) }
       : {}),
@@ -53,22 +60,45 @@ function toEventWrite(payload: Record<string, any>): Record<string, unknown> {
 }
 
 export async function createEvent(payload: Record<string, any>): Promise<CareerEvent> {
+  const academicYearId = await assertAcademicYearWritable(
+    await resolveAcademicYearId(payload.academic_year_id)
+  );
   const row = await prisma.careerEvent.create({
-    data: { ...toEventWrite(payload), date_created: new Date() },
+    data: { ...toEventWrite(payload), academic_year_id: academicYearId, date_created: new Date() },
+    include: { academicYear: true },
   });
   return shapeCareerEvent(row) as CareerEvent;
 }
 
 export async function updateEvent(id: string, payload: Record<string, any>): Promise<CareerEvent> {
+  const existing = await prisma.careerEvent.findUnique({
+    where: { id },
+    select: { academic_year_id: true },
+  });
+  if (!existing) throw new Error("Event not found");
+  if (existing.academic_year_id != null) await assertAcademicYearWritable(existing.academic_year_id);
+  if (payload.academic_year_id !== undefined) {
+    const targetYearId = await assertAcademicYearWritable(payload.academic_year_id);
+    if (existing.academic_year_id != null && targetYearId !== existing.academic_year_id) {
+      throw new Error("An event cannot be moved to another academic year; copy it instead");
+    }
+  }
   const row = await prisma.careerEvent.update({
     where: { id },
     data: { ...toEventWrite(payload), date_updated: new Date() },
+    include: { academicYear: true },
   });
   return shapeCareerEvent(row) as CareerEvent;
 }
 
 /** Removes the event and its option links. Blocks if event pages/matching/schedules exist. */
 export async function deleteEvent(id: string): Promise<void> {
+  const event = await prisma.careerEvent.findUnique({
+    where: { id },
+    select: { academic_year_id: true },
+  });
+  if (!event) return;
+  if (event.academic_year_id != null) await assertAcademicYearWritable(event.academic_year_id);
   await prisma.$transaction([
     prisma.careerEventOptionEvent.deleteMany({ where: { career_event_id: id } }),
     prisma.careerEvent.delete({ where: { id } }),
@@ -80,22 +110,29 @@ export async function listEvents(opts?: {
   limit?: number;
   page?: number;        // 1-based
   sort?: string;        // e.g. "-date_created" or "name"
+  academicYearId?: string | number;
+  includeHistory?: boolean;
 }) {
   try {
-    const { search, limit = 25, page = 1, sort = "date" } = opts ?? {};
+    const { search, limit = 25, page = 1, sort = "date", includeHistory = false } = opts ?? {};
+    const academicYearId = includeHistory
+      ? undefined
+      : await resolveAcademicYearId(opts?.academicYearId);
     const desc = sort.startsWith("-");
     const sortField = desc ? sort.slice(1) : sort;
 
     const rows = await prisma.careerEvent.findMany({
-      where: search
-        ? {
+      where: {
+        ...(academicYearId ? { academic_year_id: academicYearId } : {}),
+        ...(search ? {
             OR: [
               { name: { contains: search, mode: "insensitive" } },
               { description: { contains: search, mode: "insensitive" } },
             ],
-          }
-        : undefined,
+          } : {}),
+      },
       include: {
+        academicYear: true,
         careerEventOptionEvents: {
           include: {
             careerEventOption: {
@@ -132,17 +169,41 @@ export async function listEventPages(opts?: {
   limit?: number;
   page?: number;
   sort?: string; // e.g. "event.date" or "-event.date"
+  academicYearId?: string | number;
+  includeHistory?: boolean;
 }) {
   try {
     const { limit = 25, page = 1, sort = "event.date" } = opts ?? {};
+    const academicYearId = opts?.academicYearId != null
+      ? await resolveAcademicYearId(opts.academicYearId)
+      : undefined;
 
     const rows = await prisma.careerEventPage.findMany({
+      where: {
+        status: "published",
+        ...(academicYearId ? { event: { academic_year_id: academicYearId } } : {}),
+      },
       include: EVENT_PAGE_INCLUDE,
-      take: limit,
-      skip: (page - 1) * limit,
+      take: 1000,
     });
 
-    const list = rows.map(shapeEventPage) as CareerEventPage[];
+    const allPublished = rows.map(shapeEventPage) as CareerEventPage[];
+    // Keep one public page per stable event series. A draft next edition does
+    // not replace the last published edition, so the URL never goes dark at
+    // the academic-year boundary.
+    const newestFirst = [...allPublished].sort((a, b) => {
+      const yearA = new Date(a.event?.academic_year?.start_of_year ?? 0).getTime();
+      const yearB = new Date(b.event?.academic_year?.start_of_year ?? 0).getTime();
+      if (yearA !== yearB) return yearB - yearA;
+      return new Date(b.event?.date ?? 0).getTime() - new Date(a.event?.date ?? 0).getTime();
+    });
+    const seenSeries = new Set<string>();
+    const list = newestFirst.filter((item) => {
+      const series = item.event?.series_key || slugifyEventName(item.event?.name ?? "");
+      if (seenSeries.has(series)) return false;
+      seenSeries.add(series);
+      return true;
+    });
 
     // Sorting stays in JS: the default sort key is a nested path ("event.date")
     // that the callers pass as a string, exactly as before.
@@ -164,7 +225,7 @@ export async function listEventPages(opts?: {
       });
     }
 
-    return list;
+    return list.slice((page - 1) * limit, page * limit);
   } catch (error) {
     console.error("Error fetching event pages:", error);
     return [];
@@ -189,21 +250,31 @@ export async function getEventPageBySlug(slug: string): Promise<CareerEventPage 
     // The slug is derived from the event name, so the match cannot be pushed
     // into SQL: every candidate name has to be slugified and compared.
     const events = await prisma.careerEvent.findMany({
-      select: { id: true, name: true },
-      take: 100,
+      include: { academicYear: true },
+      orderBy: [{ academicYear: { start_of_year: "desc" } }, { date: "desc" }],
+      take: 500,
     });
 
     const normalizedSlug = slugifyEventName(slug);
-    const matchingEvent = events.find(
-      (event) => slugifyEventName(event.name ?? "") === normalizedSlug
+    const matchingEvents = events.filter(
+      (event) => event.series_key === normalizedSlug || slugifyEventName(event.name ?? "") === normalizedSlug
     );
 
-    if (!matchingEvent) return null;
+    if (!matchingEvents.length) return null;
 
-    const row = await prisma.careerEventPage.findFirst({
-      where: { event_id: matchingEvent.id },
+    const pages = await prisma.careerEventPage.findMany({
+      where: {
+        event_id: { in: matchingEvents.map((event) => event.id) },
+        status: "published",
+      },
       include: EVENT_PAGE_INCLUDE,
+      orderBy: { id: "desc" },
     });
+    const pageByEvent = new Map<string, (typeof pages)[number]>();
+    for (const page of pages) {
+      if (page.event_id && !pageByEvent.has(page.event_id)) pageByEvent.set(page.event_id, page);
+    }
+    const row = matchingEvents.map((event) => pageByEvent.get(event.id)).find(Boolean);
 
     return shapeEventPage(row) as CareerEventPage | null;
   } catch (error) {

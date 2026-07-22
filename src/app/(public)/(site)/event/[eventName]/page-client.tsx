@@ -825,7 +825,7 @@ function Header({ page }: { page?: CareerEventPage }) {
               <>
                 {shouldShowHeaderButton(page, "floorplan") && (
                   <Link
-                    href={`/event/${slugifyEventName(page.event.name)}/floorplan`}
+                    href={`/event/${page.event.series_key || slugifyEventName(page.event.name)}/floorplan`}
                     className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
                   >
                     Floorplan
@@ -833,7 +833,7 @@ function Header({ page }: { page?: CareerEventPage }) {
                 )}
                 {shouldShowHeaderButton(page, "matching_software") && (
                   <Link
-                    href={`/event/${slugifyEventName(page.event.name)}/matching-software`}
+                    href={`/event/${page.event.series_key || slugifyEventName(page.event.name)}/matching-software`}
                     className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
                   >
                     Matching Software
@@ -855,7 +855,7 @@ function Header({ page }: { page?: CareerEventPage }) {
                   <CompanyGuideButton 
                     companyGuide={page.company_guide} 
                     isMobile={false}
-                    eventName={slugifyEventName(page.event.name)}
+                    eventName={page.event.series_key || slugifyEventName(page.event.name)}
                   />
                 )}
                 {shouldShowHeaderButton(page, "cv_upload") && (
@@ -879,7 +879,7 @@ function Header({ page }: { page?: CareerEventPage }) {
               <>
                 {shouldShowHeaderButton(page, "floorplan") && (
                   <Link
-                    href={`/event/${slugifyEventName(page.event.name)}/floorplan`}
+                    href={`/event/${page.event.series_key || slugifyEventName(page.event.name)}/floorplan`}
                     className="rounded-full px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 whitespace-nowrap shrink-0"
                   >
                     Floorplan
@@ -887,7 +887,7 @@ function Header({ page }: { page?: CareerEventPage }) {
                 )}
                 {shouldShowHeaderButton(page, "matching_software") && (
                   <Link
-                    href={`/event/${slugifyEventName(page.event.name)}/matching-software`}
+                    href={`/event/${page.event.series_key || slugifyEventName(page.event.name)}/matching-software`}
                     className="rounded-full px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 whitespace-nowrap shrink-0"
                   >
                     Matching
@@ -909,7 +909,7 @@ function Header({ page }: { page?: CareerEventPage }) {
                   <CompanyGuideButton 
                     companyGuide={page.company_guide} 
                     isMobile={true}
-                    eventName={slugifyEventName(page.event.name)}
+                    eventName={page.event.series_key || slugifyEventName(page.event.name)}
                   />
                 )}
                 {shouldShowHeaderButton(page, "cv_upload") && (
@@ -1275,7 +1275,7 @@ function Hero({
                       variant="ghost"
                       className="rounded-full bg-vtk-blue-dark text-white hover:brightness-95 cursor-pointer text-sm sm:text-base"
                     >
-                      <Link href={`/event/${slugifyEventName(page.event.name)}/floorplan`}>
+                      <Link href={`/event/${page.event.series_key || slugifyEventName(page.event.name)}/floorplan`}>
                         Floorplan
                       </Link>
                     </Button>
@@ -1605,7 +1605,7 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
     })
     .sort(compareTimetableItems)
 
-  const eventSlug = page?.event?.name ? slugifyEventName(page.event.name) : ''
+  const eventSlug = page?.event?.series_key || (page?.event?.name ? slugifyEventName(page.event.name) : '')
   const allSpeakersForSlug = useMemo(() => {
     const fromPage = page?.speakers ?? []
     const fromTimetable = (page?.timetable ?? []).flatMap((t) => (t.speaker ? [t.speaker] : []))
@@ -1767,9 +1767,9 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
               <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
                 {groupSpeakersByTimeSlot(page.speakers ?? []).map((group) => (
                   group.length === 1 ? (
-                    <SpeakerCard key={group[0].id} speaker={group[0]} eventSlug={slugifyEventName(page.event.name)} allSpeakers={page.speakers ?? []} />
+                    <SpeakerCard key={group[0].id} speaker={group[0]} eventSlug={page.event.series_key || slugifyEventName(page.event.name)} allSpeakers={page.speakers ?? []} />
                   ) : (
-                    <SpeakerCardMulti key={group[0].id} speakers={group} eventSlug={slugifyEventName(page.event.name)} allSpeakers={page.speakers ?? []} />
+                    <SpeakerCardMulti key={group[0].id} speakers={group} eventSlug={page.event.series_key || slugifyEventName(page.event.name)} allSpeakers={page.speakers ?? []} />
                   )
                 ))}
               </div>
