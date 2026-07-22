@@ -12,6 +12,7 @@ export type SelectOption = { value: string; label: string };
 export type FieldType =
   | "text"
   | "textarea"
+  | "richtext"
   | "number"
   | "time"
   | "date"

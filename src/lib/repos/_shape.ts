@@ -248,6 +248,7 @@ export const EVENT_PAGE_INCLUDE = {
   floorplan: true,
   careerEventPageTimetables: {
     include: { timetable: { include: { speaker: { include: SPEAKER_INCLUDE } } } },
+    orderBy: { timetable: { start_time: "asc" } },
   },
   careerEventPageCompanies: { include: { company: { include: COMPANY_INCLUDE } } },
   careerEventPageSpeakers: { include: { speaker: { include: SPEAKER_INCLUDE } } },

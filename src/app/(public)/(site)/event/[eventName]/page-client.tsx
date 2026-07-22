@@ -26,6 +26,7 @@ import { useBannerPage } from '@/hooks/use-banner-page'
 import { usePageLayout } from '../../layout'
 import { getUpcomingEventsWithFallback } from '@/lib/utils/events'
 import { groupSpeakersByTimeSlot } from '@/lib/utils/speakers'
+import { compareTimetableItems } from '@/lib/utils/timetable'
 
 const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.EventMap), {
   ssr: false,
@@ -1595,12 +1596,14 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
     }
   }, [page?.timetable])
 
-  const filteredTimetable = (page?.timetable ?? []).filter((item) => {
-    if (!hasTimetableTypeFilter || !selectedTimetableType) return true
-    const t = item.type
-    if (!t || !Array.isArray(t)) return true // no type = show in all
-    return t.includes(selectedTimetableType)
-  })
+  const filteredTimetable = (page?.timetable ?? [])
+    .filter((item) => {
+      if (!hasTimetableTypeFilter || !selectedTimetableType) return true
+      const t = item.type
+      if (!t || !Array.isArray(t)) return true // no type = show in all
+      return t.includes(selectedTimetableType)
+    })
+    .sort(compareTimetableItems)
 
   const eventSlug = page?.event?.name ? slugifyEventName(page.event.name) : ''
   const allSpeakersForSlug = useMemo(() => {
@@ -1729,7 +1732,7 @@ function PracticalInformation({ page }: { page?: CareerEventPage }) {
                     )
                     const timeStr = item.end_time ? `${item.start_time} – ${item.end_time}` : item.start_time
                     return (
-                      <div key={index}>
+                      <div key={item.id || index}>
                         {item.speaker && eventSlug ? (
                           <Link
                             href={`/event/${eventSlug}/speakers/${getSpeakerSlug(item.speaker, allSpeakersForSlug)}`}
@@ -1907,4 +1910,3 @@ function SpeakerCardMulti({ speakers, eventSlug, allSpeakers }: { speakers: Spea
     </div>
   )
 }
-

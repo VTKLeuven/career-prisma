@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { HeroiconSelector } from "@/components/admin/HeroiconSelector";
+import { SimpleRichTextEditor } from "@/components/admin/SimpleRichTextEditor";
 import {
   Select,
   SelectContent,
@@ -20,7 +22,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { Plus, Trash2 } from "lucide-react";
 import {
   createEventPageAction,
@@ -31,6 +32,7 @@ import type {
   AdminEventPageRow,
   AdminEventPageTimetableItem,
 } from "@/lib/repos/event-page";
+import { compareTimetableItems, timetableTimeLabel } from "@/lib/utils/timetable";
 
 const HEADER_BUTTON_OPTIONS: SelectOption[] = [
   { value: "floorplan", label: "Floorplan" },
@@ -90,7 +92,7 @@ export default function EventPagesClient({
       { name: "status", label: "Status", type: "select", options: STATUS_OPTIONS, defaultValue: "draft" },
       { name: "shout", label: "Shout", type: "text" },
       { name: "tagline", label: "Tagline", type: "text", className: "md:col-span-2" },
-      { name: "description_EN", label: "Description", type: "textarea", className: "md:col-span-2" },
+      { name: "description_EN", label: "Description", type: "richtext", className: "md:col-span-2" },
       { name: "address", label: "Address", type: "text", section: "Location & registration" },
       { name: "parking", label: "Parking", type: "text" },
       { name: "registration_link", label: "Registration link", type: "text", className: "md:col-span-2" },
@@ -148,6 +150,7 @@ function TimetableElementsInput({
   const selected = Array.isArray(value)
     ? (value as AdminEventPageTimetableItem[])
     : [];
+  const sortedSelected = [...selected].sort(compareTimetableItems);
   const [expanded, setExpanded] = React.useState<string[]>([]);
 
   const update = (id: string, patch: Partial<AdminEventPageTimetableItem>) =>
@@ -192,10 +195,17 @@ function TimetableElementsInput({
           onValueChange={setExpanded}
           className="space-y-2"
         >
-          {selected.map((item) => (
+          {sortedSelected.map((item) => (
             <AccordionItem key={item.id} value={item.id} className="rounded-md border px-4">
               <AccordionTrigger className="py-3 hover:no-underline">
-                <span className="truncate">{item.title.trim() || "Untitled timetable element"}</span>
+                <span className="flex min-w-0 items-center gap-3">
+                  <span className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
+                    {timetableTimeLabel(item)}
+                  </span>
+                  <span className="truncate">
+                    {item.title.trim() || "Untitled timetable element"}
+                  </span>
+                </span>
               </AccordionTrigger>
               <AccordionContent className="space-y-4 border-t pt-4">
                 <div className="space-y-1">
@@ -210,22 +220,18 @@ function TimetableElementsInput({
 
                 <div className="space-y-1">
                   <Label>Description</Label>
-                  <Textarea
-                    aria-label="Timetable description"
+                  <SimpleRichTextEditor
                     value={item.description}
-                    onChange={(event) => update(item.id, { description: event.target.value })}
+                    onChange={(description) => update(item.id, { description })}
                     placeholder="Description"
-                    rows={3}
                   />
                 </div>
 
                 <div className="space-y-1">
                   <Label>Icon</Label>
-                  <Input
-                    aria-label="Timetable icon"
+                  <HeroiconSelector
                     value={item.icon}
-                    onChange={(event) => update(item.id, { icon: event.target.value })}
-                    placeholder="Icon name (optional)"
+                    onChange={(icon) => update(item.id, { icon })}
                   />
                 </div>
 

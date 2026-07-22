@@ -1,6 +1,7 @@
 "use client";
 
 import { ResourceManager } from "@/components/admin/ResourceManager";
+import { HeroiconSelector } from "@/components/admin/HeroiconSelector";
 import type { ResourceConfig, SelectOption } from "@/components/admin/types";
 import {
   createTimetableAction,
@@ -62,10 +63,17 @@ export default function TimetableClient({
     ],
     fields: [
       { name: "title", label: "Title", type: "text", required: true },
-      { name: "description", label: "Description", type: "textarea" },
+      { name: "description", label: "Description", type: "richtext" },
       { name: "start_time", label: "Start time", type: "time" },
       { name: "end_time", label: "End time", type: "time" },
-      { name: "icon", label: "Icon", type: "text", placeholder: "Icon name (optional)" },
+      {
+        name: "icon",
+        label: "Icon",
+        type: "text",
+        renderInput: ({ value, onChange }) => (
+          <HeroiconSelector value={String(value ?? "")} onChange={onChange} />
+        ),
+      },
       { name: "type", label: "Type", type: "multiselect", options: TYPE_OPTIONS },
       {
         name: "speaker_id",

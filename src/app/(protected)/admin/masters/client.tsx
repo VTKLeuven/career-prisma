@@ -47,8 +47,8 @@ export default function MastersClient({ initialMasters }: { initialMasters: Mast
       {
         name: "modules",
         label: "Modules",
-        type: "textarea",
-        help: "Optional HTML description of the modules.",
+        type: "richtext",
+        help: "Optional formatted description of the modules.",
       },
     ],
     actions: {

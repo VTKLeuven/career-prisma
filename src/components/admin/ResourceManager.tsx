@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { uploadFileAction } from "@/app/actions/media";
+import { SimpleRichTextEditor } from "@/components/admin/SimpleRichTextEditor";
 import type { FieldConfig, ResourceConfig, SelectOption } from "@/components/admin/types";
 import { cn } from "@/lib/utils";
 
@@ -306,17 +307,17 @@ export function ResourceManager<T extends Record<string, unknown>>({
         }}
       >
         <DialogContent
-          className={cn("max-h-[90dvh] overflow-hidden", config.dialogClassName)}
+          className={cn("flex max-h-[90dvh] flex-col overflow-hidden", config.dialogClassName)}
         >
           <DialogHeader>
             <DialogTitle>
               {editing ? `Edit ${config.singular}` : `Add ${config.singular}`}
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
             <div
               className={cn(
-                "min-h-0 overflow-y-auto pr-1",
+                "min-h-0 flex-1 overflow-y-auto pr-1",
                 config.fieldsClassName ?? "space-y-4"
               )}
             >
@@ -417,7 +418,13 @@ function FieldInput({
         {field.required ? <span className="text-destructive"> *</span> : null}
       </Label>
 
-      {field.type === "textarea" ? (
+      {field.type === "richtext" ? (
+        <SimpleRichTextEditor
+          value={String(value ?? "")}
+          onChange={(html) => onChange(html)}
+          placeholder={field.placeholder}
+        />
+      ) : field.type === "textarea" ? (
         <Textarea
           id={id}
           value={String(value ?? "")}

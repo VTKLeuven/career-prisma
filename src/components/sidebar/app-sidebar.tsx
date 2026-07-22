@@ -32,6 +32,26 @@ import { getFileUrl } from "@/components/Images";
 import { fetchEventsAction } from "@/app/actions/events";
 import type { CareerEvent, Company } from "@/lib/schema";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
+import {
+  BookUser,
+  Briefcase,
+  BriefcaseBusiness,
+  Building2,
+  CalendarClock,
+  ClipboardCheck,
+  CupSoda,
+  FileText,
+  GraduationCap,
+  Mail,
+  MapPinned,
+  Mic2,
+  MonitorPlay,
+  School,
+  Tags,
+  UserRoundCheck,
+  Users,
+  UsersRound,
+} from "lucide-react";
 
 // Updated sidebar data
 const data = {
@@ -396,90 +416,105 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
     // Add Forms section for admins
     if (user?.admin) {
+      const adminItems = [
+        {
+          title: "Forms Management",
+          url: "/admin/forms",
+          icon: FileText,
+        },
+        {
+          title: "Companies & Events",
+          url: "/admin",
+          icon: Building2,
+        },
+        {
+          title: "CV Book",
+          url: "/admin/cv-book",
+          icon: BookUser,
+        },
+        {
+          title: "Vacancies",
+          url: "/admin/vacancies",
+          icon: Briefcase,
+        },
+        {
+          title: "Pending Approvals",
+          url: "/admin/approvals",
+          icon: UserRoundCheck,
+          ...(pendingCount > 0 && { badge: pendingCount }),
+        },
+        {
+          title: "Drinks & Snacks",
+          url: "/admin/drinks",
+          icon: CupSoda,
+        },
+        {
+          title: "Zones & Booths",
+          url: "/admin/zones",
+          icon: MapPinned,
+        },
+        {
+          title: "Shifters",
+          url: "/admin/shifters",
+          icon: UsersRound,
+        },
+        {
+          title: "Email Queue",
+          url: "/admin/email-queue",
+          icon: Mail,
+        },
+        {
+          title: "Check-ins",
+          url: "/admin/checkins",
+          icon: ClipboardCheck,
+        },
+        {
+          title: "Digital Signage",
+          url: "/admin/signage",
+          icon: MonitorPlay,
+        },
+        {
+          title: "Master Categories",
+          url: "/admin/masters",
+          icon: Tags,
+        },
+        {
+          title: "Faculties",
+          url: "/admin/faculties",
+          icon: School,
+        },
+        {
+          title: "Career Options",
+          url: "/admin/career-options",
+          icon: BriefcaseBusiness,
+        },
+        {
+          title: "Speakers",
+          url: "/admin/speakers",
+          icon: Mic2,
+        },
+        {
+          title: "Event Pages & Timetables",
+          url: "/admin/event-pages",
+          icon: CalendarClock,
+        },
+        {
+          title: "User Management",
+          url: "/admin/users",
+          icon: Users,
+        },
+        {
+          title: "Students",
+          url: "/admin/students",
+          icon: GraduationCap,
+        },
+      ].sort((a, b) => a.title.localeCompare(b.title, "en", { sensitivity: "base" }));
+
       items.push({
         title: "Admin",
         url: "#",
         icon: IconColumns,
-        items: [
-          {
-            title: "Forms Management",
-            url: "/admin/forms",
-          },
-          {
-            title: "Companies & Events",
-            url: "/admin",
-          },
-          {
-            title: "CV Book",
-            url: "/admin/cv-book",
-          },
-          {
-            title: "Vacancies",
-            url: "/admin/vacancies",
-          },
-          {
-            title: "Pending Approvals",
-            url: "/admin/approvals",
-            ...(pendingCount > 0 && { badge: pendingCount }),
-          },
-          // Ordering System Admin
-          {
-            title: "Drinks & Snacks",
-            url: "/admin/drinks",
-          },
-          {
-            title: "Zones & Booths",
-            url: "/admin/zones",
-          },
-          {
-            title: "Shifters",
-            url: "/admin/shifters",
-          },
-          {
-            title: "Email Queue",
-            url: "/admin/email-queue",
-          },
-          {
-            title: "Check-ins",
-            url: "/admin/checkins",
-          },
-          {
-            title: "Digital Signage",
-            url: "/admin/signage",
-          },
-          {
-            title: "Master Categories",
-            url: "/admin/masters",
-          },
-          {
-            title: "Faculties",
-            url: "/admin/faculties",
-          },
-          {
-            title: "Career Options",
-            url: "/admin/career-options",
-          },
-          {
-            title: "Timetable",
-            url: "/admin/timetable",
-          },
-          {
-            title: "Speakers",
-            url: "/admin/speakers",
-          },
-          {
-            title: "Event Pages",
-            url: "/admin/event-pages",
-          },
-          {
-            title: "User Management",
-            url: "/admin/users",
-          },
-          {
-            title: "Students",
-            url: "/admin/students",
-          },
-        ],
+        items: adminItems,
       });
     }
 

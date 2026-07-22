@@ -65,8 +65,8 @@ export default function SpeakersClient({
         options: timeOptions,
         getEditValue: (s) => (s.time?.id ? String(s.time.id) : ""),
       },
-      { name: "personal_information", label: "Personal information", type: "textarea" },
-      { name: "content", label: "Talk content", type: "textarea" },
+      { name: "personal_information", label: "Personal information", type: "richtext" },
+      { name: "content", label: "Talk content", type: "richtext" },
     ],
     actions: {
       create: createSpeakerAction,

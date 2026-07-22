@@ -32,9 +32,10 @@ export default async function AdminEventPagesPage() {
   return (
     <div className="container mx-auto py-6 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Event Pages</h1>
+        <h1 className="text-3xl font-bold">Event Pages & Timetables</h1>
         <p className="text-muted-foreground">
-          Manage the public event pages and their companies, speakers and timetable.
+          Timetables are event-specific. Edit an event page to manage its companies,
+          speakers and timetable elements in one place.
         </p>
       </div>
       <EventPagesClient

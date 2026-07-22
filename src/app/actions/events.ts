@@ -16,6 +16,7 @@ import { listCompanies } from "@/lib/repos/company";
 import { getOrCreateEventPage } from "@/lib/repos/floorplan";
 import { getUserFromCookies } from "@/lib/auth-server";
 import prisma from "@/lib/prisma";
+import { compareTimetableItems } from "@/lib/utils/timetable";
 
 export async function fetchEventsAction() {
     const events = await listEvents({ limit: 50, sort: "date" }) ?? [];
@@ -126,7 +127,7 @@ export async function fetchEventPagesAction(lim = 50) {
         : undefined;
       const speaker = slot.speaker ?? slot.speaker_id ?? undefined;
       return { ...slot, type, speaker };
-    }) ?? []) as TimeSlot[];
+    }) ?? []).sort(compareTimetableItems) as TimeSlot[];
 
     page.companies = (page.companies as unknown as Array<{ company_id: Company }>)?.map((item) => {
       const company = item.company_id;
@@ -176,7 +177,7 @@ export async function fetchEventPageBySlugAction(slug: string) {
       : undefined;
     const speaker = slot.speaker ?? slot.speaker_id ?? undefined;
     return { ...slot, type, speaker };
-  }) ?? []) as TimeSlot[];
+  }) ?? []).sort(compareTimetableItems) as TimeSlot[];
 
   page.companies = (page.companies as unknown as Array<{ company_id: Company }>)?.map((item) => {
     const company = item.company_id;

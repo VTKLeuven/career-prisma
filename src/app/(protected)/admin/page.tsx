@@ -68,6 +68,7 @@ import type { CareerEvent, Company, CompanyRep, CareerEventOption, CareerEventPa
 import { useUser } from "@/providers/UserProvider";
 import type { UserSummary as AppUser } from "@/lib/schema";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
+import { SimpleRichTextEditor } from "@/components/admin/SimpleRichTextEditor";
 
 /**
  * Notes about typing decisions:
@@ -3086,12 +3087,9 @@ function EventFormDialog({ event, onSaved }: { event?: CareerEvent; onSaved?: ()
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="ev-desc">Description</Label>
-            <textarea
-              id="ev-desc"
-              className="flex min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
-              rows={3}
+            <SimpleRichTextEditor
               value={form.description}
-              onChange={e => set("description", e.target.value)}
+              onChange={description => set("description", description)}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">

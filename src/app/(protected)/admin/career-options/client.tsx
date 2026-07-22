@@ -99,7 +99,7 @@ export default function CareerOptionsClient({
     fields: [
       { name: "name", label: "Name", type: "text", required: true },
       { name: "price", label: "Price (€)", type: "number" },
-      { name: "description", label: "Description", type: "textarea" },
+      { name: "description", label: "Description", type: "richtext" },
       {
         name: "eventIds",
         label: "Events",
@@ -144,7 +144,7 @@ export default function CareerOptionsClient({
     fields: [
       { name: "name", label: "Name", type: "text", required: true },
       { name: "price", label: "Price", type: "text", placeholder: "e.g. 500 or Free" },
-      { name: "description", label: "Description", type: "textarea" },
+      { name: "description", label: "Description", type: "richtext" },
     ],
     actions: {
       create: createSubOptionAction,

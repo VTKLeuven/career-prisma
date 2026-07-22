@@ -3,6 +3,7 @@
 import { ChevronRight } from "lucide-react"
 import Link from "next/link"
 import { useState } from "react"
+import type { ComponentType } from "react"
 
 import {
   Collapsible,
@@ -20,19 +21,21 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
-import { TablerIcon } from "@tabler/icons-react"
 import { IconAlertTriangle } from "@tabler/icons-react"
+
+type NavIcon = ComponentType<{ className?: string }>
 
 type NavItem = {
   title: string
   url: string
-  icon?: TablerIcon
+  icon?: NavIcon
   isActive?: boolean
   badge?: number
   hasWarning?: boolean
   items?: {
     title: string
     url: string
+    icon?: NavIcon
     badge?: number
     hasWarning?: boolean
   }[]
@@ -109,6 +112,7 @@ function NavMainItem({ item }: { item: NavItem }) {
                   <SidebarMenuSubItem key={subItem.title}>
                     <SidebarMenuSubButton asChild>
                       <Link href={subItem.url} className="flex items-center gap-2">
+                        {subItem.icon && <subItem.icon className="h-4 w-4 shrink-0" />}
                         <span>{subItem.title}</span>
                         {subItem.hasWarning && isOpen && (
                           <IconAlertTriangle className="h-4 w-4 text-red-600 shrink-0" style={{ color: '#dc2626' }} title="Page background image has invalid dimensions" />
