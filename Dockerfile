@@ -67,6 +67,14 @@ ARG SENTRY_AUTH_TOKEN
 ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
 ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
 
+# "true" only on the dev deployment. The vacancy routes currently build as
+# dynamic, so the runtime variable is what decides what visitors see; this build
+# arg covers the case where one of them is prerendered instead, so it bakes in
+# the right value rather than defaulting to production. Keep it equal to the
+# runtime setting. Defaults to false: an image built without it is production.
+ARG DEV_ENVIRONMENT=false
+ENV DEV_ENVIRONMENT=$DEV_ENVIRONMENT
+
 RUN npx prisma generate
 RUN npm run build
 

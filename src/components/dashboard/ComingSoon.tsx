@@ -9,9 +9,18 @@ interface ComingSoonProps {
   title: string
   description: string
   icon?: React.ReactNode
+  /** Where the back button points. Public pages are not behind the dashboard. */
+  backHref?: string
+  backLabel?: string
 }
 
-export function ComingSoon({ title, description, icon }: ComingSoonProps) {
+export function ComingSoon({
+  title,
+  description,
+  icon,
+  backHref = "/dashboard",
+  backLabel = "Back to Dashboard",
+}: ComingSoonProps) {
   return (
     <div className="flex items-center justify-center min-h-[calc(100vh-8rem)]">
       <Card className="max-w-2xl w-full">
@@ -45,9 +54,9 @@ export function ComingSoon({ title, description, icon }: ComingSoonProps) {
               variant="outline"
               className="rounded-full border-vtk-blue text-vtk-blue hover:bg-vtk-blue/10 px-6 py-3"
             >
-              <Link href="/dashboard">
+              <Link href={backHref}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Dashboard
+                {backLabel}
               </Link>
             </Button>
           </div>

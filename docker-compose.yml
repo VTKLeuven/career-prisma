@@ -31,6 +31,9 @@ services:
       args:
         NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN}
         SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN}
+        # Only matters for routes that get prerendered; keep equal to the
+        # runtime value below so the two can never disagree.
+        DEV_ENVIRONMENT: ${DEV_ENVIRONMENT:-false}
     # Serve the single application container directly on the host.
     ports:
       - "${APP_PORT:-3003}:3000"
@@ -45,6 +48,9 @@ services:
       - DATABASE_NAME=${POSTGRES_DB:-career}
       - NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}
       - UPLOADS_DIR=/app/directus-uploads
+      # The operative setting: the vacancy pages, server actions and API routes
+      # all read this per request.
+      - DEV_ENVIRONMENT=${DEV_ENVIRONMENT:-false}
     volumes:
       # Preserve UUID filenames from the old export; new uploads are written
       # here too.

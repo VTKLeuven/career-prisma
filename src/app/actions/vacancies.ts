@@ -20,6 +20,7 @@ import {
   deleteVacancySectionConfig,
 } from "@/lib/repos/vacancies";
 import { getUserFromCookies } from "@/lib/auth-server";
+import { isDevEnvironment } from "@/lib/dev-environment";
 import type {
   Vacancy,
   VacancyType,
@@ -30,6 +31,18 @@ import type {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * The job platform is dev-only for now. Every route that reaches these actions
+ * renders a placeholder on production, so a caller getting this far is either a
+ * stale client or a hand-made request -- refuse both. Without this the feature
+ * would only be unlinked, not off.
+ */
+function assertDevEnvironment() {
+  if (!isDevEnvironment()) {
+    throw new Error("The vacancy platform is not available on this environment");
+  }
+}
 
 async function requireUser() {
   const user = await getUserFromCookies();
@@ -62,6 +75,7 @@ export async function fetchPublicVacanciesAction(opts?: {
   limit?: number;
   page?: number;
 }) {
+  assertDevEnvironment();
   return listVacancies({
     ...opts,
     status: "published",
@@ -70,6 +84,7 @@ export async function fetchPublicVacanciesAction(opts?: {
 }
 
 export async function fetchPublicVacancyByIdAction(id: string) {
+  assertDevEnvironment();
   const vacancy = await getVacancyById(id, true);
   if (!vacancy || vacancy.status !== "published") return null;
   return vacancy;
@@ -80,11 +95,13 @@ export async function fetchPublicVacancyByIdAction(id: string) {
 // ---------------------------------------------------------------------------
 
 export async function fetchMyVacanciesAction() {
+  assertDevEnvironment();
   const user = await requireCompanyUser();
   return listVacancies({ companyId: user.company!.id, sort: "-date_created" });
 }
 
 export async function fetchVacancyByIdAction(id: string) {
+  assertDevEnvironment();
   const user = await requireUser();
   const vacancy = await getVacancyById(id);
   if (!vacancy) return null;
@@ -101,6 +118,7 @@ export async function fetchVacancyByIdAction(id: string) {
 export async function createVacancyAction(
   payload: Partial<Vacancy>
 ): Promise<Vacancy | null> {
+  assertDevEnvironment();
   const user = await requireCompanyUser();
   return createVacancy({
     ...payload,
@@ -113,6 +131,7 @@ export async function updateVacancyAction(
   id: string,
   payload: Partial<Vacancy>
 ): Promise<Vacancy | null> {
+  assertDevEnvironment();
   const user = await requireUser();
   const existing = await getVacancyById(id);
   if (!existing) throw new Error("Vacancy not found");
@@ -140,6 +159,7 @@ export async function updateVacancyStatusAction(
   id: string,
   status: Vacancy["status"]
 ): Promise<Vacancy | null> {
+  assertDevEnvironment();
   if (!VACANCY_STATUS_VALUES.includes(status)) {
     throw new Error("Invalid vacancy status");
   }
@@ -147,6 +167,7 @@ export async function updateVacancyStatusAction(
 }
 
 export async function deleteVacancyAction(id: string): Promise<void> {
+  assertDevEnvironment();
   const user = await requireUser();
   const existing = await getVacancyById(id);
   if (!existing) throw new Error("Vacancy not found");
@@ -168,12 +189,14 @@ export async function deleteVacancyAction(id: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function fetchVacancyTypesAction(activeOnly = true) {
+  assertDevEnvironment();
   return listVacancyTypes(activeOnly);
 }
 
 export async function createVacancyTypeAction(
   payload: Partial<VacancyType>
 ): Promise<VacancyType | null> {
+  assertDevEnvironment();
   await requireAdmin();
   return createVacancyType(payload);
 }
@@ -182,22 +205,26 @@ export async function updateVacancyTypeAction(
   id: string,
   payload: Partial<VacancyType>
 ): Promise<VacancyType | null> {
+  assertDevEnvironment();
   await requireAdmin();
   return updateVacancyType(id, payload);
 }
 
 export async function deleteVacancyTypeAction(id: string): Promise<void> {
+  assertDevEnvironment();
   await requireAdmin();
   await deleteVacancyType(id);
 }
 
 export async function fetchVacancySectorsAction(activeOnly = true) {
+  assertDevEnvironment();
   return listVacancySectors(activeOnly);
 }
 
 export async function createVacancySectorAction(
   payload: Partial<VacancySector>
 ): Promise<VacancySector | null> {
+  assertDevEnvironment();
   await requireAdmin();
   return createVacancySector(payload);
 }
@@ -206,22 +233,26 @@ export async function updateVacancySectorAction(
   id: string,
   payload: Partial<VacancySector>
 ): Promise<VacancySector | null> {
+  assertDevEnvironment();
   await requireAdmin();
   return updateVacancySector(id, payload);
 }
 
 export async function deleteVacancySectorAction(id: string): Promise<void> {
+  assertDevEnvironment();
   await requireAdmin();
   await deleteVacancySector(id);
 }
 
 export async function fetchVacancySectionConfigsAction(activeOnly = true) {
+  assertDevEnvironment();
   return listVacancySectionConfigs(activeOnly);
 }
 
 export async function createVacancySectionConfigAction(
   payload: Partial<VacancySectionConfig>
 ): Promise<VacancySectionConfig | null> {
+  assertDevEnvironment();
   await requireAdmin();
   return createVacancySectionConfig(payload);
 }
@@ -230,6 +261,7 @@ export async function updateVacancySectionConfigAction(
   id: string,
   payload: Partial<VacancySectionConfig>
 ): Promise<VacancySectionConfig | null> {
+  assertDevEnvironment();
   await requireAdmin();
   return updateVacancySectionConfig(id, payload);
 }
@@ -237,6 +269,7 @@ export async function updateVacancySectionConfigAction(
 export async function deleteVacancySectionConfigAction(
   id: string
 ): Promise<void> {
+  assertDevEnvironment();
   await requireAdmin();
   await deleteVacancySectionConfig(id);
 }
@@ -250,6 +283,7 @@ export async function fetchAllVacanciesAction(opts?: {
   limit?: number;
   page?: number;
 }) {
+  assertDevEnvironment();
   await requireAdmin();
   return listVacancies({ ...opts, sort: opts?.sort ?? "-date_created" });
 }
