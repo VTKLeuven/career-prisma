@@ -10,12 +10,14 @@ import {
 import prisma from "@/lib/prisma";
 import { COMPANY_INCLUDE, shapeCompany } from "@/lib/repos/_shape";
 
-const ADMIN_ROLE_ID = "7b128ef4-f530-47d2-8f4c-ef82518eb313";
-// Support carries the same permissions as Administrator, but is deliberately
-// not a salesperson: lib/repos/users.ts filters those lists on ADMIN_ROLE_ID,
-// so a Support account never appears as a company contact person or in the
-// public team section. Kept in sync with ALLOWED_ROLE_IDS in api/login/route.ts.
-const SUPPORT_ROLE_ID = "c4e63615-ed81-45d1-8145-1b88137e60cb";
+// The two internal roles. Their names read backwards from what you would guess,
+// so always match on the id: "VTK Career" is the sales role, and "Administrator"
+// is the support role. Both grant the same permissions; the difference is only
+// that lib/repos/users.ts builds the salesperson lists from the VTK Career id,
+// which is what keeps an Administrator off company records and off the public
+// homepage. Kept in sync with ALLOWED_ROLE_IDS in api/login/route.ts.
+const VTK_CAREER_ROLE_ID = "7b128ef4-f530-47d2-8f4c-ef82518eb313";
+const ADMINISTRATOR_ROLE_ID = "c4e63615-ed81-45d1-8145-1b88137e60cb";
 type CookieToSet = { name: string; value: string; options: Record<string, unknown> };
 
 async function getUserById(userId: string): Promise<AppUser | undefined> {
@@ -45,8 +47,8 @@ async function getUserById(userId: string): Promise<AppUser | undefined> {
     role: user.role.name,
     admin:
       user.role.name === "Administrator" ||
-      user.role.id === ADMIN_ROLE_ID ||
-      user.role.id === SUPPORT_ROLE_ID,
+      user.role.id === VTK_CAREER_ROLE_ID ||
+      user.role.id === ADMINISTRATOR_ROLE_ID,
     company: user.company ? shapeCompany(user.company) : null,
     status: user.status,
     is_shifter: student?.is_shifter === true,

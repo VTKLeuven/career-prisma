@@ -7,14 +7,17 @@ import {
   USER_SESSION_COOKIE,
 } from "@/lib/auth-session";
 
-// Only these roles may sign in at all. Any other role -- including one created
-// later in the admin panel -- is rejected with the same message as a bad
-// password, which is why an account can look perfectly healthy in the database
-// and still 401.
+// Only these roles may sign in at all. Any other role -- "Student", or one
+// created later -- is rejected with the same message as a bad password, which
+// is why an account can look perfectly healthy in the database and still 401.
+//
+// Match on the id, never the name: the names do not mean what they look like.
+// The *salesperson* role is the one called "VTK Career", and "Administrator" is
+// the internal role that deliberately is not a salesperson.
 const ALLOWED_ROLE_IDS = new Set([
-  "7b128ef4-f530-47d2-8f4c-ef82518eb313", // admin / BR
-  "d5475bf4-a77f-48de-b06c-fac199b0f631", //company rep
-  "c4e63615-ed81-45d1-8145-1b88137e60cb", // support
+  "7b128ef4-f530-47d2-8f4c-ef82518eb313", // "VTK Career"
+  "d5475bf4-a77f-48de-b06c-fac199b0f631", // "Company Rep"
+  "c4e63615-ed81-45d1-8145-1b88137e60cb", // "Administrator"
 ]);
 
 export async function POST(request: Request) {

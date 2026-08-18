@@ -19,8 +19,17 @@ Nearly every business question is scoped by academic year.
 
 ## People
 
-- `User` + `Role` — company representatives and VTK admins. The Administrator
-  role UUID is compared literally in `src/lib/auth-server.ts`.
+- `User` + `Role` — company representatives and VTK staff. Four roles exist, and
+  their names are misleading, so code matches on the **id**, never the name:
+
+  | Role | Id prefix | Who |
+  |---|---|---|
+  | `Company Rep` | `d5475bf4` | company representatives (the bulk of the table) |
+  | `VTK Career` | `7b128ef4` | **sales.** Assignable as a company contact person and listed in the public homepage team section |
+  | `Administrator` | `c4e63615` | **internal / support.** Same permissions as VTK Career, never advertised |
+  | `Student` | `daf734af` | unused; cannot sign in |
+
+  Only the first three may sign in — see [auth.md](auth.md).
 - `Student` — separate table, separate login, separate password column.
   Both password columns are argon2id.
 - `CompanyUserRequest` — company reps awaiting admin approval.

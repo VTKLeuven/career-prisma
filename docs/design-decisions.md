@@ -43,7 +43,9 @@ file serving, webhooks, OAuth callbacks, QR scanning, cron. Most routes are
 `force-dynamic` — this is a data-heavy internal tool, not a static site.
 
 **5. Three separate identities, three separate sessions.**
-Company users, students, and admins are distinct. Sessions are plain HMAC-signed
+Company users, students, and VTK staff are distinct. Staff split further into
+two roles whose names read backwards — "VTK Career" is sales, "Administrator" is
+internal support — so role checks match on id, never name ([auth.md](auth.md)). Sessions are plain HMAC-signed
 cookies minted in `src/lib/auth-session.ts` — no JWT library, no session table.
 NextAuth is present only to speak OIDC to KU Leuven; LITUS OAuth is hand-rolled
 in `src/lib/oauth.ts`.
