@@ -59,8 +59,12 @@ uploads did not have to move. Back up the directory together with Postgres.
 Features that are demo-ready but not ship-ready are visible on
 `dev.career.vtk.be` and hidden on production. Read per request via
 `isDevEnvironment()`. Anything other than `"true"` counts as production, so a
-missing variable hides work rather than exposing it. Vacancies are currently
-behind this flag.
+missing variable hides work rather than exposing it. Currently behind this flag:
+the **vacancies** job platform, and the **public floorplan**
+(`/event/<name>/floorplan`, its header buttons, and
+`/api/events/<slug>/floorplan`). Admin floorplan tooling — `/admin/floorplan`
+and `/admin/zones` — is deliberately *not* gated, so VTK can keep preparing
+floorplans on production while visitors cannot see them.
 
 **8. Deployment is one Docker image, pushed by git.**
 Push to `main` → GitHub Actions SSHes to the server → `docker compose up -d

@@ -34,10 +34,13 @@ const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.E
 
 export default function EventPageClient({ 
   initialPage,
-  eventName: initialEventName 
+  eventName: initialEventName,
+  floorplanEnabled = false
 }: { 
   initialPage?: CareerEventPage | null
   eventName?: string
+  /** Resolved on the server from DEV_ENVIRONMENT; see lib/dev-environment.ts. */
+  floorplanEnabled?: boolean
 }) {
   const { setHideLayoutHeader } = usePageLayout()
   const [page, setPage] = useState<CareerEventPage | null>(initialPage ?? null)
@@ -192,7 +195,7 @@ export default function EventPageClient({
   return (
     <>
       {useEventHeader ? (
-        <Header page={page ?? undefined} />
+        <Header page={page ?? undefined} floorplanEnabled={floorplanEnabled} />
       ) : (
         <HomepageHeader />
       )}
@@ -202,6 +205,7 @@ export default function EventPageClient({
         isLoading={isLoading}
         showPopupMessage={showPopupMessage}
         showPopupContent={showPopupContent}
+        floorplanEnabled={floorplanEnabled}
       />
 
       <PracticalInformation page={page ?? undefined} />
@@ -704,7 +708,15 @@ function HomepageHeader() {
 }
 
 /** Show button only if it's in header_buttons and has data (cv_upload always has data). Legacy: when header_buttons undefined, show based on data. */
-function shouldShowHeaderButton(page: CareerEventPage & { hasActiveMatchingSoftware?: boolean }, btn: HeaderButtonType): boolean {
+function shouldShowHeaderButton(
+  page: CareerEventPage & { hasActiveMatchingSoftware?: boolean },
+  btn: HeaderButtonType,
+  floorplanEnabled: boolean = false
+): boolean {
+  // The public floorplan is hidden outside the dev environment, whatever the
+  // admin panel has enabled in header_buttons. The route itself redirects to
+  // the homepage, so leaving the button visible would only dead-end visitors.
+  if (btn === "floorplan" && !floorplanEnabled) return false
   const hasCompanyGuide = !!(
     typeof page.company_guide === "string"
       ? page.company_guide
@@ -725,7 +737,7 @@ function shouldShowHeaderButton(page: CareerEventPage & { hasActiveMatchingSoftw
   return btn === "floorplan" ? !!page.floorplan : hasCompanyGuide
 }
 
-function Header({ page }: { page?: CareerEventPage }) {
+function Header({ page, floorplanEnabled = false }: { page?: CareerEventPage; floorplanEnabled?: boolean }) {
   const [companyRep, setCompanyRep] = useState<{ authenticated: boolean; name: string } | null>(null)
   const [student, setStudent] = useState<{ authenticated: boolean; firstName: string | null; lastName: string | null } | null>(null)
   const router = useRouter()
@@ -823,7 +835,7 @@ function Header({ page }: { page?: CareerEventPage }) {
             </Link>
             {page && (
               <>
-                {shouldShowHeaderButton(page, "floorplan") && (
+                {shouldShowHeaderButton(page, "floorplan", floorplanEnabled) && (
                   <Link
                     href={`/event/${page.event.series_key || slugifyEventName(page.event.name)}/floorplan`}
                     className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
@@ -877,7 +889,7 @@ function Header({ page }: { page?: CareerEventPage }) {
             </Link>
             {page && (
               <>
-                {shouldShowHeaderButton(page, "floorplan") && (
+                {shouldShowHeaderButton(page, "floorplan", floorplanEnabled) && (
                   <Link
                     href={`/event/${page.event.series_key || slugifyEventName(page.event.name)}/floorplan`}
                     className="rounded-full px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 whitespace-nowrap shrink-0"
@@ -1095,11 +1107,13 @@ function Hero({
   isLoading,
   showPopupMessage,
   showPopupContent,
+  floorplanEnabled = false,
 }: {
   page?: CareerEventPage
   isLoading: boolean
   showPopupMessage: (msg: string) => void
   showPopupContent: (content: React.ReactNode) => void
+  floorplanEnabled?: boolean
 }) {
   const ref = useRef<HTMLElement | null>(null)
   const { scrollYProgress } = useScroll({
@@ -1269,7 +1283,7 @@ function Hero({
                   </Button>
 
                   {/* Floorplan button only when floorplan is in header_buttons (admin panel), otherwise Explore companies */}
-                  {shouldShowHeaderButton(page, "floorplan") ? (
+                  {shouldShowHeaderButton(page, "floorplan", floorplanEnabled) ? (
                     <Button
                       asChild
                       variant="ghost"

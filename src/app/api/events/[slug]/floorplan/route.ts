@@ -3,6 +3,7 @@ import { fetchEventPageBySlugAction } from "@/app/actions/events";
 import { fetchFloorplanAction } from "@/app/actions/features";
 import { getCachedEventPage, setCachedEventPage } from "@/lib/event-page-cache";
 import { getCachedFloorplan, setCachedFloorplan } from "@/lib/floorplan-cache";
+import { isDevEnvironment } from "@/lib/dev-environment";
 
 const CACHE_HEADERS = {
   "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
@@ -13,6 +14,14 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ) {
+  // Off means off: outside the dev environment the public floorplan does not
+  // exist, so neither does the endpoint that feeds it. This check sits above the
+  // cache lookup on purpose -- a warm cache would otherwise keep serving booth
+  // data after the feature was hidden.
+  if (!isDevEnvironment()) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   try {
     const params = await context.params;
     const { slug } = params;

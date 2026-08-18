@@ -40,6 +40,12 @@ Push to `main` → `.github/workflows/main.yml` SSHes to the server →
 So **merging to `main` deploys to production.** There is no manual approval
 step.
 
+This is deliberate and temporary, not an oversight: the project has a single
+developer, so the fast path is worth more than a gate. A separate dev server is
+planned (as of 2026-08-18, within days), after which the repo will require a
+change to be deployed there before it can reach `main`. Until then, treat every
+push to `main` as a release.
+
 Two containers: `app` (port `3003` on the host) and `database` (Postgres 16,
 bound to `127.0.0.1:5437`). `./uploads` is bind-mounted into the app at
 `/app/directus-uploads`.

@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { fetchEventPageBySlugAction } from "@/app/actions/events"
 import { getCachedEventPage, setCachedEventPage } from "@/lib/event-page-cache"
 import { slugifyEventName } from "@/lib/utils/slugify"
+import { isDevEnvironment } from "@/lib/dev-environment"
 import EventPageClient from './page-client'
 
 export const revalidate = 30 // Revalidate every 30s so header_buttons updates show soon
@@ -49,6 +50,13 @@ export default async function EventPage({
     notFound();
   }
 
-  // Pass data to client component
-  return <EventPageClient initialPage={page} eventName={eventName} />;
+  // Pass data to client component. The floorplan flag is resolved here because
+  // isDevEnvironment() is server-only; the client cannot read it itself.
+  return (
+    <EventPageClient
+      initialPage={page}
+      eventName={eventName}
+      floorplanEnabled={isDevEnvironment()}
+    />
+  );
 }
