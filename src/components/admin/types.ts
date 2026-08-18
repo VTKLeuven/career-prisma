@@ -58,6 +58,13 @@ export type ColumnConfig<T> = {
   key: string;
   label: string;
   render?: (row: T) => React.ReactNode;
+  /**
+   * Let this column wrap onto several lines instead of being truncated to a
+   * single line with an ellipsis. Use it for columns whose content is the point
+   * (a description, a list of badges); the default keeps rows one line tall so
+   * the table stays inside the viewport.
+   */
+  wrap?: boolean;
 };
 
 export type ResourceConfig<T> = {

@@ -2,7 +2,15 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Edit, Trash2, Loader2, Search } from "lucide-react";
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Loader2,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +45,13 @@ import type { FieldConfig, ResourceConfig, SelectOption } from "@/components/adm
 import { cn } from "@/lib/utils";
 
 type FormValues = Record<string, unknown>;
+
+/**
+ * Rows rendered at once. Admin resources run to thousands of rows (students,
+ * company reps), and rendering them all is what makes those pages crawl.
+ * Filtering still searches every row -- only the rendering is paged.
+ */
+const PAGE_SIZE = 50;
 
 /** Sensible empty value for a field when creating a new row. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -220,6 +235,22 @@ export function ResourceManager<T extends Record<string, unknown>>({
     );
   }, [rows, search, config]);
 
+  const [pageIndex, setPageIndex] = React.useState(0);
+
+  // A narrower filter can leave the current page out of range; jumping back to
+  // the first page is less surprising than an empty table.
+  React.useEffect(() => {
+    setPageIndex(0);
+  }, [search]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(pageIndex, pageCount - 1);
+  const firstRow = currentPage * PAGE_SIZE;
+  const visible = React.useMemo(
+    () => filtered.slice(firstRow, firstRow + PAGE_SIZE),
+    [filtered, firstRow]
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
@@ -254,16 +285,36 @@ export function ResourceManager<T extends Record<string, unknown>>({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.length ? (
-              filtered.map((row) => {
+            {visible.length ? (
+              visible.map((row) => {
                 const id = config.getId(row);
                 return (
                   <TableRow key={id}>
-                    {config.columns.map((col) => (
-                      <TableCell key={col.key} className="align-top">
-                        {col.render ? col.render(row) : String(row[col.key] ?? "—")}
-                      </TableCell>
-                    ))}
+                    {config.columns.map((col) => {
+                      const content = col.render
+                        ? col.render(row)
+                        : String(row[col.key] ?? "—");
+                      // Only plain-text cells can carry a tooltip; a rendered
+                      // cell is a node, not a string.
+                      const title =
+                        typeof content === "string" ? content : undefined;
+                      return (
+                        <TableCell
+                          key={col.key}
+                          className={cn(
+                            "align-top",
+                            !col.wrap && "max-w-[22rem]"
+                          )}
+                        >
+                          <div
+                            className={cn(!col.wrap && "truncate")}
+                            title={title}
+                          >
+                            {content}
+                          </div>
+                        </TableCell>
+                      );
+                    })}
                     {!config.readOnly ? (
                       <TableCell className="text-right whitespace-nowrap">
                         <Button variant="ghost" size="icon" onClick={() => openEdit(row)}>
@@ -293,13 +344,48 @@ export function ResourceManager<T extends Record<string, unknown>>({
                   colSpan={config.columns.length + (config.readOnly ? 0 : 1)}
                   className="h-24 text-center text-muted-foreground"
                 >
-                  No {config.singular.toLowerCase()}s yet.
+                  {search.trim()
+                    ? `No ${config.singular.toLowerCase()}s match "${search.trim()}".`
+                    : `No ${config.singular.toLowerCase()}s yet.`}
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </div>
+
+      {filtered.length > PAGE_SIZE ? (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            Showing {firstRow + 1}–{Math.min(firstRow + PAGE_SIZE, filtered.length)}{" "}
+            of {filtered.length} {config.singular.toLowerCase()}
+            {filtered.length === 1 ? "" : "s"}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
+              disabled={currentPage === 0}
+            >
+              <ChevronLeft className="mr-1 h-4 w-4" /> Previous
+            </Button>
+            <span className="text-sm text-muted-foreground whitespace-nowrap">
+              Page {currentPage + 1} of {pageCount}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setPageIndex((p) => Math.min(pageCount - 1, p + 1))
+              }
+              disabled={currentPage >= pageCount - 1}
+            >
+              Next <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <Dialog
         open={open}
