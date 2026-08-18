@@ -7,9 +7,14 @@ import {
   USER_SESSION_COOKIE,
 } from "@/lib/auth-session";
 
+// Only these roles may sign in at all. Any other role -- including one created
+// later in the admin panel -- is rejected with the same message as a bad
+// password, which is why an account can look perfectly healthy in the database
+// and still 401.
 const ALLOWED_ROLE_IDS = new Set([
-  "7b128ef4-f530-47d2-8f4c-ef82518eb313",
-  "d5475bf4-a77f-48de-b06c-fac199b0f631",
+  "7b128ef4-f530-47d2-8f4c-ef82518eb313", // admin / BR
+  "d5475bf4-a77f-48de-b06c-fac199b0f631", //company rep
+  "c4e63615-ed81-45d1-8145-1b88137e60cb", // support
 ]);
 
 export async function POST(request: Request) {
@@ -18,7 +23,7 @@ export async function POST(request: Request) {
     if (typeof email !== "string" || typeof password !== "string") {
       return NextResponse.json(
         { error: "Email and password are required." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -35,7 +40,7 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json(
         { error: "Invalid credentials or insufficient access." },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -44,7 +49,7 @@ export async function POST(request: Request) {
     response.cookies.set(
       USER_SESSION_COOKIE,
       createSessionToken(user.id, "user", maxAge),
-      sessionCookieOptions(request, maxAge)
+      sessionCookieOptions(request, maxAge),
     );
     await prisma.user.update({
       where: { id: user.id },
@@ -55,7 +60,7 @@ export async function POST(request: Request) {
     console.error("Login error:", error);
     return NextResponse.json(
       { error: "Unexpected error during login." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

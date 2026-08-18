@@ -11,6 +11,11 @@ import prisma from "@/lib/prisma";
 import { COMPANY_INCLUDE, shapeCompany } from "@/lib/repos/_shape";
 
 const ADMIN_ROLE_ID = "7b128ef4-f530-47d2-8f4c-ef82518eb313";
+// Support carries the same permissions as Administrator, but is deliberately
+// not a salesperson: lib/repos/users.ts filters those lists on ADMIN_ROLE_ID,
+// so a Support account never appears as a company contact person or in the
+// public team section. Kept in sync with ALLOWED_ROLE_IDS in api/login/route.ts.
+const SUPPORT_ROLE_ID = "c4e63615-ed81-45d1-8145-1b88137e60cb";
 type CookieToSet = { name: string; value: string; options: Record<string, unknown> };
 
 async function getUserById(userId: string): Promise<AppUser | undefined> {
@@ -39,7 +44,9 @@ async function getUserById(userId: string): Promise<AppUser | undefined> {
     title: user.title ?? undefined,
     role: user.role.name,
     admin:
-      user.role.name === "Administrator" || user.role.id === ADMIN_ROLE_ID,
+      user.role.name === "Administrator" ||
+      user.role.id === ADMIN_ROLE_ID ||
+      user.role.id === SUPPORT_ROLE_ID,
     company: user.company ? shapeCompany(user.company) : null,
     status: user.status,
     is_shifter: student?.is_shifter === true,
