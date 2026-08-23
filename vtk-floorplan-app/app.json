@@ -2,6 +2,8 @@
   "expo": {
     "name": "VTK Floorplan",
     "slug": "vtk-floorplan-app",
+    "owner": "vtk-it",
+    "scheme": "vtk-floorplan",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

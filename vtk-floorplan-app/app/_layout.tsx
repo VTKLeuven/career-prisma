@@ -33,7 +33,11 @@ export default function RootLayout() {
   }, [loaded, error]);
 
   if (!loaded && !error) {
-    return null;
+    return (
+      <GestureHandlerRootView style={styles.container}>
+        <StatusBar style="light" backgroundColor={COLORS.primaryDark} />
+      </GestureHandlerRootView>
+    );
   }
 
   return (
