@@ -3,6 +3,7 @@
     "name": "VTK Floorplan",
     "slug": "vtk-floorplan-app",
     "owner": "vtk-it",
+    "privacy": "public",
     "scheme": "vtk-floorplan",
     "version": "1.0.0",
     "orientation": "portrait",
