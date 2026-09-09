@@ -129,6 +129,8 @@ function toEventPageWrite(payload: Record<string, any>): Record<string, unknown>
   const {
     id: _id,
     image,
+    event_id,
+    company_guide,
     floorplan_id,
     latitude,
     longitude,
@@ -141,9 +143,14 @@ function toEventPageWrite(payload: Record<string, any>): Record<string, unknown>
     ...rest
   } = payload;
 
+  // The admin form sends every field on every save, and renders an unset
+  // relation as "". Postgres rejects "" for a uuid column, so the uuid-typed
+  // columns (event_id, image_id, company_guide) have to be nulled explicitly.
   return {
     ...rest,
     ...(image !== undefined ? { image_id: image || null } : {}),
+    ...(event_id !== undefined ? { event_id: event_id || null } : {}),
+    ...(company_guide !== undefined ? { company_guide: company_guide || null } : {}),
     ...(floorplan_id !== undefined
       ? { floorplan_id: floorplan_id ? Number(floorplan_id) : null }
       : {}),
@@ -291,7 +298,7 @@ export async function updateEventPage(id: number, payload: Record<string, any>):
   if (existing.event?.academic_year_id != null) {
     await assertAcademicYearWritable(existing.event.academic_year_id);
   }
-  if (payload.event_id !== undefined) {
+  if (payload.event_id) {
     const targetEvent = await prisma.careerEvent.findUnique({
       where: { id: String(payload.event_id) },
       select: { academic_year_id: true },
