@@ -60,3 +60,6 @@ docker-compose.yml
 
 # Husky
 .husky
+
+# Standalone Expo mobile app -- not part of the Next.js build
+vtk-floorplan-app

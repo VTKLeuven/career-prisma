@@ -10,6 +10,9 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
+  // The Expo app in vtk-floorplan-app/ is a separate project with its own
+  // toolchain and eslint config -- linting it with the Next rules here fails.
+  { ignores: ["vtk-floorplan-app/**"] },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
 ];
 
