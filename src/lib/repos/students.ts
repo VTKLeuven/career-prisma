@@ -3,6 +3,7 @@
 import { randomBytes, createHash } from "crypto";
 import type { Student } from "@/lib/schema";
 import prisma from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 
 type StudentRow = Awaited<ReturnType<typeof prisma.student.findUnique>>;
 
@@ -15,8 +16,16 @@ function shapeStudent(row: NonNullable<StudentRow>): Student {
     university: row.university ?? undefined,
     organization_status: row.organization_status ?? undefined,
     in_workinggroup: row.in_workinggroup ?? undefined,
-    litus_access_token: row.litus_access_token ?? undefined,
-    litus_token_expires_at: row.litus_token_expires_at?.toISOString(),
+    sso_subject: row.sso_subject ?? undefined,
+    study_programmes: row.study_programmes ?? [],
+    study_years: row.study_years ?? [],
+    study_confirmed_year: row.study_confirmed_year ?? undefined,
+    not_at_faculty: row.not_at_faculty ?? undefined,
+    student_number: row.student_number ?? undefined,
+    sso_synced_at: row.sso_synced_at?.toISOString(),
+    study_self_reported: row.study_self_reported ?? false,
+    sso_access_token: row.sso_access_token ?? undefined,
+    sso_token_expires_at: row.sso_token_expires_at?.toISOString(),
     password: row.password ?? undefined,
     verified: row.verified ?? undefined,
     verification_token_hash: row.verification_token_hash ?? undefined,
@@ -47,7 +56,10 @@ export async function listStudents(opts?: { limit?: number }): Promise<Student[]
 }
 
 function toStudentWrite(payload: Record<string, any>): Record<string, unknown> {
-  const data: Record<string, unknown> = {};
+  // Typed rather than Record<string, unknown>: the create below needs a real
+  // Prisma input type, and casting one in would switch off exactly the check
+  // that catches a column renamed out from under this function.
+  const data: Prisma.StudentUpdateInput = {};
   const passthrough = ["first_name", "last_name", "full_name", "university"] as const;
   for (const key of passthrough) {
     if (payload[key] !== undefined) data[key] = payload[key] || null;
@@ -80,75 +92,191 @@ export async function deleteStudent(id: number): Promise<void> {
   ]);
 }
 
-export async function findStudentByUsername(
-  username: string
+/** Looks a student up by their SSO subject (the OIDC `sub`). */
+export async function findStudentBySsoSubject(
+  subject: string
 ): Promise<Student | null> {
-  const row = await prisma.student.findUnique({
-    where: { username: username.trim() },
-  });
+  const row = await prisma.student.findUnique({ where: { sso_subject: subject } });
   return row ? shapeStudent(row) : null;
 }
 
-export async function createStudentFromOAuth(
-  oauthData: {
-    username: string;
-    full_name?: string;
-    email: string;
-    university_status?: string;
-    university?: string;
-    organization_status?: string;
-    in_workinggroup?: boolean;
-  },
-  tokenData: { access_token: string; expires_in?: number }
-): Promise<Student | null> {
-  const nameParts = oauthData.full_name?.trim().split(/\s+/) || [];
-  try {
-    const row = await prisma.student.create({
-      data: {
-        username: oauthData.username.trim(),
-        email: oauthData.email.trim().toLowerCase(),
-        first_name: nameParts[0] || null,
-        last_name: nameParts.length > 1 ? nameParts.slice(1).join(" ") : null,
-        full_name: oauthData.full_name || null,
-        university_status: oauthData.university_status || null,
-        university: oauthData.university || "KU Leuven",
-        organization_status: oauthData.organization_status || null,
-        in_workinggroup: oauthData.in_workinggroup ?? false,
-        litus_access_token: tokenData.access_token,
-        litus_token_expires_at: new Date(
-          Date.now() + (tokenData.expires_in || 3600) * 1000
-        ),
-        date_created: new Date(),
-        date_updated: new Date(),
-        verified: true,
-      },
+/** What the SSO flow hands over. Mirrors `SsoProfile` in `lib/vtk-sso-claims.ts`. */
+export interface SsoStudentUpsert {
+  subject: string;
+  email: string;
+  username: string;
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
+  studentNumber?: string;
+  studyProgrammes?: string[];
+  studyYears?: string[];
+  studyConfirmedYear?: number;
+  notAtFaculty?: boolean;
+  accessToken?: string;
+  expiresIn?: number;
+}
+
+/**
+ * Finds the row this SSO identity belongs to, in descending order of how much
+ * the match is worth trusting:
+ *
+ * 1. `sso_subject` — they have signed in through the new SSO before.
+ * 2. `student_number` — the r-number. This is the one that matters for the
+ *    LITUS migration: a row created by the old VTK login has no subject yet,
+ *    and the r-number is the only identifier that survived the move and that
+ *    the student cannot change.
+ * 3. `email`, then `username` — for rows old enough to predate the r-number
+ *    being collected at all.
+ *
+ * A match through 2-4 adopts the row and stamps `sso_subject` on it, so every
+ * later login takes path 1.
+ */
+async function findExistingStudentRow(profile: SsoStudentUpsert) {
+  const bySubject = await prisma.student.findUnique({
+    where: { sso_subject: profile.subject },
+  });
+  if (bySubject) return bySubject;
+
+  if (profile.studentNumber) {
+    // Not a unique column — a duplicate r-number means two rows for one person.
+    // Take the oldest and leave the duplicate visible rather than failing a
+    // login over it. Rows that already carry a *different* subject are skipped:
+    // adopting one would hand this student someone else's account.
+    const byNumber = await prisma.student.findFirst({
+      where: { student_number: profile.studentNumber, sso_subject: null },
+      orderBy: { id: "asc" },
     });
-    return shapeStudent(row);
+    if (byNumber) return byNumber;
+  }
+
+  const byEmail = await prisma.student.findUnique({
+    where: { email: profile.email.trim().toLowerCase() },
+  });
+  if (byEmail && !byEmail.sso_subject) return byEmail;
+
+  const byUsername = await prisma.student.findUnique({
+    where: { username: profile.username.trim() },
+  });
+  return byUsername && !byUsername.sso_subject ? byUsername : null;
+}
+
+/** Splits a full name the way the LITUS flow did: first word, then the rest. */
+function splitName(fullName: string): { first: string | null; last: string | null } {
+  const parts = fullName.trim().split(/\s+/);
+  return {
+    first: parts[0] || null,
+    last: parts.length > 1 ? parts.slice(1).join(" ") : null,
+  };
+}
+
+/**
+ * Creates or refreshes a student from SSO claims. Called on every completed
+ * login flow, which is what keeps study programme and year current — there is
+ * no background refresh, by design (`docs/auth.md`).
+ */
+export async function upsertStudentFromSso(
+  profile: SsoStudentUpsert
+): Promise<Student | null> {
+  const email = profile.email.trim().toLowerCase();
+
+  const data: Record<string, unknown> = {
+    sso_subject: profile.subject,
+    sso_synced_at: new Date(),
+    date_updated: new Date(),
+    university: "KU Leuven",
+    email,
+    sso_access_token: profile.accessToken ?? null,
+    sso_token_expires_at: profile.accessToken
+      ? new Date(Date.now() + (profile.expiresIn || 3600) * 1000)
+      : null,
+  };
+
+  // A claim the SSO did not send is absent, never null, and absent means "not
+  // granted or not known" — so leave what we already had rather than blanking
+  // the column on a student who declined a scope.
+  if (profile.studentNumber !== undefined) data.student_number = profile.studentNumber;
+  if (profile.notAtFaculty !== undefined) data.not_at_faculty = profile.notAtFaculty;
+  if (profile.studyConfirmedYear !== undefined) {
+    data.study_confirmed_year = profile.studyConfirmedYear;
+  }
+
+  // Study info is the same rule with one extra guard: members outside FIRW get
+  // an *empty* array from the SSO and fill the real answer in themselves during
+  // onboarding, so an empty claim must never overwrite what they typed.
+  const hasProgrammes = (profile.studyProgrammes?.length ?? 0) > 0;
+  const hasYears = (profile.studyYears?.length ?? 0) > 0;
+  if (hasProgrammes) {
+    data.study_programmes = profile.studyProgrammes;
+    data.study_self_reported = false;
+  }
+  if (hasYears) {
+    data.study_years = profile.studyYears;
+    data.study_self_reported = false;
+  }
+
+  const names = profile.fullName ? splitName(profile.fullName) : null;
+  const firstName = profile.firstName ?? names?.first ?? undefined;
+  const lastName = profile.lastName ?? names?.last ?? undefined;
+  if (profile.fullName) data.full_name = profile.fullName;
+  if (firstName) data.first_name = firstName;
+  if (lastName) data.last_name = lastName;
+
+  try {
+    const existing = await findExistingStudentRow(profile);
+
+    if (existing) {
+      return shapeStudent(
+        await prisma.student.update({ where: { id: existing.id }, data })
+      );
+    }
+
+    return shapeStudent(
+      await prisma.student.create({
+        data: {
+          ...data,
+          username: profile.username.trim(),
+          email,
+          university_status: "student",
+          in_workinggroup: false,
+          date_created: new Date(),
+          // SSO students are verified by definition — VTK vouched for the
+          // address. Only password registrations need email verification.
+          verified: true,
+        },
+      })
+    );
   } catch (error) {
-    console.error("[createStudentFromOAuth] Failed:", error);
+    console.error("[upsertStudentFromSso] Failed:", error);
     return null;
   }
 }
 
-export async function updateStudentOAuthToken(
+/**
+ * Stores study info a student typed in themselves. Used by the onboarding
+ * step that members outside FIRW go through: they sign in through the SSO
+ * like anyone else, but it has no programme on file for them.
+ */
+export async function saveSelfReportedStudy(
   studentId: string,
-  tokenData: { access_token: string; expires_in?: number }
+  study: { programmes: string[]; years: string[] }
 ): Promise<Student | null> {
   const id = Number(studentId);
   if (!Number.isSafeInteger(id)) return null;
+
   try {
     const row = await prisma.student.update({
       where: { id },
       data: {
-        litus_access_token: tokenData.access_token,
-        litus_token_expires_at: new Date(
-          Date.now() + (tokenData.expires_in || 3600) * 1000
-        ),
+        study_programmes: study.programmes,
+        study_years: study.years,
+        study_self_reported: true,
         date_updated: new Date(),
       },
     });
     return shapeStudent(row);
-  } catch {
+  } catch (error) {
+    console.error("[saveSelfReportedStudy] Failed:", error);
     return null;
   }
 }
@@ -211,49 +339,6 @@ export async function createNonOAuthStudent(studentData: {
     return shapeStudent(row);
   } catch (error) {
     console.error("[createNonOAuthStudent] Failed:", error);
-    return null;
-  }
-}
-
-export async function updateStudentOAuthData(
-  studentId: string,
-  oauthData: {
-    full_name?: string;
-    email?: string;
-    university_status?: string;
-    university?: string;
-    organization_status?: string;
-    in_workinggroup?: boolean;
-  }
-): Promise<Student | null> {
-  const id = Number(studentId);
-  if (!Number.isSafeInteger(id)) return null;
-
-  const data: Record<string, unknown> = { date_updated: new Date() };
-  if (oauthData.full_name) {
-    const nameParts = oauthData.full_name.trim().split(/\s+/);
-    data.first_name = nameParts[0] || null;
-    data.last_name =
-      nameParts.length > 1 ? nameParts.slice(1).join(" ") : null;
-    data.full_name = oauthData.full_name;
-  }
-  if (oauthData.email) data.email = oauthData.email.trim().toLowerCase();
-  if (oauthData.university_status !== undefined)
-    data.university_status = oauthData.university_status;
-  data.university = oauthData.university ?? "KU Leuven";
-  if (oauthData.organization_status !== undefined)
-    data.organization_status = oauthData.organization_status;
-  if (oauthData.in_workinggroup !== undefined)
-    data.in_workinggroup = oauthData.in_workinggroup;
-
-  try {
-    const row = await prisma.student.update({
-      where: { id },
-      data,
-    });
-    return shapeStudent(row);
-  } catch (error) {
-    console.error("[updateStudentOAuthData] Failed:", error);
     return null;
   }
 }

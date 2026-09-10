@@ -1,304 +1,199 @@
-// app/api/auth/oauth/callback/route.ts
+// app/api/auth/oauth/callback/route.ts — finishes the VTK SSO login flow.
+//
+// Exchanges the code, reads the claims, mirrors them onto the students row and
+// mints the student session. Claims are refreshed here and nowhere else: we
+// ask for no `offline_access`, so a login flow is the only moment the app ever
+// hears from the SSO. That is also why student sessions last 24 hours — see
+// STUDENT_SESSION_MAX_AGE in `lib/vtk-sso.ts`.
 import { NextRequest, NextResponse } from "next/server";
-import { verifyOAuthState, getRequestOrigin } from "@/lib/oauth";
-import { findStudentByEmail, findStudentByUsername, createStudentFromOAuth, updateStudentOAuthToken, updateStudentOAuthData } from "@/lib/repos/students";
+import {
+  SSO_HINT_COOKIE,
+  SSO_HINT_DURATION,
+  STUDENT_SESSION_MAX_AGE,
+  clearFlowState,
+  decodeIdToken,
+  discover,
+  exchangeCode,
+  fetchUserInfo,
+  flowCookieDomain,
+  getCallbackUrl,
+  getFrontendUrl,
+  getSsoConfig,
+  readFlowState,
+  statesMatch,
+  validateIdTokenClaims,
+  type Claims,
+} from "@/lib/vtk-sso";
+import { toSsoProfile, unmappedClaims } from "@/lib/vtk-sso-claims";
+import { upsertStudentFromSso } from "@/lib/repos/students";
 import {
   createSessionToken,
   sessionCookieOptions,
   STUDENT_SESSION_COOKIE,
 } from "@/lib/auth-session";
 
-interface OAuthTokenResponse {
-  access_token?: string;
-  refresh_token?: string;
-  token_type?: string;
-  expires_in?: number;
-  scope?: string;
-  [key: string]: unknown;
-}
+export const dynamic = "force-dynamic";
 
-interface OAuthUserInfo {
-  id?: string;
-  username?: string;
-  email?: string;
-  name?: string;
-  full_name?: string;
-  first_name?: string;
-  last_name?: string;
-  [key: string]: unknown;
+/** Sends the browser to the shared error/landing page with a reason attached. */
+function fail(
+  request: NextRequest,
+  code: string,
+  description: string | undefined,
+  redirectTo: string
+): NextResponse {
+  const url = new URL("/auth/callback", getFrontendUrl(request));
+  url.searchParams.set("error", code);
+  if (description) url.searchParams.set("error_description", description);
+  url.searchParams.set("redirect_to", redirectTo);
+  return NextResponse.redirect(url.toString());
 }
 
 export async function GET(request: NextRequest) {
-  // Helper function to get redirectTo from cookie
-  const getRedirectToFromCookie = async (): Promise<string> => {
-    try {
-      const { cookies } = await import("next/headers");
-      const cookieStore = await cookies();
-      return cookieStore.get("oauth_redirect_to")?.value || "/";
-    } catch {
-      return "/";
-    }
-  };
+  const params = request.nextUrl.searchParams;
+
+  // Read the flow cookies before anything can clear them.
+  const flow = await readFlowState();
+  const redirectTo = flow.redirectTo || "/";
 
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const code = searchParams.get("code");
-    const state = searchParams.get("state");
-    const error = searchParams.get("error");
-    const errorDescription = searchParams.get("error_description");
-
-    // Read redirect_to BEFORE verifyOAuthState - it deletes the cookie
-    const redirectTo = await getRedirectToFromCookie();
-
-    // Get OAuth configuration (matching Docker config naming)
-    const tokenUrl = process.env.LITUS_OAUTH_TOKEN || process.env.OAUTH_TOKEN_URL;
-    const userInfoUrl = process.env.LITUS_OAUTH_RESOURCE_OWNER_DETAILS || process.env.OAUTH_USER_INFO_URL;
-    const clientId = process.env.LITUS_API_KEY || process.env.OAUTH_CLIENT_ID;
-    const clientSecret = process.env.LITUS_SECRET || process.env.OAUTH_CLIENT_SECRET;
-    const origin = getRequestOrigin(request);
-    const callbackUrl = process.env.OAUTH_CALLBACK_URL || `${origin}/api/auth/oauth/callback`;
-    const frontendUrl =
-      process.env.NEXT_PUBLIC_FORM_DOMAIN ||
-      process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      process.env.FRONTEND_URL ||
-      origin;
-
-    // Handle OAuth errors
-    if (error) {
-      console.error("OAuth error:", error, errorDescription);
-      const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
-      frontendCallbackUrl.searchParams.set("error", error);
-      if (errorDescription) {
-        frontendCallbackUrl.searchParams.set("error_description", errorDescription);
-      }
-      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
-      return NextResponse.redirect(frontendCallbackUrl.toString());
+    const providerError = params.get("error");
+    if (providerError) {
+      await clearFlowState();
+      console.error("[vtk-sso] Provider returned an error:", providerError);
+      return fail(
+        request,
+        providerError,
+        params.get("error_description") ?? undefined,
+        redirectTo
+      );
     }
 
-    // Verify required parameters
+    const code = params.get("code");
+    const state = params.get("state");
     if (!code || !state) {
-      const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
-      frontendCallbackUrl.searchParams.set("error", "missing_parameters");
-      frontendCallbackUrl.searchParams.set("error_description", "Missing code or state parameter");
-      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
-      return NextResponse.redirect(frontendCallbackUrl.toString());
+      await clearFlowState();
+      return fail(request, "missing_parameters", "Missing code or state", redirectTo);
     }
 
-    // Verify configuration
-    if (!tokenUrl || !userInfoUrl || !clientId) {
-      console.error("Missing OAuth configuration:", {
-        tokenUrl: !!tokenUrl,
-        userInfoUrl: !!userInfoUrl,
-        clientId: !!clientId,
-        clientSecret: !!clientSecret,
-      });
-      const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
-      frontendCallbackUrl.searchParams.set("error", "configuration_error");
-      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
-      return NextResponse.redirect(frontendCallbackUrl.toString());
+    const config = getSsoConfig();
+    if ("error" in config) {
+      console.error("[vtk-sso] callback:", config.error);
+      return fail(request, "configuration_error", config.error, redirectTo);
     }
 
-    // Note: Some OAuth providers (like LITUS) may not require client_secret
-    // If your provider doesn't need it, the token exchange will fail and we'll handle it gracefully
-
-    // Verify state (CSRF protection)
-    const isValidState = await verifyOAuthState(state);
-    if (!isValidState) {
-      console.error("Invalid OAuth state");
-      const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
-      frontendCallbackUrl.searchParams.set("error", "invalid_state");
-      frontendCallbackUrl.searchParams.set("error_description", "The authentication session expired. Please try logging in again.");
-      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
-      return NextResponse.redirect(frontendCallbackUrl.toString());
+    if (!statesMatch(state, flow.state) || !flow.verifier || !flow.nonce) {
+      await clearFlowState();
+      return fail(
+        request,
+        "invalid_state",
+        "The login attempt expired or did not start here. Please try again.",
+        redirectTo
+      );
     }
 
-    // Exchange authorization code for access token
-    const tokenParams = new URLSearchParams({
-      grant_type: "authorization_code",
+    // Single-use: whatever happens from here, this flow's state is spent.
+    const nonce = flow.nonce;
+    const verifier = flow.verifier;
+    await clearFlowState();
+
+    const endpoints = await discover(config.issuer);
+    const tokens = await exchangeCode(
+      endpoints,
+      config,
       code,
-      redirect_uri: callbackUrl,
-      client_id: clientId,
-      ...(clientSecret && { client_secret: clientSecret }),
+      getCallbackUrl(request),
+      verifier
+    );
+
+    // The ID token carries only the `profile` and `email` claims. Everything
+    // under `vtk:` — study programme, year, r-number — lives in userinfo, so
+    // the userinfo call is required, not an optimisation.
+    let claims: Claims = {};
+    if (tokens.id_token) {
+      const idClaims = decodeIdToken(tokens.id_token);
+      if (!idClaims) {
+        return fail(request, "invalid_id_token", "Could not read the ID token", redirectTo);
+      }
+      const problem = validateIdTokenClaims(idClaims, {
+        issuer: endpoints.issuer,
+        clientId: config.clientId,
+        nonce,
+      });
+      if (problem) {
+        console.error("[vtk-sso] ID token rejected:", problem);
+        return fail(request, "invalid_id_token", problem, redirectTo);
+      }
+      claims = idClaims;
+    }
+
+    // Userinfo wins on conflict: it is the fuller and fresher of the two.
+    claims = { ...claims, ...(await fetchUserInfo(endpoints, tokens.access_token)) };
+
+    const unmapped = unmappedClaims(claims);
+    if (unmapped.length) {
+      // Not an error — but if a claim we rely on gets renamed, this line is
+      // what turns "the column silently stopped updating" into a log entry.
+      console.info("[vtk-sso] Unmapped claims received:", unmapped.join(", "));
+    }
+
+    const profile = toSsoProfile(claims);
+    if ("error" in profile) {
+      console.error("[vtk-sso]", profile.error);
+      return fail(request, "missing_claims", profile.error, redirectTo);
+    }
+
+    // Members outside FIRW are signed in like anyone else — the SSO simply has
+    // no programme on file for them, and they fill it in during onboarding.
+    const student = await upsertStudentFromSso({
+      ...profile,
+      accessToken: tokens.access_token,
+      expiresIn: tokens.expires_in,
     });
 
-    let tokenResponse: Response;
-    try {
-      tokenResponse = await fetch(tokenUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
-        },
-        body: tokenParams.toString(),
-      });
-    } catch (fetchError) {
-      console.error("Token request error:", fetchError);
-      const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
-      frontendCallbackUrl.searchParams.set("error", "token_request_failed");
-      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
-      return NextResponse.redirect(frontendCallbackUrl.toString());
-    }
-
-    if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      console.error("Token response error:", tokenResponse.status, errorText);
-      const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
-      frontendCallbackUrl.searchParams.set("error", "token_exchange_failed");
-      frontendCallbackUrl.searchParams.set("error_description", `Status: ${tokenResponse.status}`);
-      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
-      return NextResponse.redirect(frontendCallbackUrl.toString());
-    }
-
-    const tokenData = (await tokenResponse.json()) as OAuthTokenResponse;
-    const accessToken = tokenData.access_token;
-
-    if (!accessToken) {
-      console.error("No access token in response:", tokenData);
-      const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
-      frontendCallbackUrl.searchParams.set("error", "no_access_token");
-      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
-      return NextResponse.redirect(frontendCallbackUrl.toString());
-    }
-
-    // Fetch user info from OAuth provider
-    let userInfo: OAuthUserInfo = {};
-    try {
-      const userInfoResponse = await fetch(userInfoUrl, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: "application/json",
-        },
-      });
-
-      if (userInfoResponse.ok) {
-        userInfo = (await userInfoResponse.json()) as OAuthUserInfo;
-      } else {
-        console.warn("Failed to fetch user info:", userInfoResponse.status);
-        const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
-        frontendCallbackUrl.searchParams.set("error", "user_info_failed");
-        frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
-        return NextResponse.redirect(frontendCallbackUrl.toString());
-      }
-    } catch (userInfoError) {
-      console.warn("User info request error:", userInfoError);
-      const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
-      frontendCallbackUrl.searchParams.set("error", "user_info_error");
-      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
-      return NextResponse.redirect(frontendCallbackUrl.toString());
-    }
-
-    // Validate required OAuth fields
-    if (!userInfo.username || !userInfo.email) {
-      console.error("Missing required OAuth fields:", userInfo);
-      const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
-      frontendCallbackUrl.searchParams.set("error", "missing_oauth_fields");
-      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
-      return NextResponse.redirect(frontendCallbackUrl.toString());
-    }
-
-    // Find or create student in database
-    let student = await findStudentByUsername(userInfo.username) || await findStudentByEmail(userInfo.email);
-
-    if (student) {
-      // Update existing student with new token and latest data
-      await updateStudentOAuthToken(student.id, {
-        access_token: accessToken,
-        expires_in: tokenData.expires_in,
-      });
-      await updateStudentOAuthData(student.id, {
-        full_name: typeof userInfo.full_name === 'string' ? userInfo.full_name : undefined,
-        email: typeof userInfo.email === 'string' ? userInfo.email : undefined,
-        university_status: typeof userInfo.university_status === 'string' ? userInfo.university_status : undefined,
-        university: "KU Leuven", // Always KU Leuven for LITUS OAuth
-        organization_status: typeof userInfo.organization_status === 'string' ? userInfo.organization_status : undefined,
-        in_workinggroup: typeof userInfo.in_workinggroup === 'boolean' ? userInfo.in_workinggroup : undefined,
-      });
-    } else {
-      // Create new student
-      student = await createStudentFromOAuth(
-        {
-          username: typeof userInfo.username === 'string' ? userInfo.username : '',
-          full_name: typeof userInfo.full_name === 'string' ? userInfo.full_name : undefined,
-          email: typeof userInfo.email === 'string' ? userInfo.email : '',
-          university_status: typeof userInfo.university_status === 'string' ? userInfo.university_status : undefined,
-          university: "KU Leuven", // Always KU Leuven for LITUS OAuth
-          organization_status: typeof userInfo.organization_status === 'string' ? userInfo.organization_status : undefined,
-          in_workinggroup: typeof userInfo.in_workinggroup === 'boolean' ? userInfo.in_workinggroup : undefined,
-        },
-        {
-          access_token: accessToken,
-          expires_in: tokenData.expires_in,
-        }
+    if (!student) {
+      return fail(
+        request,
+        "student_upsert_failed",
+        "Could not create or update your student account",
+        redirectTo
       );
-
-      if (!student) {
-        console.error("Failed to create student");
-        const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
-        frontendCallbackUrl.searchParams.set("error", "student_creation_failed");
-        frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
-        return NextResponse.redirect(frontendCallbackUrl.toString());
-      }
     }
 
-    // Calculate session expiration (match token expiration or default to 30 days)
-    const sessionMaxAge = tokenData.expires_in
-      ? Math.min(tokenData.expires_in, 30 * 24 * 60 * 60) // Max 30 days
-      : 30 * 24 * 60 * 60; // Default 30 days
+    const needsStudyOnboarding =
+      student.study_programmes.length === 0 || student.study_years.length === 0;
 
-    // Redirect to frontend callback with user data
-    const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
+    const destination = new URL("/auth/callback", getFrontendUrl(request));
+    destination.searchParams.set(
+      "redirect_to",
+      needsStudyOnboarding
+        ? `/student/study-details?redirectTo=${encodeURIComponent(redirectTo)}`
+        : redirectTo
+    );
 
-    // Store user info and tokens in URL params (temporary, for debugging)
-    const userInfoBase64 = Buffer.from(JSON.stringify(userInfo)).toString("base64url");
-    const tokenInfoBase64 = Buffer.from(
-      JSON.stringify({
-        access_token: accessToken.substring(0, 20) + "...", // Masked for display
-        token_type: tokenData.token_type,
-        expires_in: tokenData.expires_in,
-        scope: tokenData.scope,
-      })
-    ).toString("base64url");
+    const response = NextResponse.redirect(destination.toString());
 
-    frontendCallbackUrl.searchParams.set("user_info", userInfoBase64);
-    frontendCallbackUrl.searchParams.set("token_info", tokenInfoBase64);
-    frontendCallbackUrl.searchParams.set("student_id", student.id);
-    frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
-
-    const response = NextResponse.redirect(frontendCallbackUrl.toString());
-
-    // Set session cookie on the response
     response.cookies.set(
       STUDENT_SESSION_COOKIE,
-      createSessionToken(student.id, "student", sessionMaxAge),
-      sessionCookieOptions(request, sessionMaxAge)
+      createSessionToken(student.id, "student", STUDENT_SESSION_MAX_AGE),
+      sessionCookieOptions(request, STUDENT_SESSION_MAX_AGE)
     );
+
+    // Outlives the session on purpose: it is what lets `/student-login` bounce
+    // an expired session back through the SSO without showing a form.
+    response.cookies.set(SSO_HINT_COOKIE, "1", {
+      ...sessionCookieOptions(request, SSO_HINT_DURATION),
+      domain: flowCookieDomain(request),
+    });
 
     return response;
   } catch (error) {
-    console.error("OAuth callback error:", error);
-    const origin = getRequestOrigin(request);
-    const frontendUrl =
-      process.env.NEXT_PUBLIC_FORM_DOMAIN ||
-      process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      process.env.FRONTEND_URL ||
-      origin;
-    const frontendCallbackUrl = new URL("/auth/callback", frontendUrl);
-    frontendCallbackUrl.searchParams.set("error", "callback_error");
-    frontendCallbackUrl.searchParams.set(
-      "error_description",
-      error instanceof Error ? error.message : "Unknown error"
+    console.error("[vtk-sso] Callback failed:", error);
+    await clearFlowState().catch(() => {});
+    return fail(
+      request,
+      "callback_error",
+      error instanceof Error ? error.message : "Unknown error",
+      redirectTo
     );
-    // Try to get redirectTo from cookie in catch block
-    try {
-      const { cookies } = await import("next/headers");
-      const cookieStore = await cookies();
-      const redirectTo = cookieStore.get("oauth_redirect_to")?.value || "/";
-      frontendCallbackUrl.searchParams.set("redirect_to", redirectTo);
-    } catch {
-      frontendCallbackUrl.searchParams.set("redirect_to", "/");
-    }
-    return NextResponse.redirect(frontendCallbackUrl.toString());
   }
 }
