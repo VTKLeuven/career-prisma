@@ -24,6 +24,25 @@ jobs:
             git fetch --all &&
             git reset --hard origin/main &&
 
+            # Bring the database up first so migrations have something to run
+            # against. The app is still serving the previous image at this point.
+            docker compose up -d database &&
+
+            # Apply any new Prisma migrations before the new image starts, so
+            # the code never boots against a schema it does not expect. The
+            # one-off 'migration' service runs 'prisma migrate deploy'; it is
+            # behind the 'tools' profile so a plain 'up' never starts it.
+            # 'migrate deploy' only applies migrations the database has not seen
+            # yet, so re-running it on a deploy with no new migration is a no-op.
+            # A failure aborts the chain here and the old image keeps serving.
+            #
+            # Note the ordering trade-off: the schema changes a moment before
+            # the new code does, so a migration that DROPS or RENAMES something
+            # the current image still reads will break requests for the few
+            # minutes the build takes. Ship those in two deploys -- first the
+            # code that stops using the column, then the migration that drops it.
+            docker compose --profile tools run --rm --build migration &&
+
             # Build and restart Docker container
             docker compose up -d --build
           "
