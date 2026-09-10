@@ -54,17 +54,25 @@ export type AttendantScan = {
 
 export type Student = {
   id: string;
-  username: string; // LITUS username (unique identifier)
+  username: string; // preferred_username from the VTK SSO, or the email local part
   first_name: string | null;
   last_name: string | null;
-  full_name?: string; // Full name from LITUS
+  full_name?: string; // Full name from the VTK SSO
   email: string;
   university_status?: string; // "student"
   university?: string; // University name (e.g., "KU Leuven", "Universiteit Gent")
   organization_status?: string; // e.g., "praesidium" (kept for backward compatibility)
   in_workinggroup?: boolean;
-  litus_access_token?: string; // Encrypted/stored access token for API calls
-  litus_token_expires_at?: string; // ISO date when token expires
+  sso_subject?: string; // OIDC `sub` at the VTK SSO; absent for password accounts
+  study_programmes: string[]; // Lowercased SSO enum values, e.g. ["computer_science"]
+  study_years: string[]; // Lowercased SSO enum values, e.g. ["master_1"]
+  study_confirmed_year?: number; // Academic year the study info was confirmed for
+  not_at_faculty?: boolean; // True when the member does not study at FIRW
+  student_number?: string; // r-number, e.g. "r0812345"
+  sso_synced_at?: string; // ISO date of the last claim refresh
+  study_self_reported: boolean; // Study info typed in by the student, not the SSO
+  sso_access_token?: string; // Stored on login; nothing reads it (no offline_access)
+  sso_token_expires_at?: string; // ISO date when that token expires
   password?: string; // Hashed password for non-OAuth students
   verified?: boolean; // Whether email has been verified
   verification_token_hash?: string; // Hash of verification token

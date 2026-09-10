@@ -701,8 +701,37 @@ model Student {
   university_status               String?                          @db.VarChar(255)
   organization_status             String?                          @db.VarChar(255)
   in_workinggroup                 Boolean?
-  litus_access_token              String?                          @db.VarChar(255)
-  litus_token_expires_at          DateTime?                        @db.Timestamp(6)
+  // Identity at the VTK SSO (the OIDC `sub`). Stable across email and name
+  // changes, so it — not `username` or `email` — is what we match a returning
+  // student on. Null for students who registered with a password.
+  sso_subject                     String?                          @unique(map: "students_sso_subject_unique") @db.VarChar(255)
+  // Claims mirrored from the SSO on every login flow. Never edit them by hand
+  // in admin — the next login overwrites them. See docs/auth.md.
+  //
+  // Programmes and years are arrays because the SSO says so: a member can be
+  // enrolled in two programmes at once, and the claim carries lowercased enum
+  // values ("computer_science", "master_1"), not display text. A Prisma scalar
+  // list cannot be NULL, so empty means either "never told" or "nothing on
+  // file" — `sso_synced_at` is what distinguishes the two.
+  study_programmes                String[]
+  study_years                     String[]
+  // The academic year the member last confirmed their study info for (2025).
+  study_confirmed_year            Int?
+  // True when the member does not study at FIRW — the SSO's own answer to the
+  // question the external-student login exists for.
+  not_at_faculty                  Boolean?
+  student_number                  String?                          @db.VarChar(255)
+  sso_synced_at                   DateTime?                        @db.Timestamp(6)
+  // Set when the student typed their study info in themselves, which is what
+  // members outside FIRW have to do — the SSO knows they are not at the
+  // faculty and sends no programme for them. A login must never overwrite
+  // self-reported study info with the empty claim that caused it.
+  study_self_reported             Boolean                          @default(false)
+  // Renamed from litus_access_token / litus_token_expires_at when the LITUS
+  // flow was replaced by the VTK SSO. Written on login, not read anywhere:
+  // we ask for no offline_access, so there is nothing to refresh with.
+  sso_access_token                String?                          @db.VarChar(255)
+  sso_token_expires_at            DateTime?                        @db.Timestamp(6)
   date_created                    DateTime?                        @db.Timestamp(6)
   date_updated                    DateTime?                        @db.Timestamp(6)
   university                      String?                          @db.VarChar(255)
