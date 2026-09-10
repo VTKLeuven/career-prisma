@@ -18,12 +18,36 @@ src/app/api/          route handlers: files, OAuth, QR scans, cron, webhooks
 src/lib/repos/        ALL database access lives here
 src/lib/              auth, email, caches, PDF/image processing, utils
 src/components/ui/    shadcn primitives (generated — regenerate, don't hand-edit)
+src/components/site/  the public site chrome — SiteHeader is the only header
 prisma/schema.prisma  the source of truth for the data model
 ```
 
 **The rule that matters:** pages, components and actions call
 `src/lib/repos/*`. They do not import `prisma` directly. Repos return
 Directus-era shapes (see `_shape.ts`) — that mapping is why the rule exists.
+
+## The public site header
+
+`src/components/site/SiteHeader.tsx` is **the** public header. There is no
+other one — five hand-copied versions existed until they had visibly drifted
+(the Admin button in one of them, dead Events buttons on the company page, a
+campaign link that only changed one page), so anything a header needs is a prop
+on this component:
+
+| Prop | For |
+|---|---|
+| `navItems` | Replaces the standard nav. The event page passes its Floorplan / Matching / CV Upload buttons; implies no Events dropdown and a scrolling mobile strip. |
+| `extraNavItems` | Appends to the standard nav (the company page's "Discovery Stage"). |
+| `showEventsMenu` | Force the Events dropdown on or off. |
+| `dark` | Dark treatment, for pages with a dark hero. |
+
+The account cluster — Admin / Company Dashboard / Student login / Contact and
+the student menu — is deliberately **not** customisable, because divergence
+there is what caused the drift. The Admin button shows whenever a staff account
+is signed in, on every public page or none.
+
+`FEATURED_EVENT_LINK` at the top of that file swaps the Events dropdown for a
+single campaign link ("Jobfair 2027"). One edit changes every page.
 
 ## Routing notes
 

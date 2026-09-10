@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Company, Master, CareerEventOption, CareerEvent, Speaker } from "@/lib/schema";
 import { getFileUrl } from "@/components/Images";
@@ -10,14 +10,7 @@ import { validateExistingPageImage } from "@/lib/utils/image-validation";
 import { Calendar } from "lucide-react";
 import { slugifyCompanyName, slugifyEventName } from "@/lib/utils/slugify";
 import { fetchPublicEventsAction } from "@/app/actions/events";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { ChevronDown, LogOut, User, Star } from "lucide-react";
+import { SiteHeader } from "@/components/site/SiteHeader";
 import { usePageLayout } from '../../layout';
 import { CompanyLikeButton } from "@/components/CompanyLikeButton";
 import { groupSpeakersByTimeSlot } from "@/lib/utils/speakers";
@@ -296,7 +289,18 @@ export default function CompanyPage() {
 
   return (
     <main className="relative min-h-svh bg-vtk-bg text-neutral-900">
-      <Header hasSpeakers={speakers.length > 0} />
+      <SiteHeader
+        extraNavItems={
+          speakers.length > 0
+            ? [{
+                key: "discovery-stage",
+                label: "Discovery Stage",
+                onSelect: () =>
+                  document.getElementById("discovery-stage")?.scrollIntoView({ behavior: "smooth" }),
+              }]
+            : []
+        }
+      />
       <div className="pt-24 md:pt-28">
         {validBgUrl && (
           <div className="absolute inset-0 z-0">
@@ -577,117 +581,5 @@ function CompanySpeakerCardMulti({ speakers, eventSlug, allSpeakers }: { speaker
         })}
       </div>
     </div>
-  );
-}
-
-// ---------------- Header ----------------
-function Header({ hasSpeakers = false }: { hasSpeakers?: boolean }) {
-  const [openMenu, setOpenMenu] = useState<null | 'events'>(null);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [companyRep, setCompanyRep] = useState<{ authenticated: boolean; name: string } | null>(null);
-  const [student, setStudent] = useState<{ authenticated: boolean; firstName: string | null; lastName: string | null } | null>(null);
-  const router = useRouter();
-  const [EVENTS, setEvents] = useState<CareerEvent[]>([]);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const mobileMenuRef = useRef<HTMLDivElement>(null);
-  const eventsMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchPublicEventsAction()
-      .then((events) => { if (!cancelled) setEvents(events ?? []); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
-
-  const checkAuthStatus = () => {
-    fetch('/api/user/check?' + Date.now(), { cache: 'no-store', credentials: 'include' })
-      .then((res) => res.ok ? res.json() : Promise.reject(new Error('Failed')))
-      .then((data) => {
-        setCompanyRep(data?.companyRep?.authenticated ? data.companyRep : null);
-        setStudent(data?.student?.authenticated ? data.student : null);
-      })
-      .catch(() => { setCompanyRep(null); setStudent(null); });
-  };
-
-  useEffect(() => {
-    checkAuthStatus();
-    window.addEventListener('focus', checkAuthStatus);
-    return () => window.removeEventListener('focus', checkAuthStatus);
-  }, []);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node) &&
-          !(e.target as HTMLElement).closest('button[aria-expanded]')) setMobileMenuOpen(false);
-      if (eventsMenuRef.current && !eventsMenuRef.current.contains(e.target as Node) &&
-          !(e.target as HTMLElement).closest('button[aria-controls="mega-events"]')) setOpenMenu(null);
-    };
-    if (mobileMenuOpen || openMenu === 'events') {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [mobileMenuOpen, openMenu]);
-
-  return (
-    <header ref={menuRef} className="fixed top-2 sm:top-4 inset-x-0 z-50 w-full px-2 sm:px-0" aria-label="Site navigation">
-      <div className="mx-auto max-w-7xl px-2 sm:px-4">
-        <div className="flex items-center justify-between gap-2 sm:gap-3 rounded-xl sm:rounded-2xl border bg-white/85 px-2 sm:px-3 md:px-5 py-1.5 sm:py-2 md:py-3 shadow-[0_12px_40px_rgba(0,0,0,0.10)] ring-1 ring-black/5 backdrop-blur-md">
-          <Link href="/" className="flex shrink-0 items-center gap-1 sm:gap-2 rounded-full px-1 sm:px-2">
-            <Image src="/career_blue.png" alt="VTK Career" width={120} height={40} className="h-6 sm:h-8 w-auto self-center" priority />
-          </Link>
-          <nav className="hidden items-center gap-2 md:flex">
-            <Link href="/" className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white">Home</Link>
-            <div className="relative">
-              <button type="button" onMouseEnter={() => setOpenMenu('events')} onFocus={() => setOpenMenu('events')} onClick={() => setOpenMenu((s) => (s === 'events' ? null : 'events'))}
-                className="inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100" aria-expanded={openMenu === 'events'} aria-controls="mega-events">
-                Events <ChevronDown className="h-4 w-4" />
-              </button>
-            </div>
-            <Link href="/our-students" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
-            <Link href="/vacancies" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
-            {hasSpeakers && (
-              <a href="#discovery-stage" className="rounded-full px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
-                onClick={(e) => { e.preventDefault(); document.getElementById("discovery-stage")?.scrollIntoView({ behavior: "smooth" }); }}>Discovery Stage</a>
-            )}
-          </nav>
-          <nav className="md:hidden flex items-center gap-2">
-            <Link href="/" className="rounded-full bg-vtk-blue px-3 py-1.5 text-xs font-medium text-white">Home</Link>
-            <button type="button" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Events</button>
-            <Link href="/our-students" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Our students</Link>
-            <Link href="/vacancies" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100">Vacancies</Link>
-            {hasSpeakers && (
-              <a href="#discovery-stage" className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100"
-                onClick={(e) => { e.preventDefault(); document.getElementById("discovery-stage")?.scrollIntoView({ behavior: "smooth" }); }}>Discovery Stage</a>
-            )}
-          </nav>
-          <div className="ml-auto flex items-center gap-2">
-            {!student && <Button asChild variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex"><Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link></Button>}
-            {!student && !companyRep && <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/student-login">Student login</Link></Button>}
-            {!student && companyRep && <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>}
-            {student && (
-              <>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex">
-                      <User className="h-4 w-4 mr-2" />{student.firstName} {student.lastName}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem asChild><Link href="/student/liked-companies"><Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />Liked companies</Link></DropdownMenuItem>
-                    <DropdownMenuItem onClick={async () => { await fetch("/api/students/logout", { method: "POST" }); router.refresh(); window.location.href = "/"; }}>
-                      <LogOut className="mr-2 h-4 w-4" />Log out
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <Button asChild className="hidden rounded-full bg-vtk-blue hover:bg-vtk-blueDark md:inline-flex text-white"><Link href="/contact">Contact Us</Link></Button>
-              </>
-            )}
-            {!mobileMenuOpen && <button type="button" onClick={() => setMobileMenuOpen(true)} className="md:hidden inline-flex items-center justify-center rounded-md p-2 text-neutral-700 hover:bg-neutral-100" aria-expanded={mobileMenuOpen} aria-label="Open menu"><svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button>}
-            {mobileMenuOpen && <button type="button" onClick={() => setMobileMenuOpen(false)} className="md:hidden inline-flex items-center justify-center rounded-md p-2 text-neutral-700 hover:bg-neutral-100" aria-expanded={mobileMenuOpen} aria-label="Close menu"><svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>}
-          </div>
-        </div>
-      </div>
-    </header>
   );
 }

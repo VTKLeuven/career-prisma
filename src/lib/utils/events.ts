@@ -21,10 +21,44 @@ export type EventWithStatus = CareerEvent & {
   isPast?: boolean;
 };
 
+/** Academic years run September -> August, so the boundary is the 9th month. */
+function academicYearOf(value: Date): number {
+  return value.getMonth() >= 8 ? value.getFullYear() : value.getFullYear() - 1;
+}
+
 /**
- * Gets upcoming events, and if there are less than 3 upcoming events,
- * includes the most recent past events to always show exactly 3 events total.
- * Past events are marked with isPast: true.
+ * The academic year an event belongs to, as its starting calendar year.
+ *
+ * The stored relation wins, because that is what the rest of the app scopes by.
+ * Deriving it from the event's own date is the fallback for an event whose
+ * academic year was never linked.
+ */
+function eventAcademicYear(event: CareerEvent): number | null {
+  const linked = (event as { academic_year?: { start_of_year?: string } | null })
+    .academic_year?.start_of_year;
+  if (linked) {
+    const parsed = new Date(linked);
+    if (!Number.isNaN(parsed.getTime())) return parsed.getFullYear();
+  }
+  try {
+    const parsed = new Date(event.date);
+    if (!Number.isNaN(parsed.getTime())) return academicYearOf(parsed);
+  } catch {
+    // Fall through.
+  }
+  return null;
+}
+
+/**
+ * Gets upcoming events, and if there are fewer than `targetCount`, pads with
+ * recent past events so the section never looks half empty. Past events are
+ * marked with isPast: true and are rendered greyed out.
+ *
+ * Padding is scoped to one academic year: the current one, or the one before it
+ * when this season has not had an event yet. Unscoped, the homepage reaches
+ * back through the whole archive and a fair from several years ago turns up
+ * under "Upcoming events", which reads as a bug rather than as a look back at
+ * the season.
  */
 export function getUpcomingEventsWithFallback(
   events: CareerEvent[],
@@ -82,9 +116,29 @@ export function getUpcomingEventsWithFallback(
     return upcomingToShow;
   }
 
-  // Otherwise, add past events to fill up to targetCount total
+  // Otherwise, pad with past events -- but only from one academic year, so an
+  // empty season shows fewer cards instead of resurrecting an old edition.
+  const pastYears = past
+    .map(eventAcademicYear)
+    .filter((year): year is number => year !== null);
+
+  // This season, or last season when this one has not happened yet. Anything
+  // older stays buried: "most recent in the list" would happily surface a fair
+  // from three years ago the moment the archive has nothing newer.
+  const currentAcademicYear = academicYearOf(now);
+  const referenceYear = pastYears.includes(currentAcademicYear)
+    ? currentAcademicYear
+    : pastYears.includes(currentAcademicYear - 1)
+      ? currentAcademicYear - 1
+      : null;
+
+  const pastInScope =
+    referenceYear === null
+      ? []
+      : past.filter((event) => eventAcademicYear(event) === referenceYear);
+
   const needed = targetCount - upcomingToShow.length;
-  const pastToAdd = past.slice(0, needed);
+  const pastToAdd = pastInScope.slice(0, needed);
 
   return [...upcomingToShow, ...pastToAdd];
 }
