@@ -40,11 +40,15 @@ const force = process.argv.includes("--force");
 // Fixed identifiers
 // ---------------------------------------------------------------------------
 
-// These three are not arbitrary -- they are compared literally in src/ and the
-// app misbehaves if the seed invents its own. Admin doubles as the salesperson
-// role (src/lib/repos/users.ts), and only these two roles may sign in at all
-// (ALLOWED_ROLE_IDS in src/app/api/login/route.ts).
-const ROLE_ADMIN = "7b128ef4-f530-47d2-8f4c-ef82518eb313";
+// These are not arbitrary -- they are compared literally in src/ and the app
+// misbehaves if the seed invents its own. The names are misleading on purpose
+// (they come from the Directus export): "VTK Career" is the salesperson role,
+// "Administrator" is the unadvertised internal one. See docs/auth.md.
+// All three may sign in (ALLOWED_ROLE_IDS in src/app/api/login/route.ts); only
+// VTK Career is listed as a salesperson (src/lib/repos/users.ts), which is what
+// keeps Administrator accounts fully privileged but off the public homepage.
+const ROLE_SALES = "7b128ef4-f530-47d2-8f4c-ef82518eb313";
+const ROLE_ADMINISTRATOR = "c4e63615-ed81-45d1-8145-1b88137e60cb";
 const ROLE_COMPANY_REP = "d5475bf4-a77f-48de-b06c-fac199b0f631";
 // Career Day: src/lib/eventsight.ts and the dashboard gate the drink-ordering
 // UI on this exact event id, so the seed reuses it to keep that path reachable.
@@ -299,15 +303,23 @@ async function main() {
   const now = new Date();
 
   // -- Roles ---------------------------------------------------------------
-  // "VTK Career" is accepted alongside "Administrator" for salesperson actions
-  // (src/app/actions/companies.ts) but cannot sign in, so it is not seeded.
+  // The three sign-in roles production has. Seeding fewer leaves the role
+  // picker in /admin/users short of options that exist in prod.
   console.log("\nRoles");
   for (const role of [
     {
-      id: ROLE_ADMIN,
+      id: ROLE_SALES,
+      name: "VTK Career",
+      icon: "verified",
+      description:
+        "Full access. The salesperson role: listed on the public homepage.",
+    },
+    {
+      id: ROLE_ADMINISTRATOR,
       name: "Administrator",
       icon: "verified",
-      description: "Full access. Also the salesperson role.",
+      description:
+        "Full access, internal only. Never listed as a salesperson.",
     },
     {
       id: ROLE_COMPANY_REP,
@@ -456,7 +468,7 @@ async function main() {
     update: {
       email: adminEmail,
       password: adminHash,
-      role_id: ROLE_ADMIN,
+      role_id: ROLE_SALES,
       status: "active",
     },
     create: {
@@ -467,7 +479,7 @@ async function main() {
       last_name: "Admin",
       title: "Administrator",
       tel: "+32 470 00 00 01",
-      role_id: ROLE_ADMIN,
+      role_id: ROLE_SALES,
       status: "active",
     },
   });
