@@ -96,7 +96,6 @@ export async function createEvent(payload: Record<string, any>): Promise<CareerE
     await tx.careerEventPage.create({
       data: {
         event_id: created.id,
-        status: "draft",
         description_EN: "",
       },
     });
@@ -215,8 +214,12 @@ export async function listEventPages(opts?: {
 
     const rows = await prisma.careerEventPage.findMany({
       where: {
-        status: "published",
-        ...(academicYearId ? { event: { academic_year_id: academicYearId } } : {}),
+        // The event owns the draft flag; a page is public exactly when its
+        // event is published.
+        event: {
+          status: "published",
+          ...(academicYearId ? { academic_year_id: academicYearId } : {}),
+        },
       },
       include: EVENT_PAGE_INCLUDE,
       take: 1000,
@@ -283,8 +286,11 @@ export async function getEventPageById(id: string): Promise<CareerEventPage | nu
 export async function getEventPageBySlug(slug: string): Promise<CareerEventPage | null> {
   try {
     // The slug is derived from the event name, so the match cannot be pushed
-    // into SQL: every candidate name has to be slugified and compared.
+    // into SQL: every candidate name has to be slugified and compared. Draft
+    // editions are excluded here, which is what keeps their page off the
+    // public site -- the newest published edition of the series wins instead.
     const events = await prisma.careerEvent.findMany({
+      where: { status: "published" },
       include: { academicYear: true },
       orderBy: [{ academicYear: { start_of_year: "desc" } }, { date: "desc" }],
       take: 500,
@@ -298,10 +304,7 @@ export async function getEventPageBySlug(slug: string): Promise<CareerEventPage 
     if (!matchingEvents.length) return null;
 
     const pages = await prisma.careerEventPage.findMany({
-      where: {
-        event_id: { in: matchingEvents.map((event) => event.id) },
-        status: "published",
-      },
+      where: { event_id: { in: matchingEvents.map((event) => event.id) } },
       include: EVENT_PAGE_INCLUDE,
       orderBy: { id: "desc" },
     });

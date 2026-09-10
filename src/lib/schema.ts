@@ -218,7 +218,7 @@ export type CompanyMatchingResponse = {
 
 export type CareerEventPage = {
   id: string;
-  status?: string;
+  /** No status of its own: the page is live when `event.status` is published. */
   event: CareerEvent;
   description_EN: string;
   image: string;

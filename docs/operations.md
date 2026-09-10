@@ -36,9 +36,25 @@ soak, drink-ordering, QR scanning) run manually — see `k6/README.md`.
 ## Deployment
 
 Push to `main` → `.github/workflows/main.yml` SSHes to the server →
-`git reset --hard origin/main && docker compose up -d --build`.
+`git reset --hard origin/main`, applies pending Prisma migrations, then
+`docker compose up -d --build`.
 So **merging to `main` deploys to production.** There is no manual approval
 step.
+
+Migrations run through the one-off `migration` Compose service
+(`docker compose --profile tools run --rm --build migration`), which executes
+`scripts/run-prisma-migrations.mjs` → `prisma migrate deploy`. It builds the
+`migrator` stage of the Dockerfile, so the Prisma CLI runs from the repo's
+pinned lockfile rather than whatever Node the server happens to have. Note that
+`prisma generate` in the image build does **not** touch the database — it only
+emits the client — so this step is what actually changes the schema.
+
+The migration runs *before* the new image starts, and a failure aborts the
+deploy with the old image still serving. That ordering is right for additive
+migrations but means a **destructive** one (dropping or renaming a column the
+running image still selects) breaks requests for the length of the build. Ship
+those as two deploys: first the code that stops using the column, then the
+migration that removes it.
 
 This is deliberate and temporary, not an oversight: the project has a single
 developer, so the fast path is worth more than a gate. A separate dev server is

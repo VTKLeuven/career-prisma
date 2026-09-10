@@ -81,7 +81,6 @@ export async function copyAnnualCatalog(sourceYearId: number, targetYearId: numb
         for (const sourcePage of source.careerEventPages) {
           const page = await tx.careerEventPage.create({
             data: {
-              status: "draft",
               event_id: target.id,
               shout: sourcePage.shout,
               description_EN: sourcePage.description_EN,

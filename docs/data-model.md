@@ -13,7 +13,11 @@ Nearly every business question is scoped by academic year.
 ## The event itself
 
 `CareerEventPage` — public page content, including `latitude`/`longitude`
-(formerly a PostGIS point). `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
+(formerly a PostGIS point). It has **no status column of its own**: the page is
+public exactly when `CareerEvent.status` is `"published"`. Both rows used to
+carry a draft flag and only the page's one gated anything, so the two could
+disagree; the event's flag is now the single gate, and the admin page form
+writes it through to the event. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
 `Speaker`, `Timetable`, `Schedule`, `Drink`/`Order`/`OrderingSettings`,
 `EventCheckin` and `AttendantScan` (QR badge scanning at booths).
 

@@ -44,7 +44,7 @@ const WORKFLOW = [
   },
   {
     title: "3. Event page",
-    description: "The public content, companies, speakers and timetable for that annual edition.",
+    description: "The public content, companies, speakers and timetable for that annual edition. It goes live when the edition is published.",
   },
 ];
 
@@ -131,7 +131,7 @@ export default function AdminEventsPage() {
                   const result = await copyAnnualCatalogAction(sourceYearId, selectedYearId);
                   setCopying(false);
                   if (!result.success) return setMessage(result.error ?? "Copy failed");
-                  setMessage(`${result.data?.eventsCreated ?? 0} event editions and ${result.data?.optionsCreated ?? 0} options created. Their event pages are drafts until you publish them.`);
+                  setMessage(`${result.data?.eventsCreated ?? 0} event editions and ${result.data?.optionsCreated ?? 0} options created. They are drafts until you publish them.`);
                   setRefreshVersion((value) => value + 1);
                 }}
               >
@@ -142,7 +142,7 @@ export default function AdminEventsPage() {
           </div>
         </div>
         <p className="mt-3 text-sm text-muted-foreground">
-          Use this for recurring events. It preserves the event series and public URL, copies the previous page and timetable as drafts, and never copies company purchases.
+          Use this for recurring events. It preserves the event series and public URL, copies the previous page and timetable into a draft edition, and never copies company purchases.
         </p>
         {message ? <p className="mt-3 text-sm">{message}</p> : null}
       </section>

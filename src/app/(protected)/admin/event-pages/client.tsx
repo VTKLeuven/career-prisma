@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { ResourceManager } from "@/components/admin/ResourceManager";
 import type { ResourceConfig, SelectOption } from "@/components/admin/types";
 import {
@@ -73,11 +74,23 @@ export default function EventPagesClient({
   const visiblePages = initialPages
     .filter((page) => page.academic_year_id === selectedYearId)
     .sort((a, b) => Number(b.event_id === focusedEventId) - Number(a.event_id === focusedEventId));
+  // A deep link from the events overview names one edition; its page is opened
+  // directly rather than leaving the admin to find the row.
+  const focusedPage = focusedEventId
+    ? visiblePages.find((page) => page.event_id === focusedEventId)
+    : undefined;
   const visibleEventOptions = eventOptions.filter((event) => event.academicYearId === selectedYearId);
   const selectedYear = academicYears.find((year) => year.value === selectedYearId);
   const isPastYear = selectedYear?.endOfYear
     ? new Date(selectedYear.endOfYear).getTime() < Date.now()
     : false;
+  // Read-only has two very different causes. Browsing a finished year on
+  // purpose is expected; being stuck on the newest year because it has ended
+  // and nobody created its successor looks like the screen is simply broken,
+  // so that case says what to do about it.
+  const hasFutureYear = academicYears.some(
+    (year) => !year.endOfYear || new Date(year.endOfYear).getTime() >= Date.now()
+  );
   const config: ResourceConfig<AdminEventPageRow> = {
     singular: "Event Page",
     readOnly: isPastYear,
@@ -87,13 +100,15 @@ export default function EventPagesClient({
     columns: [
       { key: "event_name", label: "Event", render: (p) => p.event_name || "—" },
       {
-        key: "status",
+        key: "event_status",
         label: "Status",
-        render: (p) => (
-          <span className={p.status === "published" ? "text-emerald-600" : "text-muted-foreground"}>
-            {p.status}
-          </span>
-        ),
+        // A published edition needs no badge; only a draft is worth flagging.
+        render: (p) =>
+          p.event_status === "published" ? null : (
+            <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+              Draft
+            </span>
+          ),
       },
       { key: "companies", label: "Companies", render: (p) => String(p.companyIds.length) },
       { key: "speakers", label: "Speakers", render: (p) => String(p.speakerIds.length) },
@@ -109,7 +124,14 @@ export default function EventPagesClient({
         type: "text",
         help: "Changing this updates the edition name. The stable public URL is retained for SEO.",
       },
-      { name: "status", label: "Status", type: "select", options: STATUS_OPTIONS, defaultValue: "draft" },
+      {
+        name: "event_status",
+        label: "Status",
+        type: "select",
+        options: STATUS_OPTIONS,
+        defaultValue: "draft",
+        help: "The edition's status. Publishing it makes this page public.",
+      },
       { name: "shout", label: "Shout", type: "text" },
       { name: "tagline", label: "Tagline", type: "text", className: "md:col-span-2" },
       { name: "description_EN", label: "Description", type: "richtext", className: "md:col-span-2" },
@@ -152,7 +174,14 @@ export default function EventPagesClient({
   return (
     <div className="space-y-4">
       <div className="max-w-xs space-y-2">
-        <Label>Academic year</Label>
+        <div className="flex items-center gap-2">
+          <Label>Academic year</Label>
+          {isPastYear ? (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+              Read-only
+            </span>
+          ) : null}
+        </div>
         <Select value={selectedYearId} onValueChange={setSelectedYearId}>
           <SelectTrigger><SelectValue placeholder="Select academic year" /></SelectTrigger>
           <SelectContent>
@@ -162,12 +191,38 @@ export default function EventPagesClient({
           </SelectContent>
         </Select>
       </div>
-      {focusedEventId ? (
+      {isPastYear ? (
         <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-          The selected event edition is shown first. Its public page and timetable are managed together below.
+          {selectedYear?.label ?? "This academic year"} has ended, so its event pages are
+          read-only.{" "}
+          {hasFutureYear ? (
+            "Select a current academic year to keep editing."
+          ) : (
+            <>
+              No later academic year exists yet — create one under{" "}
+              <Link href="/admin/academic-years" className="font-medium underline underline-offset-2">
+                Manage years
+              </Link>{" "}
+              to carry on.
+            </>
+          )}
         </p>
       ) : null}
-      <ResourceManager config={config} initialRows={visiblePages} />
+      {focusedEventId ? (
+        <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+          {focusedPage
+            ? "The selected event edition opened for editing. Its public page and timetable are managed together here."
+            : "The selected event edition has no page yet. Fill in the form to create it."}
+        </p>
+      ) : null}
+      <ResourceManager
+        config={config}
+        initialRows={visiblePages}
+        autoOpenRowId={focusedPage?.id ?? null}
+        autoOpenCreateValues={
+          focusedEventId && !focusedPage ? { event_id: focusedEventId } : null
+        }
+      />
     </div>
   );
 }

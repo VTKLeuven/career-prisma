@@ -3416,7 +3416,6 @@ function EventCard({ event, onChanged }: { event: CareerEvent; onChanged?: () =>
   const [loading, setLoading] = React.useState(true);
   const [savingHeaderButtons, setSavingHeaderButtons] = React.useState(false);
   const [hasEventPage, setHasEventPage] = React.useState(false);
-  const [eventPageStatus, setEventPageStatus] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const checkFloorplan = async () => {
@@ -3424,7 +3423,6 @@ function EventCard({ event, onChanged }: { event: CareerEvent; onChanged?: () =>
         const { getEventPageWithFloorplan } = await import("@/lib/repos/floorplan");
         const eventPage = await getEventPageWithFloorplan(event.id);
         setHasEventPage(Boolean(eventPage));
-        setEventPageStatus(eventPage?.status ?? null);
         setHasFloorplan(!!eventPage?.floorplan);
         // Check if company_guide exists (could be string ID or object with id)
         const companyGuide = eventPage?.company_guide;
@@ -3451,7 +3449,6 @@ function EventCard({ event, onChanged }: { event: CareerEvent; onChanged?: () =>
         setHasMatchingSoftware(false);
         setHasSchedules(false);
         setHasEventPage(false);
-        setEventPageStatus(null);
       } finally {
         setLoading(false);
       }
@@ -3503,9 +3500,14 @@ function EventCard({ event, onChanged }: { event: CareerEvent; onChanged?: () =>
             <span className="rounded-full bg-muted px-2 py-1">
               {event.academic_year?.name ?? "Annual edition"}
             </span>
-            <span className={eventPageStatus === "published" ? "rounded-full bg-emerald-100 px-2 py-1 text-emerald-800" : "rounded-full bg-amber-100 px-2 py-1 text-amber-800"}>
-              {hasEventPage ? `Event page: ${eventPageStatus ?? "draft"}` : "Event page missing"}
-            </span>
+            {/* One draft flag, on the event: it gates the public page too. A
+                published edition carries no badge. */}
+            {event.status === "published" ? null : (
+              <span className="rounded-full bg-amber-100 px-2 py-1 font-medium text-amber-800">Draft</span>
+            )}
+            {!loading && !hasEventPage ? (
+              <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">Event page missing</span>
+            ) : null}
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">

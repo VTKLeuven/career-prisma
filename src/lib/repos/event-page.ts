@@ -22,7 +22,8 @@ export type AdminEventPageRow = {
   event_name: string | null;
   academic_year_id: string | null;
   academic_year_name: string | null;
-  status: string;
+  /** The owning event's status. Editing it here writes through to the event. */
+  event_status: string;
   shout: string | null;
   tagline: string | null;
   description_EN: string | null;
@@ -78,7 +79,7 @@ function toRow(row: Record<string, any>): AdminEventPageRow {
     event_name: row.event?.name ?? null,
     academic_year_id: row.event?.academic_year_id != null ? String(row.event.academic_year_id) : null,
     academic_year_name: row.event?.academicYear?.name ?? null,
-    status: row.status ?? "draft",
+    event_status: row.event?.status ?? "draft",
     shout: row.shout ?? null,
     tagline: row.tagline ?? null,
     description_EN: row.description_EN ?? null,
@@ -130,6 +131,7 @@ function toEventPageWrite(payload: Record<string, any>): Record<string, unknown>
     id: _id,
     image,
     event_id,
+    event_status: _event_status,
     company_guide,
     floorplan_id,
     latitude,
@@ -206,15 +208,31 @@ async function applyRelations(pageId: number, payload: Record<string, any>): Pro
   }
 }
 
-async function updateEventName(eventId: string | null, value: unknown): Promise<void> {
-  if (!eventId || value === undefined) return;
-  const name = String(value).trim();
+/**
+ * The page form edits two columns that live on the event: its name and its
+ * status. The status is the only draft flag there is, so publishing from this
+ * screen has to reach the event row.
+ */
+async function updateEventFields(
+  eventId: string | null,
+  payload: Record<string, any>
+): Promise<void> {
+  if (!eventId) return;
+  const data: Record<string, unknown> = {};
+
   // A newly-created page starts with an empty form value; in that case retain
   // the selected event's existing name instead of overwriting it.
-  if (!name) return;
+  const name = payload.event_name === undefined ? "" : String(payload.event_name).trim();
+  if (name) data.name = name;
+
+  if (payload.event_status !== undefined) {
+    data.status = String(payload.event_status) === "published" ? "published" : "draft";
+  }
+
+  if (!Object.keys(data).length) return;
   await prisma.careerEvent.update({
     where: { id: eventId },
-    data: { name, date_updated: new Date() },
+    data: { ...data, date_updated: new Date() },
   });
 }
 
@@ -284,7 +302,7 @@ export async function createEventPage(payload: Record<string, any>): Promise<Adm
     data: { ...toEventPageWrite(payload), description_EN: payload.description_EN ?? "" },
   });
   await applyRelations(created.id, payload);
-  await updateEventName(created.event_id, payload.event_name);
+  await updateEventFields(created.event_id, payload);
   await syncTimetableItems(created.id, payload.timetableItems);
   return (await getRow(created.id))!;
 }
@@ -310,7 +328,7 @@ export async function updateEventPage(id: number, payload: Record<string, any>):
   }
   const page = await prisma.careerEventPage.update({ where: { id }, data: toEventPageWrite(payload) });
   await applyRelations(id, payload);
-  await updateEventName(page.event_id, payload.event_name);
+  await updateEventFields(page.event_id, payload);
   await syncTimetableItems(id, payload.timetableItems);
   return (await getRow(id))!;
 }

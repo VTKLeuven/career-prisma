@@ -125,7 +125,8 @@ model CareerEventPageTimetable {
 
 model CareerEventPage {
   id                        Int                        @id(map: "career_event_page_pkey") @default(autoincrement())
-  status                    String                     @default("draft") @db.VarChar(255)
+  // No status column: the page is published exactly when its CareerEvent is.
+  // Two draft flags for one thing only ever disagreed.
   event_id                  String?                    @db.Uuid
   shout                     String?                    @db.VarChar(255)
   description_EN            String?

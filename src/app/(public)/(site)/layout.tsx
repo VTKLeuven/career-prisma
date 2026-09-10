@@ -65,6 +65,21 @@ export default function NoSidebarLayout({ children }: { children: React.ReactNod
 }
 
 
+/**
+ * Campaign override for the Events nav item. While one edition is the whole
+ * story, the header points straight at it instead of opening the dropdown.
+ *
+ * `null` = the normal Events dropdown. To feature an edition (January, for
+ * Jobfair 2027) set it to the label and its public URL:
+ *
+ *   const FEATURED_EVENT_LINK: FeaturedEventLink =
+ *     { label: "Jobfair 2027", href: "/event/vtk-jobfair" };
+ *
+ * Setting it back to `null` restores the dropdown; nothing else changes.
+ */
+type FeaturedEventLink = { label: string; href: string } | null;
+const FEATURED_EVENT_LINK: FeaturedEventLink = null;
+
 function Header() {
   const { darkHeaderFooter } = usePageLayout()
   const [openMenu, setOpenMenu] = useState<null | 'events'>(null)
@@ -210,21 +225,54 @@ function Header() {
             <nav className="hidden items-center gap-2 md:flex">
               <Link href="/" className={`rounded-full px-4 py-2 text-sm font-medium ${darkHeaderFooter ? 'bg-[#262626] text-white hover:bg-[#333] border-0' : 'bg-vtk-blue text-white'}`}>Home</Link>
 
-              {/* TEMPORARY: Replaced Events dropdown with Jobfair 2026 link. Revert to Events dropdown when done. */}
-              <Link href="/event/vtk-jobfair" className={`rounded-full px-4 py-2 text-sm font-medium ${darkHeaderFooter ? 'text-neutral-200 hover:bg-neutral-700/50' : 'text-neutral-800 hover:bg-neutral-100'}`}>
-                Jobfair 2026
-              </Link>
+              {FEATURED_EVENT_LINK ? (
+                <Link href={FEATURED_EVENT_LINK.href} className={`rounded-full px-4 py-2 text-sm font-medium ${darkHeaderFooter ? 'text-neutral-200 hover:bg-neutral-700/50' : 'text-neutral-800 hover:bg-neutral-100'}`}>
+                  {FEATURED_EVENT_LINK.label}
+                </Link>
+              ) : (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onMouseEnter={() => {
+                      if (!menuOpenedViaClick) {
+                        setOpenMenu('events')
+                      }
+                    }}
+                    onFocus={() => setOpenMenu('events')}
+                    onClick={() => {
+                      setOpenMenu('events')
+                      setMenuOpenedViaClick(true)
+                    }}
+                    className={`inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm font-medium ${darkHeaderFooter ? 'text-neutral-200 hover:bg-neutral-700/50' : 'text-neutral-800 hover:bg-neutral-100'}`}
+                    aria-expanded={openMenu === 'events'}
+                    aria-controls="mega-events"
+                  >
+                    Events <ChevronDown className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
 
               <Link href="/our-students" className={`rounded-full px-4 py-2 text-sm font-medium ${darkHeaderFooter ? 'text-neutral-200 hover:bg-neutral-700/50' : 'text-neutral-800 hover:bg-neutral-100'}`}>Our students</Link>
               <Link href="/vacancies" className={`rounded-full px-4 py-2 text-sm font-medium ${darkHeaderFooter ? 'text-neutral-200 hover:bg-neutral-700/50' : 'text-neutral-800 hover:bg-neutral-100'}`}>Vacancies</Link>
             </nav>
 
-            {/* Mobile nav - TEMPORARY: Jobfair 2026 link (was Events button). Revert when done. */}
+            {/* Mobile nav - the Events button opens the full mobile menu. */}
             <nav className="md:hidden flex items-center gap-2">
               <Link href="/" className={`rounded-full px-3 py-1.5 text-xs font-medium ${darkHeaderFooter ? 'bg-[#262626] text-white hover:bg-[#333] border-0' : 'bg-vtk-blue text-white'}`}>Home</Link>
-              <Link href="/event/vtk-jobfair" className={`rounded-full px-3 py-1.5 text-xs font-medium ${darkHeaderFooter ? 'text-neutral-200 hover:bg-neutral-700/50' : 'text-neutral-800 hover:bg-neutral-100'}`}>
-                Jobfair 2026
-              </Link>
+              {FEATURED_EVENT_LINK ? (
+                <Link href={FEATURED_EVENT_LINK.href} className={`rounded-full px-3 py-1.5 text-xs font-medium ${darkHeaderFooter ? 'text-neutral-200 hover:bg-neutral-700/50' : 'text-neutral-800 hover:bg-neutral-100'}`}>
+                  {FEATURED_EVENT_LINK.label}
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium ${darkHeaderFooter ? 'text-neutral-200 hover:bg-neutral-700/50' : 'text-neutral-800 hover:bg-neutral-100'}`}
+                  aria-expanded={mobileMenuOpen}
+                >
+                  Events
+                </button>
+              )}
               <Link href="/vacancies" className={`rounded-full px-3 py-1.5 text-xs font-medium ${darkHeaderFooter ? 'text-neutral-200 hover:bg-neutral-700/50' : 'text-neutral-800 hover:bg-neutral-100'}`}>Vacancies</Link>
             </nav>
 
@@ -349,7 +397,9 @@ function Header() {
                             const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
                             const now = new Date();
                             const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                            return eventDay >= today; // Include today and future events
+                            // A draft edition has no public page, so it must not be listed
+                            // here either. Today and future events only.
+                            return e.status === 'published' && eventDay >= today;
                           } catch {
                             return false;
                           }
@@ -528,7 +578,9 @@ function Header() {
                               const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
                               const now = new Date();
                               const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                              return eventDay >= today; // Include today and future events
+                              // A draft edition has no public page, so it must not be listed
+                              // here either. Today and future events only.
+                              return e.status === 'published' && eventDay >= today;
                             } catch {
                               return false;
                             }

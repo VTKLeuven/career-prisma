@@ -81,9 +81,16 @@ function editValue(field: FieldConfig<any>, row: Record<string, unknown>): unkno
 export function ResourceManager<T extends Record<string, unknown>>({
   config,
   initialRows,
+  autoOpenRowId,
+  autoOpenCreateValues,
 }: {
   config: ResourceConfig<T>;
   initialRows: T[];
+  /** Opens this row's edit dialog once on mount, for deep links from elsewhere. */
+  autoOpenRowId?: string | null;
+  /** Fallback for a deep link whose row does not exist yet: opens the create
+   *  dialog with these values prefilled. */
+  autoOpenCreateValues?: Record<string, unknown> | null;
 }) {
   const router = useRouter();
   const [rows, setRows] = React.useState<T[]>(initialRows);
@@ -131,11 +138,14 @@ export function ResourceManager<T extends Record<string, unknown>>({
   const optionsFor = (field: FieldConfig<any>): SelectOption[] =>
     field.options ?? asyncOptions[field.name] ?? [];
 
-  const openCreate = () => {
+  const openCreate = (prefill?: FormValues) => {
     setEditing(null);
     setError(null);
     setFiles({});
-    setValues(Object.fromEntries(config.fields.map((f) => [f.name, emptyValue(f)])));
+    setValues({
+      ...Object.fromEntries(config.fields.map((f) => [f.name, emptyValue(f)])),
+      ...prefill,
+    });
     setOpen(true);
   };
 
@@ -149,6 +159,27 @@ export function ResourceManager<T extends Record<string, unknown>>({
 
   const setValue = (name: string, value: unknown) =>
     setValues((prev) => ({ ...prev, [name]: value }));
+
+  // A deep link lands on the list but means one specific row, so the dialog is
+  // opened for it straight away -- once, so closing it does not reopen.
+  const autoOpened = React.useRef(false);
+  React.useEffect(() => {
+    if (autoOpened.current || config.readOnly) return;
+    if (!autoOpenRowId && !autoOpenCreateValues) return;
+    const row = autoOpenRowId
+      ? rows.find((candidate) => config.getId(candidate) === autoOpenRowId)
+      : undefined;
+    if (row) {
+      autoOpened.current = true;
+      openEdit(row);
+      return;
+    }
+    if (autoOpenCreateValues && config.actions.create) {
+      autoOpened.current = true;
+      openCreate(autoOpenCreateValues);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenRowId, autoOpenCreateValues, rows]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -266,7 +297,7 @@ export function ResourceManager<T extends Record<string, unknown>>({
           </div>
         ) : null}
         {!config.readOnly && !config.hideCreate && config.actions.create ? (
-          <Button className="sm:ml-auto" onClick={openCreate}>
+          <Button className="sm:ml-auto" onClick={() => openCreate()}>
             <Plus className="mr-2 h-4 w-4" /> Add {config.singular}
           </Button>
         ) : null}
