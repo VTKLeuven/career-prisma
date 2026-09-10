@@ -123,7 +123,10 @@ export default function CompanyFormPage() {
     async function loadData() {
       setLoading(true);
       try {
-        // Load event
+        // Load event. The deliberate exception to the public published-only
+        // rule: companies fill in their intake form for an edition long before
+        // its page goes live, and the form is reached by event id, not by
+        // browsing. Filtering to published here would break it every autumn.
         const events = await fetchEventsAction();
         const foundEvent = events?.find((e) => e.id === eventId);
         setEvent(foundEvent || null);

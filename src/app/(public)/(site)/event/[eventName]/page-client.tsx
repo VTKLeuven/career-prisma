@@ -14,7 +14,7 @@ import { ScrollCue } from '@/components/ScrollCue'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useParams } from "next/navigation"
-import { fetchEventPageBySlugAction, fetchEventsAction } from "@/app/actions/events"
+import { fetchEventPageBySlugAction, fetchPublicEventsAction } from "@/app/actions/events"
 import { getFileUrl } from "@/components/Images";
 import { slugifyCompanyName, slugifyEventName, getSpeakerSlug } from "@/lib/utils/slugify";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
@@ -245,7 +245,7 @@ function HomepageHeader() {
         if (ac.signal.aborted) return
         // Fallback to direct action (must be caught too; navigation aborts can throw)
         try {
-          const events = await fetchEventsAction()
+          const events = await fetchPublicEventsAction()
           if (!ac.signal.aborted) setEvents(events)
         } catch {
           // Ignore: non-critical header data

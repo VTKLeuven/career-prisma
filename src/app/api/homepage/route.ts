@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchEventsAction } from "@/app/actions/events";
+import { fetchPublicEventsAction } from "@/app/actions/events";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 
 // Cache for homepage data
@@ -19,8 +19,10 @@ export async function GET() {
     }
 
     // Fetch both in parallel for faster loading
+    // This endpoint is public and uncredentialed -- it feeds the homepage and
+    // the site header -- so it must never carry draft editions.
     const [events, salespersons] = await Promise.all([
-      fetchEventsAction(),
+      fetchPublicEventsAction(),
       fetchSalespersonsAction(),
     ]);
 

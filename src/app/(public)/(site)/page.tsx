@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Calendar, ChevronDown, Sparkles, LogOut, User, Star } from 'lucide-react'
 import { useRouter, usePathname } from 'next/navigation'
-import { fetchEventsAction } from "@/app/actions/events";
+import { fetchPublicEventsAction } from "@/app/actions/events";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { getFileUrl } from "@/components/Images";
 import { CareerEvent } from '@/lib/schema'
@@ -111,7 +111,7 @@ function Header({ onViewAll }: { onViewAll?: () => void }) {
           if (ac.signal.aborted) return
           // Fallback to direct action (must be caught too; navigation aborts can throw)
           try {
-            const events = await fetchEventsAction()
+            const events = await fetchPublicEventsAction()
             if (!ac.signal.aborted) setEvents(events)
           } catch {
             // Ignore: non-critical header data
@@ -678,7 +678,7 @@ function UpcomingEvents({ onViewAll }: { onViewAll?: () => void }) {
           })
           .catch(() => {
             // Fallback to direct action
-            return fetchEventsAction()
+            return fetchPublicEventsAction()
               .then((rows) => { if (!alive) return; setEvents(rows ?? []); })
               .catch((err) => console.error("Error fetching events:", err));
           })
@@ -791,7 +791,7 @@ function AllEvents({ onBack }: { onBack?: () => void }) {
       .then((data) => setEvents(data.events ?? []))
       .catch(() => {
         // Fallback to direct action
-        return fetchEventsAction()
+        return fetchPublicEventsAction()
           .then((rows) => setEvents(rows ?? []))
           .catch((err) => console.error("Error fetching events:", err));
       })

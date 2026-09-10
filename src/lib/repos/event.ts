@@ -146,9 +146,11 @@ export async function listEvents(opts?: {
   sort?: string;        // e.g. "-date_created" or "name"
   academicYearId?: string | number;
   includeHistory?: boolean;
+  /** Public callers only: drops draft editions, which have no public page. */
+  publishedOnly?: boolean;
 }) {
   try {
-    const { search, limit = 25, page = 1, sort = "date", includeHistory = false } = opts ?? {};
+    const { search, limit = 25, page = 1, sort = "date", includeHistory = false, publishedOnly = false } = opts ?? {};
     const academicYearId = includeHistory
       ? undefined
       : await resolveAcademicYearId(opts?.academicYearId);
@@ -157,6 +159,7 @@ export async function listEvents(opts?: {
 
     const rows = await prisma.careerEvent.findMany({
       where: {
+        ...(publishedOnly ? { status: "published" } : {}),
         ...(academicYearId ? { academic_year_id: academicYearId } : {}),
         ...(search ? {
             OR: [

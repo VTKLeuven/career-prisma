@@ -9,7 +9,7 @@ import Link from "next/link";
 import { validateExistingPageImage } from "@/lib/utils/image-validation";
 import { Calendar } from "lucide-react";
 import { slugifyCompanyName, slugifyEventName } from "@/lib/utils/slugify";
-import { fetchEventsAction } from "@/app/actions/events";
+import { fetchPublicEventsAction } from "@/app/actions/events";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -61,7 +61,7 @@ export default function CompanyPage() {
 
   // Fetch all events for matching
   useEffect(() => {
-    fetchEventsAction()
+    fetchPublicEventsAction()
       .then((events) => setAllEvents(events ?? []))
       .catch((err) => console.error("Error fetching events:", err));
   }, []);
@@ -594,7 +594,7 @@ function Header({ hasSpeakers = false }: { hasSpeakers?: boolean }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetchEventsAction()
+    fetchPublicEventsAction()
       .then((events) => { if (!cancelled) setEvents(events ?? []); })
       .catch(() => {});
     return () => { cancelled = true; };

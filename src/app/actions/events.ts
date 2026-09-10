@@ -18,12 +18,18 @@ import { getUserFromCookies } from "@/lib/auth-server";
 import prisma from "@/lib/prisma";
 import { compareTimetableItems } from "@/lib/utils/timetable";
 
-export async function fetchEventsAction(opts?: { academicYearId?: string; includeHistory?: boolean }) {
+export async function fetchEventsAction(opts?: {
+  academicYearId?: string;
+  includeHistory?: boolean;
+  /** Public callers only -- see fetchPublicEventsAction. */
+  publishedOnly?: boolean;
+}) {
     const events = await listEvents({
       limit: 200,
       sort: "date",
       academicYearId: opts?.academicYearId,
       includeHistory: opts?.includeHistory,
+      publishedOnly: opts?.publishedOnly,
     }) ?? [];
     events.map(el => {
         el.href = `/event/${slugifyEventName(el.name)}`;
@@ -38,6 +44,19 @@ export async function fetchEventsAction(opts?: { academicYearId?: string; includ
     })
   })
   return events
+}
+
+/**
+ * Events for anything a visitor can see: the homepage lists, the site header
+ * dropdown, the company pages.
+ *
+ * `fetchEventsAction` deliberately returns drafts too -- the admin screens are
+ * built to edit them -- so every public surface has to go through this instead.
+ * A draft edition has no public event page, so listing it hands visitors a link
+ * that 404s.
+ */
+export async function fetchPublicEventsAction() {
+  return fetchEventsAction({ publishedOnly: true });
 }
 
 export async function fetchOptionsForEventAction(eventId: string) {

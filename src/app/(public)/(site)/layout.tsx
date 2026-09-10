@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ChevronDown, LogOut, User, Bell, Star } from 'lucide-react'
 import { useRouter, usePathname } from 'next/navigation'
-import { fetchEventsAction } from "@/app/actions/events";
+import { fetchPublicEventsAction } from "@/app/actions/events";
 import { CareerEvent } from '@/lib/schema'
 import { Footer } from '@/components/Footer'
 import { getUpcomingEventsWithFallback } from '@/lib/utils/events'
@@ -107,7 +107,7 @@ function Header() {
         if (ac.signal.aborted) return
         // Fallback to direct action (must be caught too; navigation aborts can throw)
         try {
-          const events = await fetchEventsAction()
+          const events = await fetchPublicEventsAction()
           if (!ac.signal.aborted) setEvents(events)
         } catch {
           // Ignore: non-critical header data
@@ -397,9 +397,9 @@ function Header() {
                             const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
                             const now = new Date();
                             const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                            // A draft edition has no public page, so it must not be listed
-                            // here either. Today and future events only.
-                            return e.status === 'published' && eventDay >= today;
+                            // Drafts are already gone: this list comes from the public
+                            // events endpoint / action. Today and future events only.
+                            return eventDay >= today;
                           } catch {
                             return false;
                           }
@@ -578,9 +578,9 @@ function Header() {
                               const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
                               const now = new Date();
                               const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                              // A draft edition has no public page, so it must not be listed
-                              // here either. Today and future events only.
-                              return e.status === 'published' && eventDay >= today;
+                              // Drafts are already gone: this list comes from the public
+                              // events endpoint / action. Today and future events only.
+                              return eventDay >= today;
                             } catch {
                               return false;
                             }
