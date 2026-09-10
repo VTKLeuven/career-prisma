@@ -46,6 +46,12 @@ export type FieldConfig<T = Record<string, unknown>> = {
   defaultValue?: unknown;
   /** Extracts the current value from a row when editing. Defaults to `row[name]`. */
   getEditValue?: (row: T) => unknown;
+  /**
+   * Shows this field only for some form states, e.g. a field that applies to
+   * one role. Hidden fields are submitted as their empty value, so a field that
+   * stops applying is cleared instead of silently keeping a stale value.
+   */
+  visible?: (values: Record<string, unknown>) => boolean;
   /** Optional domain-specific editor while keeping the shared dialog and save flow. */
   renderInput?: (props: {
     value: unknown;

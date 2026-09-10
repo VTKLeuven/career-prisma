@@ -9,6 +9,25 @@ import { sendEmail } from "@/lib/email";
 const SALESPERSON_ROLE_ID = "7b128ef4-f530-47d2-8f4c-ef82518eb313";
 const COMPANY_REP_ROLE_ID = "d5475bf4-a77f-48de-b06c-fac199b0f631";
 
+/**
+ * `profile_link` ends up in `window.open()` on the public homepage, so a stored
+ * `javascript:` URL would run as the visitor. Only http(s) survives; anything
+ * else is dropped rather than rejected, so a typo cannot block saving the rest
+ * of the form. A bare `vtk.be` is upgraded rather than discarded.
+ */
+function normaliseProfileLink(value: unknown): string | null {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return null;
+  const candidate = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.toString().slice(0, 255);
+  } catch {
+    return null;
+  }
+}
+
 async function requireUser() {
   const user = await getUserFromCookies();
   if (!user) throw new Error("Unauthorized");
@@ -69,6 +88,7 @@ export type AdminUserRow = {
   role_name: string | null;
   company_id: string | null;
   company_name: string | null;
+  profile_link: string | null;
 };
 
 /** Full platform-user list for the admin users table. */
@@ -94,6 +114,7 @@ export async function listUsers(): Promise<AdminUserRow[]> {
     role_name: u.role?.name ?? null,
     company_id: u.company_id,
     company_name: u.company?.name ?? null,
+    profile_link: u.profile_link,
   }));
 }
 
@@ -104,13 +125,17 @@ export async function listRoles(): Promise<{ id: string; name: string }[]> {
 }
 
 function toUserWrite(payload: Record<string, any>): Record<string, unknown> {
-  const { id: _id, role, role_id, company, company_id, email, avatar, ...rest } = payload;
+  const { id: _id, role, role_id, company, company_id, email, avatar, profile_link, ...rest } =
+    payload;
   const roleRef = role_id ?? role;
   const companyRef = company_id ?? (company && typeof company === "object" ? company.id : company);
   return {
     ...rest,
     ...(email !== undefined ? { email: email ? String(email).trim().toLowerCase() : null } : {}),
     ...(avatar !== undefined ? { avatar: avatar || null } : {}),
+    ...(profile_link !== undefined
+      ? { profile_link: normaliseProfileLink(profile_link) }
+      : {}),
     ...(roleRef !== undefined ? { role_id: roleRef || null } : {}),
     ...(companyRef !== undefined ? { company_id: companyRef || null } : {}),
   };
@@ -161,6 +186,7 @@ async function listUsersRow(id: string): Promise<AdminUserRow | null> {
     role_name: u.role?.name ?? null,
     company_id: u.company_id,
     company_name: u.company?.name ?? null,
+    profile_link: u.profile_link,
   };
 }
 
@@ -321,6 +347,7 @@ export async function listSalespersons(opts?: {
       email: true,
       avatar: true,
       title: true,
+      profile_link: true,
     },
     take: limit,
     skip: Math.max(0, page - 1) * limit,
@@ -342,6 +369,7 @@ export async function fetchSalespersonByID(salespersonId: string) {
       email: true,
       avatar: true,
       title: true,
+      profile_link: true,
     },
   });
 }

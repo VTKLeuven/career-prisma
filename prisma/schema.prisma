@@ -777,6 +777,12 @@ model User {
   password_reset_token_created DateTime?         @db.Timestamptz(6)
   invite_token_hash            String?           @db.VarChar(64)
   invite_token_created         DateTime?         @db.Timestamptz(6)
+  // Where the team card on the public homepage links to (LinkedIn, a booking
+  // page, ...). Only meaningful for the two internal roles -- company reps have
+  // no card -- so the admin form only offers it for those, and clears it when
+  // the role changes. Always an http(s) URL: it is fed straight to
+  // window.open(), so lib/repos/users.ts rejects anything else.
+  profile_link                 String?           @db.VarChar(255)
   attendantScans               AttendantScan[]
   companies                    Company[]         @relation("companies_salesperson_idTousers")
   cvBookScreenings             CvBookScreening[]

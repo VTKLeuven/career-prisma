@@ -21,7 +21,8 @@ export type UserSummary = {
   email: string | null;
   title: string | null;
   avatar: string | null;
-  description?: string | null;
+  /** Optional target for the homepage team card. See users.profile_link. */
+  profile_link?: string | null;
 };
 
 export type CompanyRep = {

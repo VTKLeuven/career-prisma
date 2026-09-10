@@ -12,6 +12,11 @@ import {
   type AdminUserRow,
 } from "@/lib/repos/users";
 import { listCompaniesBasic } from "@/lib/repos/company";
+// Every write below can change the homepage team section -- a new salesperson,
+// an edited name, photo or card link, an archived account, or an invite that
+// flips the status back to `invited` and drops them from the list. Without this
+// the change stays invisible for up to the cache TTL and reads as a failed save.
+import { invalidateHomepageCache } from "@/lib/homepage-cache";
 import { sendEmail } from "@/lib/email";
 import { generateInvitationEmailHtml } from "@/lib/email-templates";
 import type { ActionResult, SelectOption } from "@/components/admin/types";
@@ -38,6 +43,7 @@ export async function createUserAction(data: Record<string, unknown>): Promise<A
     await requireAdminUser();
     const user = await createUser(data);
     revalidatePath("/admin/users");
+    invalidateHomepageCache();
     return { success: true, data: user };
   } catch (error) {
     console.error("[createUserAction]", error);
@@ -50,6 +56,7 @@ export async function updateUserAction(id: string, data: Record<string, unknown>
     await requireAdminUser();
     const user = await updateUser(id, data);
     revalidatePath("/admin/users");
+    invalidateHomepageCache();
     return { success: true, data: user };
   } catch (error) {
     console.error("[updateUserAction]", error);
@@ -63,6 +70,7 @@ export async function deleteUserAction(id: string): Promise<ActionResult> {
     await requireAdminUser();
     const result = await deleteUser(id);
     revalidatePath("/admin/users");
+    invalidateHomepageCache();
     return result;
   } catch (error) {
     console.error("[deleteUserAction]", error);
@@ -89,6 +97,7 @@ export async function sendUserInviteAction(id: string): Promise<ActionResult> {
       html: generateInvitationEmailHtml({ acceptInviteUrl }),
     });
     revalidatePath("/admin/users");
+    invalidateHomepageCache();
     return { success: true };
   } catch (error) {
     console.error("[sendUserInviteAction]", error);

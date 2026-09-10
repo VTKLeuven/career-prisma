@@ -1,21 +1,28 @@
 import { NextResponse } from "next/server";
 import { fetchPublicEventsAction } from "@/app/actions/events";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
+import {
+  readHomepageCache,
+  writeHomepageCache,
+} from "@/lib/homepage-cache";
 
-// Cache for homepage data
-const homepageCache = { data: null as any, timestamp: 0 };
-const CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+/**
+ * Browsers must revalidate; shared caches may serve a cached copy. Splitting the
+ * two is the point of CDN-Cache-Control: a single `Cache-Control` carrying
+ * `s-maxage` + `stale-while-revalidate` and no `max-age` also lets the *browser*
+ * reuse a stale body (heuristic freshness plus the SWR window), so a visitor
+ * kept seeing an old team card for minutes after it changed.
+ */
+const CACHE_HEADERS = {
+  "Cache-Control": "public, max-age=0, must-revalidate",
+  "CDN-Cache-Control": "public, s-maxage=120, stale-while-revalidate=300",
+};
 
 export async function GET() {
   try {
-    // Check cache
-    if (homepageCache.data && Date.now() - homepageCache.timestamp < CACHE_TTL) {
-      return NextResponse.json(homepageCache.data, {
-        headers: {
-          'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=300',
-          'CDN-Cache-Control': 'public, s-maxage=120',
-        },
-      });
+    const cached = readHomepageCache();
+    if (cached) {
+      return NextResponse.json(cached, { headers: CACHE_HEADERS });
     }
 
     // Fetch both in parallel for faster loading
@@ -27,17 +34,9 @@ export async function GET() {
     ]);
 
     const data = { events, salespersons };
-    
-    // Cache the result
-    homepageCache.data = data;
-    homepageCache.timestamp = Date.now();
+    writeHomepageCache(data);
 
-    return NextResponse.json(data, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=300',
-        'CDN-Cache-Control': 'public, s-maxage=120',
-      },
-    });
+    return NextResponse.json(data, { headers: CACHE_HEADERS });
   } catch (error) {
     console.error('[homepage API] Error fetching homepage data:', error);
     return NextResponse.json(
@@ -46,4 +45,3 @@ export async function GET() {
     );
   }
 }
-

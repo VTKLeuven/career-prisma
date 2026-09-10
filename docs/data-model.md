@@ -33,7 +33,15 @@ writes it through to the event. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
   | `Administrator` | `c4e63615` | **internal / support.** Same permissions as VTK Career, never advertised |
   | `Student` | `daf734af` | unused; cannot sign in |
 
-  Only the first three may sign in — see [auth.md](auth.md).
+  Only the first three may sign in — see [auth.md](auth.md). The ids are also
+  exported from [`src/lib/roles.ts`](../src/lib/roles.ts) for UI that needs
+  them; the two authorization copies named in auth.md stay separate on purpose.
+
+  `users.profile_link` is the URL a visitor is sent to when they click a
+  person's card in the homepage team section. It only applies to the two
+  internal roles, so `/admin/users` shows the field for those roles only and
+  clears it when the role changes. It reaches `window.open()` unescaped, so
+  `src/lib/repos/users.ts` drops anything that is not http(s) on write.
 - `Student` — separate table, separate login, separate password column.
   Both password columns are argon2id.
 - `CompanyUserRequest` — company reps awaiting admin approval.

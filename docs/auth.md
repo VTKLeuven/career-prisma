@@ -39,7 +39,9 @@ role. Always match on the id.
 | `Administrator` | `c4e63615-…` | yes | no |
 | `Student` | `daf734af-…` | no | no |
 
-Two places encode this, and they must stay in sync:
+Two places encode this, and they must stay in sync (a third,
+[`src/lib/roles.ts`](../src/lib/roles.ts), carries the same ids for client
+components that need to branch on a role, but grants nothing):
 
 - `ALLOWED_ROLE_IDS` in `src/app/api/login/route.ts` — who may sign in. A role
   that is missing here gets the same 401 as a wrong password, so an account can

@@ -138,6 +138,12 @@ export function ResourceManager<T extends Record<string, unknown>>({
   const optionsFor = (field: FieldConfig<any>): SelectOption[] =>
     field.options ?? asyncOptions[field.name] ?? [];
 
+  // Recomputed on every value change so a conditional field appears the moment
+  // the field it depends on (typically the role) is switched.
+  const visibleFields = config.fields.filter(
+    (field) => !field.visible || field.visible(values)
+  );
+
   const openCreate = (prefill?: FormValues) => {
     setEditing(null);
     setError(null);
@@ -188,6 +194,14 @@ export function ResourceManager<T extends Record<string, unknown>>({
 
     try {
       const payload: FormValues = { ...values };
+
+      // A field the form is currently hiding no longer applies to this row, so
+      // send its empty value rather than whatever was typed before the switch.
+      for (const field of config.fields) {
+        if (field.visible && !field.visible(values)) {
+          payload[field.name] = emptyValue(field);
+        }
+      }
 
       // Upload any freshly picked files, replacing the value with the file id.
       for (const field of config.fields) {
@@ -440,9 +454,9 @@ export function ResourceManager<T extends Record<string, unknown>>({
                 config.fieldsClassName ?? "space-y-4"
               )}
             >
-              {config.fields.map((field, index) => (
+              {visibleFields.map((field, index) => (
                 <React.Fragment key={field.name}>
-                  {field.section && field.section !== config.fields[index - 1]?.section ? (
+                  {field.section && field.section !== visibleFields[index - 1]?.section ? (
                     <div className="col-span-full border-b pb-2 pt-2 first:pt-0">
                       <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                         {field.section}

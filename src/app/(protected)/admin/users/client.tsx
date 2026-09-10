@@ -8,6 +8,7 @@ import {
   deleteUserAction,
 } from "@/app/actions/admin-users";
 import type { AdminUserRow } from "@/lib/repos/users";
+import { INTERNAL_ROLE_IDS } from "@/lib/roles";
 import { UserRound } from "lucide-react";
 
 const STATUS_OPTIONS: SelectOption[] = [
@@ -95,6 +96,18 @@ export default function UsersClient({
         options: STATUS_OPTIONS,
         defaultValue: "invited",
         getEditValue: (u) => u.status ?? "",
+      },
+      {
+        // Only the internal roles get a card in the homepage team section, so
+        // this is the only place the link can do anything. Switching the role
+        // away hides the field and clears the stored value.
+        name: "profile_link",
+        label: "Homepage card link",
+        type: "text",
+        placeholder: "https://www.linkedin.com/in/...",
+        help: "Opened in a new tab when a visitor clicks this person's card on the homepage. Leave empty for no link.",
+        visible: (values) => INTERNAL_ROLE_IDS.includes(String(values.role_id ?? "")),
+        getEditValue: (u) => u.profile_link ?? "",
       },
       {
         name: "company_id",

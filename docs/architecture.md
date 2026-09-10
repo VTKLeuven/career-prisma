@@ -62,8 +62,25 @@ single campaign link ("Jobfair 2027"). One edit changes every page.
 
 Several hot read paths have hand-rolled in-process caches:
 `event-page-cache.ts`, `company-page-cache.ts`, `floorplan-cache.ts`,
-`our-students-cache.ts`. They are per-container and reset on deploy — fine for
-one container, worth knowing before scaling out.
+`our-students-cache.ts`, `homepage-cache.ts`. They are per-container and reset
+on deploy — fine for one container, worth knowing before scaling out.
+
+A cached read path needs two things, and `homepage-cache.ts` is the worked
+example of both:
+
+- **A write that invalidates it.** `/api/homepage` feeds the homepage team
+  section from `users`, so every write in `app/actions/admin-users.ts` calls
+  `invalidateHomepageCache()`. Without it an edit is invisible until the TTL
+  lapses, which reads as a save that silently failed.
+- **Cache headers that separate browser from CDN.** Put the shared-cache
+  lifetime in `CDN-Cache-Control` and leave `Cache-Control` at
+  `public, max-age=0, must-revalidate`. A single header carrying `s-maxage` and
+  `stale-while-revalidate` but no `max-age` also lets the *browser* serve a
+  stale body, for the whole SWR window, long after the server is correct.
+
+The cache lives on `globalThis`, like the client in `lib/prisma.ts`: the route
+that reads it and the actions that clear it can be bundled separately, and a
+plain module variable would give each its own copy.
 
 ## Background work
 

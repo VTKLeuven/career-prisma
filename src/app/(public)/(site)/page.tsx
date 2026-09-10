@@ -339,38 +339,59 @@ function TeamOverview() {
                   variants={{ hidden: {}, show: { transition: { staggerChildren: 0.06 } } }}
                   className="mt-8 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-4 sm:gap-5"
                 >
-                {team.map((m, i) => (
-                  <motion.li
-                    key={m.id}
-                    variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}
-                    whileHover={{ y: -4, rotate: i % 2 ? -0.8 : 0.8 }}
-                    className="group relative cursor-pointer"
-                    onClick={() => { if (m.description) window.open(m.description, "_blank"); }}
-                  >
-                  <div className="rounded-[28px] bg-white/90 p-5 text-center shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md hover:shadow-lg transition-shadow duration-200">
-                  <div className="mx-auto h-24 w-24 overflow-hidden rounded-full ring-4 ring-vtk-light transition-transform duration-300 group-hover:scale-105">
-                  {m.avatar && (
-                    <Image
-                    src={getFileUrl(m.avatar)!}
-                    alt={`${m.first_name} ${m.last_name}`}
-                    width={96}
-                    height={96}
-                    loading="lazy"
-                    className="h-full w-full object-cover"
-                  />
-                  )}
-                  </div>
-                  <div className="mt-3 text-base font-semibold tracking-tight text-neutral-900">
-                  {m.first_name} {m.last_name}
-                  </div>
-                  <div className="mt-1 text-xs font-medium text-vtk-blue/90">{m.title}</div>
-                </div>
-                <div
-                aria-hidden
-                className="absolute inset-x-8 -bottom-3 h-6 rounded-full bg-black/10 blur-md opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-                />
-            </motion.li>
-            ))}
+                {team.map((m, i) => {
+                  // Set per person in /admin/users. Rendering the card as a real
+                  // anchor rather than an onClick keeps middle-click, keyboard
+                  // focus and "open in new tab" working; without a link it stays
+                  // a plain, unclickable card.
+                  const link = m.profile_link || null;
+                  const card = (
+                    <div className="rounded-[28px] bg-white/90 p-5 text-center shadow-[0_10px_40px_rgba(11,77,140,0.08)] ring-1 ring-black/5 backdrop-blur-md hover:shadow-lg transition-shadow duration-200">
+                      <div className="mx-auto h-24 w-24 overflow-hidden rounded-full ring-4 ring-vtk-light transition-transform duration-300 group-hover:scale-105">
+                        {m.avatar && (
+                          <Image
+                            src={getFileUrl(m.avatar)!}
+                            alt={`${m.first_name} ${m.last_name}`}
+                            width={96}
+                            height={96}
+                            loading="lazy"
+                            className="h-full w-full object-cover"
+                          />
+                        )}
+                      </div>
+                      <div className="mt-3 text-base font-semibold tracking-tight text-neutral-900">
+                        {m.first_name} {m.last_name}
+                      </div>
+                      <div className="mt-1 text-xs font-medium text-vtk-blue/90">{m.title}</div>
+                    </div>
+                  );
+
+                  return (
+                    <motion.li
+                      key={m.id}
+                      variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}
+                      whileHover={{ y: -4, rotate: i % 2 ? -0.8 : 0.8 }}
+                      className="group relative"
+                    >
+                      {link ? (
+                        <a
+                          href={link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block cursor-pointer rounded-[28px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vtk-blue focus-visible:ring-offset-2"
+                        >
+                          {card}
+                        </a>
+                      ) : (
+                        card
+                      )}
+                      <div
+                        aria-hidden
+                        className="absolute inset-x-8 -bottom-3 h-6 rounded-full bg-black/10 blur-md opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                      />
+                    </motion.li>
+                  );
+                })}
             </motion.ul>
 
             </div>
