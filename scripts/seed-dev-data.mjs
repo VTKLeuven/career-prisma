@@ -24,10 +24,15 @@
  * Re-running is safe: every row is keyed on a fixed UUID or a natural key, so
  * the script updates in place instead of duplicating. It never deletes data it
  * did not create.
+ *
+ * At the end it also runs scripts/fetch-referenced-assets.mjs, which downloads
+ * the images whose ids are hardcoded in src/ from the live site.
  */
 
 import "dotenv/config";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { mkdir, writeFile } from "node:fs/promises";
 import { deflateSync } from "node:zlib";
 import argon2 from "argon2";
@@ -156,8 +161,8 @@ function minimalPdf(title) {
   const objects = [
     "<</Type/Catalog/Pages 2 0 R>>",
     "<</Type/Pages/Kids[3 0 R]/Count 1>>",
-    "<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 200]/Contents 4 0 R"
-      + "/Resources<</Font<</F1 5 0 R>>>>>>",
+    "<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 200]/Contents 4 0 R" +
+      "/Resources<</Font<</F1 5 0 R>>>>>>",
     `<</Length ${stream.length}>>${NL}stream${NL}${stream}${NL}endstream`,
     "<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
   ];
@@ -174,8 +179,9 @@ function minimalPdf(title) {
   for (const offset of offsets) {
     pdf += `${String(offset).padStart(10, "0")} 00000 n ${NL}`;
   }
-  pdf += `trailer${NL}<</Size ${objects.length + 1}/Root 1 0 R>>${NL}`
-    + `startxref${NL}${xrefStart}${NL}%%EOF${NL}`;
+  pdf +=
+    `trailer${NL}<</Size ${objects.length + 1}/Root 1 0 R>>${NL}` +
+    `startxref${NL}${xrefStart}${NL}%%EOF${NL}`;
 
   return Buffer.from(pdf, "latin1");
 }
@@ -219,7 +225,9 @@ function minimalPng(width, height, from, to) {
   for (let y = 0; y < height; y++) {
     raw[offset++] = 0;
     const t = height === 1 ? 0 : y / (height - 1);
-    const rgb = [0, 1, 2].map((i) => Math.round(from[i] + (to[i] - from[i]) * t));
+    const rgb = [0, 1, 2].map((i) =>
+      Math.round(from[i] + (to[i] - from[i]) * t),
+    );
     for (let x = 0; x < width; x++) {
       raw[offset++] = rgb[0];
       raw[offset++] = rgb[1];
@@ -242,7 +250,7 @@ function requireEnv(name) {
       `\n${name} is not set.\n\n` +
         "Add the development admin credentials to .env, for example:\n\n" +
         '  DEV_ADMIN_EMAIL="admin@dev.local"\n' +
-        '  DEV_ADMIN_PASSWORD="a-long-local-only-password"\n'
+        '  DEV_ADMIN_PASSWORD="a-long-local-only-password"\n',
     );
     process.exit(1);
   }
@@ -277,7 +285,7 @@ const isLocal = ["localhost", "127.0.0.1", "::1", "database"].includes(host);
 if (!isLocal && !force) {
   console.error(
     `Refusing to seed: DATABASE_URL points at "${host}", which is not local.\n` +
-      "Re-run with --force if that is really what you want."
+      "Re-run with --force if that is really what you want.",
   );
   process.exit(1);
 }
@@ -318,8 +326,7 @@ async function main() {
       id: ROLE_ADMINISTRATOR,
       name: "Administrator",
       icon: "verified",
-      description:
-        "Full access, internal only. Never listed as a salesperson.",
+      description: "Full access, internal only. Never listed as a salesperson.",
     },
     {
       id: ROLE_COMPANY_REP,
@@ -350,7 +357,7 @@ async function main() {
       start_of_year: previous.start,
       end_of_year: previous.end,
       date_created: now,
-    }
+    },
   );
   const currentYear = await findOrCreate(
     prisma.academicYear,
@@ -359,7 +366,7 @@ async function main() {
       start_of_year: current.start,
       end_of_year: current.end,
       date_created: now,
-    }
+    },
   );
   log(`${previous.name} (historical, read-only)`);
   log(`${current.name} (current -- contains today)`);
@@ -369,7 +376,7 @@ async function main() {
   const faculty = await findOrCreate(
     prisma.faculty,
     { name: "Faculteit Ingenieurswetenschappen" },
-    { date_created: now }
+    { date_created: now },
   );
 
   const masters = {};
@@ -382,7 +389,7 @@ async function main() {
     masters[spec.short_name] = await findOrCreate(
       prisma.master,
       { short_name: spec.short_name },
-      { name: spec.name, students: spec.students }
+      { name: spec.name, students: spec.students },
     );
   }
   log(`1 faculty, ${Object.keys(masters).length} masters`);
@@ -393,7 +400,7 @@ async function main() {
     Object.values(masters).map((master) => ({
       faculty_id: faculty.id,
       master_id: master.id,
-    }))
+    })),
   );
 
   // -- Companies -----------------------------------------------------------
@@ -536,14 +543,10 @@ async function main() {
   });
   log(`student    ${studentEmail} (verified, shifter)`);
 
-  await replaceLinks(
-    prisma.studentCompany,
-    { students_id: student.id },
-    [
-      { students_id: student.id, company_id: COMPANY.technobel },
-      { students_id: student.id, company_id: COMPANY.delta },
-    ]
-  );
+  await replaceLinks(prisma.studentCompany, { students_id: student.id }, [
+    { students_id: student.id, company_id: COMPANY.technobel },
+    { students_id: student.id, company_id: COMPANY.delta },
+  ]);
 
   // -- Career event --------------------------------------------------------
   console.log("\nCareer event");
@@ -597,7 +600,7 @@ async function main() {
       registration_link: "https://example.com/register",
       latitude: 50.8663,
       longitude: 4.6834,
-    }
+    },
   );
 
   const eventPage = await prisma.careerEventPage.findFirst({
@@ -609,7 +612,7 @@ async function main() {
     Object.values(COMPANY).map((companyId) => ({
       career_event_page_id: eventPage.id,
       company_id: companyId,
-    }))
+    })),
   );
   log("event page + 3 exhibiting companies");
 
@@ -650,8 +653,8 @@ async function main() {
       status: "published",
       name: "VTK Jobfair",
       description:
-        "<p>The open-house fair where engineering students meet their future "
-        + "employer. Seeded dummy event -- safe to edit.</p>",
+        "<p>The open-house fair where engineering students meet their future " +
+        "employer. Seeded dummy event -- safe to edit.</p>",
       location: "Brabanthal, Leuven",
       date: jobfairDate,
       start_hour: new Date("1970-01-01T09:45:00Z"),
@@ -714,7 +717,7 @@ async function main() {
   const floorplan = await findOrCreate(
     prisma.floorplan,
     { name: "VTK Jobfair floorplan" },
-    { year: String(jobfairDate.getUTCFullYear()) }
+    { year: String(jobfairDate.getUTCFullYear()) },
   );
 
   // The Matching Software button is hidden when this row is inactive, so an
@@ -722,7 +725,7 @@ async function main() {
   await findOrCreate(
     prisma.matchingSoftware,
     { event_id: EVENT_JOBFAIR },
-    { active: true, year_id: currentYear.id, date_updated: now }
+    { active: true, year_id: currentYear.id, date_updated: now },
   );
 
   await findOrCreate(
@@ -732,8 +735,8 @@ async function main() {
       shout: "VTK Jobfair",
       tagline: "Biggest engineering jobfair in the BeNeLux for students.",
       description_EN:
-        "<p>An open-house fair for industrial, economic and bioengineering "
-        + "students. Seeded dummy page -- re-running the seed resets it.</p>",
+        "<p>An open-house fair for industrial, economic and bioengineering " +
+        "students. Seeded dummy page -- re-running the seed resets it.</p>",
       address: "Brabanthal, Brabantlaan 1, 3001 Leuven",
       parking: "Free parking at Brabantlaan 1.",
       registration_link: "https://example.com/jobfair-register",
@@ -743,8 +746,13 @@ async function main() {
       company_guide: FILE_COMPANY_GUIDE,
       image_id: FILE_EVENT_IMAGE,
       // All four, so the event header renders every button it can.
-      header_buttons: ["floorplan", "company_guide", "cv_upload", "matching_software"],
-    }
+      header_buttons: [
+        "floorplan",
+        "company_guide",
+        "cv_upload",
+        "matching_software",
+      ],
+    },
   );
 
   const jobfairPage = await prisma.careerEventPage.findFirst({
@@ -757,19 +765,54 @@ async function main() {
     Object.values(COMPANY).map((companyId) => ({
       career_event_page_id: jobfairPage.id,
       company_id: companyId,
-    }))
+    })),
   );
 
   // Timetable, roughly the shape of the real day.
   const slots = [];
   for (const slot of [
-    { title: "Company arrival and setup", start: "07:00", end: "09:30", type: ["company"] },
-    { title: "Student breakfast, fair opens", start: "09:45", end: "10:30", type: ["student"] },
-    { title: "Jobfair", start: "10:30", end: "12:45", type: ["student", "company"] },
-    { title: "Lunch", start: "12:00", end: "14:00", type: ["student", "company"] },
-    { title: "That first career choice, does it matter?", start: "13:00", end: "13:45", type: ["discovery"] },
-    { title: "Let's talk salary", start: "14:00", end: "14:45", type: ["discovery"] },
-    { title: "Networking reception", start: "17:00", end: "19:00", type: ["student", "company"] },
+    {
+      title: "Company arrival and setup",
+      start: "07:00",
+      end: "09:30",
+      type: ["company"],
+    },
+    {
+      title: "Student breakfast, fair opens",
+      start: "09:45",
+      end: "10:30",
+      type: ["student"],
+    },
+    {
+      title: "Jobfair",
+      start: "10:30",
+      end: "12:45",
+      type: ["student", "company"],
+    },
+    {
+      title: "Lunch",
+      start: "12:00",
+      end: "14:00",
+      type: ["student", "company"],
+    },
+    {
+      title: "That first career choice, does it matter?",
+      start: "13:00",
+      end: "13:45",
+      type: ["discovery"],
+    },
+    {
+      title: "Let's talk salary",
+      start: "14:00",
+      end: "14:45",
+      type: ["discovery"],
+    },
+    {
+      title: "Networking reception",
+      start: "17:00",
+      end: "19:00",
+      type: ["student", "company"],
+    },
   ]) {
     slots.push(
       await findOrCreate(
@@ -781,8 +824,8 @@ async function main() {
           end_time: new Date(`1970-01-01T${slot.end}:00Z`),
           type: slot.type,
           date_created: now,
-        }
-      )
+        },
+      ),
     );
   }
   await replaceLinks(
@@ -791,9 +834,11 @@ async function main() {
     slots.map((slot) => ({
       career_event_page_id: jobfairPage.id,
       timetable_id: slot.id,
-    }))
+    })),
   );
-  log(`floorplan, company guide (PDF), matching software, ${slots.length} timetable slots`);
+  log(
+    `floorplan, company guide (PDF), matching software, ${slots.length} timetable slots`,
+  );
 
   // Speakers drive the "Discovery Stage" nav item -- on the event header and,
   // through their company, on the company page's header too.
@@ -804,7 +849,9 @@ async function main() {
       last_name: "Peeters",
       title: "Lead Engineer",
       company_id: COMPANY.technobel,
-      slot: slots.find((s) => s.title === "That first career choice, does it matter?"),
+      slot: slots.find(
+        (s) => s.title === "That first career choice, does it matter?",
+      ),
       personal_information: "<p>Ana leads the controls team at TechnoBel.</p>",
       content: "<p>On picking a first job without over-thinking it.</p>",
     },
@@ -827,7 +874,8 @@ async function main() {
       // that is the company page whose header has no "Discovery Stage" item.
       company_id: COMPANY.technobel,
       slot: null,
-      personal_information: "<p>Chiara runs forecasting projects at TechnoBel.</p>",
+      personal_information:
+        "<p>Chiara runs forecasting projects at TechnoBel.</p>",
       content: "<p>A speaker without a timetable slot, on purpose.</p>",
     },
   ];
@@ -864,7 +912,7 @@ async function main() {
         content: spec.content,
         time_id: spec.slot ? spec.slot.id : null,
         date_created: now,
-      }
+      },
     );
     speakerIds.push(speaker.id);
   }
@@ -875,7 +923,7 @@ async function main() {
     speakerIds.map((speakerId) => ({
       career_event_page_id: jobfairPage.id,
       speaker_id: speakerId,
-    }))
+    })),
   );
   log(`${speakerIds.length} speakers (TechnoBel x2, Aurora; Delta has none)`);
 
@@ -899,8 +947,16 @@ async function main() {
   ]) {
     await prisma.careerEventOption.upsert({
       where: { id: option.id },
-      update: { ...option, academic_year_id: currentYear.id, date_updated: now },
-      create: { ...option, academic_year_id: currentYear.id, date_created: now },
+      update: {
+        ...option,
+        academic_year_id: currentYear.id,
+        date_updated: now,
+      },
+      create: {
+        ...option,
+        academic_year_id: currentYear.id,
+        date_created: now,
+      },
     });
     log(`${option.name} (EUR ${option.price})`);
   }
@@ -911,13 +967,13 @@ async function main() {
     Object.values(EVENT_OPTION).map((optionId) => ({
       career_event_option_id: optionId,
       career_event_id: EVENT_CAREER_DAY,
-    }))
+    })),
   );
 
   const extraLunch = await findOrCreate(
     prisma.careerSubOption,
     { name: "Extra lunch voucher" },
-    { description: "One additional lunch for a colleague.", price: "25" }
+    { description: "One additional lunch for a colleague.", price: "25" },
   );
 
   // hasCompanyPageAccess() matches this sub-option **by name**, so the string
@@ -925,7 +981,7 @@ async function main() {
   const companyPageSub = await findOrCreate(
     prisma.careerSubOption,
     { name: "Company Page On Platform" },
-    { description: "A public company profile on career.vtk.be.", price: "200" }
+    { description: "A public company profile on career.vtk.be.", price: "200" },
   );
 
   await replaceLinks(
@@ -936,7 +992,7 @@ async function main() {
         career_event_option_id: EVENT_OPTION.booth,
         career_sub_option_id: extraLunch.id,
       },
-    ]
+    ],
   );
 
   // Attached to the dinner rather than the booth on purpose. Access is granted
@@ -951,7 +1007,7 @@ async function main() {
         career_event_option_id: EVENT_OPTION.dinner,
         career_sub_option_id: companyPageSub.id,
       },
-    ]
+    ],
   );
 
   // Sales, so the company dashboard and revenue views are not empty.
@@ -1065,8 +1121,18 @@ async function main() {
 
   const sectionConfigs = [
     { id: SECTION.role, key: "role", label: "The role", required: true },
-    { id: SECTION.profile, key: "profile", label: "Your profile", required: true },
-    { id: SECTION.offer, key: "offer", label: "What we offer", required: false },
+    {
+      id: SECTION.profile,
+      key: "profile",
+      label: "Your profile",
+      required: true,
+    },
+    {
+      id: SECTION.offer,
+      key: "offer",
+      label: "What we offer",
+      required: false,
+    },
   ];
   for (const [index, config] of sectionConfigs.entries()) {
     await prisma.vacancySectionConfig.upsert({
@@ -1079,7 +1145,7 @@ async function main() {
 
   // Sectors come from the 20260721000000_seed_vacancy_sectors migration.
   const sectorByName = new Map(
-    (await prisma.vacancySector.findMany()).map((s) => [s.name, s.id])
+    (await prisma.vacancySector.findMany()).map((s) => [s.name, s.id]),
   );
   const sector = (name) => sectorByName.get(name) ?? null;
 
@@ -1105,7 +1171,7 @@ async function main() {
       sections: sections(
         "Build and run the services behind our factory-floor control plane.",
         "You know one compiled language well and are not afraid of a terminal.",
-        "A permanent contract, a real mentor, and hardware you can break."
+        "A permanent contract, a real mentor, and hardware you can break.",
       ),
     },
     {
@@ -1121,7 +1187,7 @@ async function main() {
       sections: sections(
         "Support the design team on a new packaging line from sketch to prototype.",
         "Second-year master student, comfortable in CAD.",
-        "A paid internship with a genuine chance of an offer afterwards."
+        "A paid internship with a genuine chance of an offer afterwards.",
       ),
     },
     {
@@ -1137,7 +1203,7 @@ async function main() {
       sections: sections(
         "Research forecasting models on two years of real logistics data.",
         "You have taken a machine learning course and can write clearly.",
-        "A supervisor on our side, a desk whenever you want one, and a laptop."
+        "A supervisor on our side, a desk whenever you want one, and a laptop.",
       ),
     },
     {
@@ -1154,7 +1220,7 @@ async function main() {
       sections: sections(
         "Work directly with clients on short, focused analytics projects.",
         "You explain a result as well as you compute one.",
-        "Company car, training budget, and a team that reviews your work."
+        "Company car, training budget, and a team that reviews your work.",
       ),
     },
   ];
@@ -1180,16 +1246,38 @@ async function main() {
       masterKeys.map((key) => ({
         vacancies_id: vacancy.id,
         master_id: masters[key].id,
-      }))
+      })),
     );
     await replaceLinks(
       prisma.vacancySectorLink,
       { vacancies_id: vacancy.id },
       sectorId
         ? [{ vacancies_id: vacancy.id, vacancy_sectors_id: sectorId }]
-        : []
+        : [],
     );
     log(`${spec.title} (${data.status})`);
+  }
+
+  // -- Hardcoded images ----------------------------------------------------
+  // A few images (auth pages, homepage hero, ...) are referenced by literal id
+  // in src/, so no seeded row can stand in for them. Run in a child process
+  // because that script is a standalone entry point with its own client. A
+  // failure (offline, upstream down) only costs some images, so it is not fatal.
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        fileURLToPath(
+          new URL("./fetch-referenced-assets.mjs", import.meta.url),
+        ),
+      ],
+      { stdio: "inherit" },
+    );
+  } catch {
+    console.warn(
+      "\n  Could not fetch the hardcoded images; some pages will show broken images.\n" +
+        "  Retry with: node scripts/fetch-referenced-assets.mjs\n",
+    );
   }
 
   // -- Summary -------------------------------------------------------------
