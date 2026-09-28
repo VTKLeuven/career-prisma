@@ -1,0 +1,45 @@
+name: CI
+
+# Runs on GitHub's servers for every push to main. There are no unit tests in
+# this repo, so "the tests" are the production build: TypeScript type-checking
+# plus Next.js compiling every route. A green run here is what lets
+# deploy-dev.yml run automatically and deploy-production.yml run at all.
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+      # Same placeholder the Dockerfile uses: Prisma needs a syntactically valid
+      # URL while Next.js analyses server modules, but nothing connects to it.
+      DATABASE_URL: postgresql://build:build@127.0.0.1:5432/build
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # Keep in step with the Dockerfile's base image.
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Build
+        run: npm run build

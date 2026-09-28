@@ -50,4 +50,4 @@ genuinely gone.
 
 `npm run build` must pass — the pre-push hook enforces it, and it is the only
 automated check in the project. There are no unit tests. And remember:
-**pushing to `main` deploys to production.**
+**pushing to `main` deploys to `dev.career.vtk.be`** as soon as CI is green.

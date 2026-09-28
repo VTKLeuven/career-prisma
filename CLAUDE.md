@@ -20,5 +20,5 @@ The short version, if you read nothing else:
 - Database access goes through `src/lib/repos/` only — never import `prisma`
   elsewhere.
 - There is no middleware; every admin page, action and route authorizes itself.
-- Pushing to `main` deploys to production.
+- Pushing to `main` deploys to dev; production is a manual GitHub workflow.
 - `npm run build` is the only automated check — there are no tests.

@@ -35,11 +35,29 @@ soak, drink-ordering, QR scanning) run manually — see `k6/README.md`.
 
 ## Deployment
 
-Push to `main` → `.github/workflows/main.yml` SSHes to the server →
-`git reset --hard origin/main`, applies pending Prisma migrations, then
-`docker compose up -d --build`.
-So **merging to `main` deploys to production.** There is no manual approval
-step.
+Three workflows in `.github/workflows/`:
+
+| Workflow | Trigger | Runs on | Does |
+|---|---|---|---|
+| `ci.yml` (CI) | push to `main`, PRs | GitHub | `npm ci` → `prisma generate` → `npm run build` |
+| `deploy-dev.yml` | CI succeeded for a push to `main` | self-hosted runner on `elise.vtk.be` | deploys that commit to `dev.career.vtk.be` |
+| `deploy-production.yml` | **manual only** (Run workflow, on `main`) | GitHub, SSH to the server | deploys `main`, if CI passed for that commit |
+
+So **pushing to `main` deploys to dev, not production.** Production only moves
+when someone runs "Deploy to Production" in the Actions tab.
+
+Both deploys run the same sequence in the server-side checkout:
+`git reset --hard <sha>`, apply pending Prisma migrations, then
+`docker compose up -d --build`. They reset to an exact commit rather than
+`origin/main`: dev to the commit CI tested, production to the commit `main`
+pointed at when the run started and the verify job checked. A push landing
+mid-deploy therefore cannot sneak in untested.
+
+`elise.vtk.be` is not reachable over SSH from GitHub, which is why the dev
+deploy uses a self-hosted runner (label `elise`) instead of SSH. The runner's
+user needs Docker access and must be able to `git fetch` in the dev checkout
+(`APP_DIR` in `deploy-dev.yml`), which has its own `.env` with
+`DEV_ENVIRONMENT=true`.
 
 Migrations run through the one-off `migration` Compose service
 (`docker compose --profile tools run --rm --build migration`), which executes
@@ -55,12 +73,6 @@ migrations but means a **destructive** one (dropping or renaming a column the
 running image still selects) breaks requests for the length of the build. Ship
 those as two deploys: first the code that stops using the column, then the
 migration that removes it.
-
-This is deliberate and temporary, not an oversight: the project has a single
-developer, so the fast path is worth more than a gate. A separate dev server is
-planned (as of 2026-08-18, within days), after which the repo will require a
-change to be deployed there before it can reach `main`. Until then, treat every
-push to `main` as a release.
 
 Two containers: `app` (port `3003` on the host) and `database` (Postgres 16,
 bound to `127.0.0.1:5437`). `./uploads` is bind-mounted into the app at

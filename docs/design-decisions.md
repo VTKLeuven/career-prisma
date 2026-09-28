@@ -67,9 +67,10 @@ and `/admin/zones` — is deliberately *not* gated, so VTK can keep preparing
 floorplans on production while visitors cannot see them.
 
 **8. Deployment is one Docker image, pushed by git.**
-Push to `main` → GitHub Actions SSHes to the server → `docker compose up -d
---build`. One app container plus one Postgres container. No staging pipeline,
-no orchestrator.
+Push to `main` → CI builds it → a green build deploys to the dev server →
+production is deployed by hand from GitHub Actions, and only for a commit CI
+passed. Each deploy is `docker compose up -d --build` on the target machine.
+One app container plus one Postgres container. No orchestrator.
 
 **9. The build is the test suite.**
 There are no unit tests. A Husky **pre-push** hook runs `npm run build`, and

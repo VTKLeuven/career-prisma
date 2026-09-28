@@ -32,10 +32,13 @@ Full picture in [`docs/design-decisions.md`](docs/design-decisions.md).
 2. **There is no middleware.** Every admin page, server action and API route
    does its own `requireAdminUser()` / `hasCompanyPageAccess()` check. If you
    add one, add the check.
-3. **`main` deploys to production on push.** GitHub Actions SSHes to the server
-   and rebuilds. Do not push or merge unless the user asked for it.
+3. **`main` deploys to dev on push; production is a manual workflow.** CI
+   builds every push, a green build deploys to `dev.career.vtk.be`, and
+   "Deploy to Production" is run by hand. Do not push, merge or trigger a
+   deploy unless the user asked for it.
 4. **`npm run build` is the only automated check.** No unit tests exist. The
-   Husky pre-push hook runs the build; TypeScript is the safety net.
+   Husky pre-push hook and the CI workflow run the build; TypeScript is the
+   safety net.
 5. **`prisma/schema.prisma` is the source of truth**, not any ORM abstraction
    and certainly not Directus, which is gone. Read it rather than guessing at
    table or column names.

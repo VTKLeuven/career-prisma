@@ -1,17 +1,49 @@
-name: Deploy to Server
+name: Deploy to Production
 
+# Manual only: Actions tab -> "Deploy to Production" -> Run workflow (on main).
+# Deploys the commit main points to at the moment it is started, and refuses
+# unless CI passed for that exact commit.
 on:
-  push:
-    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
-  deploy:
+  verify:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - name: Only deploy main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Production deploys only from main (got ${{ github.ref }})."
+          exit 1
 
+      - name: Check CI passed for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          passed=$(gh api \
+            "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=${{ github.sha }}&status=success" \
+            --jq '.total_count')
+          if [ "$passed" -eq 0 ]; then
+            echo "::error::No successful CI run for ${{ github.sha }}. Wait for CI to finish (or fix it) before deploying."
+            exit 1
+          fi
+          echo "CI passed for ${{ github.sha }}."
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+
+    steps:
       - name: Install SSH key
         uses: webfactory/ssh-agent@v0.8.0
         with:
@@ -22,7 +54,10 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             cd /home/it/career-prisma &&
             git fetch --all &&
-            git reset --hard origin/main &&
+
+            # The verified commit, not origin/main: something pushed after this
+            # run started has not been checked by the verify job.
+            git reset --hard ${{ github.sha }} &&
 
             # Bring the database up first so migrations have something to run
             # against. The app is still serving the previous image at this point.
