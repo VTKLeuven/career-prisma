@@ -26,7 +26,7 @@ import { getFileUrl } from "@/components/Images";
 import NextImage from "next/image";
 import { FormFieldRenderer } from "@/components/FormFieldRenderer";
 import { userFacingFormSubmitErrorMessage } from "@/lib/form-submit-errors";
-import { fieldDisplayLabel, studyFieldPrefill } from "@/lib/form-fields";
+import { fieldDisplayLabel } from "@/lib/form-fields";
 
 type PublicForm = {
   id: string;
@@ -47,8 +47,8 @@ type PublicForm = {
   requiresLogin?: boolean;
   isAuthenticated?: boolean;
   studentEmail?: string;
-  /** Signed-in student's study programmes/years, for prefilling study fields */
-  studentStudy?: { study_programmes: string[]; study_years: string[] };
+  /** Starting answers for study fields, keyed by field name (computed server-side for signed-in students) */
+  studyPrefill?: Record<string, string | string[]>;
   /** Student's latest response (any version) - for version-upgrade or editing */
   existingResponse?: { id: string; form_version_id: string; data: Record<string, unknown>; attendant_uuid?: string } | null;
 };
@@ -112,16 +112,14 @@ export default function PublicFormPage() {
           }
         }
 
-        // Pre-fill study fields from the student's account. Only empty fields, so an
-        // earlier answer wins; the student can still change the prefilled value.
-        const studentStudy = fetched.studentStudy;
-        if (studentStudy) {
+        // Pre-fill study fields (master degrees, study year) from the student's account.
+        // Only empty fields, so an earlier answer wins; the student can still change them.
+        const studyPrefill = fetched.studyPrefill ?? {};
+        if (Object.keys(studyPrefill).length > 0) {
           setFormData((prev) => {
             const next = { ...prev };
-            for (const field of fetched.activeVersion?.schema?.fields ?? []) {
-              if (next[field.name] != null) continue;
-              const prefill = studyFieldPrefill(field, studentStudy);
-              if (prefill !== undefined) next[field.name] = prefill;
+            for (const [name, value] of Object.entries(studyPrefill)) {
+              if (next[name] == null) next[name] = value;
             }
             return next;
           });

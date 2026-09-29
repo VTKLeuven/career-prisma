@@ -30,6 +30,8 @@ import {
   isSessionTokenExpiredError,
 } from "@/lib/form-submit-errors";
 import { requireAdminUser } from "@/lib/auth-server";
+import { listMasters, listFaculties } from "@/lib/repos/features";
+import { studyPrefillForFields, type PrefillFaculty } from "@/lib/form-fields";
 
 // ===================== FORM ACTIONS =====================
 
@@ -1194,7 +1196,7 @@ export async function fetchPublicFormBySlugAction(slug: string) {
     let isAuthenticated = false;
     let studentEmail: string | undefined = undefined;
     let studentId: string | undefined = undefined;
-    // For prefilling study-programme / study-year fields; set whenever a student is signed in.
+    // For prefilling master-degrees / study-year fields; set whenever a student is signed in.
     let studentStudy: { study_programmes: string[]; study_years: string[] } | undefined = undefined;
     const toBoolFlag = (v: unknown): boolean => {
       if (v === true) return true;
@@ -1232,6 +1234,29 @@ export async function fetchPublicFormBySlugAction(slug: string) {
         if (student) studentStudy = { study_programmes: student.study_programmes, study_years: student.study_years };
       } catch {
         // Ignore
+      }
+    }
+
+    // Starting answers for study fields: master degrees through the programme links
+    // set in /admin/masters, study year straight from the student's account.
+    let studyPrefill: Record<string, string | string[]> = {};
+    const versionFields = activeVersion.schema?.fields ?? [];
+    const STUDY_FIELD_TYPES = ["master-degrees", "study-year", "study-programme"];
+    if (studentStudy && versionFields.some((f) => STUDY_FIELD_TYPES.includes(f.type))) {
+      try {
+        const needsMasters = versionFields.some((f) => f.type === "master-degrees");
+        const [masters, faculties] = needsMasters
+          ? await Promise.all([listMasters({ limit: 500, sort: "name" }), listFaculties({ limit: 100 })])
+          : [[], []];
+        studyPrefill = studyPrefillForFields(
+          versionFields,
+          studentStudy,
+          masters ?? [],
+          (faculties ?? []) as unknown as PrefillFaculty[],
+        );
+      } catch (error) {
+        // A failed prefill must not stop the form from loading; the student just picks.
+        console.error('[fetchPublicFormBySlugAction] Error computing study prefill:', error);
       }
     }
 
@@ -1297,7 +1322,7 @@ export async function fetchPublicFormBySlugAction(slug: string) {
       requiresLogin, // Indicates if form requires login
       isAuthenticated, // Indicates if user is authenticated (only relevant if requiresLogin is true)
       studentEmail, // Student email if authenticated (for pre-filling form fields)
-      studentStudy, // Student's study programmes/years (for pre-filling study fields)
+      studyPrefill, // Starting answers for study fields, keyed by field name (empty unless a student is signed in)
       existingResponse, // Student's latest response (any version) - for version-upgrade flow
     };
   } catch (error) {

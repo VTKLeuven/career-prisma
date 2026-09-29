@@ -64,12 +64,14 @@ import NextImage from "next/image";
 
 type FieldType = FormField["type"];
 
-const FIELD_TYPES: { value: FieldType; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+const FIELD_TYPES: { value: FieldType; label: string; icon: React.ComponentType<{ className?: string }>; retired?: boolean }[] = [
   { value: "text", label: "Text", icon: Type },
   { value: "textarea", label: "Text Area", icon: FileText },
   { value: "email", label: "Email", icon: Mail },
   { value: "master-degrees", label: "Master Degrees", icon: GraduationCap },
-  { value: "study-programme", label: "Study Programme", icon: BookOpen },
+  // Retired: Master Degrees prefills from the programme links in /admin/masters
+  // instead. Only offered to fields that already have this type.
+  { value: "study-programme", label: "Study Programme (old)", icon: BookOpen, retired: true },
   { value: "study-year", label: "Study Year", icon: CalendarRange },
   { value: "number", label: "Number", icon: Hash },
   { value: "select", label: "Select Dropdown", icon: List },
@@ -654,7 +656,7 @@ function FieldEditor({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {FIELD_TYPES.map((type) => {
+                    {FIELD_TYPES.filter((type) => !type.retired || type.value === field.type).map((type) => {
                       const Icon = type.icon;
                       return (
                         <SelectItem key={type.value} value={type.value}>
@@ -704,7 +706,10 @@ function FieldEditor({
             {field.type === "master-degrees" && (
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">
-                  Options come from the configured master and faculty records.
+                  Options come from the configured master and faculty records. Signed-in students get the
+                  master linked to their vtk.be study programme filled in (set the links in{" "}
+                  <Link href="/admin/masters" className="underline">Masters</Link>) and can still change it.
+                  A single-choice field is only filled in when exactly one master matches.
                 </p>
                 <div className="flex flex-wrap gap-4">
                   <div className="flex items-center space-x-2">
@@ -742,6 +747,8 @@ function FieldEditor({
                 <p className="text-sm text-muted-foreground">
                   Options are the {field.type === "study-programme" ? "study programmes" : "study years"} students
                   pick on vtk.be. Signed-in students get their own filled in and can still change it.
+                  {field.type === "study-programme" &&
+                    " This field type is retired: use Master Degrees for new questions, which fills in the same way."}
                 </p>
                 <div className="flex items-center space-x-2">
                   <Button

@@ -59,16 +59,26 @@ writes it through to the event. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
   company intake, with a versioned schema. A field's title (`label`) is
   optional: untitled inputs continue the titled field above them
   ("Representative names" → one input per name), and headers fall back to the
-  placeholder (`fieldDisplayLabel()` in `src/lib/form-fields.ts`). The
-  `study-programme` / `study-year` fields store the **English label**, not the
-  SSO enum value, so their answers read like any other select in the responses
-  table, the CSV export and the CV book; signed-in students get their own
-  study prefilled.
+  placeholder (`fieldDisplayLabel()` in `src/lib/form-fields.ts`). For
+  signed-in students, `master-degrees` and `study-year` fields start filled in
+  from their account (`studyPrefillForFields()`, computed in
+  `fetchPublicFormBySlugAction`). `study-year` stores the **English label**,
+  not the SSO enum value, so answers read like any other select in the
+  responses table, the CSV export and the CV book. `study-programme` is a
+  retired field type: the builder no longer offers it, but it still renders
+  for forms that already had it.
 
 ## Study programmes
 
 `Faculty` → `FacultyMaster` → `Master`, joined to companies via `CompanyMaster`
 and to vacancies via `VacancyMaster`.
+
+`masters.study_programme` links a master to a vtk.be study programme (the SSO
+enum value from `src/lib/study-options.ts`), set in `/admin/masters`. It is
+what lets one question type serve everyone: a student with a vtk.be programme
+gets the linked master prefilled in `master-degrees` fields, and a student
+outside the faculty picks from the same master list. Several masters may share
+a programme; a single-choice field is then left empty rather than guessed.
 
 ## Files
 

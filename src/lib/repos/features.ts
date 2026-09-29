@@ -125,6 +125,10 @@ function toMasterWrite(payload: Record<string, any>): Record<string, unknown> {
       ? { students: payload.students == null ? null : Number(payload.students) }
       : {}),
     ...(logo !== undefined ? { logo_id: logo || null } : {}),
+    // The admin select sends "" for "None"; store that as no link, not an empty value.
+    ...(payload.study_programme !== undefined
+      ? { study_programme: payload.study_programme || null }
+      : {}),
   }
 }
 

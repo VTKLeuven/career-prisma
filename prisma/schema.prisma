@@ -538,6 +538,10 @@ model Master {
   short_name     String?         @db.VarChar(255)
   students       Int?
   modules        String?
+  /// The vtk.be study programme (SSO enum value, see src/lib/study-options.ts)
+  /// this master corresponds to. Used to prefill master-degree form fields for
+  /// signed-in students. Null for masters vtk.be has no programme for.
+  study_programme String?        @db.VarChar(64)
   companyMasters CompanyMaster[]
   facultyMasters FacultyMaster[]
   logo           File?           @relation(fields: [logo_id], references: [id], onUpdate: NoAction, map: "master_logo_foreign")

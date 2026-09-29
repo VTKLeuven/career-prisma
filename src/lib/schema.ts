@@ -334,6 +334,8 @@ export type Master = {
   logo: string;
   students?: number;
   modules?: string; // HTML content
+  /** vtk.be study programme (SSO enum value) this master matches; prefills master-degree fields for students */
+  study_programme?: string | null;
 }
 
 /** Faculty with optional masters relation (from Directus faculty collection) */
