@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/select";
 import { ArrowLeft, Download, Eye, Trash2, Pencil, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2, Mail, ArrowUpDown, ArrowUp, ArrowDown, Check, X, FileArchive, Archive, Scan } from "lucide-react";
 import type { FormVersion, FormResponse, FormField } from "@/lib/schema";
+import { fieldDisplayLabel } from "@/lib/form-fields";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 import { CSV_UTF8_BOM } from "@/lib/utils/slugify";
 import { FormFieldRenderer } from "@/components/FormFieldRenderer";
@@ -219,7 +220,7 @@ export default function FormResponsesPage() {
         if (version.schema?.fields) {
           version.schema.fields.forEach((field: FormField) => {
             if (!fieldMap.has(field.name)) {
-              fieldMap.set(field.name, { ...field, label: field.label || field.name });
+              fieldMap.set(field.name, { ...field, label: fieldDisplayLabel(field) });
             }
           });
         }
@@ -242,7 +243,7 @@ export default function FormResponsesPage() {
         if (version.schema?.fields) {
           version.schema.fields.forEach((field: FormField) => {
             if (!fieldMap.has(field.name)) {
-              fieldMap.set(field.name, { ...field, label: field.label || field.name });
+              fieldMap.set(field.name, { ...field, label: fieldDisplayLabel(field) });
             }
           });
         }
@@ -999,7 +1000,7 @@ export default function FormResponsesPage() {
       fieldsToUse = selectedVersion.schema.fields.map(f => ({
         id: f.id,
         name: f.name,
-        label: f.label || f.name,
+        label: fieldDisplayLabel(f),
         type: f.type,
       }));
     }
@@ -1807,7 +1808,7 @@ export default function FormResponsesPage() {
                                 return true;
                               })
                               .map((field) => (
-                                <TableHead key={field.name}>{field.label || field.name}</TableHead>
+                                <TableHead key={field.name}>{fieldDisplayLabel(field)}</TableHead>
                               ))}
                           </>
                         ) : (
@@ -1820,7 +1821,7 @@ export default function FormResponsesPage() {
                               return true;
                             })
                             .map((field) => (
-                              <TableHead key={field.name}>{field.label || field.name}</TableHead>
+                              <TableHead key={field.name}>{fieldDisplayLabel(field)}</TableHead>
                             ))
                         )}
                         <TableHead className="text-right">Actions</TableHead>
@@ -2872,7 +2873,7 @@ export default function FormResponsesPage() {
                     <SelectItem value="__none__">— None —</SelectItem>
                     {allVersionsFields.filter((f: FormField) => f.name && f.name !== "__none__").map((f: FormField) => (
                       <SelectItem key={f.id} value={f.name}>
-                        {f.label || f.name}
+                        {fieldDisplayLabel(f)}
                       </SelectItem>
                     ))}
                   </SelectContent>

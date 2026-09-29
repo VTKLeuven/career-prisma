@@ -28,6 +28,7 @@ import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 import { getFileUrl } from "@/components/Images";
 import NextImage from "next/image";
 import { FormFieldRenderer } from "@/components/FormFieldRenderer";
+import { fieldDisplayLabel } from "@/lib/form-fields";
 import { userFacingFormSubmitErrorMessage } from "@/lib/form-submit-errors";
 import type { Company, CareerEvent } from "@/lib/schema";
 
@@ -461,7 +462,7 @@ export default function CompanyFormPage() {
       if (field.required) {
         const value = formData[field.name];
         if (!value || (Array.isArray(value) && value.length === 0)) {
-          newErrors[field.name] = `${field.label} is required`;
+          newErrors[field.name] = `${fieldDisplayLabel(field)} is required`;
         }
       }
       
@@ -471,7 +472,7 @@ export default function CompanyFormPage() {
         if (value) {
           const wordCount = countWords(value);
           if (wordCount > field.validation.wordLimit) {
-            newErrors[field.name] = `${field.label} exceeds the word limit of ${field.validation.wordLimit} words (${wordCount} words entered)`;
+            newErrors[field.name] = `${fieldDisplayLabel(field)} exceeds the word limit of ${field.validation.wordLimit} words (${wordCount} words entered)`;
           }
         }
       }
@@ -480,7 +481,7 @@ export default function CompanyFormPage() {
       if (field.type === "linkedin") {
         const value = formData[field.name] as string;
         if (value && !/^https?:\/\/(www\.)?linkedin\.com\/in\/[\w-]+\/?(\?.*)?$/i.test(value.trim())) {
-          newErrors[field.name] = `${field.label} must be a valid LinkedIn profile URL (e.g. https://linkedin.com/in/username)`;
+          newErrors[field.name] = `${fieldDisplayLabel(field)} must be a valid LinkedIn profile URL (e.g. https://linkedin.com/in/username)`;
         }
       }
     });
@@ -910,17 +911,21 @@ export default function CompanyFormPage() {
               };
 
               return rows.map((row, rowIndex) => (
-                <div key={`row-${rowIndex}`} className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                // A row of untitled inputs continues the titled field above it
+                // ("Representative names" → one input per name), so pull it closer.
+                <div key={`row-${rowIndex}`} className={`grid grid-cols-1 md:grid-cols-12 gap-4 ${rowIndex > 0 && row.every((f) => !f.label) ? "-mt-4" : ""}`}>
                   {row.map((field) => {
                     const layout = field.layout || 'full';
                     const imageUrl = field.image ? getFileUrl(field.image) : null;
                     
                     return (
                       <div key={field.id} className={`space-y-2 ${getColSpanClass(layout)}`}>
-                        <Label htmlFor={field.id}>
-                          {field.label}
-                          {field.required && <span className="text-destructive ml-1">*</span>}
-                        </Label>
+                        {field.label && (
+                          <Label htmlFor={field.id}>
+                            {field.label}
+                            {field.required && <span className="text-destructive ml-1">*</span>}
+                          </Label>
+                        )}
                         {field.description && (
                           <p className="text-sm text-muted-foreground">{field.description}</p>
                         )}

@@ -26,6 +26,7 @@ import { getFileUrl } from "@/components/Images";
 import NextImage from "next/image";
 import { FormFieldRenderer } from "@/components/FormFieldRenderer";
 import { userFacingFormSubmitErrorMessage } from "@/lib/form-submit-errors";
+import { fieldDisplayLabel, studyFieldPrefill } from "@/lib/form-fields";
 
 type PublicForm = {
   id: string;
@@ -46,6 +47,8 @@ type PublicForm = {
   requiresLogin?: boolean;
   isAuthenticated?: boolean;
   studentEmail?: string;
+  /** Signed-in student's study programmes/years, for prefilling study fields */
+  studentStudy?: { study_programmes: string[]; study_years: string[] };
   /** Student's latest response (any version) - for version-upgrade or editing */
   existingResponse?: { id: string; form_version_id: string; data: Record<string, unknown>; attendant_uuid?: string } | null;
 };
@@ -108,6 +111,21 @@ export default function PublicFormPage() {
             });
           }
         }
+
+        // Pre-fill study fields from the student's account. Only empty fields, so an
+        // earlier answer wins; the student can still change the prefilled value.
+        const studentStudy = fetched.studentStudy;
+        if (studentStudy) {
+          setFormData((prev) => {
+            const next = { ...prev };
+            for (const field of fetched.activeVersion?.schema?.fields ?? []) {
+              if (next[field.name] != null) continue;
+              const prefill = studyFieldPrefill(field, studentStudy);
+              if (prefill !== undefined) next[field.name] = prefill;
+            }
+            return next;
+          });
+        }
       }
     } catch (error) {
       console.error("Error loading form:", error);
@@ -144,7 +162,7 @@ export default function PublicFormPage() {
       if (field.required) {
         const value = formData[field.name];
         if (!value || (Array.isArray(value) && value.length === 0)) {
-          newErrors[field.name] = `${field.label} is required`;
+          newErrors[field.name] = `${fieldDisplayLabel(field)} is required`;
         }
       }
       
@@ -154,7 +172,7 @@ export default function PublicFormPage() {
         if (value) {
           const wordCount = countWords(value);
           if (wordCount > field.validation.wordLimit) {
-            newErrors[field.name] = `${field.label} exceeds the word limit of ${field.validation.wordLimit} words (${wordCount} words entered)`;
+            newErrors[field.name] = `${fieldDisplayLabel(field)} exceeds the word limit of ${field.validation.wordLimit} words (${wordCount} words entered)`;
           }
         }
       }
@@ -163,7 +181,7 @@ export default function PublicFormPage() {
       if (field.type === "linkedin") {
         const value = formData[field.name] as string;
         if (value && !/^https?:\/\/(www\.)?linkedin\.com\/in\/[\w-]+\/?(\?.*)?$/i.test(value.trim())) {
-          newErrors[field.name] = `${field.label} must be a valid LinkedIn profile URL (e.g. https://linkedin.com/in/username)`;
+          newErrors[field.name] = `${fieldDisplayLabel(field)} must be a valid LinkedIn profile URL (e.g. https://linkedin.com/in/username)`;
         }
       }
     });
@@ -426,17 +444,21 @@ export default function PublicFormPage() {
               };
 
               return rows.map((row, rowIndex) => (
-                <div key={`row-${rowIndex}`} className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                // A row of untitled inputs continues the titled field above it
+                // ("Representative names" → one input per name), so pull it closer.
+                <div key={`row-${rowIndex}`} className={`grid grid-cols-1 md:grid-cols-12 gap-4 ${rowIndex > 0 && row.every((f) => !f.label) ? "-mt-4" : ""}`}>
                   {row.map((field) => {
                     const layout = field.layout || 'full';
                     const imageUrl = field.image ? getFileUrl(field.image) : null;
                     
                     return (
                       <div key={field.id} className={`space-y-2 ${getColSpanClass(layout)}`}>
-                        <Label htmlFor={field.id}>
-                          {field.label}
-                          {field.required && <span className="text-destructive ml-1">*</span>}
-                        </Label>
+                        {field.label && (
+                          <Label htmlFor={field.id}>
+                            {field.label}
+                            {field.required && <span className="text-destructive ml-1">*</span>}
+                          </Label>
+                        )}
                         {field.description && (
                           <p className="text-sm text-muted-foreground">{field.description}</p>
                         )}

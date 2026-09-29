@@ -1194,6 +1194,8 @@ export async function fetchPublicFormBySlugAction(slug: string) {
     let isAuthenticated = false;
     let studentEmail: string | undefined = undefined;
     let studentId: string | undefined = undefined;
+    // For prefilling study-programme / study-year fields; set whenever a student is signed in.
+    let studentStudy: { study_programmes: string[]; study_years: string[] } | undefined = undefined;
     const toBoolFlag = (v: unknown): boolean => {
       if (v === true) return true;
       if (v === false) return false;
@@ -1216,6 +1218,7 @@ export async function fetchPublicFormBySlugAction(slug: string) {
         isAuthenticated = !!student;
         if (student?.email) studentEmail = student.email;
         if (student?.id) studentId = student.id;
+        if (student) studentStudy = { study_programmes: student.study_programmes, study_years: student.study_years };
       } catch (error) {
         console.error('[fetchPublicFormBySlugAction] Error checking student authentication:', error);
         isAuthenticated = false;
@@ -1226,6 +1229,7 @@ export async function fetchPublicFormBySlugAction(slug: string) {
         const { getStudentFromCookies } = await import("@/lib/auth-student");
         const student = await getStudentFromCookies();
         if (student?.id) studentId = student.id;
+        if (student) studentStudy = { study_programmes: student.study_programmes, study_years: student.study_years };
       } catch {
         // Ignore
       }
@@ -1293,6 +1297,7 @@ export async function fetchPublicFormBySlugAction(slug: string) {
       requiresLogin, // Indicates if form requires login
       isAuthenticated, // Indicates if user is authenticated (only relevant if requiresLogin is true)
       studentEmail, // Student email if authenticated (for pre-filling form fields)
+      studentStudy, // Student's study programmes/years (for pre-filling study fields)
       existingResponse, // Student's latest response (any version) - for version-upgrade flow
     };
   } catch (error) {

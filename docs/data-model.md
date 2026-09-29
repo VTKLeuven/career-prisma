@@ -56,7 +56,14 @@ writes it through to the event. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
 - `MatchingSoftware`, `StudentMatchingResponse*`, `CompanyMatchingResponse*` —
   student↔company matching questionnaire.
 - `Form` / `FormVersion` / `FormResponse` — the generic form builder used for
-  company intake, with a versioned schema.
+  company intake, with a versioned schema. A field's title (`label`) is
+  optional: untitled inputs continue the titled field above them
+  ("Representative names" → one input per name), and headers fall back to the
+  placeholder (`fieldDisplayLabel()` in `src/lib/form-fields.ts`). The
+  `study-programme` / `study-year` fields store the **English label**, not the
+  SSO enum value, so their answers read like any other select in the responses
+  table, the CSV export and the CV book; signed-in students get their own
+  study prefilled.
 
 ## Study programmes
 

@@ -15,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Download, FileIcon } from "lucide-react";
 import type { FormField } from "@/lib/schema";
+import { studyFieldOptions } from "@/lib/form-fields";
 
 type MasterOption = { value: string; label: string };
 type Master = { id: string; name: string };
@@ -562,6 +563,20 @@ export function FormFieldRenderer({
       return (
         <MasterDegreesField
           field={field}
+          value={value}
+          onChange={onChange}
+          error={error}
+          disabled={disabled}
+        />
+      );
+
+    case "study-programme":
+    case "study-year":
+      // A plain select or checkbox group whose options come from study-options.ts
+      // rather than from the builder.
+      return (
+        <FormFieldRenderer
+          field={{ ...field, type: field.multiple ? "checkbox" : "select", options: studyFieldOptions(field.type) }}
           value={value}
           onChange={onChange}
           error={error}

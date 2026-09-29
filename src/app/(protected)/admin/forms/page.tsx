@@ -61,6 +61,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { fetchEventsAction, fetchOptionsForEventAction } from "@/app/actions/events";
 import { slugifyEventName } from "@/lib/utils/slugify";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type FormRow = {
   id: string;
@@ -130,7 +131,7 @@ export default function AdminFormsPage() {
           <Button variant="outline" onClick={loadForms} disabled={loading} size="default">
             {loading ? "Refreshing..." : "Refresh"}
           </Button>
-          <CreateFormDialog onFormCreated={loadForms} />
+          <CreateFormDialog />
         </div>
       </div>
 
@@ -206,7 +207,8 @@ export default function AdminFormsPage() {
   );
 }
 
-function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
+function CreateFormDialog() {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -466,7 +468,7 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
         metadata.requires_login = true;
       }
 
-      await createFormAction({
+      const created = await createFormAction({
         name,
         slug,
         description,
@@ -494,7 +496,8 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
       setCompanyFormEmailSubject("Form Submission Confirmation");
       setCompanyFormEmailContent("Thank you for your submission!");
       setOptions([]);
-      onFormCreated();
+      // A new form has no fields yet, so go straight to building it.
+      router.push(`/admin/forms/${created.id}/builder`);
     } catch (error) {
       console.error("Error creating form:", error);
       alert("Failed to create form");

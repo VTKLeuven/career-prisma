@@ -400,7 +400,7 @@ export type FormField = {
   id: string;
   name: string;
   label: string;
-  type: 'text' | 'textarea' | 'email' | 'number' | 'select' | 'checkbox' | 'radio' | 'file' | 'date' | 'date-range' | 'time' | 'linkedin' | 'master-degrees';
+  type: 'text' | 'textarea' | 'email' | 'number' | 'select' | 'checkbox' | 'radio' | 'file' | 'date' | 'date-range' | 'time' | 'linkedin' | 'master-degrees' | 'study-programme' | 'study-year';
   required?: boolean;
   placeholder?: string;
   options?: string[]; // for select, radio, checkbox
@@ -413,7 +413,7 @@ export type FormField = {
     wordLimit?: number; // Maximum number of words (for textarea fields)
   };
   layout?: 'full' | 'half' | 'third' | 'two-thirds'; // Field width layout
-  multiple?: boolean; // For file fields - allow multiple file uploads
+  multiple?: boolean; // For file fields - allow multiple file uploads; for study-programme/study-year - checkboxes instead of a single select
   image?: string; // Directus file ID for field image (useful for material-related forms)
   description?: string; // Description text to show with the field
   /** For master-degrees: allow selecting multiple masters (checkbox mode) */

@@ -51,20 +51,26 @@ import {
   X,
   Image as ImageIcon,
   Linkedin,
-  GraduationCap
+  GraduationCap,
+  BookOpen,
+  CalendarRange,
+  CopyPlus
 } from "lucide-react";
 import type { Form, FormVersion, FormField, FormSchema } from "@/lib/schema";
+import { studyFieldOptions } from "@/lib/form-fields";
 import Link from "next/link";
 import { getFileUrl } from "@/components/Images";
 import NextImage from "next/image";
 
-type FieldType = "text" | "textarea" | "email" | "number" | "select" | "checkbox" | "radio" | "file" | "date" | "date-range" | "time" | "linkedin" | "master-degrees";
+type FieldType = FormField["type"];
 
 const FIELD_TYPES: { value: FieldType; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { value: "text", label: "Text", icon: Type },
   { value: "textarea", label: "Text Area", icon: FileText },
   { value: "email", label: "Email", icon: Mail },
   { value: "master-degrees", label: "Master Degrees", icon: GraduationCap },
+  { value: "study-programme", label: "Study Programme", icon: BookOpen },
+  { value: "study-year", label: "Study Year", icon: CalendarRange },
   { value: "number", label: "Number", icon: Hash },
   { value: "select", label: "Select Dropdown", icon: List },
   { value: "checkbox", label: "Checkbox", icon: CheckSquare },
@@ -79,6 +85,31 @@ const FIELD_TYPES: { value: FieldType; label: string; icon: React.ComponentType<
 const getFieldIcon = (type: FieldType) => {
   const fieldType = FIELD_TYPES.find(ft => ft.value === type);
   return fieldType?.icon || Type;
+};
+
+/** Default title for a study field, used when the admin has not typed one yet. */
+const STUDY_FIELD_TITLES: Partial<Record<FieldType, string>> = {
+  "study-programme": "Study programme",
+  "study-year": "Study year",
+};
+
+/**
+ * The field name is the key the answer is stored under, so it must be unique
+ * within the form. `base_2`, `base_3`, … until one is free.
+ */
+const uniqueFieldName = (base: string, fields: FormField[]): string => {
+  const taken = new Set(fields.map((f) => f.name));
+  if (!taken.has(base)) return base;
+  const stem = base.replace(/_\d+$/, "");
+  let n = 2;
+  while (taken.has(`${stem}_${n}`)) n++;
+  return `${stem}_${n}`;
+};
+
+/** "Name 1" → "Name 2"; anything without a trailing number stays as it is. */
+const nextPlaceholder = (placeholder: string | undefined): string => {
+  if (!placeholder) return "";
+  return placeholder.replace(/(\d+)(\s*)$/, (_, num: string, space: string) => `${Number(num) + 1}${space}`);
 };
 
 export default function FormBuilderPage() {
@@ -123,10 +154,9 @@ export default function FormBuilderPage() {
   }, [loadForm]);
 
   const addField = () => {
-    const fieldNumber = fields.length + 1;
     const newField: FormField = {
       id: `field_${Date.now()}`,
-      name: `field_${fieldNumber}`,
+      name: uniqueFieldName(`field_${fields.length + 1}`, fields),
       label: "",
       type: "text",
       required: false,
@@ -159,6 +189,28 @@ export default function FormBuilderPage() {
     }
     
     newFields[index] = { ...newFields[index], ...updates };
+    setFields(newFields);
+  };
+
+  /**
+   * Adds another input right below this one, without a title — Tally's way of
+   * asking for a list: "Representative names" followed by one input per name.
+   * Settings are copied; the title and field image are not, since the new input
+   * belongs under the field above rather than being a question of its own.
+   */
+  const duplicateFieldBelow = (index: number) => {
+    const source = fields[index];
+    const copy: FormField = {
+      ...source,
+      id: `field_${Date.now()}`,
+      name: uniqueFieldName(source.name, fields),
+      label: "",
+      description: undefined,
+      image: undefined,
+      placeholder: nextPlaceholder(source.placeholder),
+    };
+    const newFields = [...fields];
+    newFields.splice(index + 1, 0, copy);
     setFields(newFields);
   };
 
@@ -280,12 +332,14 @@ export default function FormBuilderPage() {
                     onDragEnd={handleDragEnd}
                     onDragOver={handleDragOver}
                     onDrop={handleDrop(index)}
-                    className="cursor-move"
+                    // Untitled inputs belong to the titled field above them; indent to show it.
+                    className={`cursor-move ${!field.label && index > 0 ? "ml-8" : ""}`}
                   >
                     <FieldEditor
                       field={field}
                       index={index}
                       onUpdate={(updates) => updateField(index, updates)}
+                      onDuplicateBelow={() => duplicateFieldBelow(index)}
                       onRemove={() => removeField(index)}
                       onMoveUp={() => moveField(index, "up")}
                       onMoveDown={() => moveField(index, "down")}
@@ -355,16 +409,18 @@ export default function FormBuilderPage() {
                   return (
                     <div className="space-y-4">
                       {rows.map((row, rowIndex) => (
-                        <div key={`row-${rowIndex}`} className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                        <div key={`row-${rowIndex}`} className={`grid grid-cols-1 md:grid-cols-12 gap-4 ${rowIndex > 0 && row.every((f) => !f.label) ? "-mt-2" : ""}`}>
                           {row.map((field) => {
                             const layout = field.layout || 'full';
                             const imageUrl = field.image ? getFileUrl(field.image) : null;
                             return (
                               <div key={field.id} className={`space-y-2 ${getColSpanClass(layout)}`}>
-                                <Label>
-                                  {field.label || "Untitled Field"}
-                                  {field.required && <span className="text-destructive ml-1">*</span>}
-                                </Label>
+                                {field.label && (
+                                  <Label>
+                                    {field.label}
+                                    {field.required && <span className="text-destructive ml-1">*</span>}
+                                  </Label>
+                                )}
                                 {field.description && (
                                   <p className="text-sm text-muted-foreground">{field.description}</p>
                                 )}
@@ -408,6 +464,7 @@ function FieldEditor({
   field,
   index,
   onUpdate,
+  onDuplicateBelow,
   onRemove,
   onMoveUp,
   onMoveDown,
@@ -417,6 +474,7 @@ function FieldEditor({
   field: FormField;
   index: number;
   onUpdate: (updates: Partial<FormField>) => void;
+  onDuplicateBelow: () => void;
   onRemove: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
@@ -517,9 +575,17 @@ function FieldEditor({
               <div className="flex items-center gap-3">
                 {React.createElement(getFieldIcon(field.type), { className: "h-5 w-5 text-muted-foreground" })}
                 <div>
-                  <p className="font-medium">{field.label || "Untitled Field"}</p>
+                  {field.label ? (
+                    <p className="font-medium">{field.label}</p>
+                  ) : (
+                    <p className="font-medium italic text-muted-foreground">
+                      {field.placeholder || "Input without title"}
+                    </p>
+                  )}
                   <p className="text-sm text-muted-foreground">
-                    {field.type} {field.required && "• Required"}
+                    {field.type}
+                    {field.multiple && (field.type === "study-programme" || field.type === "study-year") && " • Multiple"}
+                    {field.required && " • Required"}
                   </p>
                 </div>
               </div>
@@ -529,6 +595,14 @@ function FieldEditor({
               </Badge>
             </div>
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDuplicateBelow}
+            title="Add another input below, without a title (e.g. one input per representative name)"
+          >
+            <CopyPlus className="h-4 w-4" />
+          </Button>
           <Button variant="ghost" size="sm" onClick={onRemove}>
             <Trash2 className="h-4 w-4 text-destructive" />
           </Button>
@@ -538,12 +612,12 @@ function FieldEditor({
           <div className="mt-4 space-y-3 border-t pt-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label htmlFor={`field-${index}-label`}>Label</Label>
+                <Label htmlFor={`field-${index}-label`}>Title (optional)</Label>
                 <Input
                   id={`field-${index}-label`}
                   value={field.label}
                   onChange={(e) => onUpdate({ label: e.target.value })}
-                  placeholder="Field Label"
+                  placeholder="Leave empty to continue the field above"
                 />
                 {field.name && (
                   <p className="text-xs text-muted-foreground mt-1">
@@ -565,6 +639,11 @@ function FieldEditor({
                         type: newType,
                         masterDegreesMultiple: wasCheckbox,
                         masterDegreesIncludeFaculties: hasFacFormat,
+                      });
+                    } else if (STUDY_FIELD_TITLES[newType]) {
+                      onUpdate({
+                        type: newType,
+                        ...(field.label ? {} : { label: STUDY_FIELD_TITLES[newType] }),
                       });
                     } else {
                       onUpdate({ type: newType });
@@ -654,6 +733,28 @@ function FieldEditor({
                       {field.masterDegreesIncludeFaculties ? "Group by faculty" : "Masters only"}
                     </span>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {(field.type === "study-programme" || field.type === "study-year") && (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Options are the {field.type === "study-programme" ? "study programmes" : "study years"} students
+                  pick on vtk.be. Signed-in students get their own filled in and can still change it.
+                </p>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    type="button"
+                    variant={field.multiple ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => onUpdate({ multiple: !field.multiple })}
+                  >
+                    Allow multiple
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    {field.multiple ? "Checkboxes, select any number" : "Dropdown, select one"}
+                  </span>
                 </div>
               </div>
             )}
@@ -982,6 +1083,35 @@ function FormFieldPreview({ field }: { field: FormField }) {
           </Select>
         </div>
       );
+    case "study-programme":
+    case "study-year": {
+      const options = studyFieldOptions(field.type);
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <FieldIcon className="h-4 w-4" />
+            <span>{field.type === "study-programme" ? "Study Programme" : "Study Year"}</span>
+            {field.multiple && <span className="text-xs">(multiple)</span>}
+          </div>
+          {field.multiple ? (
+            <div className="space-y-2">
+              {options.map((opt) => (
+                <div key={opt} className="flex items-center space-x-2">
+                  <Checkbox disabled />
+                  <Label>{opt}</Label>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Select disabled>
+              <SelectTrigger>
+                <SelectValue placeholder={field.placeholder || "Select an option"} />
+              </SelectTrigger>
+            </Select>
+          )}
+        </div>
+      );
+    }
     case "text":
     default:
       return (
