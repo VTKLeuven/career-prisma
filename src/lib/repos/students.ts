@@ -24,6 +24,10 @@ function shapeStudent(row: NonNullable<StudentRow>): Student {
     student_number: row.student_number ?? undefined,
     sso_synced_at: row.sso_synced_at?.toISOString(),
     study_self_reported: row.study_self_reported ?? false,
+    sso_study_programmes: row.sso_study_programmes ?? [],
+    sso_study_years: row.sso_study_years ?? [],
+    sso_locale: row.sso_locale ?? undefined,
+    preferred_language: row.preferred_language ?? undefined,
     sso_access_token: row.sso_access_token ?? undefined,
     sso_token_expires_at: row.sso_token_expires_at?.toISOString(),
     password: row.password ?? undefined,
@@ -113,6 +117,7 @@ export interface SsoStudentUpsert {
   studyYears?: string[];
   studyConfirmedYear?: number;
   notAtFaculty?: boolean;
+  locale?: string;
   accessToken?: string;
   expiresIn?: number;
 }
@@ -188,6 +193,12 @@ export type SsoStudentMatch =
   | "email"
   | "created";
 
+/** vtk.be sends "nl-BE" or "en"; Career stores the bare language. */
+function languageFromLocale(locale: string | undefined): "nl" | "en" | undefined {
+  const language = locale?.toLowerCase().split("-")[0];
+  return language === "nl" || language === "en" ? language : undefined;
+}
+
 /** Splits a full name the way the LITUS flow did: first word, then the rest. */
 function splitName(fullName: string): { first: string | null; last: string | null } {
   const parts = fullName.trim().split(/\s+/);
@@ -228,19 +239,11 @@ export async function upsertStudentFromSso(
     data.study_confirmed_year = profile.studyConfirmedYear;
   }
 
-  // Study info is the same rule with one extra guard: members outside FIRW get
-  // an *empty* array from the SSO and fill the real answer in themselves during
-  // onboarding, so an empty claim must never overwrite what they typed.
-  const hasProgrammes = (profile.studyProgrammes?.length ?? 0) > 0;
-  const hasYears = (profile.studyYears?.length ?? 0) > 0;
-  if (hasProgrammes) {
-    data.study_programmes = profile.studyProgrammes;
-    data.study_self_reported = false;
-  }
-  if (hasYears) {
-    data.study_years = profile.studyYears;
-    data.study_self_reported = false;
-  }
+  // What vtk.be sent, verbatim — empty arrays included. The account page shows
+  // it, which is how a student (or we) can check the claims arrive at all.
+  if (profile.studyProgrammes !== undefined) data.sso_study_programmes = profile.studyProgrammes;
+  if (profile.studyYears !== undefined) data.sso_study_years = profile.studyYears;
+  if (profile.locale !== undefined) data.sso_locale = profile.locale;
 
   const names = profile.fullName ? splitName(profile.fullName) : null;
   const firstName = profile.firstName ?? names?.first ?? undefined;
@@ -251,6 +254,26 @@ export async function upsertStudentFromSso(
 
   try {
     const existing = await findExistingStudentRow(profile);
+
+    // Study info: vtk.be is the source of truth for an SSO student and wins
+    // whenever it has something to say. Two ways it does not:
+    // - An empty claim never overwrites. Members outside FIRW, alumni and
+    //   staff arrive with `[]` and fill the answer in on Career instead.
+    // - A member who told vtk.be they are not at the faculty may choose their
+    //   programme on Career (`/student/account`), and that choice survives
+    //   their next login even if vtk.be has programmes on file for them.
+    const keepCareerProgrammes =
+      profile.notAtFaculty === true && existing?.row.study_self_reported === true;
+    if (profile.studyProgrammes?.length && !keepCareerProgrammes) {
+      data.study_programmes = profile.studyProgrammes;
+      data.study_self_reported = false;
+    }
+    if (profile.studyYears?.length) data.study_years = profile.studyYears;
+
+    // The language is Career's own preference; vtk.be's `locale` only seeds it
+    // until the student picks one.
+    const language = languageFromLocale(profile.locale);
+    if (language && !existing?.row.preferred_language) data.preferred_language = language;
 
     if (existing) {
       return {
@@ -284,13 +307,14 @@ export async function upsertStudentFromSso(
 }
 
 /**
- * Stores study info a student typed in themselves. Used by the onboarding
- * step that members outside FIRW go through: they sign in through the SSO
- * like anyone else, but it has no programme on file for them.
+ * Stores study info a student chose on Career — during onboarding, or on
+ * `/student/account`. Either list may be left out, which leaves that column as
+ * it is: the caller (`app/actions/student-study.ts`) only passes the fields
+ * this student is allowed to change (`studyEditability()`).
  */
 export async function saveSelfReportedStudy(
   studentId: string,
-  study: { programmes: string[]; years: string[] }
+  study: { programmes?: string[]; years?: string[] }
 ): Promise<Student | null> {
   const id = Number(studentId);
   if (!Number.isSafeInteger(id)) return null;
@@ -299,8 +323,8 @@ export async function saveSelfReportedStudy(
     const row = await prisma.student.update({
       where: { id },
       data: {
-        study_programmes: study.programmes,
-        study_years: study.years,
+        ...(study.programmes ? { study_programmes: study.programmes } : {}),
+        ...(study.years ? { study_years: study.years } : {}),
         study_self_reported: true,
         date_updated: new Date(),
       },
@@ -309,6 +333,113 @@ export async function saveSelfReportedStudy(
   } catch (error) {
     console.error("[saveSelfReportedStudy] Failed:", error);
     return null;
+  }
+}
+
+/** Stores the student's preferred language ("nl" or "en"). */
+export async function saveStudentLanguage(
+  studentId: string,
+  language: "nl" | "en"
+): Promise<boolean> {
+  const id = Number(studentId);
+  if (!Number.isSafeInteger(id)) return false;
+
+  try {
+    await prisma.student.update({
+      where: { id },
+      data: { preferred_language: language, date_updated: new Date() },
+    });
+    return true;
+  } catch (error) {
+    console.error("[saveStudentLanguage] Failed:", error);
+    return false;
+  }
+}
+
+/**
+ * The details a password ("external") student may edit on /student/account.
+ * SSO students never reach this: vtk.be owns their name and email, and the
+ * action refuses before calling it.
+ */
+export async function updateOwnStudentDetails(
+  studentId: string,
+  details: { firstName: string; lastName: string; university: string | null }
+): Promise<Student | null> {
+  const id = Number(studentId);
+  if (!Number.isSafeInteger(id)) return null;
+
+  try {
+    const row = await prisma.student.update({
+      where: { id },
+      data: {
+        first_name: details.firstName,
+        last_name: details.lastName,
+        full_name: `${details.firstName} ${details.lastName}`,
+        university: details.university,
+        date_updated: new Date(),
+      },
+    });
+    return shapeStudent(row);
+  } catch (error) {
+    console.error("[updateOwnStudentDetails] Failed:", error);
+    return null;
+  }
+}
+
+/**
+ * Changes a password student's login email. Returns "taken" rather than
+ * throwing on the unique constraint, so the form can say so.
+ */
+export async function changeStudentEmail(
+  studentId: string,
+  email: string
+): Promise<"ok" | "taken" | "failed"> {
+  const id = Number(studentId);
+  if (!Number.isSafeInteger(id)) return "failed";
+  const normalized = email.trim().toLowerCase();
+
+  const owner = await prisma.student.findUnique({
+    where: { email: normalized },
+    select: { id: true },
+  });
+  if (owner && owner.id !== id) return "taken";
+
+  try {
+    await prisma.student.update({
+      where: { id },
+      data: { email: normalized, date_updated: new Date() },
+    });
+    return "ok";
+  } catch (error) {
+    console.error("[changeStudentEmail] Failed:", error);
+    return "failed";
+  }
+}
+
+/** Stores a new password hash. The caller hashes and checks the old one. */
+export async function setStudentPasswordHash(
+  studentId: string,
+  passwordHash: string
+): Promise<boolean> {
+  const id = Number(studentId);
+  if (!Number.isSafeInteger(id)) return false;
+
+  try {
+    await prisma.student.update({
+      where: { id },
+      data: {
+        password: passwordHash,
+        // A reset link in someone's inbox must not outlive the password it
+        // was meant to replace.
+        password_reset_token: null,
+        password_reset_token_created: null,
+        date_updated: new Date(),
+      },
+    });
+    return true;
+  } catch (error) {
+    console.error("[setStudentPasswordHash] Failed:", error);
+    return false;
   }
 }
 

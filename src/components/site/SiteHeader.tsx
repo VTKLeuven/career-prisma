@@ -5,7 +5,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { useRouter, usePathname } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
-import { ChevronDown, LogOut, User, Bell, Star } from "lucide-react"
+import { ChevronDown, LogOut, User, UserCog, Bell, Star } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -641,6 +641,12 @@ function AccountButtons({ companyRep, student, router }: AccountProps) {
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem asChild>
+                <Link href="/student/account">
+                  <UserCog className="mr-2 h-4 w-4" />
+                  My account
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
                 <Link href="/student/liked-companies">
                   <Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />
                   Liked companies
@@ -744,6 +750,12 @@ function MobileAccountButtons({
                   Shifter Dashboard
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem asChild>
+                <Link href="/student/account" onClick={onNavigate}>
+                  <UserCog className="mr-2 h-4 w-4" />
+                  My account
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/student/liked-companies" onClick={onNavigate}>
                   <Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />

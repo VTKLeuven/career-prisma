@@ -48,6 +48,8 @@ export interface SsoProfile {
    * programmes: it can come with a non-empty `studyProgrammes`.
    */
   notAtFaculty?: boolean;
+  /** vtk.be's interface language, "nl-BE" or "en". Seeds the preferred language. */
+  locale?: string;
 }
 
 /**
@@ -66,6 +68,7 @@ const MAPPED_CLAIMS = [
   "vtk:study_years",
   "vtk:study_confirmed_year",
   "vtk:not_at_faculty",
+  "locale",
 ] as const;
 
 /**
@@ -87,7 +90,6 @@ const IGNORED_CLAIMS = new Set([
   "scope",
   // Granted by scopes we request, but of no use to Career.
   "picture",
-  "locale",
   "updated_at",
   "email_verified",
   "vtk:onboarded",
@@ -170,6 +172,7 @@ export function toSsoProfile(claims: Claims): SsoProfile | { error: string } {
     studyYears: asStringArray(claims["vtk:study_years"]),
     studyConfirmedYear: asNumber(claims["vtk:study_confirmed_year"]),
     notAtFaculty: asBoolean(claims["vtk:not_at_faculty"]),
+    locale: asString(claims.locale),
   };
 }
 

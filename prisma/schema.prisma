@@ -722,11 +722,23 @@ model Student {
   not_at_faculty                  Boolean?
   student_number                  String?                          @db.VarChar(255)
   sso_synced_at                   DateTime?                        @db.Timestamp(6)
-  // Set when the student typed their study info in themselves, which is what
-  // members outside FIRW have to do — the SSO knows they are not at the
-  // faculty and sends no programme for them. A login must never overwrite
-  // self-reported study info with the empty claim that caused it.
+  // Set when the student chose their study info on Career — onboarding, or
+  // /student/account. For a member outside the faculty it also stops the next
+  // login overwriting their programme choice with vtk.be's.
   study_self_reported             Boolean                          @default(false)
+  // What the SSO last SENT for study info, verbatim, separate from what we use
+  // (`study_programmes` / `study_years`). The two differ for members outside
+  // the faculty, who may choose their programme on Career, and for anyone the
+  // SSO sent `[]`. Shown on /student/account so the claims can be checked.
+  // See upsertStudentFromSso().
+  sso_study_programmes            String[]                         @default([])
+  sso_study_years                 String[]                         @default([])
+  // The SSO's `locale` claim as sent ("nl-BE", "en"). Seeds
+  // `preferred_language` until the student picks one themselves.
+  sso_locale                      String?                          @db.VarChar(16)
+  // "nl" or "en". Chosen on /student/account; nothing reads it yet — it is
+  // meant for mails and form pre-filling.
+  preferred_language              String?                          @db.VarChar(8)
   // Renamed from litus_access_token / litus_token_expires_at when the LITUS
   // flow was replaced by the VTK SSO. Written on login, not read anywhere:
   // we ask for no offline_access, so there is nothing to refresh with.

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getStudentFromCookies } from "@/lib/auth-student";
+import { studyEditability } from "@/lib/study-options";
 import StudyDetailsClient from "./client";
 
 export const dynamic = "force-dynamic";
@@ -10,9 +11,10 @@ export const dynamic = "force-dynamic";
  * exactly like everyone else and are never rejected; the SSO simply sends an
  * empty `vtk:study_programmes`, so they tell us here instead.
  *
- * The SSO callback routes students here when either list is empty. Once saved,
- * `study_self_reported` keeps a later login's empty claim from wiping it
- * (see `upsertStudentFromSso`).
+ * The SSO callback routes students here when either list is empty. Only the
+ * empty side is open (`studyEditability()`); what vtk.be did send is shown
+ * greyed out. An empty claim never overwrites what they choose here (see
+ * `upsertStudentFromSso`). Later changes happen on `/student/account`.
  */
 export default async function StudyDetailsPage({
   searchParams,
@@ -38,6 +40,7 @@ export default async function StudyDetailsPage({
       name={student.first_name ?? student.full_name ?? null}
       programmes={student.study_programmes}
       years={student.study_years}
+      editable={studyEditability(student)}
     />
   );
 }

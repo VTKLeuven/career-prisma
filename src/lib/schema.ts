@@ -54,7 +54,7 @@ export type AttendantScan = {
 
 export type Student = {
   id: string;
-  username: string; // preferred_username from the VTK SSO, or the email local part
+  username: string; // LITUS-era: the r-number. SSO-created: the r-number, else the email
   first_name: string | null;
   last_name: string | null;
   full_name?: string; // Full name from the VTK SSO
@@ -70,7 +70,11 @@ export type Student = {
   not_at_faculty?: boolean; // True when the member does not study at FIRW
   student_number?: string; // r-number, e.g. "r0812345"
   sso_synced_at?: string; // ISO date of the last claim refresh
-  study_self_reported: boolean; // Study info typed in by the student, not the SSO
+  study_self_reported: boolean; // Programmes chosen on Career, not taken from the SSO
+  sso_study_programmes: string[]; // What the SSO last sent, verbatim (may be [])
+  sso_study_years: string[]; // What the SSO last sent, verbatim (may be [])
+  sso_locale?: string; // The SSO's `locale` claim as sent, e.g. "nl-BE"
+  preferred_language?: string; // "nl" | "en", chosen on /student/account
   sso_access_token?: string; // Stored on login; nothing reads it (no offline_access)
   sso_token_expires_at?: string; // ISO date when that token expires
   password?: string; // Hashed password for non-OAuth students

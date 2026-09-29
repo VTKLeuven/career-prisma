@@ -107,8 +107,9 @@ Two admin pages read it, under the **Technical** group of the admin nav:
 Rows are kept for `SYSTEM_LOG_RETENTION_DAYS` (90). There is no cron job: the
 first write after an hour has passed deletes the expired rows.
 
-The first and so far only source is `vtk_sso`, which logs every completed or
-failed login flow (see [auth.md](auth.md)). To log from another subsystem, call
+Sources so far: `vtk_sso`, which logs every completed or failed login flow,
+and `student_accounts`, which logs students changing their login email and
+deleting their account (see [auth.md](auth.md)). To log from another subsystem, call
 `logSystemEvent()` with a new `source` and add it to `SYSTEM_LOG_SOURCES` so
 the filter offers it. **Never log tokens, secrets or r-numbers** — the table is
 readable by every admin.

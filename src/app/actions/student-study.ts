@@ -1,16 +1,22 @@
 "use server";
 
 import { getStudentFromCookies } from "@/lib/auth-student";
-import { saveSelfReportedStudy } from "@/lib/repos/students";
-import { filterProgrammes, filterYears } from "@/lib/study-options";
+import { saveSelfReportedStudy, saveStudentLanguage } from "@/lib/repos/students";
+import {
+  filterProgrammes,
+  filterYears,
+  studyEditability,
+} from "@/lib/study-options";
 
 /**
- * Stores the study info a student filled in during onboarding.
+ * Stores the study info a student chose on Career — during onboarding, or on
+ * `/student/account`.
  *
- * Reached by members the SSO has no programme for — anyone not at FIRW. They
- * are signed in normally; this only fills the gap the SSO left. It authorizes
- * itself, like every other action in this project: the student id comes from
- * the session cookie, never from the form.
+ * Only the fields `studyEditability()` opens for this student are written; the
+ * rest of the input is ignored, so a crafted request cannot override what
+ * vtk.be says for an SSO student. It authorizes itself, like every other action
+ * in this project: the student id comes from the session cookie, never from the
+ * form.
  */
 export async function saveStudyDetailsAction(input: {
   programmes: string[];
@@ -19,13 +25,20 @@ export async function saveStudyDetailsAction(input: {
   const student = await getStudentFromCookies();
   if (!student) return { ok: false, error: "You are not signed in." };
 
-  const programmes = filterProgrammes(input.programmes ?? []);
-  const years = filterYears(input.years ?? []);
+  const editable = studyEditability(student);
+  if (!editable.programmes && !editable.years) {
+    return { ok: false, error: "Your study details come from vtk.be. Change them there." };
+  }
 
-  if (!programmes.length) {
+  const programmes = editable.programmes
+    ? filterProgrammes(input.programmes ?? [])
+    : undefined;
+  const years = editable.years ? filterYears(input.years ?? []) : undefined;
+
+  if (programmes && !programmes.length) {
     return { ok: false, error: "Pick at least one study programme." };
   }
-  if (!years.length) {
+  if (years && !years.length) {
     return { ok: false, error: "Pick your year of study." };
   }
 
@@ -33,4 +46,19 @@ export async function saveStudyDetailsAction(input: {
   if (!saved) return { ok: false, error: "Could not save your study details." };
 
   return { ok: true };
+}
+
+/** Stores the language a student prefers. Open to every student. */
+export async function saveLanguageAction(
+  language: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const student = await getStudentFromCookies();
+  if (!student) return { ok: false, error: "You are not signed in." };
+
+  if (language !== "nl" && language !== "en") {
+    return { ok: false, error: "Unknown language." };
+  }
+
+  const saved = await saveStudentLanguage(student.id, language);
+  return saved ? { ok: true } : { ok: false, error: "Could not save your language." };
 }

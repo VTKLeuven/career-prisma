@@ -97,3 +97,28 @@ function humanize(value: string): string {
   const words = value.replace(/_/g, " ").trim();
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
+
+/**
+ * Which study fields a student may change on Career. The server action checks
+ * this too — the disabled checkboxes are only the visible half.
+ *
+ * - Password ("external") students have no other source: everything.
+ * - SSO students: vtk.be is the source of truth, changed at vtk.be/account and
+ *   re-read with "Refresh from vtk.be". Two exceptions. A member who told
+ *   vtk.be they are not at the faculty chooses their programme here. And a
+ *   field vtk.be sent empty is open, or onboarding would be a dead end — until
+ *   vtk.be sends a value, which then wins at the next login.
+ */
+export function studyEditability(student: {
+  sso_subject?: string;
+  not_at_faculty?: boolean;
+  sso_study_programmes: string[];
+  sso_study_years: string[];
+}): { programmes: boolean; years: boolean } {
+  if (!student.sso_subject) return { programmes: true, years: true };
+  return {
+    programmes:
+      student.not_at_faculty === true || student.sso_study_programmes.length === 0,
+    years: student.sso_study_years.length === 0,
+  };
+}

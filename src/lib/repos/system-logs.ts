@@ -11,7 +11,7 @@ import prisma from "@/lib/prisma";
 export type SystemLogLevel = "info" | "warn" | "error";
 
 /** Known sources, for the filter on the logs page. Add one when you log from a new subsystem. */
-export const SYSTEM_LOG_SOURCES = ["vtk_sso"] as const;
+export const SYSTEM_LOG_SOURCES = ["vtk_sso", "student_accounts"] as const;
 
 /**
  * How long a log line lives. Long enough to look back over an event week,

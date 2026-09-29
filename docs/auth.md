@@ -139,21 +139,45 @@ back into the SSO would loop.
 Password ("external") students are **not** capped at 24 hours: they have no SSO
 to bounce through, so it would only mean a daily password prompt.
 
-### Students who are not at FIRW
+### Study info: who may change what
 
-`vtk:not_at_faculty` is a member's own "I am not studying at the faculty"
-tick-box. They sign in through the SSO exactly like everyone else and are
-**never rejected**. The flag is independent of the programme list — it can
-come with programmes ticked — so the app does not infer anything from it.
+vtk.be is the source of truth for an SSO student's study programme and year.
+`studyEditability()` in `src/lib/study-options.ts` holds the rule, and both the
+pages and the server action (`app/actions/student-study.ts`) apply it:
 
-Members outside FIRW usually have no programme on file, and alumni, staff and
-members who are not students arrive with empty arrays too. The callback routes
-any student with empty study info to
-`/student/study-details`, which writes their answer and sets
-`study_self_reported`; its lists end in an app-only `other` value for exactly
-these members. `upsertStudentFromSso()` only overwrites study info when
-the SSO sends a **non-empty** array, so the next login cannot wipe what they
-typed with the empty claim that sent them there in the first place.
+- **Password students** have no other source and edit everything.
+- **SSO students** see their study info greyed out, change it at
+  `vtk.be/account`, and pull it in with "Refresh from vtk.be" — which just runs
+  the login flow again, the only way this app hears from the SSO.
+- **Exception:** a member who ticked "not studying at the faculty" on vtk.be
+  (`vtk:not_at_faculty`) chooses their programme on Career, and that choice
+  survives later logins. The flag is independent of vtk.be's programme list,
+  which may still be filled.
+- **Empty claims never overwrite.** Members outside FIRW, alumni and staff
+  arrive with `[]`; the callback sends them to `/student/study-details` and
+  whatever is empty there is open. When vtk.be later sends a value, it wins.
+
+`sso_study_programmes` / `sso_study_years` / `sso_locale` keep exactly what
+the SSO last sent, apart from the values in use. The account page shows them
+under "From vtk.be" — the quickest way to see whether the claims arrive.
+
+### The student account page
+
+`/student/account` (linked from the student menu in the site header) holds a
+student's details, password, preferred language, study info and account
+deletion. For an SSO student vtk.be owns name, email and r-number and there is
+no password, so those show read-only with a link to vtk.be. A password student
+edits them; changing the login email asks for the current password, so a
+stolen session alone cannot move the account to another inbox.
+
+`preferred_language` ("nl" / "en") is Career's own setting. vtk.be's `locale`
+claim only seeds it until the student picks one. Nothing reads it yet — it is
+meant for mails and form pre-filling.
+
+Deleting goes through an "are you sure?" dialog, then `deleteStudent()`
+(which also removes liked companies and matching responses), clears the
+session and the `student_sso` hint, and logs `student_accounts/account_deleted`.
+An SSO student who signs in again starts with a new, empty account.
 
 ## Roles
 

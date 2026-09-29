@@ -192,6 +192,16 @@ as a result:
   `vtk:not_at_faculty` is independent of the programmes, and `email` is not
   always the KU Leuven address.
 
+## Student account page (29 Sep 2026)
+
+`/student/account` shows and edits a student's details, password, preferred
+language and study info, and deletes the account. For SSO students vtk.be owns
+study info (except the programme of a member outside the faculty) and name,
+email and r-number; a "From vtk.be" panel shows the raw claims. `dev.career`
+signs in against production vtk.be on purpose. Rules in
+[`docs/auth.md`](docs/auth.md); migration
+`20260929154154_student_account_preferences`.
+
 ## Still open
 
 1. **Confirm LITUS usernames are r-numbers.** The `legacy_username` step
@@ -207,14 +217,10 @@ as a result:
    Mostly `r9999999` means the step works. Anything else, and returning LITUS
    students only match on email.
 
-2. **Dev uses the production vtk.be client.** No client exists on
-   `dev.vtk.be` yet, so `dev.career.vtk.be` signs in against real vtk.be
-   accounts. A dev client would need `VTK_SSO_ISSUER=https://dev.vtk.be/api/auth/better`.
-
-3. **The client secret was pasted into a chat on 29 Sep 2026.** Rotate it on
+2. **The client secret was pasted into a chat on 29 Sep 2026.** Rotate it on
    `vtk.be/admin/sso` and update the `.env` files.
 
-4. **Delete the dead `LITUS_*` lines** from the server `.env` files; nothing
+3. **Delete the dead `LITUS_*` lines** from the server `.env` files; nothing
    reads them.
 
 Not planned, but possible later: vtk.be advertises an `end_session_endpoint`,

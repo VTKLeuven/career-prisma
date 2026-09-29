@@ -28,6 +28,19 @@ const REDIRECT_COOKIE = "vtk_sso_redirect_to";
  */
 export const SSO_HINT_COOKIE = "student_sso";
 
+/**
+ * Where a member edits their own profile on vtk.be — the only place an SSO
+ * student's study info can change. Same host as the issuer, so a dev setup
+ * pointed at another vtk.be links to that one.
+ */
+export function vtkAccountUrl(): string {
+  try {
+    return `${new URL(process.env.VTK_SSO_ISSUER ?? "").origin}/account`;
+  } catch {
+    return "https://vtk.be/account";
+  }
+}
+
 /** How long the user has to finish the flow at the SSO before state expires. */
 const FLOW_DURATION = 60 * 30; // 30 minutes
 
