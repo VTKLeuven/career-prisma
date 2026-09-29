@@ -71,7 +71,7 @@ jobs:
 
     env:
       # The dev checkout on elise, with its own .env (DEV_ENVIRONMENT=true).
-      APP_DIR: /home/it/career-prisma-dev
+      APP_DIR: /home/it/career-prisma
 
     steps:
       - name: Deploy
