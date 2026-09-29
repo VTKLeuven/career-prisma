@@ -25,10 +25,9 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push'
     runs-on: [self-hosted, elise]
-
     env:
       # The dev checkout on elise, with its own .env (DEV_ENVIRONMENT=true).
-      APP_DIR: /home/it/career-prisma-dev
+      APP_DIR: /home/it/career-prisma
       # Deploy the commit CI tested, not whatever main points to by now.
       SHA: ${{ github.event.workflow_run.head_sha }}
 
