@@ -252,7 +252,7 @@ export default function StudentAccountClient({
                 <>
                   <Button asChild variant="outline">
                     <a
-                      href={vtkAccountUrl}
+                      href={`${vtkAccountUrl}#study`}
                       target="_blank"
                       rel="noopener noreferrer"
                     >

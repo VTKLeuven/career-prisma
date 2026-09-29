@@ -32,6 +32,10 @@ export const SSO_HINT_COOKIE = "student_sso";
  * Where a member edits their own profile on vtk.be — the only place an SSO
  * student's study info can change. Same host as the issuer, so a dev setup
  * pointed at another vtk.be links to that one.
+ *
+ * Append a section anchor to land on the right part of the page: `#study`,
+ * `#profile`, `#preferences`, `#password`, `#identity`, … (the full list is in
+ * `docs/account.md` in the vtk.be repo).
  */
 export function vtkAccountUrl(): string {
   try {

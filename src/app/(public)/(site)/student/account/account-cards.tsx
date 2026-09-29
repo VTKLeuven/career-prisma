@@ -146,7 +146,9 @@ export function AccountDetailsCard({
             </Field>
           </div>
           <Button asChild variant="outline">
-            <a href={vtkAccountUrl} target="_blank" rel="noopener noreferrer">
+            {/* #profile: the section of vtk.be/account where a member edits
+                their name. Email and r-number are read-only there too. */}
+            <a href={`${vtkAccountUrl}#profile`} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="mr-2 h-4 w-4" />
               Change on vtk.be
             </a>
