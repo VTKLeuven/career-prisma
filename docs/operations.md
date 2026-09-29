@@ -35,13 +35,19 @@ soak, drink-ordering, QR scanning) run manually — see `k6/README.md`.
 
 ## Deployment
 
-Three workflows in `.github/workflows/`:
+Two workflows in `.github/workflows/`:
 
-| Workflow | Trigger | Runs on | Does |
-|---|---|---|---|
-| `ci.yml` (CI) | push to `main`, PRs | GitHub | `npm ci` → `prisma generate` → `npm run build` |
-| `deploy-dev.yml` | CI succeeded for a push to `main` | self-hosted runner on `elise.vtk.be` | deploys that commit to `dev.career.vtk.be` |
-| `deploy-production.yml` | **manual only** (Run workflow, on `main`) | GitHub, SSH to the server | deploys `main`, if CI passed for that commit |
+| Workflow | Trigger | Job | Runs on | Does |
+|---|---|---|---|---|
+| `ci.yml` (CI) | push to `main`, PRs | Build | GitHub | `npm ci` → `prisma generate` → `npm run build` |
+| | push to `main` only | Deploy to dev | self-hosted runner on `elise.vtk.be` | after Build passes, deploys that commit to `dev.career.vtk.be` |
+| `deploy-production.yml` | **manual only** (Run workflow, on `main`) | verify, deploy | GitHub, SSH to the server | deploys `main`, if Build passed for that commit |
+
+The dev deploy is a job inside CI rather than its own workflow because only
+workflows triggered by the push appear in the commit's status checks; this way
+both `CI / Build` and `CI / Deploy to dev` show there. The deploy jobs also use
+GitHub environments (`dev`, `production`), which list what is live where under
+"Deployments" on the repo page.
 
 So **pushing to `main` deploys to dev, not production.** Production only moves
 when someone runs "Deploy to Production" in the Actions tab.
@@ -56,7 +62,7 @@ mid-deploy therefore cannot sneak in untested.
 `elise.vtk.be` is not reachable over SSH from GitHub, which is why the dev
 deploy uses a self-hosted runner (label `elise`) instead of SSH. The runner's
 user needs Docker access and must be able to `git fetch` in the dev checkout
-(`APP_DIR` in `deploy-dev.yml`), which has its own `.env` with
+(`APP_DIR` in `ci.yml`), which has its own `.env` with
 `DEV_ENVIRONMENT=true`.
 
 Migrations run through the one-off `migration` Compose service

@@ -1,21 +1,28 @@
 name: CI
 
-# Runs on GitHub's servers for every push to main. There are no unit tests in
-# this repo, so "the tests" are the production build: TypeScript type-checking
-# plus Next.js compiling every route. A green run here is what lets
-# deploy-dev.yml run automatically and deploy-production.yml run at all.
+# Build, then (for pushes to main) deploy to dev. Both are jobs of this one
+# workflow on purpose: only workflows triggered by the push itself show up in
+# the commit's status checks, so a separate workflow_run-triggered deploy would
+# be invisible there.
+#
+# There are no unit tests in this repo, so "the tests" are the production
+# build: TypeScript type-checking plus Next.js compiling every route.
+# deploy-production.yml refuses to run unless the Build job passed.
 on:
   push:
     branches: ["main"]
   pull_request:
   workflow_dispatch:
 
+# A newer push cancels an older PR run, but never a run on main: that could
+# kill the dev deploy halfway through a migration.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
+    name: Build
     runs-on: ubuntu-latest
 
     env:
@@ -43,3 +50,41 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  # elise.vtk.be cannot be reached over SSH from GitHub, so this job runs on a
+  # self-hosted runner installed on elise itself. The runner must carry the
+  # "elise" label, and its service user needs docker access and permission to
+  # `git fetch` in APP_DIR.
+  deploy-dev:
+    name: Deploy to dev
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, elise]
+    environment:
+      name: dev
+      url: https://dev.career.vtk.be
+
+    # Never run two dev deploys at once; a newer one waits.
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: false
+
+    env:
+      # The dev checkout on elise, with its own .env (DEV_ENVIRONMENT=true).
+      APP_DIR: /home/it/career-prisma-dev
+
+    steps:
+      - name: Deploy
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          set -euo pipefail
+
+          # The commit this run built, not whatever main points to by now.
+          git fetch --all
+          git reset --hard "${{ github.sha }}"
+
+          # Same sequence as production -- see deploy-production.yml for why
+          # the migration runs before the new image starts.
+          docker compose up -d database
+          docker compose --profile tools run --rm --build migration
+          docker compose up -d --build

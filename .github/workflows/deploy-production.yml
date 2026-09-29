@@ -12,7 +12,8 @@ concurrency:
 
 permissions:
   contents: read
-  actions: read
+  checks: read
+  deployments: write
 
 jobs:
   verify:
@@ -30,11 +31,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Look at the Build job itself, not the whole CI run, so a failed
+          # dev deploy does not block production.
           passed=$(gh api \
-            "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=${{ github.sha }}&status=success" \
-            --jq '.total_count')
+            "repos/${{ github.repository }}/commits/${{ github.sha }}/check-runs?check_name=Build" \
+            --jq '[.check_runs[] | select(.conclusion == "success")] | length')
           if [ "$passed" -eq 0 ]; then
-            echo "::error::No successful CI run for ${{ github.sha }}. Wait for CI to finish (or fix it) before deploying."
+            echo "::error::No successful CI Build for ${{ github.sha }}. Wait for CI to finish (or fix it) before deploying."
             exit 1
           fi
           echo "CI passed for ${{ github.sha }}."
@@ -42,6 +45,9 @@ jobs:
   deploy:
     needs: verify
     runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://career.vtk.be
 
     steps:
       - name: Install SSH key
