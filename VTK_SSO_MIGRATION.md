@@ -59,12 +59,14 @@ client secret, so nothing could have substituted it (OIDC Core 3.1.3.7). `iss`,
 `findExistingStudentRow()` tries, in order:
 
 1. `sso_subject` — they have signed in through the new SSO before.
-2. `student_number` — the r-number.
-3. `email`, then `username` — for rows old enough to predate the r-number.
+2. The r-number against `student_number`.
+3. The r-number against `username` (added 29 Sep 2026, see below).
+4. `email`.
 
-Step 2 is the one that matters for the migration: a row created by the old VTK
-login has no subject yet, and the r-number is the only identifier that survived
-the move and that a student cannot change. It is why `vtk:student_number` is
+Step 3 is the one that matters for the migration: a row created by the old VTK
+login has no subject yet and stores the LITUS username — an r-number — in
+`username`, and the r-number is the only identifier that survived the move and
+that a student cannot change. It is why `vtk:student_number` is
 requested despite its sensitive-consent prompt.
 
 A match on anything but the subject adopts the row and stamps the subject on
@@ -165,30 +167,61 @@ and the `'{}'` defaults on `study_programmes` / `study_years`: the hand-written
 SSO migration created them, but `schema.prisma` never declared them. The schema
 now declares both, so the two agree again.
 
+## Confirmed against the vtk.be source (29 Sep 2026)
+
+An agent ran `VTK_SSO_WEBSITE_PROMPT.md` inside the vtk.be repo; its answers
+are in `career-sso-answers.md`. The first login on dev worked, after fixing a
+blank `VTK_SSO_SCOPES=` being read as "request no scopes". What changed here
+as a result:
+
+- **`study-options.ts` is exact** — all 17 programmes and 5 years, with
+  vtk.be's own NL/EN labels. `other` stays as an app-only value.
+- **LITUS rows are matched on `username`.** The old login never filled
+  `student_number`, so the r-number step could not match a single pre-SSO row.
+  `findExistingStudentRow()` now also compares the r-number with `username`
+  (logged as `legacy_username`), and dropped the `preferred_username` step —
+  vtk.be derives that from the email, so it matched nothing useful and could
+  collide across domains. New rows get the r-number, else the email, as
+  `username`.
+- **r-numbers are lowercased**, since vtk.be admins can enter `R0123456`.
+- **The silent re-login asks only for the scopes granted last time**, stored in
+  the `student_sso` hint cookie. vtk.be skips consent only when every
+  requested scope was granted before, so a student who declined
+  `vtk:student_number` would otherwise see the consent screen daily.
+- **Docs corrected**: empty study arrays arrive as `[]` rather than absent,
+  `vtk:not_at_faculty` is independent of the programmes, and `email` is not
+  always the KU Leuven address.
+
 ## Still open
 
-1. **`src/lib/study-options.ts` is incomplete.** Only three enum values are
-   known from the sample payload (`computer_science`, `cybersecurity`,
-   `master_1`); the list was seeded with those plus a plausible
-   bachelor/master year set. Paste `StudyProgramme` and `StudyYear` from the
-   SSO's `schema.prisma` (around lines 394-450) to make it exact. Until then
-   the onboarding form offers a short list, and a self-reported value could
-   fail to match an SSO one.
+1. **Confirm LITUS usernames are r-numbers.** The `legacy_username` step
+   assumes so. On production, check the shape of `students.username` for rows
+   without a password:
 
-   `VTK_SSO_WEBSITE_PROMPT.md` is a prompt to run with an agent inside the
-   vtk.be repo. It collects this and the other facts below that could not be
-   confirmed from here (exact discovery URL and issuer, consent behaviour for
-   the silent re-login, the r-number format, client registration steps).
+   ```sql
+   select left(username,1) || regexp_replace(substr(username,2),'[0-9]','9','g') as pattern,
+          count(*)
+   from students where password is null group by 1 order by 2 desc limit 10;
+   ```
 
-2. **The SSO credentials are empty.** `VTK_SSO_ISSUER`, `VTK_SSO_CLIENT_ID` and
-   `VTK_SSO_CLIENT_SECRET` need filling in `.env`. The old `LITUS_*` lines were
-   left in place rather than deleted — `LITUS_API_KEY` holds a real secret and
-   `.env` is not in git, so removing it would have destroyed the only copy.
-   Nothing reads them any more; delete them when you are happy.
+   Mostly `r9999999` means the step works. Anything else, and returning LITUS
+   students only match on email.
 
-   The redirect URI to register with the SSO is
-   `<origin>/api/auth/oauth/callback`, or set `VTK_SSO_CALLBACK_URL` if it
-   differs.
+2. **Dev uses the production vtk.be client.** No client exists on
+   `dev.vtk.be` yet, so `dev.career.vtk.be` signs in against real vtk.be
+   accounts. A dev client would need `VTK_SSO_ISSUER=https://dev.vtk.be/api/auth/better`.
+
+3. **The client secret was pasted into a chat on 29 Sep 2026.** Rotate it on
+   `vtk.be/admin/sso` and update the `.env` files.
+
+4. **Delete the dead `LITUS_*` lines** from the server `.env` files; nothing
+   reads them.
+
+Not planned, but possible later: vtk.be advertises an `end_session_endpoint`,
+but it only works once `enableEndSession` is set on the client row, which its
+admin UI cannot do yet. The `entitlements` scope (per-app permission codes
+such as `career.admin`) is deliberately not requested — it would shorten
+access tokens to 10 minutes.
 
 ## Checks
 

@@ -42,17 +42,32 @@ Three files, and the split between them is deliberate:
 
 ### What the claims look like
 
-Three properties of the provider's contract that the code depends on:
+Properties of the provider's contract that the code depends on, confirmed
+against the vtk.be source on 29 Sep 2026 (`career-sso-answers.md` in the repo
+root holds the full research, with file references into that repo):
+
+- **Issuer** `https://vtk.be/api/auth/better` (dev.vtk.be has its own, with a
+  separate client). Discovery is `<issuer>/.well-known/openid-configuration`.
 
 - **The ID token carries only `profile` and `email` claims.** Everything under
   `vtk:` — study programme, year, r-number — is userinfo-only. That is why the
   flow always calls userinfo instead of stopping at the ID token.
-- **Claims are absent, never null.** A student who declined a scope has no key
-  at all, so a missing claim must never be written to the database as a blank.
+- **Claims are absent or valued, never null.** A student who declined a scope
+  has no key at all, so a missing claim must never be written to the database
+  as a blank. The exceptions: the study arrays are **present as `[]`** when
+  empty, and the booleans are always present.
 - **`vtk:study_programmes` and `vtk:study_years` are arrays** of lowercased
   enum values (`["computer_science"]`, `["master_1"]`), because a member can
   read two programmes at once. `src/lib/study-options.ts` holds this app's copy
-  of that vocabulary, and has to stay in step with the SSO's enums.
+  of that vocabulary, and has to stay in step with the SSO's enums. Unknown
+  values from the SSO are stored anyway — vtk.be has added programmes before.
+- **`vtk:student_number` is not always lowercase.** vtk.be admins can type or
+  bulk-import `R0123456`, so the app lowercases it.
+- **`email` is usually, not always, the KU Leuven address**, and a vtk.be admin
+  can change it. `preferred_username` is just its local part — never a key.
+- **Consent is remembered only as a whole.** vtk.be skips its consent screen
+  when every requested scope was granted before. Declining the sensitive
+  `vtk:student_number` does not fail the login, it just leaves the claim out.
 
 The ID token's signature is **not** verified. That is safe here and only here:
 it arrives on our own TLS connection to the token endpoint, authenticated with
@@ -61,14 +76,21 @@ the client secret, so nothing could have substituted it (OIDC Core 3.1.3.7).
 
 ### Matching a returning student
 
-`findExistingStudentRow()` tries, in order: `sso_subject`, then
-**`student_number`** (the r-number), then email, then username. The r-number is
-the one that matters for the LITUS migration — a row created by the old login
-has no subject yet, and the r-number is the only identifier that survived the
-move and that a student cannot change. It is why `vtk:student_number` is
-requested despite its sensitive-consent prompt. A match on anything but the
-subject adopts the row and stamps the subject on it, so later logins take the
-first path. Rows that already carry a *different* subject are never adopted.
+`findExistingStudentRow()` tries, in order: `sso_subject`; the r-number
+against `student_number`; the r-number against **`username`**; then email.
+
+The third step is the LITUS migration. The old login stored the LITUS username
+and never filled `student_number` (a newer column), and LITUS usernames are
+r-numbers — so for a returning pre-SSO student, `username` is where the
+r-number is. vtk.be migrated no LITUS data, so the r-number is the only
+identifier the two systems share that a student cannot change, which is why
+`vtk:student_number` is requested despite its sensitive-consent prompt. Both
+r-number comparisons are case-insensitive.
+
+A match on anything but the subject adopts the row and stamps the subject on
+it, so later logins take the first path. Rows that already carry a *different*
+subject are never adopted. New rows get the r-number as `username`, or the
+email when there is none.
 
 ### Refresh
 
@@ -84,7 +106,7 @@ are capped at 24 hours rather than 30 days.
 
 Every login flow ends in one `vtk_sso` row in `system_logs`:
 `login_succeeded` (with **how** the student was matched — `subject`,
-`student_number`, `email`, `username`, or `created`) or `login_failed` (with
+`student_number`, `legacy_username`, `email`, or `created`) or `login_failed` (with
 the error code). A failure to start the flow is `initiate_failed`, and claims
 the app does not recognise are `unmapped_claims`. A declined consent logs as
 `info` and an expired flow as `warn`; everything else is `error`. Read them at
@@ -98,8 +120,15 @@ never see rather than a login screen.
 
 With no middleware, that bounce lives at `/student-login` — the single funnel
 every "you need to sign in" link in the app points at. It is a server component
-that redirects to `/api/auth/oauth/initiate` when the session is gone but the
-`student_sso` hint cookie is present.
+that redirects to `/api/auth/oauth/initiate?silent=1` when the session is gone
+but the `student_sso` hint cookie is present.
+
+The hint cookie stores the scopes the student granted last time, and a
+`silent=1` flow requests only those. Without that, a student who declined
+`vtk:student_number` would face vtk.be's consent screen at every daily bounce,
+since vtk.be only skips it when all requested scopes were granted before. A
+login the student starts themselves still asks for everything, so they can
+change their mind.
 
 The hint cookie is what tells an SSO student from an external one; it holds no
 privilege, outlives the session on purpose, and is cleared on logout so signing
@@ -112,13 +141,17 @@ to bounce through, so it would only mean a daily password prompt.
 
 ### Students who are not at FIRW
 
-`vtk:not_at_faculty` marks a member who does not study at FIRW. They sign in
-through the SSO exactly like everyone else and are **never rejected** — the SSO
-simply has no programme on file for them, so it sends an empty array.
+`vtk:not_at_faculty` is a member's own "I am not studying at the faculty"
+tick-box. They sign in through the SSO exactly like everyone else and are
+**never rejected**. The flag is independent of the programme list — it can
+come with programmes ticked — so the app does not infer anything from it.
 
-The callback routes any student with empty study info to
+Members outside FIRW usually have no programme on file, and alumni, staff and
+members who are not students arrive with empty arrays too. The callback routes
+any student with empty study info to
 `/student/study-details`, which writes their answer and sets
-`study_self_reported`. `upsertStudentFromSso()` only overwrites study info when
+`study_self_reported`; its lists end in an app-only `other` value for exactly
+these members. `upsertStudentFromSso()` only overwrites study info when
 the SSO sends a **non-empty** array, so the next login cannot wipe what they
 typed with the empty claim that sent them there in the first place.
 

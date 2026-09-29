@@ -5,6 +5,7 @@
 // the new site's OIDC endpoint, not the entry point.
 import { NextRequest, NextResponse } from "next/server";
 import {
+  SSO_HINT_COOKIE,
   buildAuthorizationUrl,
   codeChallengeFor,
   discover,
@@ -13,6 +14,7 @@ import {
   generateState,
   getCallbackUrl,
   getSsoConfig,
+  scopesForSilentLogin,
   storeFlowState,
 } from "@/lib/vtk-sso";
 import { logSystemEvent } from "@/lib/repos/system-logs";
@@ -49,12 +51,23 @@ export async function GET(request: NextRequest) {
       flowCookieDomain(request)
     );
 
+    // `silent=1` is the bounce from `/student-login` after the 24-hour session
+    // ran out: ask only for what the student granted last time, so vtk.be
+    // skips its consent screen. A login the student starts themselves asks for
+    // everything, which is their chance to grant a scope they declined before.
+    const silent = request.nextUrl.searchParams.get("silent") === "1";
+    const scopes = silent
+      ? scopesForSilentLogin(config, request.cookies.get(SSO_HINT_COOKIE)?.value)
+      : config.scopes;
+
     return NextResponse.redirect(
-      buildAuthorizationUrl(endpoints, config, getCallbackUrl(request), {
-        state,
-        nonce,
-        challenge: codeChallengeFor(verifier),
-      })
+      buildAuthorizationUrl(
+        endpoints,
+        config,
+        getCallbackUrl(request),
+        { state, nonce, challenge: codeChallengeFor(verifier) },
+        scopes
+      )
     );
   } catch (error) {
     // Almost always discovery: the SSO is down or VTK_SSO_ISSUER is wrong.

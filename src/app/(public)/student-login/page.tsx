@@ -49,7 +49,9 @@ export default async function StudentLoginPage({
   const forceForm = (Array.isArray(params.sso) ? params.sso[0] : params.sso) === "0";
 
   if (!forceForm && cookieStore.get(SSO_HINT_COOKIE)?.value) {
-    redirect(`/api/auth/oauth/initiate?redirect_to=${encodeURIComponent(redirectTo)}`);
+    redirect(
+      `/api/auth/oauth/initiate?silent=1&redirect_to=${encodeURIComponent(redirectTo)}`
+    );
   }
 
   return <StudentLoginClient />;

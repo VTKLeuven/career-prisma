@@ -25,8 +25,12 @@ import type { Claims } from "@/lib/vtk-sso";
 export interface SsoProfile {
   /** OIDC `sub` — the SSO's user id. The identity we store and match on first. */
   subject: string;
-  /** Always the university address; the SSO owns it. */
+  /**
+   * The vtk.be login address. Usually the KU Leuven one, but not always: it
+   * can be a private address, and a vtk.be admin can change it.
+   */
   email: string;
+  /** For rows this flow creates: the r-number, else the email. Never `preferred_username`. */
   username: string;
   fullName?: string;
   firstName?: string;
@@ -37,9 +41,12 @@ export interface SsoProfile {
   studyProgrammes?: string[];
   /** Lowercased enum values, e.g. ["master_1"]. */
   studyYears?: string[];
-  /** Academic year the study info was last confirmed for, e.g. 2025. */
+  /** Start year of the academic year the study info was last confirmed for: 2026 = 2026-2027. */
   studyConfirmedYear?: number;
-  /** True when the member does not study at FIIW/FirW. */
+  /**
+   * Self-declared "I am not studying at the faculty". Independent of the
+   * programmes: it can come with a non-empty `studyProgrammes`.
+   */
   notAtFaculty?: boolean;
 }
 
@@ -140,11 +147,16 @@ export function toSsoProfile(claims: Claims): SsoProfile | { error: string } {
     asString(claims.name) ??
     ([firstName, lastName].filter(Boolean).join(" ") || undefined);
 
-  // `username` is NOT NULL and unique in the students table. `preferred_username`
-  // is granted with `profile` and should always be there, but fall through to
-  // the email local part and then the subject, which is unique by construction.
-  const username =
-    asString(claims.preferred_username) ?? email.split("@")[0] ?? subject;
+  // vtk.be lowercases r-numbers from KU Leuven and self-entry, but values an
+  // admin typed or bulk-imported are only trimmed — `R0123456` exists there.
+  const studentNumber = asString(claims["vtk:student_number"])?.toLowerCase();
+
+  // `username` is NOT NULL and unique in the students table, and only matters
+  // for rows this flow creates. NOT `preferred_username`: vtk.be derives it
+  // from the email's local part, so it is not unique across domains, and two
+  // students called `jan` would collide. The r-number is what LITUS-era rows
+  // carry as their username; the full email is unique in both systems.
+  const username = studentNumber ?? email;
 
   return {
     subject,
@@ -153,7 +165,7 @@ export function toSsoProfile(claims: Claims): SsoProfile | { error: string } {
     fullName,
     firstName,
     lastName,
-    studentNumber: asString(claims["vtk:student_number"]),
+    studentNumber,
     studyProgrammes: asStringArray(claims["vtk:study_programmes"]),
     studyYears: asStringArray(claims["vtk:study_years"]),
     studyConfirmedYear: asNumber(claims["vtk:study_confirmed_year"]),

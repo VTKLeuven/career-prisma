@@ -122,15 +122,20 @@ export interface SsoStudentUpsert {
  * the match is worth trusting:
  *
  * 1. `sso_subject` — they have signed in through the new SSO before.
- * 2. `student_number` — the r-number. This is the one that matters for the
- *    LITUS migration: a row created by the old VTK login has no subject yet,
- *    and the r-number is the only identifier that survived the move and that
- *    the student cannot change.
- * 3. `email`, then `username` — for rows old enough to predate the r-number
- *    being collected at all.
+ * 2. `student_number` — the r-number, for a row an earlier SSO login (or an
+ *    admin) filled in without a subject.
+ * 3. `username` equal to the r-number — the LITUS migration. The old login
+ *    stored the LITUS username and never filled `student_number`, which is a
+ *    newer column; LITUS usernames are r-numbers. Case-insensitive, because
+ *    neither side guarantees the case.
+ * 4. `email` — for students without an r-number at all.
  *
- * A match through 2-4 adopts the row and stamps `sso_subject` on it, so every
- * later login takes path 1.
+ * `preferred_username` is deliberately not a match key: vtk.be derives it from
+ * the email's local part, so it is neither unique nor the LITUS username.
+ *
+ * Rows that already carry a *different* subject are never adopted — that would
+ * hand this student someone else's account. A match through 2-4 stamps
+ * `sso_subject` on the row, so every later login takes path 1.
  */
 async function findExistingStudentRow(profile: SsoStudentUpsert) {
   const bySubject = await prisma.student.findUnique({
@@ -139,27 +144,35 @@ async function findExistingStudentRow(profile: SsoStudentUpsert) {
   if (bySubject) return { row: bySubject, matchedBy: "subject" as const };
 
   if (profile.studentNumber) {
-    // Not a unique column — a duplicate r-number means two rows for one person.
+    // Neither column is unique — a duplicate means two rows for one person.
     // Take the oldest and leave the duplicate visible rather than failing a
-    // login over it. Rows that already carry a *different* subject are skipped:
-    // adopting one would hand this student someone else's account.
+    // login over it.
     const byNumber = await prisma.student.findFirst({
-      where: { student_number: profile.studentNumber, sso_subject: null },
+      where: {
+        student_number: { equals: profile.studentNumber, mode: "insensitive" },
+        sso_subject: null,
+      },
       orderBy: { id: "asc" },
     });
     if (byNumber) return { row: byNumber, matchedBy: "student_number" as const };
+
+    const byLegacyUsername = await prisma.student.findFirst({
+      where: {
+        username: { equals: profile.studentNumber, mode: "insensitive" },
+        sso_subject: null,
+      },
+      orderBy: { id: "asc" },
+    });
+    if (byLegacyUsername) {
+      return { row: byLegacyUsername, matchedBy: "legacy_username" as const };
+    }
   }
 
   const byEmail = await prisma.student.findUnique({
     where: { email: profile.email.trim().toLowerCase() },
   });
-  if (byEmail && !byEmail.sso_subject) return { row: byEmail, matchedBy: "email" as const };
-
-  const byUsername = await prisma.student.findUnique({
-    where: { username: profile.username.trim() },
-  });
-  return byUsername && !byUsername.sso_subject
-    ? { row: byUsername, matchedBy: "username" as const }
+  return byEmail && !byEmail.sso_subject
+    ? { row: byEmail, matchedBy: "email" as const }
     : null;
 }
 
@@ -171,8 +184,8 @@ async function findExistingStudentRow(profile: SsoStudentUpsert) {
 export type SsoStudentMatch =
   | "subject"
   | "student_number"
+  | "legacy_username"
   | "email"
-  | "username"
   | "created";
 
 /** Splits a full name the way the LITUS flow did: first word, then the rest. */

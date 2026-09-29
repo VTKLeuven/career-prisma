@@ -35,6 +35,32 @@ const FLOW_DURATION = 60 * 30; // 30 minutes
 export const SSO_HINT_DURATION = 60 * 60 * 24 * 365; // 1 year
 
 /**
+ * The hint cookie's value: the scopes the student actually granted last time,
+ * comma-separated, or "1" when the SSO did not say.
+ *
+ * vtk.be skips its consent screen only when EVERY requested scope was
+ * consented to before. A student who unticked `vtk:student_number` would
+ * otherwise see the consent screen again at each daily silent re-login, so the
+ * silent bounce asks for what they granted rather than for everything.
+ */
+export function hintCookieValue(grantedScope: string | undefined): string {
+  const scopes = grantedScope?.split(/\s+/).filter(Boolean) ?? [];
+  return scopes.length ? scopes.join(",") : "1";
+}
+
+/**
+ * Scopes for a silent re-login: the configured ones the student granted last
+ * time. Falls back to the full set when the hint carries no list, or when the
+ * intersection lost `openid` (a list that is not really a scope list).
+ */
+export function scopesForSilentLogin(config: SsoConfig, hint: string | undefined): string[] {
+  if (!hint || hint === "1") return config.scopes;
+  const granted = new Set(hint.split(","));
+  const scopes = config.scopes.filter((scope) => granted.has(scope));
+  return scopes.includes("openid") ? scopes : config.scopes;
+}
+
+/**
  * Student sessions last a day. The SSO's own session is much longer, so an
  * expired session costs the student a redirect they never see rather than a
  * login screen — which is the whole reason we can afford to keep it this
@@ -312,13 +338,14 @@ export function buildAuthorizationUrl(
   endpoints: SsoEndpoints,
   config: SsoConfig,
   redirectUri: string,
-  flow: { state: string; nonce: string; challenge: string }
+  flow: { state: string; nonce: string; challenge: string },
+  scopes: string[] = config.scopes
 ): string {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: config.clientId,
     redirect_uri: redirectUri,
-    scope: config.scopes.join(" "),
+    scope: scopes.join(" "),
     state: flow.state,
     nonce: flow.nonce,
     code_challenge: flow.challenge,

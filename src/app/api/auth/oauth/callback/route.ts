@@ -17,6 +17,7 @@ import {
   fetchUserInfo,
   flowCookieDomain,
   getCallbackUrl,
+  hintCookieValue,
   getFrontendUrl,
   getSsoConfig,
   readFlowState,
@@ -227,8 +228,10 @@ export async function GET(request: NextRequest) {
     );
 
     // Outlives the session on purpose: it is what lets `/student-login` bounce
-    // an expired session back through the SSO without showing a form.
-    response.cookies.set(SSO_HINT_COOKIE, "1", {
+    // an expired session back through the SSO without showing a form. It
+    // remembers the granted scopes, so that bounce stays silent for a student
+    // who declined one (see `hintCookieValue`).
+    response.cookies.set(SSO_HINT_COOKIE, hintCookieValue(tokens.scope), {
       ...sessionCookieOptions(request, SSO_HINT_DURATION),
       domain: flowCookieDomain(request),
     });
