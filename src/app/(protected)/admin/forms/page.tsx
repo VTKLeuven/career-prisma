@@ -213,7 +213,7 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
   const [description, setDescription] = useState("");
   const [deadline, setDeadline] = useState("");
   const [maxEntries, setMaxEntries] = useState<string>("");
-  const [isEventRegistration, setIsEventRegistration] = useState(false);
+  const [isEventRegistration, setIsEventRegistration] = useState(true);
   const [selectedEventId, setSelectedEventId] = useState<string>("");
   const [events, setEvents] = useState<CareerEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -480,7 +480,7 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
       setDescription("");
       setDeadline("");
       setMaxEntries("");
-      setIsEventRegistration(false);
+      setIsEventRegistration(true);
       setSelectedEventId("");
       setEventEmailSubject("Event Registration Confirmation");
       setEventEmailContent("Thank you for registering! We look forward to seeing you at the event.");
@@ -587,35 +587,25 @@ function CreateFormDialog({ onFormCreated }: { onFormCreated: () => void }) {
                 Set a maximum number of submissions allowed. Once this limit is reached, the form will be closed to new submissions.
               </p>
             </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="event-registration"
-                checked={isEventRegistration}
-                onCheckedChange={(checked) => {
-                  const isChecked = checked === true;
-                  setIsEventRegistration(isChecked);
-                  if (isChecked) setIsCompanyForm(false); // Mutually exclusive
+            <div className="space-y-2">
+              <Label htmlFor="form-type">Form Type</Label>
+              <Select
+                value={isCompanyForm ? "company" : isEventRegistration ? "student" : "general"}
+                onValueChange={(value) => {
+                  setIsEventRegistration(value === "student");
+                  setIsCompanyForm(value === "company");
                 }}
-              />
-              <Label htmlFor="event-registration" className="font-normal cursor-pointer">
-                Use as event registration (sends confirmation emails)
-            </Label>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="company-form"
-              checked={isCompanyForm}
-              onCheckedChange={(checked) => {
-                const isChecked = checked === true;
-                setIsCompanyForm(isChecked);
-                if (isChecked) setIsEventRegistration(false); // Mutually exclusive
-              }}
-            />
-            <Label htmlFor="company-form" className="font-normal cursor-pointer">
-              Use as company form (for events)
-            </Label>
-          </div>
+              >
+                <SelectTrigger id="form-type" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="student">Student form (event registration, sends confirmation emails)</SelectItem>
+                  <SelectItem value="company">Company form (for events)</SelectItem>
+                  <SelectItem value="general">General form (public, no login)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
           {isEventRegistration && (
             <div className="space-y-4 p-4 bg-muted rounded-md border-t">
@@ -1360,34 +1350,24 @@ function EditFormDialog({
               </p>
             </div>
 
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="edit-event-registration"
-                checked={isEventRegistration}
-                onCheckedChange={(checked) => {
-                  const isChecked = checked === true;
-                  setIsEventRegistration(isChecked);
-                  if (isChecked) setIsCompanyForm(false); // Mutually exclusive
+            <div className="space-y-2">
+              <Label htmlFor="edit-form-type">Form Type</Label>
+              <Select
+                value={isCompanyForm ? "company" : isEventRegistration ? "student" : "general"}
+                onValueChange={(value) => {
+                  setIsEventRegistration(value === "student");
+                  setIsCompanyForm(value === "company");
                 }}
-              />
-              <Label htmlFor="edit-event-registration" className="font-normal cursor-pointer">
-                Use as event registration (sends confirmation emails)
-              </Label>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="edit-company-form"
-                checked={isCompanyForm}
-                onCheckedChange={(checked) => {
-                  const isChecked = checked === true;
-                  setIsCompanyForm(isChecked);
-                  if (isChecked) setIsEventRegistration(false); // Mutually exclusive
-                }}
-              />
-              <Label htmlFor="edit-company-form" className="font-normal cursor-pointer">
-                Use as company form (for events)
-              </Label>
+              >
+                <SelectTrigger id="edit-form-type" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="student">Student form (event registration, sends confirmation emails)</SelectItem>
+                  <SelectItem value="company">Company form (for events)</SelectItem>
+                  <SelectItem value="general">General form (public, no login)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {isEventRegistration && (
