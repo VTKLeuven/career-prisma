@@ -88,3 +88,27 @@ plain module variable would give each its own copy.
 processing → completed, with cooldowns for SMTP rate limits). Admin UI at
 `/admin/email-queue`. `src/app/api/cron/` holds endpoints meant to be hit on a
 schedule.
+
+## System logs
+
+Technical events the IT admins need without shell access to the server go
+into the `system_logs` table through `logSystemEvent()` in
+`src/lib/repos/system-logs.ts`. It also prints to the console, so `docker logs`
+still shows everything, and it **never throws** — logging sits on the login
+path, and a failed write must not become a failed login.
+
+Two admin pages read it, under the **Technical** group of the admin nav:
+
+- `/admin/system-logs` — the log, filterable by source, level and event.
+- `/admin/system-status` — VTK SSO configuration and reachability, login
+  counts for the last 24 hours, the environment, and the newest applied
+  migration. Secrets are shown only as "set".
+
+Rows are kept for `SYSTEM_LOG_RETENTION_DAYS` (90). There is no cron job: the
+first write after an hour has passed deletes the expired rows.
+
+The first and so far only source is `vtk_sso`, which logs every completed or
+failed login flow (see [auth.md](auth.md)). To log from another subsystem, call
+`logSystemEvent()` with a new `source` and add it to `SYSTEM_LOG_SOURCES` so
+the filter offers it. **Never log tokens, secrets or r-numbers** — the table is
+readable by every admin.

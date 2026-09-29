@@ -68,6 +68,13 @@ and to vacancies via `VacancyMaster`.
 `File` rows carry metadata; bytes live on disk under `UPLOADS_DIR`, named by the
 row's UUID. Served through `src/app/api/files/[fileId]`.
 
+## System logs
+
+`SystemLog` (`system_logs`) is the technical log the IT admins read at
+`/admin/system-logs` — see [architecture.md](architecture.md#system-logs). It
+has no relations on purpose: `student_id` is a plain integer so a log line
+outlives the student it mentions and never blocks deleting one.
+
 ## Conventions
 
 - Table names are `@@map`ped to snake_case plurals; Prisma model names are

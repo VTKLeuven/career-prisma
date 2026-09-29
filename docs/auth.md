@@ -21,7 +21,6 @@ PostgreSQL on every request.
 | Company reps & admins | `/login` | email + argon2id password (`users.password`) |
 | Students | `/student-login` | email + argon2id password (`students.password`) |
 | Students via VTK | VTK SSO (OIDC) | hand-rolled in `src/lib/vtk-sso.ts`, entry `/api/auth/oauth/initiate`, callback `/api/auth/oauth/callback` |
-| KU Leuven | `/kuleuven-login` | NextAuth OIDC provider defined in `src/auth.ts` |
 
 Invitations (`src/lib/invite-token.ts`, `/accept-invite`) and password resets
 (`src/lib/password-reset.ts`) both use hashed, timestamped single-use tokens.
@@ -80,6 +79,16 @@ SSO.
 
 That is what pays for the short session below — and it is why student sessions
 are capped at 24 hours rather than 30 days.
+
+### Logging
+
+Every login flow ends in one `vtk_sso` row in `system_logs`:
+`login_succeeded` (with **how** the student was matched — `subject`,
+`student_number`, `email`, `username`, or `created`) or `login_failed` (with
+the error code). A failure to start the flow is `initiate_failed`, and claims
+the app does not recognise are `unmapped_claims`. A declined consent logs as
+`info` and an expired flow as `warn`; everything else is `error`. Read them at
+`/admin/system-logs?source=vtk_sso`; `/admin/system-status` summarises them.
 
 ### Sessions and silent re-authentication
 

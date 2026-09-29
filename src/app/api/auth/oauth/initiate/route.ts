@@ -15,6 +15,7 @@ import {
   getSsoConfig,
   storeFlowState,
 } from "@/lib/vtk-sso";
+import { logSystemEvent } from "@/lib/repos/system-logs";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,12 @@ export async function GET(request: NextRequest) {
 
     const config = getSsoConfig();
     if ("error" in config) {
-      console.error("[vtk-sso] initiate:", config.error);
+      await logSystemEvent({
+        source: "vtk_sso",
+        level: "error",
+        event: "initiate_failed",
+        message: config.error,
+      });
       return NextResponse.json({ error: config.error }, { status: 500 });
     }
 
@@ -51,7 +57,13 @@ export async function GET(request: NextRequest) {
       })
     );
   } catch (error) {
-    console.error("[vtk-sso] Failed to start login flow:", error);
+    // Almost always discovery: the SSO is down or VTK_SSO_ISSUER is wrong.
+    await logSystemEvent({
+      source: "vtk_sso",
+      level: "error",
+      event: "initiate_failed",
+      message: error instanceof Error ? error.message : "Unknown error",
+    });
     return NextResponse.json(
       { error: "Failed to start the VTK login flow" },
       { status: 500 }

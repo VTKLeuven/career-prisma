@@ -65,10 +65,11 @@ so include it in backups together with PostgreSQL.
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Consumed by the `database` service in `docker-compose.yml`. `POSTGRES_PASSWORD` is required and has no default. |
 | `POSTGRES_PORT` | Host port for Postgres. Defaults to `5437`, bound to loopback only. |
 | `APP_PORT` | Host port for the application. Defaults to `3003`. |
-| `AUTH_SECRET`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL` | Signed application sessions and NextAuth. Generate strong random secrets. |
+| `AUTH_SECRET`, `NEXTAUTH_SECRET` | Signs the session cookies (`AUTH_SECRET` wins). Generate a strong random secret. The `NEXTAUTH_` name is a leftover; NextAuth itself is gone. |
+| `NEXTAUTH_URL` | Optional fallback for the public origin used to build the VTK SSO redirect URI. |
 | `NEXT_PUBLIC_APP_URL` | Public origin used in invitation and reset links. |
 | `UPLOADS_DIR` | Local file storage path. Compose mounts host `./uploads` at the configured container path. |
-| `KULEUVEN_*`, `LITUS_*` | OAuth providers. |
+| `VTK_SSO_*` | Student login through the VTK SSO. See `docs/auth.md`. |
 | `SMTP_*` | Outbound mail. |
 | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN` | Sentry. |
 

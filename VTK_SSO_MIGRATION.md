@@ -27,7 +27,9 @@ Three files, split so the volatile part is isolated:
 No OIDC library, on purpose. That matches design decision 5 — `auth-session.ts`
 already mints its own cookies with no JWT library, and pulling in
 `openid-client` would drag a second, differently-configured auth stack into a
-codebase that already has NextAuth sitting in the corner for KU Leuven.
+codebase where no other login uses a library. (NextAuth used to be here for an
+unused, hidden KU Leuven login; that was removed on 29 Sep 2026 along with the
+`KULEUVEN_*` variables and the `next-auth` package.)
 
 ## What the claim registry changed
 
@@ -147,6 +149,22 @@ Note that a Prisma scalar list cannot be NULL, so an empty `study_programmes`
 means either "never told" or "nothing on file"; `sso_synced_at` distinguishes
 the two.
 
+## Logging and the Technical admin group (29 Sep 2026)
+
+Every login flow now writes one row to a new `system_logs` table —
+`login_succeeded` with how the student was matched (`subject`,
+`student_number`, `email`, `username` or `created`), or `login_failed` with the
+error code. The IT admins read it under a new **Technical** group in the admin
+nav: `/admin/system-logs` and `/admin/system-status` (SSO configuration,
+discovery reachability, 24-hour counts, deployed migration). Details in
+[`docs/architecture.md`](docs/architecture.md#system-logs). Migration
+`20260929130952_add_system_logs`.
+
+While generating it, `prisma migrate dev` wanted to **drop** the r-number index
+and the `'{}'` defaults on `study_programmes` / `study_years`: the hand-written
+SSO migration created them, but `schema.prisma` never declared them. The schema
+now declares both, so the two agree again.
+
 ## Still open
 
 1. **`src/lib/study-options.ts` is incomplete.** Only three enum values are
@@ -156,6 +174,11 @@ the two.
    SSO's `schema.prisma` (around lines 394-450) to make it exact. Until then
    the onboarding form offers a short list, and a self-reported value could
    fail to match an SSO one.
+
+   `VTK_SSO_WEBSITE_PROMPT.md` is a prompt to run with an agent inside the
+   vtk.be repo. It collects this and the other facts below that could not be
+   confirmed from here (exact discovery URL and issuer, consent behaviour for
+   the silent re-login, the r-number format, client registration steps).
 
 2. **The SSO credentials are empty.** `VTK_SSO_ISSUER`, `VTK_SSO_CLIENT_ID` and
    `VTK_SSO_CLIENT_SECRET` need filling in `.env`. The old `LITUS_*` lines were
@@ -176,4 +199,6 @@ applies cleanly and the resulting columns were verified directly in Postgres.
 `next lint`, and the flat config throws a circular-structure error on top of
 that. Pre-existing, unrelated to this change.
 
-Nothing has been pushed.
+The branch was rebased onto `main` on 29 Sep 2026 (the CI/dev-deploy
+pipeline). Merging to `main` now deploys to **dev**, not production — dev's
+`.env` needs the `VTK_SSO_*` values before the login works there.

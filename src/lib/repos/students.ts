@@ -136,7 +136,7 @@ async function findExistingStudentRow(profile: SsoStudentUpsert) {
   const bySubject = await prisma.student.findUnique({
     where: { sso_subject: profile.subject },
   });
-  if (bySubject) return bySubject;
+  if (bySubject) return { row: bySubject, matchedBy: "subject" as const };
 
   if (profile.studentNumber) {
     // Not a unique column — a duplicate r-number means two rows for one person.
@@ -147,19 +147,33 @@ async function findExistingStudentRow(profile: SsoStudentUpsert) {
       where: { student_number: profile.studentNumber, sso_subject: null },
       orderBy: { id: "asc" },
     });
-    if (byNumber) return byNumber;
+    if (byNumber) return { row: byNumber, matchedBy: "student_number" as const };
   }
 
   const byEmail = await prisma.student.findUnique({
     where: { email: profile.email.trim().toLowerCase() },
   });
-  if (byEmail && !byEmail.sso_subject) return byEmail;
+  if (byEmail && !byEmail.sso_subject) return { row: byEmail, matchedBy: "email" as const };
 
   const byUsername = await prisma.student.findUnique({
     where: { username: profile.username.trim() },
   });
-  return byUsername && !byUsername.sso_subject ? byUsername : null;
+  return byUsername && !byUsername.sso_subject
+    ? { row: byUsername, matchedBy: "username" as const }
+    : null;
 }
+
+/**
+ * How the SSO identity was tied to a row — "created" when none matched. Logged
+ * on every login, because during the LITUS migration it is the answer to "why
+ * did this student end up with a second account?".
+ */
+export type SsoStudentMatch =
+  | "subject"
+  | "student_number"
+  | "email"
+  | "username"
+  | "created";
 
 /** Splits a full name the way the LITUS flow did: first word, then the rest. */
 function splitName(fullName: string): { first: string | null; last: string | null } {
@@ -177,7 +191,7 @@ function splitName(fullName: string): { first: string | null; last: string | nul
  */
 export async function upsertStudentFromSso(
   profile: SsoStudentUpsert
-): Promise<Student | null> {
+): Promise<{ student: Student; matchedBy: SsoStudentMatch } | null> {
   const email = profile.email.trim().toLowerCase();
 
   const data: Record<string, unknown> = {
@@ -226,12 +240,15 @@ export async function upsertStudentFromSso(
     const existing = await findExistingStudentRow(profile);
 
     if (existing) {
-      return shapeStudent(
-        await prisma.student.update({ where: { id: existing.id }, data })
-      );
+      return {
+        student: shapeStudent(
+          await prisma.student.update({ where: { id: existing.row.id }, data })
+        ),
+        matchedBy: existing.matchedBy,
+      };
     }
 
-    return shapeStudent(
+    const created = shapeStudent(
       await prisma.student.create({
         data: {
           ...data,
@@ -246,6 +263,7 @@ export async function upsertStudentFromSso(
         },
       })
     );
+    return { student: created, matchedBy: "created" };
   } catch (error) {
     console.error("[upsertStudentFromSso] Failed:", error);
     return null;

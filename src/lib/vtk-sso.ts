@@ -7,8 +7,8 @@
 //
 // No OIDC library on purpose. Same reason `auth-session.ts` mints its own
 // cookies: the flow is small enough to read in one sitting, and pulling in
-// `openid-client` would drag a second, differently-configured auth stack into
-// a codebase that already has NextAuth sitting in the corner for KU Leuven.
+// `openid-client` would add an auth stack configured differently from every
+// other login in this codebase, none of which uses a library.
 
 import crypto from "crypto";
 import { cookies } from "next/headers";

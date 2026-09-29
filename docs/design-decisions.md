@@ -47,8 +47,9 @@ Company users, students, and VTK staff are distinct. Staff split further into
 two roles whose names read backwards — "VTK Career" is sales, "Administrator" is
 internal support — so role checks match on id, never name ([auth.md](auth.md)). Sessions are plain HMAC-signed
 cookies minted in `src/lib/auth-session.ts` — no JWT library, no session table.
-NextAuth is present only to speak OIDC to KU Leuven; the VTK SSO is hand-rolled
-in `src/lib/vtk-sso.ts` (it replaced the old site's LITUS OAuth).
+The VTK SSO is hand-rolled in `src/lib/vtk-sso.ts` (it replaced the old site's
+LITUS OAuth); there is no auth library. A NextAuth-based KU Leuven login was
+removed unused — students sign in through the VTK SSO instead.
 
 **6. Files live on disk, not in the database.**
 Uploads are UUID-named files under `UPLOADS_DIR`, with metadata rows in the

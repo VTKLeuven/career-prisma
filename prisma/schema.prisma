@@ -713,8 +713,8 @@ model Student {
   // values ("computer_science", "master_1"), not display text. A Prisma scalar
   // list cannot be NULL, so empty means either "never told" or "nothing on
   // file" — `sso_synced_at` is what distinguishes the two.
-  study_programmes                String[]
-  study_years                     String[]
+  study_programmes                String[]                         @default([])
+  study_years                     String[]                         @default([])
   // The academic year the member last confirmed their study info for (2025).
   study_confirmed_year            Int?
   // True when the member does not study at FIRW — the SSO's own answer to the
@@ -746,6 +746,7 @@ model Student {
   studentMatchingResponses        StudentMatchingResponse[]
   studentCompanies                StudentCompany[]
 
+  @@index([student_number], map: "students_student_number_idx")
   @@map("students")
 }
 
@@ -757,6 +758,32 @@ model StudentCompany {
   students    Student? @relation(fields: [students_id], references: [id], onUpdate: NoAction, map: "students_company_students_id_foreign")
 
   @@map("students_company")
+}
+
+// Technical events the IT admins need to see without shell access to the
+// server — VTK SSO logins first, other subsystems as they need it. Written
+// through `logSystemEvent()` in `lib/repos/system-logs.ts`, read on
+// /admin/system-logs, pruned after SYSTEM_LOG_RETENTION_DAYS.
+//
+// `student_id` is deliberately not a relation: a log line must outlive the row
+// it mentions, and must never block deleting a student. Never put tokens,
+// secrets or r-numbers in `details`.
+model SystemLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  // Subsystem, e.g. "vtk_sso". Free text so a new source needs no migration.
+  source     String   @db.VarChar(64)
+  // "info" | "warn" | "error"
+  level      String   @db.VarChar(16)
+  // Machine-readable event name within the source, e.g. "login_failed".
+  event      String   @db.VarChar(64)
+  message    String
+  student_id Int?
+  details    Json?
+
+  @@index([created_at(sort: Desc)], map: "system_logs_created_at_idx")
+  @@index([source, created_at(sort: Desc)], map: "system_logs_source_created_at_idx")
+  @@map("system_logs")
 }
 
 model TimetableCareerEventPage {

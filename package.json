@@ -43,7 +43,6 @@
     "leaflet": "^1.9.4",
     "lucide-react": "^0.539.0",
     "next": "^16.0.7",
-    "next-auth": "^4.24.13",
     "nodemailer": "^7.0.10",
     "pdf-into-svg": "^1.0.1",
     "pdf-lib": "^1.17.1",
