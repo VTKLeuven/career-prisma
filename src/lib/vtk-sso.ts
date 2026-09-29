@@ -96,8 +96,11 @@ export function getSsoConfig(): SsoConfig | { error: string } {
     return { error: `VTK SSO is not configured. Missing: ${missing.join(", ")}.` };
   }
 
-  const scopes =
-    process.env.VTK_SSO_SCOPES?.split(/[\s,]+/).filter(Boolean) ?? DEFAULT_SCOPES;
+  // An empty override means "not set", not "request nothing": `.env.example`
+  // ships `VTK_SSO_SCOPES=` blank, and an empty scope list gets through the
+  // authorize step only to fail the token exchange with `invalid_scope`.
+  const override = process.env.VTK_SSO_SCOPES?.split(/[\s,]+/).filter(Boolean) ?? [];
+  const scopes = override.length ? override : DEFAULT_SCOPES;
 
   return { issuer: issuer!, clientId: clientId!, clientSecret: clientSecret!, scopes };
 }
