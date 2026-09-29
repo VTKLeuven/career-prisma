@@ -66,8 +66,8 @@ hashes are stored. Invitations expire after seven days; password reset tokens
 expire after one hour. Password changes and student verification always write
 argon2id hashes.
 
-NextAuth remains installed for the KU Leuven OAuth flow. It is separate from
-the company-representative credential session.
+NextAuth remained installed for a KU Leuven OAuth flow at the time. It was later
+removed (September 2026), unused, when the VTK SSO replaced LITUS.
 
 ## File storage
 

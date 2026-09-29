@@ -1,10 +1,12 @@
 // app/api/students/logout/route.ts
 import { NextResponse } from "next/server";
 import { clearStudentSession } from "@/lib/auth-student";
+import { SSO_HINT_COOKIE, flowCookieDomain } from "@/lib/vtk-sso";
+import type { NextRequest } from "next/server";
 
 const STUDENT_SESSION_COOKIE = "student_session";
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     // Clear student session using the server function
     await clearStudentSession();
@@ -26,6 +28,14 @@ export async function POST(req: Request) {
     };
 
     res.cookies.set(STUDENT_SESSION_COOKIE, "", deleteOpts);
+
+    // Clear the SSO hint too. It is what makes an expired session bounce
+    // silently back through the SSO, so leaving it behind would sign the
+    // student straight back in the moment they hit a page that needs them.
+    res.cookies.set(SSO_HINT_COOKIE, "", {
+      ...deleteOpts,
+      domain: flowCookieDomain(req),
+    });
 
     return res;
   } catch (error) {

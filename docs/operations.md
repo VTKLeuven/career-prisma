@@ -96,7 +96,8 @@ bound to `127.0.0.1:5437`). `./uploads` is bind-mounted into the app at
 - `DEV_ENVIRONMENT` — `"true"` only on `dev.career.vtk.be`. Passed both as a
   build arg and a runtime env var in `docker-compose.yml`; keep the two equal.
 - `UPLOADS_DIR` — file storage root. Back it up with the database.
-- `KULEUVEN_*`, `LITUS_*`, `SMTP_*`, `SENTRY_*`.
+- `VTK_SSO_*`, `SMTP_*`, `SENTRY_*`. The `LITUS_*` variables went with the old VTK
+  login, and `KULEUVEN_*` with the unused KU Leuven login — see [auth.md](auth.md).
 
 Prisma 7 keeps the connection URL in `prisma.config.ts`, not in the `datasource`
 block, and that file loads `.env` explicitly because the Prisma CLI does not.

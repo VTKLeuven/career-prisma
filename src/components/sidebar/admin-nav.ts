@@ -15,10 +15,13 @@ import {
   Mic2,
   MonitorPlay,
   School,
+  ScrollText,
+  ServerCog,
   Tags,
   UserRoundCheck,
   Users,
   UsersRound,
+  Activity,
   Workflow,
 } from "lucide-react";
 
@@ -30,7 +33,8 @@ export type AdminNavGroup =
   | "Events"
   | "Education"
   | "Job Platform"
-  | "Operations";
+  | "Operations"
+  | "Technical";
 
 export const ADMIN_NAV_GROUP_ORDER: AdminNavGroup[] = [
   "Companies & People",
@@ -38,6 +42,7 @@ export const ADMIN_NAV_GROUP_ORDER: AdminNavGroup[] = [
   "Education",
   "Job Platform",
   "Operations",
+  "Technical",
 ];
 
 export const ADMIN_NAV_GROUP_ICONS: Record<AdminNavGroup, AdminNavIcon> = {
@@ -46,6 +51,7 @@ export const ADMIN_NAV_GROUP_ICONS: Record<AdminNavGroup, AdminNavIcon> = {
   Education: School,
   "Job Platform": Briefcase,
   Operations: Workflow,
+  Technical: ServerCog,
 };
 
 export type AdminNavItem = {
@@ -224,5 +230,23 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     icon: UsersRound,
     group: "Operations",
     description: "Manage shifters and their assignments.",
+  },
+
+  // --- Technical ---
+  // For the IT admins: what the website itself is doing, not what VTK is
+  // selling. Same access as every other admin page.
+  {
+    title: "System Status",
+    url: "/admin/system-status",
+    icon: Activity,
+    group: "Technical",
+    description: "Configuration, VTK login health and the deployed schema at a glance.",
+  },
+  {
+    title: "System Logs",
+    url: "/admin/system-logs",
+    icon: ScrollText,
+    group: "Technical",
+    description: "Technical log of VTK logins and other website events.",
   },
 ];

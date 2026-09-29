@@ -20,11 +20,107 @@ PostgreSQL on every request.
 |---|---|---|
 | Company reps & admins | `/login` | email + argon2id password (`users.password`) |
 | Students | `/student-login` | email + argon2id password (`students.password`) |
-| Students via VTK | LITUS OAuth | hand-rolled in `src/lib/oauth.ts`, callback at `/api/auth/oauth/callback` |
-| KU Leuven | `/kuleuven-login` | NextAuth OIDC provider defined in `src/auth.ts` |
+| Students via VTK | VTK SSO (OIDC) | hand-rolled in `src/lib/vtk-sso.ts`, entry `/api/auth/oauth/initiate`, callback `/api/auth/oauth/callback` |
 
 Invitations (`src/lib/invite-token.ts`, `/accept-invite`) and password resets
 (`src/lib/password-reset.ts`) both use hashed, timestamped single-use tokens.
+
+## The VTK SSO
+
+The new `vtk.be` runs better-auth's SSO provider — an ordinary OIDC
+authorization-code provider with discovery, PKCE and a userinfo endpoint. It
+replaced LITUS, which the old site spoke; `src/lib/oauth.ts` is gone.
+
+Three files, and the split between them is deliberate:
+
+- `src/lib/vtk-sso.ts` — the protocol. Discovery (cached an hour), PKCE, state,
+  nonce, token exchange, userinfo. No OIDC library, for the same reason
+  `auth-session.ts` mints its own cookies.
+- `src/lib/vtk-sso-claims.ts` — **the only file that knows the provider's claim
+  names.** When the SSO's claim registry changes, this is the edit.
+- `src/lib/repos/students.ts` — `upsertStudentFromSso()` writes the result.
+
+### What the claims look like
+
+Three properties of the provider's contract that the code depends on:
+
+- **The ID token carries only `profile` and `email` claims.** Everything under
+  `vtk:` — study programme, year, r-number — is userinfo-only. That is why the
+  flow always calls userinfo instead of stopping at the ID token.
+- **Claims are absent, never null.** A student who declined a scope has no key
+  at all, so a missing claim must never be written to the database as a blank.
+- **`vtk:study_programmes` and `vtk:study_years` are arrays** of lowercased
+  enum values (`["computer_science"]`, `["master_1"]`), because a member can
+  read two programmes at once. `src/lib/study-options.ts` holds this app's copy
+  of that vocabulary, and has to stay in step with the SSO's enums.
+
+The ID token's signature is **not** verified. That is safe here and only here:
+it arrives on our own TLS connection to the token endpoint, authenticated with
+the client secret, so nothing could have substituted it (OIDC Core 3.1.3.7).
+`iss`, `aud`, `exp` and `nonce` are still checked.
+
+### Matching a returning student
+
+`findExistingStudentRow()` tries, in order: `sso_subject`, then
+**`student_number`** (the r-number), then email, then username. The r-number is
+the one that matters for the LITUS migration — a row created by the old login
+has no subject yet, and the r-number is the only identifier that survived the
+move and that a student cannot change. It is why `vtk:student_number` is
+requested despite its sensitive-consent prompt. A match on anything but the
+subject adopts the row and stamps the subject on it, so later logins take the
+first path. Rows that already carry a *different* subject are never adopted.
+
+### Refresh
+
+There is no background refresh and no `offline_access`: study programme, year
+and r-number are re-read on **every completed login flow** and written straight
+onto the `students` row. A login is the only moment this app hears from the
+SSO.
+
+That is what pays for the short session below — and it is why student sessions
+are capped at 24 hours rather than 30 days.
+
+### Logging
+
+Every login flow ends in one `vtk_sso` row in `system_logs`:
+`login_succeeded` (with **how** the student was matched — `subject`,
+`student_number`, `email`, `username`, or `created`) or `login_failed` (with
+the error code). A failure to start the flow is `initiate_failed`, and claims
+the app does not recognise are `unmapped_claims`. A declined consent logs as
+`info` and an expired flow as `warn`; everything else is `error`. Read them at
+`/admin/system-logs?source=vtk_sso`; `/admin/system-status` summarises them.
+
+### Sessions and silent re-authentication
+
+Student sessions last **24 hours** (`STUDENT_SESSION_MAX_AGE`). The SSO's own
+session is much longer, so an expired session costs the student a redirect they
+never see rather than a login screen.
+
+With no middleware, that bounce lives at `/student-login` — the single funnel
+every "you need to sign in" link in the app points at. It is a server component
+that redirects to `/api/auth/oauth/initiate` when the session is gone but the
+`student_sso` hint cookie is present.
+
+The hint cookie is what tells an SSO student from an external one; it holds no
+privilege, outlives the session on purpose, and is cleared on logout so signing
+out does not sign you straight back in. `?sso=0` forces the form — the error
+page at `/auth/callback` uses it, because bouncing a failed SSO login straight
+back into the SSO would loop.
+
+Password ("external") students are **not** capped at 24 hours: they have no SSO
+to bounce through, so it would only mean a daily password prompt.
+
+### Students who are not at FIRW
+
+`vtk:not_at_faculty` marks a member who does not study at FIRW. They sign in
+through the SSO exactly like everyone else and are **never rejected** — the SSO
+simply has no programme on file for them, so it sends an empty array.
+
+The callback routes any student with empty study info to
+`/student/study-details`, which writes their answer and sets
+`study_self_reported`. `upsertStudentFromSso()` only overwrites study info when
+the SSO sends a **non-empty** array, so the next login cannot wipe what they
+typed with the empty claim that sent them there in the first place.
 
 ## Roles
 

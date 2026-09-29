@@ -50,7 +50,9 @@ export default function AuthCallbackPage() {
             )}
             <div className="flex gap-2">
               <Button asChild variant="outline" className="flex-1">
-                <Link href={redirectTo.includes('/forms/') ? `/student-login?redirectTo=${encodeURIComponent(redirectTo)}` : "/login"}>
+                {/* `sso=0` forces the login form: the SSO attempt just failed,
+                    so bouncing straight back into it would loop. */}
+                <Link href={`/student-login?sso=0&redirectTo=${encodeURIComponent(redirectTo)}`}>
                   Back to Login
                 </Link>
               </Button>
