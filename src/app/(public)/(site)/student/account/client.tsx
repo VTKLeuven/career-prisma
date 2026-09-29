@@ -21,7 +21,10 @@ import {
 } from "@/components/ui/select";
 import { StudyFields } from "@/components/student/StudyFields";
 import { labelForProgramme, labelForYear } from "@/lib/study-options";
-import { saveLanguageAction, saveStudyDetailsAction } from "@/app/actions/student-study";
+import {
+  saveLanguageAction,
+  saveStudyDetailsAction,
+} from "@/app/actions/student-study";
 import {
   AccountDetailsCard,
   DeleteAccountCard,
@@ -42,7 +45,13 @@ type FromVtk = {
   locale: string | null;
 };
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function Row({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="grid grid-cols-[10rem_1fr] gap-4 py-1.5 text-sm">
       <dt className="text-muted-foreground">{label}</dt>
@@ -52,12 +61,21 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 /** A claim list as labels, with the raw values the SSO sent beside them. */
-function ClaimList({ values, label }: { values: string[]; label: (v: string) => string }) {
-  if (!values.length) return <span className="text-muted-foreground">nothing on file</span>;
+function ClaimList({
+  values,
+  label,
+}: {
+  values: string[];
+  label: (v: string) => string;
+}) {
+  if (!values.length)
+    return <span className="text-muted-foreground">nothing on file</span>;
   return (
     <>
       {values.map(label).join(", ")}{" "}
-      <span className="font-mono text-xs text-muted-foreground">[{values.join(", ")}]</span>
+      <span className="font-mono text-xs text-muted-foreground">
+        [{values.join(", ")}]
+      </span>
     </>
   );
 }
@@ -114,7 +132,11 @@ export default function StudentAccountClient({
     setLanguage(next);
     setLanguageMessage(null);
     const result = await saveLanguageAction(next);
-    setLanguageMessage(result.ok ? { ok: true, text: "Saved." } : { ok: false, text: result.error });
+    setLanguageMessage(
+      result.ok
+        ? { ok: true, text: "Saved." }
+        : { ok: false, text: result.error },
+    );
   }
 
   async function onSaveStudy(e: React.FormEvent) {
@@ -123,7 +145,11 @@ export default function StudentAccountClient({
     setStudyMessage(null);
     const result = await saveStudyDetailsAction({ programmes, years });
     setSavingStudy(false);
-    setStudyMessage(result.ok ? { ok: true, text: "Saved." } : { ok: false, text: result.error });
+    setStudyMessage(
+      result.ok
+        ? { ok: true, text: "Saved." }
+        : { ok: false, text: result.error },
+    );
     if (result.ok) router.refresh();
   }
 
@@ -133,7 +159,9 @@ export default function StudentAccountClient({
         <h1 className="text-3xl font-bold">My account</h1>
         <p className="text-muted-foreground">
           {name} · {email}
-          {viaSso ? " · signed in with your VTK account" : " · signed in with email and password"}
+          {viaSso
+            ? " · signed in with your VTK account"
+            : " · signed in with email and password"}
         </p>
       </div>
 
@@ -152,13 +180,18 @@ export default function StudentAccountClient({
       <Card>
         <CardHeader>
           <CardTitle>Preferred language</CardTitle>
-          <CardDescription>The language we use when we contact you.</CardDescription>
+          <CardDescription>
+            The language we use when we contact you.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           <Label htmlFor="language" className="sr-only">
             Preferred language
           </Label>
-          <Select value={language ?? undefined} onValueChange={onLanguageChange}>
+          <Select
+            value={language ?? undefined}
+            onValueChange={onLanguageChange}
+          >
             <SelectTrigger id="language" className="w-56">
               <SelectValue placeholder="Choose a language" />
             </SelectTrigger>
@@ -178,13 +211,13 @@ export default function StudentAccountClient({
             {viaSso && anythingLocked ? (
               editable.programmes ? (
                 <>
-                  Your year comes from your VTK account. Because you are not studying at the
-                  faculty, you choose your programme here.
+                  Your year comes from your VTK account. Because you are not
+                  studying at the faculty, you choose your programme here.
                 </>
               ) : (
                 <>
-                  Your study details come from your VTK account. Change them on vtk.be, then
-                  refresh them here.
+                  Your study details come from your VTK account. Change them on
+                  vtk.be, then refresh them here.
                 </>
               )
             ) : (
@@ -207,14 +240,22 @@ export default function StudentAccountClient({
 
             <div className="flex flex-wrap gap-3">
               {anythingEditable && (
-                <Button type="submit" className="cursor-pointer" disabled={savingStudy}>
+                <Button
+                  type="submit"
+                  className="cursor-pointer"
+                  disabled={savingStudy}
+                >
                   {savingStudy ? "Saving…" : "Save study details"}
                 </Button>
               )}
               {viaSso && (
                 <>
                   <Button asChild variant="outline">
-                    <a href={vtkAccountUrl} target="_blank" rel="noopener noreferrer">
+                    <a
+                      href={vtkAccountUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
                       <ExternalLink className="mr-2 h-4 w-4" />
                       Change on vtk.be
                     </a>
@@ -238,34 +279,47 @@ export default function StudentAccountClient({
           <CardHeader>
             <CardTitle>From vtk.be</CardTitle>
             <CardDescription>
-              Exactly what your VTK account shared with us at your last sign-in.
+              Account information received from vtk.be
             </CardDescription>
           </CardHeader>
           <CardContent>
             <dl>
               <Row label="Last updated">
                 {fromVtk.syncedAt
-                  ? new Date(fromVtk.syncedAt).toLocaleString("en-GB", { timeZone: "Europe/Brussels" })
+                  ? new Date(fromVtk.syncedAt).toLocaleString("en-GB", {
+                      timeZone: "Europe/Brussels",
+                    })
                   : "never"}
               </Row>
               <Row label="Student number">
-                {fromVtk.studentNumber ?? <span className="text-muted-foreground">not shared</span>}
+                {fromVtk.studentNumber ?? (
+                  <span className="text-muted-foreground">not shared</span>
+                )}
               </Row>
               <Row label="Programmes">
-                <ClaimList values={fromVtk.programmes} label={labelForProgramme} />
+                <ClaimList
+                  values={fromVtk.programmes}
+                  label={labelForProgramme}
+                />
               </Row>
               <Row label="Years">
                 <ClaimList values={fromVtk.years} label={labelForYear} />
               </Row>
               <Row label="Not at the faculty">
-                {fromVtk.notAtFaculty === null ? "not shared" : fromVtk.notAtFaculty ? "yes" : "no"}
+                {fromVtk.notAtFaculty === null
+                  ? "not shared"
+                  : fromVtk.notAtFaculty
+                    ? "yes"
+                    : "no"}
               </Row>
               <Row label="Confirmed for">
                 {fromVtk.confirmedYear
                   ? `${fromVtk.confirmedYear}–${fromVtk.confirmedYear + 1}`
                   : "not confirmed"}
               </Row>
-              <Row label="Language on vtk.be">{fromVtk.locale ?? "not shared"}</Row>
+              <Row label="Language on vtk.be">
+                {fromVtk.locale ?? "not shared"}
+              </Row>
             </dl>
           </CardContent>
         </Card>
