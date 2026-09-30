@@ -51,6 +51,21 @@ export async function findStudentByEmail(email: string): Promise<Student | null>
  * Admin student management
  * ------------------------------------------------------------------ */
 
+/**
+ * Current addresses for a set of students, by id. For mail sent long after a
+ * form was submitted: the address copied into the response may since have
+ * changed (an SSO student picking a personal address on vtk.be, say).
+ */
+export async function getStudentEmailsByIds(ids: Array<string | number>): Promise<Map<string, string>> {
+  const numeric = [...new Set(ids.map(Number).filter(Number.isSafeInteger))];
+  if (!numeric.length) return new Map();
+  const rows = await prisma.student.findMany({
+    where: { id: { in: numeric } },
+    select: { id: true, email: true },
+  });
+  return new Map(rows.map((row) => [String(row.id), row.email]));
+}
+
 export async function listStudents(opts?: { limit?: number }): Promise<Student[]> {
   const rows = await prisma.student.findMany({
     orderBy: [{ first_name: "asc" }, { last_name: "asc" }],
@@ -107,7 +122,10 @@ export async function findStudentBySsoSubject(
 /** What the SSO flow hands over. Mirrors `SsoProfile` in `lib/vtk-sso-claims.ts`. */
 export interface SsoStudentUpsert {
   subject: string;
+  /** The preferred address — what the row stores and what we mail. */
   email: string;
+  /** The vtk.be login address, when different: a second way to match a returning row. */
+  loginEmail?: string;
   username: string;
   fullName?: string;
   firstName?: string;
@@ -133,7 +151,9 @@ export interface SsoStudentUpsert {
  *    stored the LITUS username and never filled `student_number`, which is a
  *    newer column; LITUS usernames are r-numbers. Case-insensitive, because
  *    neither side guarantees the case.
- * 4. `email` — for students without an r-number at all.
+ * 4. `email` — the preferred address first, so a password account a student
+ *    made with their personal address is joined to their SSO identity; then
+ *    the vtk.be login address, which is what older SSO rows stored.
  *
  * `preferred_username` is deliberately not a match key: vtk.be derives it from
  * the email's local part, so it is neither unique nor the LITUS username.
@@ -173,12 +193,14 @@ async function findExistingStudentRow(profile: SsoStudentUpsert) {
     }
   }
 
-  const byEmail = await prisma.student.findUnique({
-    where: { email: profile.email.trim().toLowerCase() },
-  });
-  return byEmail && !byEmail.sso_subject
-    ? { row: byEmail, matchedBy: "email" as const }
-    : null;
+  const emails = [...new Set([profile.email, profile.loginEmail].filter(Boolean))];
+  for (const email of emails as string[]) {
+    const byEmail = await prisma.student.findUnique({
+      where: { email: email.trim().toLowerCase() },
+    });
+    if (byEmail && !byEmail.sso_subject) return { row: byEmail, matchedBy: "email" as const };
+  }
+  return null;
 }
 
 /**
@@ -215,7 +237,16 @@ function splitName(fullName: string): { first: string | null; last: string | nul
  */
 export async function upsertStudentFromSso(
   profile: SsoStudentUpsert
-): Promise<{ student: Student; matchedBy: SsoStudentMatch } | null> {
+): Promise<{
+  student: Student;
+  matchedBy: SsoStudentMatch;
+  /**
+   * Set when the preferred address already belongs to another student row, so
+   * this row kept the address it had. Two accounts for one person — for an
+   * admin to sort out, not a reason to fail the login.
+   */
+  emailConflictWith?: string;
+} | null> {
   const email = profile.email.trim().toLowerCase();
 
   const data: Record<string, unknown> = {
@@ -275,21 +306,31 @@ export async function upsertStudentFromSso(
     const language = languageFromLocale(profile.locale);
     if (language && !existing?.row.preferred_language) data.preferred_language = language;
 
+    // `email` is unique. The preferred address can already sit on a different
+    // row — an older second account that did not match above because it is
+    // linked to another identity. Keep this row's address rather than fail.
+    const holder = await prisma.student.findUnique({ where: { email }, select: { id: true } });
+    const emailTaken = holder != null && holder.id !== existing?.row.id;
+
     if (existing) {
+      if (emailTaken) delete data.email;
       return {
         student: shapeStudent(
           await prisma.student.update({ where: { id: existing.row.id }, data })
         ),
         matchedBy: existing.matchedBy,
+        ...(emailTaken ? { emailConflictWith: String(holder.id) } : {}),
       };
     }
 
+    const fallbackEmail = profile.loginEmail?.trim().toLowerCase();
+    const createEmail = emailTaken && fallbackEmail ? fallbackEmail : email;
     const created = shapeStudent(
       await prisma.student.create({
         data: {
           ...data,
           username: profile.username.trim(),
-          email,
+          email: createEmail,
           university_status: "student",
           in_workinggroup: false,
           date_created: new Date(),
@@ -299,7 +340,11 @@ export async function upsertStudentFromSso(
         },
       })
     );
-    return { student: created, matchedBy: "created" };
+    return {
+      student: created,
+      matchedBy: "created",
+      ...(emailTaken ? { emailConflictWith: String(holder.id) } : {}),
+    };
   } catch (error) {
     console.error("[upsertStudentFromSso] Failed:", error);
     return null;

@@ -8,6 +8,7 @@ import {
   type EmailTaskResult,
 } from "@/lib/email-job-manager";
 import prisma from "@/lib/prisma";
+import { getStudentEmailsByIds } from "@/lib/repos/students";
 import { Prisma } from "@prisma/client";
 
 export async function POST(
@@ -72,6 +73,12 @@ export async function POST(
       process.env.NEXT_PUBLIC_APP_URL ||
       "http://localhost:3000";
 
+    const currentEmails = await getStudentEmailsByIds(
+      responses
+        .map((r) => (r.data as Record<string, any> | null)?._student_id)
+        .filter((id): id is string | number => id != null)
+    );
+
     const tasks: EmailTask[] = [];
     let preSkipped = 0;
 
@@ -83,7 +90,11 @@ export async function POST(
         continue;
       }
 
-      const email = data._student_email || data.email;
+      // The student's address now, not the copy taken at submission time.
+      const email =
+        (data._student_id != null && currentEmails.get(String(data._student_id))) ||
+        data._student_email ||
+        data.email;
       const firstname = data._student_first_name || data.firstname || "";
       const lastname = data._student_last_name || data.lastname || "";
 

@@ -195,7 +195,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { student, matchedBy } = upserted;
+    const { student, matchedBy, emailConflictWith } = upserted;
+
+    if (emailConflictWith) {
+      await logSystemEvent({
+        source: "vtk_sso",
+        level: "warn",
+        event: "email_conflict",
+        message: `Preferred address ${profile.email} already belongs to student ${emailConflictWith}; ${student.email} kept its address`,
+        studentId: student.id,
+        details: { preferredEmail: profile.email, otherStudentId: emailConflictWith },
+      });
+    }
     const needsStudyOnboarding =
       student.study_programmes.length === 0 || student.study_years.length === 0;
 

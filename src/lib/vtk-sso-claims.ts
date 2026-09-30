@@ -26,11 +26,18 @@ export interface SsoProfile {
   /** OIDC `sub` — the SSO's user id. The identity we store and match on first. */
   subject: string;
   /**
-   * The vtk.be login address. Usually the KU Leuven one, but not always: it
-   * can be a private address, and a vtk.be admin can change it.
+   * The address Career stores and mails: the member's preferred address on
+   * vtk.be (`vtk:preferred_email` — their personal one if they chose it),
+   * falling back to `loginEmail`.
    */
   email: string;
-  /** For rows this flow creates: the r-number, else the email. Never `preferred_username`. */
+  /**
+   * The vtk.be login address (`email`). Usually the KU Leuven one, but not
+   * always: it can be a private address, and a vtk.be admin can change it.
+   * Only used to match a returning student whose row still carries it.
+   */
+  loginEmail: string;
+  /** For rows this flow creates: the r-number, else the login email. Never `preferred_username`. */
   username: string;
   fullName?: string;
   firstName?: string;
@@ -63,6 +70,7 @@ const MAPPED_CLAIMS = [
   "family_name",
   "preferred_username",
   "email",
+  "vtk:preferred_email",
   "vtk:student_number",
   "vtk:study_programmes",
   "vtk:study_years",
@@ -93,7 +101,6 @@ const IGNORED_CLAIMS = new Set([
   "updated_at",
   "email_verified",
   "vtk:onboarded",
-  "vtk:preferred_email",
   // Only present if someone widens the client's scopes later.
   "address",
   "birthdate",
@@ -138,8 +145,8 @@ export function toSsoProfile(claims: Claims): SsoProfile | { error: string } {
   const subject = asString(claims.sub);
   if (!subject) return { error: "The SSO returned no `sub` claim" };
 
-  const email = asString(claims.email)?.toLowerCase();
-  if (!email) {
+  const loginEmail = asString(claims.email)?.toLowerCase();
+  if (!loginEmail) {
     return { error: "The SSO returned no `email` claim — is the `email` scope granted?" };
   }
 
@@ -157,12 +164,18 @@ export function toSsoProfile(claims: Claims): SsoProfile | { error: string } {
   // for rows this flow creates. NOT `preferred_username`: vtk.be derives it
   // from the email's local part, so it is not unique across domains, and two
   // students called `jan` would collide. The r-number is what LITUS-era rows
-  // carry as their username; the full email is unique in both systems.
-  const username = studentNumber ?? email;
+  // carry as their username; the login email is unique in both systems (the
+  // preferred one is not unique on vtk.be).
+  const username = studentNumber ?? loginEmail;
+
+  // Always sent in userinfo; equal to `email` unless the member chose a
+  // personal address on vtk.be.
+  const email = asString(claims["vtk:preferred_email"])?.toLowerCase() ?? loginEmail;
 
   return {
     subject,
     email,
+    loginEmail,
     username,
     fullName,
     firstName,

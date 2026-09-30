@@ -65,6 +65,12 @@ root holds the full research, with file references into that repo):
   bulk-import `R0123456`, so the app lowercases it.
 - **`email` is usually, not always, the KU Leuven address**, and a vtk.be admin
   can change it. `preferred_username` is just its local part — never a key.
+- **`students.email` stores `vtk:preferred_email`, not `email`.** The
+  preferred address is the member's personal one if they chose it on vtk.be,
+  else the same as `email`; all student mail goes to `students.email`. It is
+  re-read on every login, so changing it on vtk.be moves the address on the
+  next one. If another student row already holds it, the row keeps its old
+  address and the login logs `email_conflict` (two accounts for one person).
 - **Consent is remembered only as a whole.** vtk.be skips its consent screen
   when every requested scope was granted before. Declining the sensitive
   `vtk:student_number` does not fail the login, it just leaves the claim out.
@@ -77,7 +83,8 @@ the client secret, so nothing could have substituted it (OIDC Core 3.1.3.7).
 ### Matching a returning student
 
 `findExistingStudentRow()` tries, in order: `sso_subject`; the r-number
-against `student_number`; the r-number against **`username`**; then email.
+against `student_number`; the r-number against **`username`**; then email — the preferred address first, so a password account made with a
+personal address is joined to the SSO identity, then the vtk.be login address.
 
 The third step is the LITUS migration. The old login stored the LITUS username
 and never filled `student_number` (a newer column), and LITUS usernames are
