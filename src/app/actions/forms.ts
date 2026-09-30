@@ -32,6 +32,30 @@ import {
 import { requireAdminUser } from "@/lib/auth-server";
 import { listMasters, listFaculties } from "@/lib/repos/features";
 import { studyPrefillForFields, type PrefillFaculty } from "@/lib/form-fields";
+import { setEventRegistrationLink } from "@/lib/repos/event-page";
+import { formPath } from "@/lib/site-path";
+
+/**
+ * When a form's active version is an event's registration form, points that
+ * event's page at it. Runs after every save that can change the answer — the
+ * slug, the metadata or which version is active — and never fails the save:
+ * the link is a convenience the admin can still set by hand.
+ */
+async function syncEventRegistrationLink(formId: string | number | null | undefined): Promise<void> {
+  if (formId == null) return;
+  try {
+    const form = await getFormById(String(formId));
+    const active = form?.form_versions?.find((v) => v.is_active);
+    const meta = active?.metadata as { is_event_registration?: boolean; event_id?: string } | null | undefined;
+    if (!form?.slug || !meta?.is_event_registration || !meta.event_id) return;
+    await setEventRegistrationLink(String(meta.event_id), formPath(form.slug));
+  } catch (error) {
+    console.error("[syncEventRegistrationLink] Could not update the event's registration link:", error);
+  }
+}
+
+const formIdOf = (version: FormVersion | null | undefined) =>
+  (version as { form_id?: string | number } | null | undefined)?.form_id;
 
 // ===================== FORM ACTIONS =====================
 
@@ -119,6 +143,7 @@ export async function createFormAction(data: {
         metadata: data.metadata, // Save metadata to form_version
       });
       console.log('[createFormAction] Created version with metadata:', (version as FormVersion & { metadata?: Record<string, unknown> })?.metadata);
+      await syncEventRegistrationLink(form.id);
     }
 
     return form;
@@ -144,10 +169,14 @@ export async function updateFormAction(id: string, data: Partial<Form & { metada
 
       // Remove metadata from form update data
       const { metadata, ...formData } = data;
-      return await updateForm(id, formData);
+      const updated = await updateForm(id, formData);
+      await syncEventRegistrationLink(id);
+      return updated;
     }
 
-    return await updateForm(id, data);
+    const updated = await updateForm(id, data);
+    await syncEventRegistrationLink(id);
+    return updated;
   } catch (error) {
     console.error("Error updating form:", error);
     throw error;
@@ -207,13 +236,15 @@ export async function createFormVersionAction(data: {
       }
     }
 
-    return await createFormVersion({
+    const version = await createFormVersion({
       form_id: data.form_id,
       schema: data.schema,
       version_number: maxVersion + 1,
       is_active: data.is_active ?? false,
       metadata: metadataToUse,
     });
+    if (data.is_active) await syncEventRegistrationLink(data.form_id);
+    return version;
   } catch (error) {
     console.error("Error creating form version:", error);
     throw error;
@@ -223,7 +254,9 @@ export async function createFormVersionAction(data: {
 export async function updateFormVersionAction(id: string, data: Partial<FormVersion>) {
   try {
     await requireAdminUser();
-    return await updateFormVersion(id, data);
+    const version = await updateFormVersion(id, data);
+    await syncEventRegistrationLink(formIdOf(version));
+    return version;
   } catch (error) {
     console.error("Error updating form version:", error);
     throw error;
@@ -243,7 +276,9 @@ export async function deleteFormVersionAction(id: string) {
 export async function setActiveVersionAction(versionId: string) {
   try {
     await requireAdminUser();
-    return await updateFormVersion(versionId, { is_active: true });
+    const version = await updateFormVersion(versionId, { is_active: true });
+    await syncEventRegistrationLink(formIdOf(version));
+    return version;
   } catch (error) {
     console.error("[setActiveVersionAction] Error setting active version:", error);
     throw error;

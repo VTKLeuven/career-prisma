@@ -4,6 +4,8 @@
 import { prisma } from "@/lib/prisma";
 import { createTimetable, updateTimetable } from "@/lib/repos/timetable";
 import { assertAcademicYearWritable } from "@/lib/repos/academic-year";
+import { invalidateEventPageCache } from "@/lib/event-page-cache";
+import { toSitePath } from "@/lib/site-path";
 
 export type AdminEventPageTimetableItem = {
   id: string;
@@ -142,6 +144,7 @@ function toEventPageWrite(payload: Record<string, any>): Record<string, unknown>
     timetableIds: _timetableIds,
     timetableItems: _timetableItems,
     event_name: _event_name,
+    registration_link,
     ...rest
   } = payload;
 
@@ -150,6 +153,9 @@ function toEventPageWrite(payload: Record<string, any>): Record<string, unknown>
   // columns (event_id, image_id, company_guide) have to be nulled explicitly.
   return {
     ...rest,
+    ...(registration_link !== undefined
+      ? { registration_link: registration_link ? toSitePath(String(registration_link)) || null : null }
+      : {}),
     ...(image !== undefined ? { image_id: image || null } : {}),
     ...(event_id !== undefined ? { event_id: event_id || null } : {}),
     ...(company_guide !== undefined ? { company_guide: company_guide || null } : {}),
@@ -331,6 +337,23 @@ export async function updateEventPage(id: number, payload: Record<string, any>):
   await updateEventFields(page.event_id, payload);
   await syncTimetableItems(id, payload.timetableItems);
   return (await getRow(id))!;
+}
+
+/**
+ * Points the event's page(s) at its registration form. Called whenever a form
+ * is saved as the event's registration form, so the "Student registration"
+ * button follows the form's slug without anyone copying a URL by hand.
+ */
+export async function setEventRegistrationLink(eventId: string, link: string): Promise<void> {
+  const { count } = await prisma.careerEventPage.updateMany({
+    where: {
+      event_id: eventId,
+      // `NOT registration_link = x` alone would skip NULL rows in SQL.
+      OR: [{ registration_link: null }, { NOT: { registration_link: link } }],
+    },
+    data: { registration_link: link },
+  });
+  if (count > 0) invalidateEventPageCache();
 }
 
 export async function deleteEventPage(id: number): Promise<void> {

@@ -20,6 +20,7 @@ import { useBannerPage } from '@/hooks/use-banner-page'
 import { usePageLayout } from '../../layout'
 import { groupSpeakersByTimeSlot } from '@/lib/utils/speakers'
 import { compareTimetableItems } from '@/lib/utils/timetable'
+import { toSitePath } from '@/lib/site-path'
 
 const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.EventMap), {
   ssr: false,
@@ -317,7 +318,8 @@ function Hero({
       e.preventDefault();
       showPopupMessage("Registration is not open yet. Please check back soon!");
     } else {
-      window.open(page.registration_link, "_blank");
+      // Relative, so a signed-in student stays on the host their session is on.
+      window.open(toSitePath(page.registration_link), "_blank");
     }
   };
 
