@@ -77,7 +77,12 @@ export async function GET(request: NextRequest) {
 
   // Read the flow cookies before anything can clear them.
   const flow = await readFlowState();
-  const redirectTo = flow.redirectTo || "/";
+  // Checked again here, not just in `initiate`: the cookie is shared across
+  // `.career.vtk.be`, and this value now goes straight into a redirect.
+  const redirectTo =
+    flow.redirectTo?.startsWith("/") && !flow.redirectTo.startsWith("//")
+      ? flow.redirectTo
+      : "/";
 
   try {
     const providerError = params.get("error");
@@ -211,12 +216,14 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const destination = new URL("/auth/callback", getFrontendUrl(request));
-    destination.searchParams.set(
-      "redirect_to",
+    // Straight to where the student was going. `/auth/callback` is only the
+    // error page now: a client-side hop through it on success cost a full page
+    // load before the real destination even started loading.
+    const destination = new URL(
       needsStudyOnboarding
         ? `/student/study-details?redirectTo=${encodeURIComponent(redirectTo)}`
-        : redirectTo
+        : redirectTo,
+      getFrontendUrl(request)
     );
 
     const response = NextResponse.redirect(destination.toString());

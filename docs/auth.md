@@ -136,6 +136,15 @@ out does not sign you straight back in. `?sso=0` forces the form — the error
 page at `/auth/callback` uses it, because bouncing a failed SSO login straight
 back into the SSO would loop.
 
+A successful login redirects straight from `/api/auth/oauth/callback` to its
+destination; `/auth/callback` is only reached on failure. Links to our own
+pages must stay **relative**: the session cookie is host-only, so an absolute
+`https://www.career.vtk.be/...` link from `career.vtk.be` (or dev → prod)
+arrives without a session while the domain-wide hint cookie still triggers the
+bounce. `toSitePath()` in `src/lib/site-path.ts` strips our own hosts, and an
+event registration form sets its event page's `registration_link` to
+`/forms/<slug>` whenever it is saved.
+
 Password ("external") students are **not** capped at 24 hours: they have no SSO
 to bounce through, so it would only mean a daily password prompt.
 
