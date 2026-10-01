@@ -90,11 +90,17 @@ export async function POST(
         continue;
       }
 
-      // The student's address now, not the copy taken at submission time.
+      // An address the student typed over the prefill wins. One equal to the
+      // account address at submission time was just the prefill, so it follows
+      // the account — an SSO student may have picked a personal address since.
+      const typed = typeof data.email === "string" ? data.email.trim() : "";
+      const accountThen = typeof data._student_email === "string" ? data._student_email.trim() : "";
+      const accountNow =
+        data._student_id != null ? currentEmails.get(String(data._student_id)) : undefined;
       const email =
-        (data._student_id != null && currentEmails.get(String(data._student_id))) ||
-        data._student_email ||
-        data.email;
+        typed && typed.toLowerCase() !== accountThen.toLowerCase()
+          ? typed
+          : accountNow || accountThen || typed;
       const firstname = data._student_first_name || data.firstname || "";
       const lastname = data._student_last_name || data.lastname || "";
 

@@ -67,7 +67,9 @@ root holds the full research, with file references into that repo):
   can change it. `preferred_username` is just its local part — never a key.
 - **`students.email` stores `vtk:preferred_email`, not `email`.** The
   preferred address is the member's personal one if they chose it on vtk.be,
-  else the same as `email`; all student mail goes to `students.email`. It is
+  else the same as `email`; student mail goes to `students.email`, except that
+  a form's email field is prefilled with it and a student who types another
+  address there is mailed at that one. It is
   re-read on every login, so changing it on vtk.be moves the address on the
   next one. If another student row already holds it, the row keeps its old
   address and the login logs `email_conflict` (two accounts for one person).

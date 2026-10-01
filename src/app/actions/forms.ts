@@ -698,11 +698,6 @@ export async function submitFormResponseAction(data: {
     // For company forms, prefer submitter_email
     if (isCompanyForm && (data.submitter_email || _submitter_email)) {
       emailValue = (data.submitter_email || _submitter_email) as string;
-    } else if (!isCompanyForm && student?.email) {
-      // A signed-in student is mailed at their account address — for SSO
-      // students their preferred address on vtk.be — not whatever was typed
-      // into the form's email field.
-      emailValue = student.email;
     } else {
       // Try exact match first
       if (cleanFormData.email) {
@@ -715,6 +710,12 @@ export async function submitFormResponseAction(data: {
         if (emailKey) {
           emailValue = cleanFormData[emailKey] as string;
         }
+      }
+      // The field is prefilled with the account address and stays editable,
+      // so what the student left in it is where they want the mail. Without
+      // an email field, a signed-in student still gets it at their account.
+      if (!emailValue?.trim() && !isCompanyForm && student?.email) {
+        emailValue = student.email;
       }
     }
 
