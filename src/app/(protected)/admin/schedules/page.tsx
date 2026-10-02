@@ -3,7 +3,6 @@
 import * as React from "react";
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
 import {
   fetchSchedulesForEventAdminAction,
   createScheduleWithFileAction,
@@ -34,6 +33,7 @@ import { Plus, Trash2, FileText } from "lucide-react";
 import { useUser } from "@/providers/UserProvider";
 import { getFileUrl } from "@/components/Images";
 import type { Master } from "@/lib/schema";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 export default function AdminSchedulesPage() {
   const { user } = useUser();
@@ -44,18 +44,11 @@ export default function AdminSchedulesPage() {
   if (!user?.admin) return <p className="p-8">No access</p>;
 
   return (
-    <div className="container mx-auto p-8 space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Schedules</h1>
-          <p className="text-muted-foreground">
-            Add student schedules (PDF per master) for an event. Companies with the &quot;Student Schedules&quot; sub-option see schedules for masters in their category.
-          </p>
-        </div>
-        <Button asChild variant="outline">
-          <Link href="/admin">Back to Admin</Link>
-        </Button>
-      </div>
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
+      <PageHeader
+        title="Schedules"
+        description={'Add student schedules (PDF per master) for an event. Companies with the "Student Schedules" sub-option see schedules for masters in their category.'}
+      />
 
       <SchedulesTable key={refreshKey} eventId={eventId ?? undefined} onChanged={() => setRefreshKey((k) => k + 1)} />
     </div>

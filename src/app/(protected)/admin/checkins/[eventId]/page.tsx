@@ -2,6 +2,7 @@ import { getUserFromCookies } from "@/lib/auth-server";
 import Link from "next/link";
 import CheckinsClient from "./client";
 import prisma from "@/lib/prisma";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 export default async function AdminCheckinEventPage({
   params,
@@ -20,16 +21,19 @@ export default async function AdminCheckinEventPage({
   const eventName = event?.name || "Event";
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div className="flex items-center gap-3">
-        <Link
-          href="/admin/checkins"
-          className="text-muted-foreground hover:text-foreground transition-colors text-sm"
-        >
-          &larr; All events
-        </Link>
-      </div>
-      <h1 className="text-3xl font-bold">Check-ins: {eventName}</h1>
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
+      <PageHeader
+        title={eventName}
+        description="Check-ins for this event"
+        actions={
+          <Link
+            href="/admin/checkins"
+            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            &larr; All events
+          </Link>
+        }
+      />
       <CheckinsClient eventId={eventId} />
     </div>
   );

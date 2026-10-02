@@ -62,6 +62,7 @@ import {
   DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, ChevronDown, Trash2, Pencil } from "lucide-react";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 type CVBookRow = CVBook & {
   year: AcademicYear;
@@ -79,14 +80,12 @@ export default function AdminCVBookPage() {
   };
 
   return (
-    <div className="container mx-auto p-8 space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">CV Book Management</h1>
-          <p className="text-muted-foreground">Manage CV Books per academic year</p>
-        </div>
-        <CreateCVBookDialog onCreated={handleCVBookCreated} />
-      </div>
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
+      <PageHeader
+        title="CV Book Management"
+        description="Manage CV Books per academic year"
+        actions={<CreateCVBookDialog onCreated={handleCVBookCreated} />}
+      />
 
       <CVBooksTable key={refreshKey} />
     </div>

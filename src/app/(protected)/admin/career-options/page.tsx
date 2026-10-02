@@ -6,6 +6,7 @@ import type { CareerEvent } from "@/lib/schema";
 import { listAcademicYearsForAdmin, getCurrentAcademicYear } from "@/lib/repos/academic-year";
 import { listOptionSales } from "@/lib/repos/option-sales";
 import { listCompaniesBasic } from "@/lib/repos/company";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 export default async function AdminCareerOptionsPage() {
   const user = await getUserFromCookies();
@@ -22,13 +23,8 @@ export default async function AdminCareerOptionsPage() {
   ]);
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Career Options</h1>
-        <p className="text-muted-foreground">
-          Manage career event options and their sub-options.
-        </p>
-      </div>
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
+      <PageHeader title="Career Options" description="Manage career event options and their sub-options." />
       <CareerOptionsClient
         initialSubOptions={subOptions}
         initialOptions={options ?? []}

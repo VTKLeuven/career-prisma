@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useUser } from "@/providers/UserProvider";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 type AcademicYearOption = {
   id: string;
@@ -73,13 +74,8 @@ export default function AdminEventsPage() {
   if (!user?.admin) return <p>NO ACCESS</p>;
 
   return (
-    <div className="container mx-auto space-y-6 py-6">
-      <div>
-        <h1 className="text-3xl font-bold">Events</h1>
-        <p className="text-muted-foreground">
-          Manage recurring event series, their annual editions and everything shown on the public event page.
-        </p>
-      </div>
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
+      <PageHeader title="Events" description="Manage recurring event series, their annual editions and everything shown on the public event page." />
 
       <section className="rounded-xl border bg-card p-5">
         <h2 className="text-lg font-semibold">How an event is structured</h2>

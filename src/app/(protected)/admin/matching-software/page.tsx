@@ -34,6 +34,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, RefreshCw, Loader2, BarChart3, ArrowUp, ArrowDown } from "lucide-react";
 import { useUser } from "@/providers/UserProvider";
 import type { MatchingSoftware, AcademicYear, Form, CareerEvent } from "@/lib/schema";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 type MatchingSoftwareRow = MatchingSoftware & {
   year: AcademicYear;
@@ -50,16 +51,12 @@ export default function AdminMatchingSoftwarePage() {
   if (!user?.admin) return <p>NO ACCESS</p>;
 
   return (
-    <div className="container mx-auto p-8 space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Matching Software</h1>
-          <p className="text-muted-foreground">
-            Create matching software per event and year. Students fill in RIASEC questions; prerequisite form response is included.
-          </p>
-        </div>
-        <CreateMatchingSoftwareDialog eventId={eventId ?? undefined} onCreated={() => setRefreshKey((k) => k + 1)} />
-      </div>
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
+      <PageHeader
+        title="Matching Software"
+        description="Create matching software per event and year. Students fill in RIASEC questions; prerequisite form response is included."
+        actions={<CreateMatchingSoftwareDialog eventId={eventId ?? undefined} onCreated={() => setRefreshKey((k) => k + 1)} />}
+      />
 
       <MatchingSoftwareTable key={refreshKey} eventId={eventId ?? undefined} />
     </div>

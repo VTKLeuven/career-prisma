@@ -17,6 +17,7 @@ import {
 } from "@/lib/repos/system-logs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import packageJson from "../../../../../package.json";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -90,14 +91,8 @@ export default async function SystemStatusPage() {
       : "ok";
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">System Status</h1>
-        <p className="text-muted-foreground">
-          How this deployment is configured and whether the VTK login is healthy.
-          Secrets are never shown — only whether they are set.
-        </p>
-      </div>
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
+      <PageHeader title="System Status" description="How this deployment is configured and whether the VTK login is healthy. Secrets are never shown — only whether they are set." />
 
       <Card>
         <CardHeader>

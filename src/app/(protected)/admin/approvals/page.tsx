@@ -185,7 +185,7 @@ function PendingApprovalsSection() {
             {pendingRequests.map((request) => (
               <div
                 key={request.id}
-                className="border rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-shadow"
+                className="rounded-xl border bg-background p-4 transition-colors hover:border-[#d4d4d8]"
               >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <div>

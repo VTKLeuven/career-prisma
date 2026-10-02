@@ -1,6 +1,7 @@
 import { getUserFromCookies } from "@/lib/auth-server";
 import { listStudents } from "@/lib/repos/students";
 import StudentsClient from "./client";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 export default async function AdminStudentsPage() {
   const user = await getUserFromCookies();
@@ -9,13 +10,8 @@ export default async function AdminStudentsPage() {
   const students = await listStudents({ limit: 5000 });
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Students</h1>
-        <p className="text-muted-foreground">
-          View and manage registered students.
-        </p>
-      </div>
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
+      <PageHeader title="Students" description="View and manage registered students." />
       <StudentsClient initialStudents={students} />
     </div>
   );

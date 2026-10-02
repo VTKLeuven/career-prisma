@@ -64,6 +64,7 @@ import type {
   Vacancy,
   Company,
 } from "@/lib/schema";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 type Tab = "types" | "sectors" | "sections" | "vacancies";
 
@@ -432,13 +433,11 @@ export default function AdminVacanciesPage() {
   }));
 
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold">Vacancy Configuration</h1>
-        <p className="text-muted-foreground">
-          Manage vacancy types, sectors, text sections, and view all vacancies.
-        </p>
-      </div>
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
+      <PageHeader
+        title="Vacancy Configuration"
+        description="Manage vacancy types, sectors, text sections, and view all vacancies."
+      />
 
       {/* Tabs */}
       <div className="flex gap-1 border-b">

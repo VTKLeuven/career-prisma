@@ -33,6 +33,33 @@ shadcn/ui (new-york style) on Radix, Tailwind 4, `lucide-react` for icons.
 `src/components/ui/` is generated — prefer regenerating or composing over
 hand-editing. Compose class names with `cn()` from `src/lib/utils.ts`.
 
+The back office (admin and company dashboard) follows the look of VTK's Dopl
+app: a neutral grey canvas, one white working panel, hairline borders instead
+of shadows, a near-black primary button, and colour only where it carries
+information. The tokens live in `globals.css` (`:root`, plus `canvas`,
+`surface-hover`, `surface-selected`), and the shadcn primitives (button,
+badge, table, card, input, select, dialog, sheet, dropdown) were restyled to
+match — **regenerating one of them from shadcn reverts it to the stock look**,
+so re-apply the classes if you do.
+
+- **Shell.** `src/app/(protected)/layout.tsx` renders the sidebar on the canvas
+  and the page in an inset panel that scrolls on its own. `ShellHeader` builds
+  the breadcrumb from the URL (admin sections from `ADMIN_NAV_ITEMS`), so pages
+  do not declare one. ⌘K / Ctrl+K opens `CommandPalette` to jump to any section.
+- **Page titles.** Admin pages start with `PageHeader`
+  (`src/components/admin/PageHeader.tsx`): title, one-line description and the
+  page's actions — secondary outline buttons first, the one primary action last.
+  Its icon comes from `ADMIN_NAV_ITEMS`, so header, sidebar and breadcrumb agree.
+- **Lists.** A click on a row opens it for editing; don't add a separate edit
+  button. Destructive and secondary actions appear on row hover or in a `⋯`
+  menu. Ignore clicks that land on a link/button inside the row, and clicks
+  bubbling up from portaled dialogs (`e.currentTarget.contains(e.target)`).
+  `ResourceManager` does all of this and edits in a panel sliding in from the
+  right; tables keep a sticky header inside a height-capped scroll area
+  (`Table`'s `containerClassName`) so the toolbar stays in view.
+- **Status pills.** Use the pastel `Badge` variants (`success`, `warning`,
+  `info`, `purple`, `muted`, `destructive`) rather than solid fills.
+
 ## Feature flags
 
 Unfinished-but-demoable work goes behind `isDevEnvironment()`

@@ -4,12 +4,13 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
-  Edit,
   Trash2,
   Loader2,
   Search,
   ChevronLeft,
   ChevronRight,
+  Inbox,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -26,12 +27,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   Select,
   SelectContent,
@@ -252,19 +253,21 @@ export function ResourceManager<T extends Record<string, unknown>>({
     }
   };
 
-  const handleDelete = async (row: T) => {
+  /** Resolves to true once the row is gone, so callers can close the panel. */
+  const handleDelete = async (row: T): Promise<boolean> => {
     const label = config.getLabel?.(row) ?? config.singular;
-    if (!confirm(`Delete ${label}? This cannot be undone.`)) return;
+    if (!confirm(`Delete ${label}? This cannot be undone.`)) return false;
     const id = config.getId(row);
     setDeletingId(id);
     try {
       const result = await config.actions.remove(id);
       if (!result.success) {
         alert(result.error ?? `Failed to delete ${config.singular.toLowerCase()}`);
-        return;
+        return false;
       }
       setRows((prev) => prev.filter((r) => config.getId(r) !== id));
       router.refresh();
+      return true;
     } finally {
       setDeletingId(null);
     }
@@ -296,37 +299,84 @@ export function ResourceManager<T extends Record<string, unknown>>({
     [filtered, firstRow]
   );
 
+  // "/" jumps to the filter box, as in Dopl and most list-heavy tools.
+  const searchRef = React.useRef<HTMLInputElement>(null);
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable=true], [role=dialog]")) return;
+      if (!searchRef.current) return;
+      e.preventDefault();
+      searchRef.current.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const canEdit = !config.readOnly;
+  const canCreate = !config.readOnly && !config.hideCreate && Boolean(config.actions.create);
+  const noun = config.singular.toLowerCase();
+
+  // A click on a row opens it, unless the click landed on something that is
+  // interactive in its own right (a link or button rendered inside a cell).
+  const onRowClick = (e: React.MouseEvent, row: T) => {
+    if (!canEdit) return;
+    if ((e.target as HTMLElement).closest("a, button, input, label, [role=checkbox], [data-no-row-click]")) return;
+    openEdit(row);
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         {config.searchKeys?.length ? (
           <div className="relative w-full sm:max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder={`Filter ${config.singular.toLowerCase()}s...`}
+              ref={searchRef}
+              placeholder={`Search ${noun}s…`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
+              className="h-9 pl-9 pr-9"
             />
+            {search ? (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+                aria-label="Clear search"
+              >
+                <X className="size-3.5" />
+              </button>
+            ) : (
+              <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded border bg-muted px-1.5 text-[11px] font-semibold text-muted-foreground sm:block">
+                /
+              </kbd>
+            )}
           </div>
         ) : null}
-        {!config.readOnly && !config.hideCreate && config.actions.create ? (
+        <span className="text-sm text-muted-foreground tabular">
+          {search.trim()
+            ? `${filtered.length} of ${rows.length}`
+            : `${rows.length} ${rows.length === 1 ? noun : `${noun}s`}`}
+        </span>
+        {canCreate ? (
           <Button className="sm:ml-auto" onClick={() => openCreate()}>
-            <Plus className="mr-2 h-4 w-4" /> Add {config.singular}
+            <Plus className="h-4 w-4" /> New {noun}
           </Button>
         ) : null}
       </div>
 
-      <div className="rounded-md border overflow-x-auto">
-        <Table>
-          <TableHeader>
+      <div className="overflow-hidden rounded-xl border bg-background">
+        <Table containerClassName="max-h-[calc(100svh-15rem)] min-h-0">
+          <TableHeader className="sticky top-0 z-10 bg-background shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
             <TableRow>
               {config.columns.map((col) => (
-                <TableHead key={col.key} className="whitespace-nowrap">
+                <TableHead key={col.key} className="whitespace-nowrap first:pl-4">
                   {col.label}
                 </TableHead>
               ))}
-              {!config.readOnly ? <TableHead className="text-right">Actions</TableHead> : null}
+              {canEdit ? <TableHead className="w-12"><span className="sr-only">Actions</span></TableHead> : null}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -334,8 +384,20 @@ export function ResourceManager<T extends Record<string, unknown>>({
               visible.map((row) => {
                 const id = config.getId(row);
                 return (
-                  <TableRow key={id}>
-                    {config.columns.map((col) => {
+                  <TableRow
+                    key={id}
+                    tabIndex={canEdit ? 0 : undefined}
+                    onClick={(e) => onRowClick(e, row)}
+                    onKeyDown={(e) => {
+                      if (canEdit && e.key === "Enter" && e.target === e.currentTarget) openEdit(row);
+                    }}
+                    data-state={editing && open && config.getId(editing) === id ? "selected" : undefined}
+                    className={cn(
+                      "group/row",
+                      canEdit && "cursor-pointer outline-none focus-visible:bg-surface-hover focus-visible:shadow-[inset_2px_0_0_#1f82d1]"
+                    )}
+                  >
+                    {config.columns.map((col, colIndex) => {
                       const content = col.render
                         ? col.render(row)
                         : String(row[col.key] ?? "—");
@@ -347,8 +409,10 @@ export function ResourceManager<T extends Record<string, unknown>>({
                         <TableCell
                           key={col.key}
                           className={cn(
-                            "align-top",
-                            !col.wrap && "max-w-[22rem]"
+                            "first:pl-4",
+                            colIndex === 0 && "font-medium text-foreground",
+                            !col.wrap && "max-w-[22rem]",
+                            col.wrap && "whitespace-normal"
                           )}
                         >
                           <div
@@ -360,105 +424,124 @@ export function ResourceManager<T extends Record<string, unknown>>({
                         </TableCell>
                       );
                     })}
-                    {!config.readOnly ? (
-                      <TableCell className="text-right whitespace-nowrap">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(row)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive"
-                          onClick={() => handleDelete(row)}
-                          disabled={deletingId === id}
-                        >
-                          {deletingId === id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </Button>
+                    {canEdit ? (
+                      <TableCell className="w-12 pr-2 text-right">
+                        <div className="flex items-center justify-end">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 text-muted-foreground opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100 hover:bg-[#fef2f2] hover:text-[#b91c1c]"
+                            onClick={() => handleDelete(row)}
+                            disabled={deletingId === id}
+                            aria-label={`Delete ${noun}`}
+                          >
+                            {deletingId === id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
                       </TableCell>
                     ) : null}
                   </TableRow>
                 );
               })
             ) : (
-              <TableRow>
+              <TableRow className="hover:bg-transparent">
                 <TableCell
-                  colSpan={config.columns.length + (config.readOnly ? 0 : 1)}
-                  className="h-24 text-center text-muted-foreground"
+                  colSpan={config.columns.length + (canEdit ? 1 : 0)}
+                  className="h-56 text-center"
                 >
-                  {search.trim()
-                    ? `No ${config.singular.toLowerCase()}s match "${search.trim()}".`
-                    : `No ${config.singular.toLowerCase()}s yet.`}
+                  <div className="flex flex-col items-center gap-2">
+                    <span className="flex size-10 items-center justify-center rounded-xl border bg-background text-[#0a6cba] shadow-[0_1px_2px_rgb(16_16_20/0.04)]">
+                      {search.trim() ? <Search className="size-4" /> : <Inbox className="size-4" />}
+                    </span>
+                    <p className="text-sm font-medium text-foreground">
+                      {search.trim() ? `No ${noun}s match “${search.trim()}”` : `No ${noun}s yet`}
+                    </p>
+                    {search.trim() ? (
+                      <Button variant="outline" size="sm" onClick={() => setSearch("")}>Clear search</Button>
+                    ) : canCreate ? (
+                      <Button size="sm" onClick={() => openCreate()}>
+                        <Plus className="h-4 w-4" /> New {noun}
+                      </Button>
+                    ) : null}
+                  </div>
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
+
+        {filtered.length > PAGE_SIZE ? (
+          <div className="flex flex-col items-center justify-between gap-3 border-t bg-[#fafafa] px-4 py-2 sm:flex-row">
+            <p className="text-xs text-muted-foreground tabular">
+              {firstRow + 1}–{Math.min(firstRow + PAGE_SIZE, filtered.length)} of {filtered.length}
+            </p>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
+                disabled={currentPage === 0}
+              >
+                <ChevronLeft className="h-4 w-4" /> Previous
+              </Button>
+              <span className="px-1 text-xs text-muted-foreground whitespace-nowrap tabular">
+                {currentPage + 1} / {pageCount}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  setPageIndex((p) => Math.min(pageCount - 1, p + 1))
+                }
+                disabled={currentPage >= pageCount - 1}
+              >
+                Next <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
-      {filtered.length > PAGE_SIZE ? (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">
-            Showing {firstRow + 1}–{Math.min(firstRow + PAGE_SIZE, filtered.length)}{" "}
-            of {filtered.length} {config.singular.toLowerCase()}
-            {filtered.length === 1 ? "" : "s"}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
-              disabled={currentPage === 0}
-            >
-              <ChevronLeft className="mr-1 h-4 w-4" /> Previous
-            </Button>
-            <span className="text-sm text-muted-foreground whitespace-nowrap">
-              Page {currentPage + 1} of {pageCount}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setPageIndex((p) => Math.min(pageCount - 1, p + 1))
-              }
-              disabled={currentPage >= pageCount - 1}
-            >
-              Next <ChevronRight className="ml-1 h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
-      <Dialog
+      {/* Editing happens in a panel that slides in from the right (Dopl's
+          "peek"), so the list stays in view behind it. */}
+      <Sheet
         open={open}
         onOpenChange={(o) => {
           setOpen(o);
           if (!o) setEditing(null);
         }}
       >
-        <DialogContent
-          className={cn("flex max-h-[90dvh] flex-col overflow-hidden", config.dialogClassName)}
+        <SheetContent
+          side="right"
+          className={cn(
+            "w-full gap-0 p-0 sm:max-w-xl sm:rounded-l-2xl",
+            config.dialogClassName
+          )}
         >
-          <DialogHeader>
-            <DialogTitle>
-              {editing ? `Edit ${config.singular}` : `Add ${config.singular}`}
-            </DialogTitle>
-          </DialogHeader>
+          <SheetHeader className="h-14 shrink-0 flex-row items-center gap-2 border-b px-5 py-0">
+            <SheetTitle className="text-base">
+              {editing ? (config.getLabel?.(editing) || `Edit ${noun}`) : `New ${noun}`}
+            </SheetTitle>
+            <SheetDescription className="sr-only">
+              {editing ? `Edit this ${noun}` : `Create a new ${noun}`}
+            </SheetDescription>
+          </SheetHeader>
           <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
             <div
               className={cn(
-                "min-h-0 flex-1 overflow-y-auto pr-1",
-                config.fieldsClassName ?? "space-y-4"
+                "scrollbar-thin min-h-0 flex-1 overflow-y-auto px-5 py-5",
+                config.fieldsClassName ?? "space-y-5"
               )}
             >
               {visibleFields.map((field, index) => (
                 <React.Fragment key={field.name}>
                   {field.section && field.section !== visibleFields[index - 1]?.section ? (
-                    <div className="col-span-full border-b pb-2 pt-2 first:pt-0">
-                      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                    <div className="col-span-full border-b pb-2 pt-3 first:pt-0">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                         {field.section}
                       </h3>
                     </div>
@@ -475,28 +558,46 @@ export function ResourceManager<T extends Record<string, unknown>>({
             </div>
 
             {error ? (
-              <p className="mt-4 text-sm text-destructive">{error}</p>
+              <p className="mx-5 mb-3 rounded-lg border border-[#fecaca] bg-[#fef2f2] px-3 py-2 text-sm text-[#b91c1c]">{error}</p>
             ) : null}
 
-            <DialogFooter className="mt-4 shrink-0 border-t pt-4">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={saving}>
-                {saving ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
-                  </>
-                ) : editing ? (
-                  "Save changes"
-                ) : (
-                  `Create ${config.singular}`
-                )}
-              </Button>
-            </DialogFooter>
+            <div className="flex shrink-0 items-center gap-2 border-t bg-[#fafafa] px-5 py-3">
+              {editing ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="text-[#b91c1c] hover:bg-[#fef2f2] hover:text-[#b91c1c]"
+                  disabled={deletingId === config.getId(editing)}
+                  onClick={async () => {
+                    if (await handleDelete(editing)) {
+                      setOpen(false);
+                      setEditing(null);
+                    }
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" /> Delete
+                </Button>
+              ) : null}
+              <div className="ml-auto flex items-center gap-2">
+                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={saving}>
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" /> Saving…
+                    </>
+                  ) : editing ? (
+                    "Save changes"
+                  ) : (
+                    `Create ${noun}`
+                  )}
+                </Button>
+              </div>
+            </div>
           </form>
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

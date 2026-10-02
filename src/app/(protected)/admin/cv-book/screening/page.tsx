@@ -38,6 +38,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Check, X, Trash2, CheckCircle } from "lucide-react";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 export default function CVBookScreeningPage() {
   const { user } = useUser();
@@ -235,13 +236,8 @@ export default function CVBookScreeningPage() {
   }
 
   return (
-    <div className="container mx-auto p-8 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">CV Book Screening</h1>
-        <p className="text-muted-foreground">
-          Screen CVs before they are shown to companies. Approve, reject, or edit field of study.
-        </p>
-      </div>
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
+      <PageHeader title="CV Book Screening" description="Screen CVs before they are shown to companies. Approve, reject, or edit field of study." />
 
       {loading ? (
         <div className="text-center py-8 text-muted-foreground">Loading CV Books...</div>

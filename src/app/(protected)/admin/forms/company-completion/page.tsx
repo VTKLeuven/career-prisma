@@ -28,6 +28,7 @@ import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import type { CareerEvent } from "@/lib/schema";
 import Link from "next/link";
 import { useUser } from "@/providers/UserProvider";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 type FormStatusItem = {
   formId: string;
@@ -349,18 +350,16 @@ export default function CompanyFormCompletionPage() {
   }, [companyStatuses]);
 
   return (
-    <div className="container mx-auto p-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Company Form Completion</h1>
-          <p className="text-muted-foreground mt-2">
-            Overview of companies that haven&apos;t completed required forms and matching software for an event
-          </p>
-        </div>
-        <Button asChild variant="outline">
-          <Link href="/admin/forms">Back to Forms</Link>
-        </Button>
-      </div>
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
+      <PageHeader
+        title="Company Form Completion"
+        description="Overview of companies that haven't completed required forms and matching software for an event"
+        actions={
+          <Button asChild variant="outline">
+            <Link href="/admin/forms">Back to Forms</Link>
+          </Button>
+        }
+      />
 
       <Card>
         <CardHeader>

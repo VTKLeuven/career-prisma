@@ -32,6 +32,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import type { EmailQueueStats, EmailJob, EmailLogEntry } from "@/lib/email-job-manager";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 function formatTime(ts: number) {
   return new Date(ts).toLocaleTimeString("en-GB", {
@@ -156,19 +157,17 @@ function EmailQueueDashboard() {
   );
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Email Queue</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Monitor all outgoing emails and bulk send jobs
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={fetchStats}>
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
-      </div>
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
+      <PageHeader
+        title="Email Queue"
+        description="Monitor all outgoing emails and bulk send jobs"
+        actions={
+          <Button variant="outline" onClick={fetchStats}>
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </Button>
+        }
+      />
 
       {/* Metrics overview */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">

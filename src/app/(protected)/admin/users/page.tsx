@@ -2,6 +2,7 @@ import { getUserFromCookies } from "@/lib/auth-server";
 import { listUsers, listRoles } from "@/lib/repos/users";
 import { listCompaniesBasic } from "@/lib/repos/company";
 import UsersClient from "./client";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 export default async function AdminUsersPage() {
   const user = await getUserFromCookies();
@@ -17,13 +18,8 @@ export default async function AdminUsersPage() {
   const companyOptions = companies.map((c) => ({ value: c.id, label: c.name ?? "(unnamed)" }));
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">User Management</h1>
-        <p className="text-muted-foreground">
-          Manage platform users — admins, salespeople and company representatives.
-        </p>
-      </div>
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
+      <PageHeader title="User Management" description="Manage platform users — admins, salespeople and company representatives." />
       <UsersClient
         initialUsers={users}
         roleOptions={roleOptions}

@@ -8,6 +8,7 @@ import { getCurrentAcademicYear, listAcademicYearsForAdmin } from "@/lib/repos/a
 import Link from "next/link";
 import { ArrowLeft, ClipboardCheck, Mic2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 export default async function AdminEventPagesPage({
   searchParams,
@@ -45,23 +46,18 @@ export default async function AdminEventPagesPage({
       `Speaker #${s.id}`,
   }));
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <Button variant="ghost" size="sm" asChild className="-ml-3 mb-2">
-            <Link href="/admin/events"><ArrowLeft className="mr-2 h-4 w-4" /> Event editions</Link>
-          </Button>
-          <h1 className="text-3xl font-bold">Event Pages & Timetables</h1>
-          <p className="text-muted-foreground">
-            Every row belongs to one annual event edition. Its public content, companies,
-            speakers and timetable are edited together here.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" asChild><Link href="/admin/speakers"><Mic2 className="mr-2 h-4 w-4" /> Speakers</Link></Button>
-          <Button variant="outline" asChild><Link href="/admin/checkins"><ClipboardCheck className="mr-2 h-4 w-4" /> Check-ins</Link></Button>
-        </div>
-      </div>
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
+      <PageHeader
+        title="Event Pages & Timetables"
+        description="Every row belongs to one annual event edition. Its public content, companies, speakers and timetable are edited together here."
+        actions={
+          <>
+            <Button variant="outline" asChild><Link href="/admin/events"><ArrowLeft className="h-4 w-4" /> Event editions</Link></Button>
+            <Button variant="outline" asChild><Link href="/admin/speakers"><Mic2 className="h-4 w-4" /> Speakers</Link></Button>
+            <Button variant="outline" asChild><Link href="/admin/checkins"><ClipboardCheck className="h-4 w-4" /> Check-ins</Link></Button>
+          </>
+        }
+      />
       <EventPagesClient
         initialPages={pages}
         eventOptions={eventOptions}

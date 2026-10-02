@@ -10,11 +10,15 @@ import {
   SidebarFooter,
   SidebarHeader,
   SidebarRail,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  useSidebar,
 } from "@/components/ui/sidebar";
+import { navRowActiveClass, navRowClass } from "./nav-main";
+import {
+  CommandPalette,
+  isMacPlatform,
+  openCommandPalette,
+  type PaletteItem,
+} from "./command-palette";
+import { cn } from "@/lib/utils";
 import {
   IconBrandInstagram,
   IconCalendarEvent,
@@ -23,7 +27,7 @@ import {
   IconColumns,
   IconGlassCocktail,
 } from "@tabler/icons-react";
-import { LayoutDashboard } from "lucide-react";
+import { LayoutDashboard, LayoutGrid, Search } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -113,7 +117,6 @@ const data = {
 };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { open } = useSidebar();
   const { user } = useUser();
   const pathname = usePathname();
   const [pendingCount, setPendingCount] = React.useState<number>(0);
@@ -457,44 +460,101 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     return items;
   }, [inAdminArea, pathname, user?.admin, user?.company, user?.is_shifter, pendingCount, pageImageInvalid, companyEvents, companyOrderingBoothId]);
 
+  // Every section the viewer can navigate to, for the ⌘K palette.
+  const paletteItems = React.useMemo<PaletteItem[]>(() => {
+    const result: PaletteItem[] = [];
+    if (user?.admin) {
+      result.push({ title: "Admin overview", url: "/admin", group: "Admin", icon: LayoutGrid });
+      for (const group of ADMIN_NAV_GROUP_ORDER) {
+        for (const item of ADMIN_NAV_ITEMS.filter((i) => i.group === group)) {
+          result.push({ title: item.title, url: item.url, group, description: item.description, icon: item.icon });
+        }
+      }
+    }
+    if (user?.admin || user?.company) {
+      for (const section of data.navMain) {
+        for (const sub of section.items ?? []) {
+          result.push({ title: sub.title, url: sub.url, group: `Company dashboard · ${section.title}`, icon: section.icon });
+        }
+      }
+    }
+    return result;
+  }, [user?.admin, user?.company]);
+
+  const isMac = React.useSyncExternalStore(
+    () => () => {},
+    isMacPlatform,
+    () => true
+  );
+
   return (
-    <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground data-[state=close]:text-center"
+    <>
+      <Sidebar variant="inset" collapsible="offcanvas" {...props}>
+        <SidebarHeader className="gap-3 px-3 pt-3 pb-1">
+          <Link
+            href={inAdminArea ? "/admin" : "/"}
+            className="flex h-10 items-center gap-2.5 rounded-[10px] px-1.5 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/career_blue.png" alt="" className="h-6 w-auto" />
+            <span className="text-[19px] font-semibold tracking-[-0.015em] text-foreground">Career</span>
+            {inAdminArea && (
+              <span className="ml-auto rounded-md border border-[#d9d8fe] bg-[#f6f6ff] px-1.5 py-px text-[11px] font-semibold text-[#5b4fd9]">
+                Admin
+              </span>
+            )}
+          </Link>
+          {paletteItems.length > 0 && (
+            <button
+              type="button"
+              onClick={openCommandPalette}
+              className="flex h-8 w-full items-center gap-2 rounded-[10px] border border-input bg-background px-2.5 text-left text-[13px] text-[#8b8b93] shadow-xs outline-none transition-colors hover:border-[#d4d4d8] focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             >
-              <Link href={"/"}>
-                {open && <span className="font-extrabold text-xl">VTK CAREER</span>}
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-      <SidebarContent>
-        <NavMain items={navItems} label={inAdminArea ? "Administration" : "Platform"} />
-      </SidebarContent>
-      <SidebarFooter>
-        {user?.admin && (
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                asChild
-                tooltip={inAdminArea ? "Company Dashboard" : "Admin Panel"}
-              >
-                <Link href={inAdminArea ? "/dashboard" : "/admin"}>
-                  {inAdminArea ? <LayoutDashboard /> : <IconColumns />}
-                  <span>{inAdminArea ? "Company Dashboard" : "Admin Panel"}</span>
+              <Search className="size-4 text-[#6b6b73]" />
+              <span className="flex-1">Search…</span>
+              <kbd className="flex items-center gap-0.5 rounded-md border bg-muted px-1 text-[11px] font-semibold text-muted-foreground">
+                {isMac ? "⌘" : "Ctrl"} K
+              </kbd>
+            </button>
+          )}
+        </SidebarHeader>
+        <SidebarContent className="scrollbar-thin gap-0 px-3 pb-3">
+          {inAdminArea && user?.admin && (
+            <ul className="mt-2 flex flex-col gap-0.5">
+              <li>
+                <Link
+                  href="/admin"
+                  aria-current={pathname === "/admin" ? "page" : undefined}
+                  className={cn(navRowClass, pathname === "/admin" && navRowActiveClass)}
+                >
+                  <LayoutGrid />
+                  <span>Overview</span>
+                  {pendingCount > 0 && (
+                    <span className="ml-auto rounded-full bg-[#ebebfe] px-1.5 text-[11px] leading-4 font-semibold text-[#4840ac] tabular">
+                      {pendingCount}
+                    </span>
+                  )}
                 </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        )}
-        <NavUser />
-      </SidebarFooter>
-      <SidebarRail />
-    </Sidebar>
+              </li>
+            </ul>
+          )}
+          <NavMain items={navItems} label={inAdminArea ? "Administration" : "Platform"} />
+        </SidebarContent>
+        <SidebarFooter className="gap-1 border-t border-sidebar-border px-3 pt-2 pb-3">
+          {user?.admin && (
+            <Link
+              href={inAdminArea ? "/dashboard" : "/admin"}
+              className={navRowClass}
+            >
+              {inAdminArea ? <LayoutDashboard /> : <IconColumns />}
+              <span>{inAdminArea ? "Company Dashboard" : "Admin Panel"}</span>
+            </Link>
+          )}
+          <NavUser />
+        </SidebarFooter>
+        <SidebarRail />
+      </Sidebar>
+      {paletteItems.length > 0 && <CommandPalette items={paletteItems} />}
+    </>
   );
 }

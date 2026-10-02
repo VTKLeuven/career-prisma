@@ -22,7 +22,8 @@ import {
   VisibilityState,
 }
 from "@tanstack/react-table";
-import { ChevronDown, MoreHorizontal, Upload, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, MoreHorizontal, Package, Pencil, Search, Upload, Users, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
@@ -315,6 +316,9 @@ export function CompaniesSection() {
   const [globalFilter, setGlobalFilter] = React.useState("");
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = React.useState({});
+  // Fifty rows fit a laptop screen inside the scrolling table; tanstack's
+  // default of ten meant paging through dozens of pages.
+  const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: 50 });
   const [selectedCompany, setSelectedCompany] = React.useState<CompanyRow | null>(null);
   const [editingCompany, setEditingCompany] = React.useState<CompanyRow | null>(null);
   const [viewMode, setViewMode] = React.useState<"companies" | "users" | "options">("companies");
@@ -568,7 +572,8 @@ export function CompaniesSection() {
       (company) => { setSelectedCompany(company); setViewMode("options"); },
       (company) => { setEditingCompany(company); }
     ),
-    state: { sorting, columnFilters, columnVisibility, rowSelection, globalFilter },
+    state: { sorting, columnFilters, columnVisibility, rowSelection, globalFilter, pagination },
+    onPaginationChange: setPagination,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
@@ -662,81 +667,122 @@ export function CompaniesSection() {
     }
   }, [selectedCompany]);
 
+  const filteredCount = table.getFilteredRowModel().rows.length;
+  const { pageIndex, pageSize } = table.getState().pagination;
+
   return (
-    <Card className="rounded-2xl shadow-md">
-      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-        <CardTitle className="text-xl sm:text-2xl">
-          {selectedCompany && viewMode === "users" ? `Manage Users: ${selectedCompany.name}` :
-           selectedCompany && viewMode === "options" ? `Manage Options: ${selectedCompany.name}` :
-           "Manage Companies"}
-        </CardTitle>
-        <div className="flex items-center gap-2">
-          {selectedCompany && (
-            <Button variant="outline" size="sm" onClick={() => { setSelectedCompany(null); setViewMode("companies"); }} className="w-full sm:w-auto">Back to Companies</Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent>
+    <div className="flex flex-col gap-3">
         <EditCompanyDialog
           company={editingCompany}
           onClose={() => setEditingCompany(null)}
           onSaved={refreshCompanies}
         />
+        {selectedCompany && (
+          <div className="flex flex-col gap-3 rounded-xl border bg-[#fafafa] p-3 sm:flex-row sm:items-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { setSelectedCompany(null); setViewMode("companies"); }}
+              className="self-start sm:self-auto"
+            >
+              <ChevronLeft className="h-4 w-4" /> Companies
+            </Button>
+            <div className="flex min-w-0 items-center gap-2.5">
+              <CompanyAvatar name={selectedCompany.name} />
+              <span className="truncate text-[15px] font-semibold">{selectedCompany.name}</span>
+            </div>
+            <div className="flex items-center gap-1 rounded-[10px] border bg-background p-0.5 sm:ml-4">
+              {([
+                ["users", "Representatives", selectedCompany.representatives?.length ?? 0],
+                ["options", "Options", selectedCompany.options?.length ?? 0],
+              ] as const).map(([mode, label, count]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setViewMode(mode)}
+                  className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
+                    viewMode === mode ? "bg-[#f0f0f2] text-foreground" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                  <span className="text-xs text-muted-foreground tabular">{count}</span>
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 sm:ml-auto">
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/company/${slugifyCompanyName(selectedCompany.name)}`}>
+                  <ExternalLink className="h-4 w-4" /> Public page
+                </Link>
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setEditingCompany(selectedCompany)}>
+                <Pencil className="h-4 w-4" /> Edit details
+              </Button>
+            </div>
+          </div>
+        )}
         {!selectedCompany ? (
           <>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Input
-                placeholder="Filter companies..."
-                value={table.getState().globalFilter ?? ""}
-                onChange={e => table.setGlobalFilter(e.target.value)}
-                className="max-w-sm w-full sm:w-auto"
-              />
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+              <div className="relative w-full sm:max-w-xs">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search name or VAT…"
+                  value={table.getState().globalFilter ?? ""}
+                  onChange={e => table.setGlobalFilter(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
               <Select
-                value={(table.getColumn("salesperson")?.getFilterValue() ?? "") as string}
+                value={(table.getColumn("salesperson")?.getFilterValue() ?? "__all__") as string}
                 onValueChange={(val) => table.getColumn("salesperson")?.setFilterValue(val === "__all__" ? undefined : val)}
               >
-                <SelectTrigger className="w-full sm:w-[220px]">
-                  <SelectValue placeholder="Filter on salesperson" />
+                <SelectTrigger className="w-full sm:w-[200px]">
+                  <SelectValue placeholder="Assignee" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem key="__all__" value="__all__">All</SelectItem>
+                  <SelectItem key="__all__" value="__all__">All assignees</SelectItem>
                   {salespersonOptions.map(name => <SelectItem key={String(name)} value={String(name)}>{name}</SelectItem>)}
                 </SelectContent>
               </Select>
 
-              <CompanyFormDialog
-                onRefresh={refreshCompanies}
-              />
+              <span className="text-sm text-muted-foreground tabular">
+                {filteredCount === data.length ? `${data.length} companies` : `${filteredCount} of ${data.length}`}
+              </span>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="w-full sm:w-auto"><IconColumns className="hidden sm:inline" /> <span className="hidden sm:inline">Columns </span><ChevronDown className="h-4 w-4" /></Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {table.getAllColumns()
-                    .filter(c => c.getCanHide())
-                    .map(c => (
-                      <DropdownMenuCheckboxItem
-                        key={c.id}
-                        checked={c.getIsVisible()}
-                        onCheckedChange={v => c.toggleVisibility(v)}
-                        className="capitalize"
-                      >
-                        {c.id}
-                      </DropdownMenuCheckboxItem>
-                    ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <div className="flex items-center gap-2 sm:ml-auto">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline"><IconColumns /> <span className="hidden sm:inline">Columns</span><ChevronDown className="h-4 w-4 text-muted-foreground" /></Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {table.getAllColumns()
+                      .filter(c => c.getCanHide())
+                      .map(c => (
+                        <DropdownMenuCheckboxItem
+                          key={c.id}
+                          checked={c.getIsVisible()}
+                          onCheckedChange={v => c.toggleVisibility(v)}
+                          className="capitalize"
+                        >
+                          {c.id}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <CompanyFormDialog
+                  onRefresh={refreshCompanies}
+                />
+              </div>
             </div>
 
-            <div className="mt-4 overflow-x-auto rounded-md border">
-              <div className="min-w-full">
-                <Table>
-                  <TableHeader>
+            <div className="overflow-hidden rounded-xl border bg-background">
+                <Table containerClassName="max-h-[calc(100svh-17rem)]">
+                  <TableHeader className="sticky top-0 z-10 bg-background shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
                     {table.getHeaderGroups().map(headerGroup => (
                       <TableRow key={headerGroup.id}>
                         {headerGroup.headers.map(header => (
-                          <TableHead key={header.id} className="whitespace-nowrap">
+                          <TableHead key={header.id} className="whitespace-nowrap first:pl-4">
                             {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                           </TableHead>
                         ))}
@@ -744,47 +790,68 @@ export function CompaniesSection() {
                     ))}
                   </TableHeader>
                   <TableBody>
-                    {loading ? (
-                      <TableRow>
-                        <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center">
-                          Loading...
-                        </TableCell>
-                      </TableRow>
+                    {loading && data.length === 0 ? (
+                      Array.from({ length: 8 }).map((_, i) => (
+                        <TableRow key={i} className="hover:bg-transparent">
+                          <TableCell colSpan={table.getAllColumns().length} className="pl-4">
+                            <div className="flex items-center gap-3">
+                              <div className="size-7 animate-pulse rounded-lg bg-muted" />
+                              <div className="h-3 w-48 animate-pulse rounded bg-muted" />
+                              <div className="ml-auto h-3 w-24 animate-pulse rounded bg-muted" />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
                     ) : table.getRowModel().rows.length ? (
                       table.getRowModel().rows.map(row => {
                         const company = row.original as CompanyRow;
-                        const isUnpublished = company.status !== "published";
                         return (
                           <TableRow
                             key={row.id}
-                            className={isUnpublished ? "bg-red-50/80 dark:bg-red-950/20" : undefined}
+                            tabIndex={0}
+                            className="group/row cursor-pointer outline-none focus-visible:bg-surface-hover focus-visible:shadow-[inset_2px_0_0_#1f82d1]"
+                            onClick={(e) => {
+                              // Menus and dialogs opened from a row are portaled, but React
+                              // still bubbles their clicks here; only real row clicks count.
+                              if (!e.currentTarget.contains(e.target as Node)) return;
+                              if ((e.target as HTMLElement).closest("a, button, [role=checkbox]")) return;
+                              setEditingCompany(company);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && e.target === e.currentTarget) setEditingCompany(company);
+                            }}
                           >
                             {row.getVisibleCells().map(cell => (
-                              <TableCell key={cell.id} className="whitespace-nowrap">{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+                              <TableCell key={cell.id} className="whitespace-nowrap first:pl-4">{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
                             ))}
                           </TableRow>
                         );
                       })
                     ) : (
-                      <TableRow>
-                        <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center">
-                          No results.
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell colSpan={table.getAllColumns().length} className="h-40 text-center text-muted-foreground">
+                          No companies match these filters.
                         </TableCell>
                       </TableRow>
                     )}
                   </TableBody>
                 </Table>
-              </div>
-            </div>
 
-            <div className="mt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-              <div className="text-muted-foreground text-xs sm:text-sm">
-                {table.getFilteredSelectedRowModel().rows.length} of {table.getFilteredRowModel().rows.length} row(s) selected.
-              </div>
-              <div className="flex space-x-2 w-full sm:w-auto">
-                <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="flex-1 sm:flex-initial">Previous</Button>
-                <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="flex-1 sm:flex-initial">Next</Button>
-              </div>
+              {filteredCount > pageSize && (
+                <div className="flex items-center justify-between gap-2 border-t bg-[#fafafa] px-4 py-2">
+                  <p className="text-xs text-muted-foreground tabular">
+                    {pageIndex * pageSize + 1}–{Math.min((pageIndex + 1) * pageSize, filteredCount)} of {filteredCount}
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
+                      <ChevronLeft className="h-4 w-4" /> Previous
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+                      Next <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </>
         ) : viewMode === "users" ? (
@@ -827,8 +894,53 @@ export function CompaniesSection() {
             <CompanyOptionHistory company={selectedCompany} />
           </div>
         ) : null}
-      </CardContent>
-    </Card>
+    </div>
+  );
+}
+
+/** Rounded square with a company's initials, the "identity cell" of a row. */
+function CompanyAvatar({ name }: { name?: string | null }) {
+  const letters = (name ?? "?")
+    .replace(/[^\p{L}\p{N} ]/gu, "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase() || "?";
+  return (
+    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg border bg-[#fafafa] text-[11px] font-semibold text-[#52525b]">
+      {letters}
+    </span>
+  );
+}
+
+/** Count chip that opens one of a company's sub-views (reps, options). */
+function CountChip({
+  count,
+  label,
+  onClick,
+  icon: Icon,
+}: {
+  count: number;
+  label: string;
+  onClick: () => void;
+  icon: React.ComponentType<{ className?: string }>;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`View ${label}`}
+      className={`inline-flex h-7 items-center gap-1.5 rounded-lg border px-2 text-[13px] font-medium transition-colors tabular ${
+        count > 0
+          ? "border-[#e2e2e5] bg-background text-foreground hover:border-[#bee1ff] hover:bg-[#f0f8ff] hover:text-[#0a6cba]"
+          : "border-dashed border-[#e2e2e5] text-muted-foreground hover:border-[#d4d4d8] hover:text-foreground"
+      }`}
+    >
+      <Icon className="size-3.5" />
+      {count}
+    </button>
   );
 }
 
@@ -838,59 +950,92 @@ export function CompaniesSection() {
 function getCompanyColumns(onViewUsers: (company: CompanyRow) => void, onViewOptions: (company: CompanyRow) => void, onEditCompany: (company: CompanyRow) => void): ColumnDef<CompanyRow>[] {
   return [
     {
-      id: "select",
-      header: ({ table }) => (
-        <Checkbox
-          checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && "indeterminate")}
-          onCheckedChange={v => table.toggleAllPageRowsSelected(!!v)}
-          aria-label="Select all"
-        />
-      ),
-      cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={v => row.toggleSelected(!!v)}
-          aria-label="Select row"
-        />
-      ),
-      enableSorting: false,
+      accessorKey: "name",
+      header: "Name",
       enableHiding: false,
-      size: 24,
+      cell: ({ row }) => {
+        const company = row.original;
+        return (
+          <div className="flex min-w-0 items-center gap-2.5">
+            <CompanyAvatar name={company.name} />
+            <span className="truncate font-medium text-foreground capitalize">{row.getValue("name")}</span>
+            {company.status && company.status !== "published" ? (
+              <Badge variant="warning" className="capitalize">{company.status}</Badge>
+            ) : null}
+          </div>
+        );
+      },
     },
-    { accessorKey: "name", header: "Name", cell: ({ row }) => <div className="capitalize">{row.getValue("name")}</div> },
-    { accessorKey: "VAT", header: "VAT", cell: ({ row }) => <div className="font-mono text-xs">{row.getValue("VAT")}</div> },
-    { accessorKey: "address", header: "Address", cell: ({ row }) => <div className="truncate max-w-[32ch]">{row.getValue("address")}</div> },
+    { accessorKey: "VAT", header: "VAT", cell: ({ row }) => <div className="text-[13px] text-muted-foreground tabular">{row.getValue("VAT") || "—"}</div> },
+    { accessorKey: "address", header: "Address", cell: ({ row }) => <div className="max-w-[32ch] truncate text-muted-foreground">{row.getValue("address") || "—"}</div> },
+    {
+      id: "representatives",
+      header: "Reps",
+      cell: ({ row }) => (
+        <CountChip
+          count={row.original.representatives?.length ?? 0}
+          label="representatives"
+          icon={Users}
+          onClick={() => onViewUsers(row.original)}
+        />
+      ),
+    },
+    {
+      id: "options",
+      header: "Options",
+      cell: ({ row }) => (
+        <CountChip
+          count={row.original.options?.length ?? 0}
+          label="options"
+          icon={Package}
+          onClick={() => onViewOptions(row.original)}
+        />
+      ),
+    },
     {
       accessorKey: "salesperson",
-      header: () => <div className="text-right">Assignee</div>,
-      cell: ({ row }) => <div className="text-right font-medium">{row.getValue("salesperson") || "—"}</div>,
+      header: "Assignee",
+      cell: ({ row }) => {
+        const name = String(row.getValue("salesperson") ?? "");
+        // The repo reports a missing salesperson as the literal "Not set".
+        if (!name || name === "Not set") return <span className="text-muted-foreground">—</span>;
+        return (
+          <div className="flex items-center gap-2">
+            <span className="flex size-6 items-center justify-center rounded-full bg-[#ebebfe] text-[10px] font-semibold text-[#4840ac]">
+              {name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
+            </span>
+            <span className="text-[13px]">{name}</span>
+          </div>
+        );
+      },
       enableColumnFilter: true,
       filterFn: (row, id, value: string) => !value || row.getValue(id) === value,
     },
     {
       id: "actions",
       enableHiding: false,
+      header: () => <span className="sr-only">Actions</span>,
       cell: ({ row }) => {
         const company = row.original;
         return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><MoreHorizontal /></Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => onViewUsers(company)}>View users</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onViewOptions(company)}>View options</DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href={`/company/${slugifyCompanyName(company.name)}`}>
-                  View company page
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => console.log("Vacancies for", company.id)}>View vacancies</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onEditCompany(company)}>Edit Company</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex justify-end">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="size-8 text-muted-foreground"><span className="sr-only">Open menu</span><MoreHorizontal /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onEditCompany(company)}><Pencil /> Edit details</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onViewUsers(company)}><Users /> Representatives</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onViewOptions(company)}><Package /> Options</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href={`/company/${slugifyCompanyName(company.name)}`}>
+                    <ExternalLink /> Public company page
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         );
       },
     },
@@ -2671,8 +2816,8 @@ function CompanyFormDialog({ onRefresh }: { onRefresh?: () => void }) {
     <>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
-          <Button className="ml-auto" variant="outline">
-            <IconPlus /> Add Company
+          <Button>
+            <IconPlus /> New company
           </Button>
         </DialogTrigger>
         <DialogContent className="max-h-[90dvh] overflow-y-auto" showCloseButton={false}>
@@ -3156,7 +3301,7 @@ export function EventsSection({ academicYearId }: { academicYearId?: string }) {
   }, [academicYearId]);
 
   return (
-    <Card className="rounded-2xl shadow-md">
+    <Card className="rounded-xl">
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
           <CardTitle className="text-2xl">Annual event editions</CardTitle>

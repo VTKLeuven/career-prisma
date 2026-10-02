@@ -61,6 +61,7 @@ import { studyFieldOptions } from "@/lib/form-fields";
 import Link from "next/link";
 import { getFileUrl } from "@/components/Images";
 import NextImage from "next/image";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 type FieldType = FormField["type"];
 
@@ -286,32 +287,30 @@ export default function FormBuilderPage() {
   }
 
   return (
-    <div className="container mx-auto p-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/admin/forms">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Link>
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">{form.name}</h1>
-            <p className="text-muted-foreground">Build your form by adding and configuring fields</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          {activeVersion && (
-            <Badge variant="outline">
-              Current: v{activeVersion.version_number}
-            </Badge>
-          )}
-          <Button onClick={() => setShowSaveDialog(true)} disabled={fields.length === 0}>
-            <Save className="mr-2 h-4 w-4" />
-            Save Version
-          </Button>
-        </div>
-      </div>
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
+      <PageHeader
+        title={form.name}
+        description="Build your form by adding and configuring fields"
+        actions={
+          <>
+            <Button variant="outline" asChild>
+              <Link href="/admin/forms">
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </Link>
+            </Button>
+            {activeVersion && (
+              <Badge variant="outline" className="h-9 px-3">
+                Current: v{activeVersion.version_number}
+              </Badge>
+            )}
+            <Button onClick={() => setShowSaveDialog(true)} disabled={fields.length === 0}>
+              <Save className="h-4 w-4" />
+              Save Version
+            </Button>
+          </>
+        }
+      />
 
       <div className="grid gap-6 md:grid-cols-[1fr,300px]">
         <div className="space-y-4">

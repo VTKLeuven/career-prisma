@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -89,15 +90,17 @@ export default async function SystemLogsPage({
   const logs = await listSystemLogs({ ...filters, limit: 300 });
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">System Logs</h1>
-        <p className="text-muted-foreground">
-          Technical events from the website — VTK logins first. The newest 300
-          matching entries are shown; entries are kept for{" "}
-          {SYSTEM_LOG_RETENTION_DAYS} days.
-        </p>
-      </div>
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
+      <PageHeader
+        title="System Logs"
+        description={
+          <>
+            Technical events from the website — VTK logins first. The newest 300
+            matching entries are shown; entries are kept for{" "}
+            {SYSTEM_LOG_RETENTION_DAYS} days.
+          </>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         <FilterChip href={filterHref(filters, { source: undefined })} active={!filters.source}>

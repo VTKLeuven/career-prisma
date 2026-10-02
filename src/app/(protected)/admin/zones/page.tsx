@@ -6,6 +6,7 @@ import { getUserFromCookies } from "@/lib/auth-server";
 import { fetchEventPagesAction } from "@/app/actions/events";
 import type { CareerEventPage } from "@/lib/schema";
 import prisma from "@/lib/prisma";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 async function getBooths() {
     const rows = await prisma.booth.findMany({
@@ -37,10 +38,8 @@ export default async function AdminZonesPage() {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://career.vtk.be";
 
     return (
-        <div className="container mx-auto py-6 space-y-6">
-            <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-bold">Zones & Booths</h1>
-            </div>
+        <div className="mx-auto w-full max-w-[1600px] space-y-6">
+            <PageHeader title="Zones & Booths" />
             <Suspense fallback={<div>Loading...</div>}>
                 <ZonesClient
                     initialZones={zones}

@@ -51,7 +51,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power, ChevronUp, ChevronDown, Building2 } from "lucide-react";
+import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power, ChevronUp, ChevronDown, Building2, RefreshCw, Search, Hammer, Inbox } from "lucide-react";
 import { useUser } from "@/providers/UserProvider";
 import type { FormSchema, FormField, Form, CareerEvent, CareerEventOption } from "@/lib/schema";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -62,6 +62,7 @@ import { fetchEventsAction, fetchOptionsForEventAction } from "@/app/actions/eve
 import { slugifyEventName } from "@/lib/utils/slugify";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 type FormRow = {
   id: string;
@@ -87,6 +88,8 @@ export default function AdminFormsPage() {
   const { user } = useUser();
   const [forms, setForms] = useState<FormRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "disabled">("all");
 
   const loadForms = async () => {
     setLoading(true);
@@ -114,96 +117,221 @@ export default function AdminFormsPage() {
     return <div className="p-8">Access Denied</div>;
   }
 
+  const q = search.trim().toLowerCase();
+  const visibleForms = forms.filter((form) => {
+    if (statusFilter === "active" && (form.is_active === false || !form.activeVersion)) return false;
+    if (statusFilter === "disabled" && form.is_active !== false) return false;
+    if (!q) return true;
+    return [form.name, form.slug, form.description ?? ""].some((v) => v.toLowerCase().includes(q));
+  });
+  const activeCount = forms.filter((f) => f.is_active !== false && f.activeVersion).length;
+  const disabledCount = forms.filter((f) => f.is_active === false).length;
+
   return (
-    <div className="container mx-auto p-8 space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Forms Management</h1>
-          <p className="text-muted-foreground">Create and manage forms for external users</p>
+    <div className="mx-auto w-full max-w-[1600px] space-y-5">
+      <PageHeader
+        title="Forms"
+        description="Create and manage forms for students and companies"
+        actions={
+          <>
+            <Button variant="outline" asChild>
+              <Link href="/admin/forms/company-completion">
+                <Building2 className="h-4 w-4" />
+                Company Completion
+              </Link>
+            </Button>
+            <Button variant="outline" size="icon" onClick={loadForms} disabled={loading} aria-label="Refresh">
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            </Button>
+            <CreateFormDialog />
+          </>
+        }
+      />
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative w-full sm:max-w-xs">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search forms…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" asChild>
-            <Link href="/admin/forms/company-completion">
-              <Building2 className="mr-2 h-4 w-4" />
-              Company Completion
-            </Link>
-          </Button>
-          <Button variant="outline" onClick={loadForms} disabled={loading} size="default">
-            {loading ? "Refreshing..." : "Refresh"}
-          </Button>
-          <CreateFormDialog />
+        <div className="flex items-center gap-1 rounded-[10px] border bg-[#fafafa] p-0.5">
+          {([
+            ["all", "All", forms.length],
+            ["active", "Active", activeCount],
+            ["disabled", "Disabled", disabledCount],
+          ] as const).map(([value, label, count]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setStatusFilter(value)}
+              className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
+                statusFilter === value
+                  ? "bg-background text-foreground shadow-[0_1px_2px_rgb(16_16_20/0.08)] ring-1 ring-black/5"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {label}
+              <span className="text-xs text-muted-foreground tabular">{count}</span>
+            </button>
+          ))}
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>All Forms</CardTitle>
-          <CardDescription>
-            Manage your forms, versions, and view responses
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="text-center py-8">Loading...</div>
-          ) : forms.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No forms yet. Create your first form to get started.
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Slug</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Deadline</TableHead>
-                  <TableHead>Submissions</TableHead>
-                  <TableHead>Updated</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {forms.map((form) => (
-                  <TableRow key={form.id}>
-                    <TableCell className="font-medium">{form.name}</TableCell>
-                    <TableCell>
-                      <SlugCell slug={form.slug} metadata={form.metadata} />
-                    </TableCell>
-                    <TableCell>
-                      {form.is_active === false ? (
-                        <Badge variant="destructive">Disabled</Badge>
-                      ) : form.activeVersion ? (
-                        <Badge variant="default">Active (v{form.activeVersion.version_number})</Badge>
-                      ) : (
-                        <Badge variant="secondary">No Active Version</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {form.metadata?.deadline ? (
-                        <span className={new Date(form.metadata.deadline) < new Date() ? 'text-destructive' : ''}>
-                          {formatDateTimeBE(form.metadata.deadline)}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">No deadline</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {form.metadata?.max_entries
-                        ? `${form.submissionCount}/${form.metadata.max_entries}`
-                        : form.submissionCount}
-                    </TableCell>
-                    <TableCell>{formatDateBE(form.updated_at)}</TableCell>
-                    <TableCell className="text-right">
-                      <FormActionsMenu form={form} onUpdate={loadForms} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <div className="overflow-hidden rounded-xl border bg-background">
+        {loading && forms.length === 0 ? (
+          <div className="divide-y">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex h-[52px] items-center gap-4 px-4">
+                <div className="h-3 w-48 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-32 animate-pulse rounded bg-muted" />
+                <div className="ml-auto h-3 w-16 animate-pulse rounded bg-muted" />
+              </div>
+            ))}
+          </div>
+        ) : visibleForms.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-16 text-center">
+            <span className="flex size-10 items-center justify-center rounded-xl border bg-background text-[#0a6cba]">
+              <FileText className="size-4" />
+            </span>
+            <p className="text-sm font-medium">
+              {forms.length === 0 ? "No forms yet" : "No forms match these filters"}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {forms.length === 0 ? "Create your first form to get started." : "Try another search or status."}
+            </p>
+          </div>
+        ) : (
+          <Table containerClassName="max-h-[calc(100svh-17rem)]">
+            <TableHeader className="sticky top-0 z-10 bg-background shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
+              <TableRow>
+                <TableHead className="pl-4">Name</TableHead>
+                <TableHead>Link</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Deadline</TableHead>
+                <TableHead>Submissions</TableHead>
+                <TableHead>Updated</TableHead>
+                <TableHead className="w-12"><span className="sr-only">Actions</span></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visibleForms.map((form) => (
+                <FormTableRow key={form.id} form={form} onUpdate={loadForms} />
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
     </div>
+  );
+}
+
+/**
+ * One form in the list. Clicking anywhere on the row opens its details; the
+ * builder, responses and the public form are one hover-click away on the right.
+ */
+function FormTableRow({ form, onUpdate }: { form: FormRow; onUpdate: () => void }) {
+  const [editOpen, setEditOpen] = useState(false);
+  const deadline = form.metadata?.deadline;
+  const deadlinePassed = deadline ? new Date(deadline) < new Date() : false;
+  const max = form.metadata?.max_entries ? Number(form.metadata.max_entries) : null;
+
+  return (
+    <TableRow
+      tabIndex={0}
+      className="group/row cursor-pointer outline-none focus-visible:bg-surface-hover focus-visible:shadow-[inset_2px_0_0_#1f82d1]"
+      onClick={(e) => {
+        // Dialogs opened from this row are portaled, but React still bubbles
+        // their clicks here; only clicks on the row itself should open it.
+        if (!e.currentTarget.contains(e.target as Node)) return;
+        if ((e.target as HTMLElement).closest("a, button")) return;
+        setEditOpen(true);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && e.target === e.currentTarget) setEditOpen(true);
+      }}
+    >
+      <TableCell className="max-w-[22rem] pl-4">
+        <div className="truncate font-medium text-foreground" title={form.name}>{form.name}</div>
+        {form.description ? (
+          <div className="truncate text-xs text-muted-foreground" title={form.description}>{form.description}</div>
+        ) : null}
+      </TableCell>
+      <TableCell>
+        <SlugCell slug={form.slug} metadata={form.metadata} />
+      </TableCell>
+      <TableCell>
+        {form.is_active === false ? (
+          <Badge variant="muted">
+            <span className="size-1.5 rounded-full bg-[#a1a1aa]" /> Disabled
+          </Badge>
+        ) : form.activeVersion ? (
+          <Badge variant="success">
+            <span className="size-1.5 rounded-full bg-[#16a34a]" /> Active · v{form.activeVersion.version_number}
+          </Badge>
+        ) : (
+          <Badge variant="warning">No active version</Badge>
+        )}
+      </TableCell>
+      <TableCell>
+        {deadline ? (
+          <span className={`tabular ${deadlinePassed ? "text-[#b91c1c]" : ""}`}>
+            {formatDateTimeBE(deadline)}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </TableCell>
+      <TableCell>
+        {max ? (
+          <div className="flex items-center gap-2">
+            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-[#f0f0f2]">
+              <div
+                className={`h-full rounded-full ${form.submissionCount >= max ? "bg-[#d97706]" : "bg-[#1f82d1]"}`}
+                style={{ width: `${Math.min(100, (form.submissionCount / max) * 100)}%` }}
+              />
+            </div>
+            <span className="text-[13px] tabular">
+              {form.submissionCount}
+              <span className="text-muted-foreground">/{max}</span>
+            </span>
+          </div>
+        ) : (
+          <span className="tabular">{form.submissionCount}</span>
+        )}
+      </TableCell>
+      <TableCell className="text-muted-foreground tabular">{formatDateBE(form.updated_at)}</TableCell>
+      <TableCell className="pr-2">
+        <div className="flex items-center justify-end gap-0.5">
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="size-8 text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100" asChild>
+                  <Link href={`/admin/forms/${form.id}/builder`} aria-label="Form builder">
+                    <Hammer className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Form builder</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="size-8 text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100" asChild>
+                  <Link href={`/admin/forms/${form.id}/responses`} aria-label="Responses">
+                    <Inbox className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Responses</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <FormActionsMenu form={form} onUpdate={onUpdate} editOpen={editOpen} onEditOpenChange={setEditOpen} />
+        </div>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -518,8 +646,8 @@ function CreateFormDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button size="default">
-          <Plus className="mr-2 h-4 w-4" />
-          Create Form
+          <Plus className="h-4 w-4" />
+          New form
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] flex flex-col overflow-y-auto scrollbar-thin">
@@ -837,8 +965,18 @@ function CreateFormDialog() {
   );
 }
 
-function FormActionsMenu({ form, onUpdate }: { form: FormRow; onUpdate: () => void }) {
-  const [editOpen, setEditOpen] = useState(false);
+function FormActionsMenu({
+  form,
+  onUpdate,
+  editOpen,
+  onEditOpenChange: setEditOpen,
+}: {
+  form: FormRow;
+  onUpdate: () => void;
+  /** The row owns this so a click anywhere on it can open the details. */
+  editOpen: boolean;
+  onEditOpenChange: (open: boolean) => void;
+}) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
 
@@ -846,7 +984,7 @@ function FormActionsMenu({ form, onUpdate }: { form: FormRow; onUpdate: () => vo
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm">
+          <Button variant="ghost" size="icon" className="size-8 text-muted-foreground" aria-label="More actions">
             <MoreHorizontal className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
@@ -1730,13 +1868,13 @@ function SlugCell({ slug, metadata }: { slug: string; metadata?: { is_company_fo
 
   return (
     <TooltipProvider>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
         <Tooltip>
           <TooltipTrigger asChild>
             <a
               href={formUrl}
               onClick={handleClick}
-              className="text-sm bg-muted px-2 py-1 rounded hover:underline cursor-pointer"
+              className="block max-w-[16rem] truncate rounded-md bg-[#f5f5f6] px-2 py-0.5 text-[13px] text-[#52525b] transition-colors hover:bg-[#ececee] hover:text-foreground"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -1752,7 +1890,7 @@ function SlugCell({ slug, metadata }: { slug: string; metadata?: { is_company_fo
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0"
+              className="h-6 w-6 p-0 text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"
               onClick={handleCopy}
             >
               {copied ? (

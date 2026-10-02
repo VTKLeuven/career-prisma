@@ -2,6 +2,7 @@ import { getUserFromCookies } from "@/lib/auth-server";
 import { listSpeakers } from "@/lib/repos/speakers";
 import { listTimetables } from "@/lib/repos/timetable";
 import SpeakersClient from "./client";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 export default async function AdminSpeakersPage() {
   const user = await getUserFromCookies();
@@ -21,13 +22,8 @@ export default async function AdminSpeakersPage() {
   }));
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Speakers</h1>
-        <p className="text-muted-foreground">
-          Manage jobfair speakers and link them to representatives and timeslots.
-        </p>
-      </div>
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
+      <PageHeader title="Speakers" description="Manage jobfair speakers and link them to representatives and timeslots." />
       <SpeakersClient initialSpeakers={speakers} timeOptions={timeOptions} />
     </div>
   );

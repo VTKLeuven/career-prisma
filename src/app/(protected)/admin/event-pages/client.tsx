@@ -114,7 +114,7 @@ export default function EventPagesClient({
       { key: "speakers", label: "Speakers", render: (p) => String(p.speakerIds.length) },
       { key: "slots", label: "Slots", render: (p) => String(p.timetableIds.length) },
     ],
-    dialogClassName: "sm:max-w-5xl h-[90dvh]",
+    dialogClassName: "sm:max-w-4xl",
     fieldsClassName: "grid grid-cols-1 gap-5 md:grid-cols-2",
     fields: [
       { name: "event_id", label: "Event", type: "select", options: visibleEventOptions, required: true, section: "Basics" },

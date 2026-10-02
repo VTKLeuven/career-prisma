@@ -4,6 +4,7 @@ import { listEvents } from "@/lib/repos/event";
 import { Suspense } from "react";
 import DrinksClient from "./client";
 import { getUserFromCookies } from "@/lib/auth-server";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 export default async function AdminDrinksPage() {
     const user = await getUserFromCookies();
@@ -16,10 +17,8 @@ export default async function AdminDrinksPage() {
     ]);
 
     return (
-        <div className="container mx-auto py-6 space-y-6">
-            <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-bold">Drinks & Snacks</h1>
-            </div>
+        <div className="mx-auto w-full max-w-[1600px] space-y-6">
+            <PageHeader title="Drinks & Snacks" />
             <Suspense fallback={<div>Loading...</div>}>
                 <DrinksClient
                     initialDrinks={drinks}

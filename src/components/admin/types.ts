@@ -87,7 +87,11 @@ export type ResourceConfig<T> = {
   hideCreate?: boolean;
   /** Shows the resource without create, edit, or delete controls. */
   readOnly?: boolean;
-  /** Optional layout overrides for resources with larger edit forms. */
+  /**
+   * Optional layout overrides for resources with larger edit forms.
+   * `dialogClassName` styles the edit panel that slides in from the right
+   * (typically a wider `sm:max-w-*`); the name predates the panel.
+   */
   dialogClassName?: string;
   fieldsClassName?: string;
   actions: {

@@ -47,6 +47,7 @@ import { getFileUrl } from "@/components/Images";
 import NextImage from "next/image";
 import { resolveMasterDegreeValueToDisplayLabel, normalizeFaculties, type FacultyItem } from "@/lib/utils/master-degree-options";
 import type { Master } from "@/lib/schema";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 export default function FormResponsesPage() {
   const params = useParams();
@@ -1443,19 +1444,19 @@ export default function FormResponsesPage() {
   const selectedVersion = versions.find(v => v.id === selectedVersionId);
 
   return (
-    <div className="container mx-auto p-8 space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/admin/forms">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Forms
-          </Link>
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold">{form.name} - Responses</h1>
-          <p className="text-muted-foreground">View and export form submissions</p>
-        </div>
-      </div>
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
+      <PageHeader
+        title={`${form.name} · Responses`}
+        description="View and export form submissions"
+        actions={
+          <Button variant="outline" asChild>
+            <Link href="/admin/forms">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Forms
+            </Link>
+          </Button>
+        }
+      />
 
       <Card>
         <CardHeader>
