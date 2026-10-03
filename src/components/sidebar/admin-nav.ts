@@ -27,6 +27,9 @@ import {
 
 export type AdminNavIcon = ComponentType<{ className?: string }>;
 
+/** Public Dopl intake form where admins send feedback and IT support requests. */
+export const ADMIN_FEEDBACK_URL = "https://dopl.vtk.be/f/career-it-support-requests";
+
 /** A logical grouping for the admin hub screen. Order here defines display order. */
 export type AdminNavGroup =
   | "Companies & People"

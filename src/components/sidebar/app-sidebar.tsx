@@ -27,10 +27,11 @@ import {
   IconColumns,
   IconGlassCocktail,
 } from "@tabler/icons-react";
-import { LayoutDashboard, LayoutGrid, Search } from "lucide-react";
+import { LayoutDashboard, LayoutGrid, MessageSquareWarning, Search } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  ADMIN_FEEDBACK_URL,
   ADMIN_NAV_GROUP_ICONS,
   ADMIN_NAV_GROUP_ORDER,
   ADMIN_NAV_ITEMS,
@@ -541,6 +542,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <NavMain items={navItems} label={inAdminArea ? "Administration" : "Platform"} />
         </SidebarContent>
         <SidebarFooter className="gap-1 border-t border-sidebar-border px-3 pt-2 pb-3">
+          {inAdminArea && user?.admin && (
+            <a
+              href={ADMIN_FEEDBACK_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={navRowClass}
+            >
+              <MessageSquareWarning />
+              <span>Feedback / IT Support</span>
+            </a>
+          )}
           {user?.admin && (
             <Link
               href={inAdminArea ? "/dashboard" : "/admin"}
