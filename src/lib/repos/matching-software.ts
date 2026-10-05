@@ -1171,17 +1171,6 @@ export async function getMatchedCompanyIdsForResponse(responseId: string): Promi
   return rows.map((r) => r.company_id).filter((v): v is string => v != null);
 }
 
-/** The student who owns a matching response, as a string id; null when unknown. */
-export async function getStudentMatchingResponseStudentId(responseId: string): Promise<string | null> {
-  const id = toInt(responseId);
-  if (id == null) return null;
-  const row = await prisma.studentMatchingResponse.findUnique({
-    where: { id },
-    select: { student_id: true },
-  });
-  return row?.student_id != null ? String(row.student_id) : null;
-}
-
 /** Fetch matched companies for a student response by reading the junction table directly. */
 export async function getMatchedCompaniesForResponse(
   responseId: string

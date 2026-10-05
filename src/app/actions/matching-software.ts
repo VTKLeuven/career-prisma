@@ -20,11 +20,10 @@ import {
   computeAndStoreCompanyMatches,
   getCompaniesByIds,
   getMatchedCompaniesForResponse,
-  getStudentMatchingResponseStudentId,
   getMatchScoresForResponse,
   shouldRecomputeMatches,
 } from "@/lib/repos/matching-software";
-import type { MatchingSoftware, RIASECType } from "@/lib/schema";
+import type { RIASECType } from "@/lib/schema";
 import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
 import { getStudentFromCookies } from "@/lib/auth-student";
 import { toPublicCompany } from "@/lib/repos/_shape";
@@ -207,22 +206,6 @@ export async function fetchMatchedCompaniesAction(companyIds: string[]) {
   return getCompaniesByIds(companyIds);
 }
 
-/**
- * The companies matched to a student's response -- for that student (or an
- * admin) only, and in their public view: students see company names and
- * logos, not company staff.
- */
-export async function fetchMatchedCompaniesForResponseAction(responseId: string) {
-  const student = await getStudentFromCookies();
-  if (!student) {
-    const user = await getUserFromCookies();
-    if (!user?.admin) return [];
-  } else if ((await getStudentMatchingResponseStudentId(responseId)) !== String(student.id)) {
-    return [];
-  }
-  return (await getMatchedCompaniesForResponse(responseId)).map(toPublicCompany);
-}
-
 /** Fetch matched company IDs for the current student on an event. Returns { matchedIds, hasMatchingSoftware }. */
 export async function fetchMatchedCompanyIdsForEventAction(eventId: string): Promise<{
   matchedIds: string[];
@@ -237,27 +220,9 @@ export async function fetchMatchedCompanyIdsForEventAction(eventId: string): Pro
   return { matchedIds, hasMatchingSoftware: true };
 }
 
-/** Fetch company general info for matched companies. Returns map of companyId -> GeneralInfoAnswers. */
-export async function fetchCompanyGeneralInfoAction(
-  matchingSoftwareId: string,
-  companyIds: string[]
-) {
-  return getCompanyGeneralInfoForCompanies(matchingSoftwareId, companyIds);
-}
-
-/** Fetch match scores for display (lower = better match). */
-export async function fetchMatchScoresAction(
-  riasec: Record<import("@/lib/schema").RIASECType, number>,
-  studentGeneralInfo: import("@/lib/matching-general-info").GeneralInfoAnswers | null | undefined,
-  matchingSoftwareId: string,
-  companyIds: string[]
-) {
-  return getMatchScoresForResponse(riasec, studentGeneralInfo, matchingSoftwareId, companyIds);
-}
-
 /** Re-run company matching for the current user's response. Only recomputes if last run was >24h ago.
  * Company matches are synced daily at 0:00 or via admin manual "Update matches" button. */
-export async function recomputeCompanyMatchesForCurrentUserAction(matchingSoftwareId: string) {
+async function recomputeCompanyMatchesForCurrentUserAction(matchingSoftwareId: string) {
   const { getStudentFromCookies } = await import("@/lib/auth-student");
   const student = await getStudentFromCookies();
   if (!student?.id) return null;
@@ -276,17 +241,70 @@ export async function recomputeCompanyMatchesForCurrentUserAction(matchingSoftwa
   return getStudentMatchingResponse(student.id, matchingSoftwareId);
 }
 
-/** Returns student's form response if they have filled the prerequisite form. Any version of the form counts as complete. */
-export async function checkStudentPrerequisiteAction(
-  studentId: string,
-  formId: string
-) {
-  // Only the signed-in student's own response: the id comes from the browser,
-  // and student ids are sequential.
+type StudentResponse = NonNullable<Awaited<ReturnType<typeof getStudentMatchingResponse>>>;
+
+const EMPTY_GENERAL_INFO = { work_preference: [], company_preference: [], options_preference: [] };
+
+/** A response's matched companies (public view) with their general-info answers and match scores. */
+async function loadStudentMatchResults(matchingSoftwareId: string, resp: StudentResponse) {
+  const companies = (await getMatchedCompaniesForResponse(String(resp.id))).map(toPublicCompany);
+  if (companies.length === 0) {
+    return { companies, companyGeneralInfo: {} as Awaited<ReturnType<typeof getCompanyGeneralInfoForCompanies>>, scores: {} as Record<string, number> };
+  }
+  const ids = companies.map((c) => c.id);
+  const studentGi = (resp as { general_info_answers?: import("@/lib/matching-general-info").GeneralInfoAnswers }).general_info_answers ?? EMPTY_GENERAL_INFO;
+  const [companyGeneralInfo, scores] = await Promise.all([
+    getCompanyGeneralInfoForCompanies(matchingSoftwareId, ids),
+    getMatchScoresForResponse(resp.riasec as Record<RIASECType, number>, studentGi, matchingSoftwareId, ids),
+  ]);
+  return { companies, companyGeneralInfo, scores };
+}
+
+/**
+ * Everything the student matching page opens with, in one round trip: the
+ * event's matching software, the student's response (matches recomputed when
+ * due), the prerequisite form check, and the results. The page used to chain
+ * up to seven server actions, each waiting for the last.
+ */
+export async function fetchStudentMatchingStateAction(eventId: string) {
   const student = await getStudentFromCookies();
-  if (!student || String(student.id) !== String(studentId)) return null;
-  const response = await getStudentFormResponseForForm(String(student.id), formId);
-  return response ?? null;
+  if (!student?.id) return null;
+  const matchingSoftware = await getActiveMatchingSoftwareForEvent(eventId);
+  if (!matchingSoftware) {
+    return { matchingSoftware: null, response: null, prerequisite: null, prerequisiteMissing: false, results: null };
+  }
+
+  let response = await getStudentMatchingResponse(student.id, matchingSoftware.id);
+  if (response) {
+    try {
+      response = (await recomputeCompanyMatchesForCurrentUserAction(matchingSoftware.id)) ?? response;
+    } catch {
+      // Non-fatal: continue with existing response
+    }
+  }
+
+  let prerequisite: Record<string, unknown> | null = null;
+  if (matchingSoftware.prerequisite_form) {
+    const pf = matchingSoftware.prerequisite_form as string | { id: string };
+    const formId = typeof pf === "string" ? pf : pf.id;
+    const prereq = await getStudentFormResponseForForm(String(student.id), formId);
+    if (!prereq) {
+      return { matchingSoftware, response, prerequisite: null, prerequisiteMissing: true, results: null };
+    }
+    prerequisite = (prereq as { data?: Record<string, unknown> }).data ?? null;
+  }
+
+  const results = response ? await loadStudentMatchResults(matchingSoftware.id, response) : null;
+  return { matchingSoftware, response, prerequisite, prerequisiteMissing: false, results };
+}
+
+/** The signed-in student's response and results, e.g. right after submitting. */
+export async function fetchStudentMatchResultsAction(matchingSoftwareId: string) {
+  const student = await getStudentFromCookies();
+  if (!student?.id) return null;
+  const response = await getStudentMatchingResponse(student.id, matchingSoftwareId);
+  if (!response) return null;
+  return { response, results: await loadStudentMatchResults(matchingSoftwareId, response) };
 }
 
 // RIASEC calculation - 12 questions, each maps A or B to a type
