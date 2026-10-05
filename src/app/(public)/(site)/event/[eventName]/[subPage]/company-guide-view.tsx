@@ -10,24 +10,9 @@ export function CompanyGuideView({ eventName, fileId }: { eventName: string; fil
 
   // The guide renders its own fixed header.
   useEffect(() => {
-    if (!fileId) return
     setHideLayoutHeader(true)
     return () => setHideLayoutHeader(false)
-  }, [fileId, setHideLayoutHeader])
-
-  if (!fileId) {
-    return (
-      <div className="p-10 text-center text-neutral-700">
-        <h1 className="text-2xl font-semibold">Company Guide</h1>
-        <p className="mt-2 text-sm text-neutral-500">
-          Company guide not available.
-        </p>
-      </div>
-    )
-  }
-
-  // Use API route to proxy PDF to avoid CORS issues
-  const pdfUrl = `/api/pdf-proxy?fileId=${fileId}`
+  }, [setHideLayoutHeader])
 
   return (
     <div className="min-h-screen bg-vtk-bg">
@@ -42,7 +27,17 @@ export function CompanyGuideView({ eventName, fileId }: { eventName: string; fil
         eventName={eventName}
         isCompanyGuide={true}
       />
-      <PDFViewer pdfUrl={pdfUrl} />
+      {fileId ? (
+        // Use API route to proxy PDF to avoid CORS issues
+        <PDFViewer pdfUrl={`/api/pdf-proxy?fileId=${fileId}`} />
+      ) : (
+        <div className="px-4 pt-32 pb-10 text-center text-neutral-700">
+          <h1 className="text-2xl font-semibold">Company Guide</h1>
+          <p className="mt-2 text-sm text-neutral-500">
+            Company guide not available.
+          </p>
+        </div>
+      )}
     </div>
   )
 }
