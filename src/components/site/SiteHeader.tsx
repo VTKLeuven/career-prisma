@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { fetchPublicEventsAction } from "@/app/actions/events"
 import type { CareerEvent } from "@/lib/schema"
+import { fetchSessionCheck } from "@/lib/session-client"
 
 /**
  * The public site header.
@@ -135,16 +136,7 @@ export function SiteHeader({
   }, [eventsMenuEnabled])
 
   const checkAuthStatus = React.useCallback(() => {
-    fetch(`/api/user/check?t=${Date.now()}`, {
-      method: "GET",
-      cache: "no-store",
-      credentials: "include",
-      headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error(`Failed to check auth status: ${res.status}`)
-        return res.json()
-      })
+    fetchSessionCheck()
       .then((data) => {
         // Only an explicit `authenticated: true` counts.
         setCompanyRep(data?.companyRep?.authenticated === true ? data.companyRep : null)

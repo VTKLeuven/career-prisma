@@ -16,10 +16,14 @@ export async function GET() {
         user?.id && user.email
           ? {
               authenticated: true,
+              // Only who they represent: this answers on every public page
+              // view, and nothing reads more than the id.
               company:
                 typeof user.company === "string"
                   ? { id: user.company }
-                  : user.company || null,
+                  : user.company
+                    ? { id: user.company.id, name: user.company.name ?? null }
+                    : null,
               admin: user.admin || false,
               name: user.name || user.email,
               email: user.email,

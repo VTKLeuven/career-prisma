@@ -31,6 +31,7 @@ import { FormFieldRenderer } from "@/components/FormFieldRenderer";
 import { fieldDisplayLabel } from "@/lib/form-fields";
 import { userFacingFormSubmitErrorMessage } from "@/lib/form-submit-errors";
 import type { Company, CareerEvent } from "@/lib/schema";
+import { fetchSessionCheck } from "@/lib/session-client"
 
 function countWords(text: string): number {
   return text.trim().split(/\s+/).filter((word) => word.length > 0).length;
@@ -91,20 +92,10 @@ export default function CompanyFormPage() {
 
   // Load authenticated company/user info from /api/user/check (public side doesn't use UserProvider)
   useEffect(() => {
-    const ts = Date.now();
-    fetch(`/api/user/check?t=${ts}`, {
-      method: "GET",
-      cache: "no-store",
-      credentials: "include",
-      headers: {
-        "Cache-Control": "no-cache",
-        Pragma: "no-cache",
-      },
-    })
-      .then((res) => (res.ok ? res.json() : null))
+    fetchSessionCheck()
       .then((data) => {
-        const rep = data?.companyRep as any;
-        if (rep?.authenticated && rep.company && typeof rep.company === "object" && rep.company.id) {
+        const rep = data.companyRep;
+        if (rep?.authenticated && rep.company?.id) {
           setAuthCompanyId(rep.company.id as string);
           setAuthUserName(rep.name ?? null);
           if (rep.email) {

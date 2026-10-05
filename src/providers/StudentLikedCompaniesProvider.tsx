@@ -10,6 +10,7 @@ import {
 } from "react";
 import { toggleLikedCompanyAction } from "@/app/actions/student-liked-companies";
 import { PENDING_LIKED_KEY } from "@/components/CompanyLikeButton";
+import { fetchSessionCheck } from "@/lib/session-client"
 
 type ContextValue = {
   isStudent: boolean | null;
@@ -43,15 +44,11 @@ export function StudentLikedCompaniesProvider({
     let cancelled = false;
 
     Promise.all([
-      fetch(`/api/user/check?t=${Date.now()}`, {
-        cache: "no-store",
-        credentials: "include",
-      }),
+      fetchSessionCheck(),
       fetch("/api/students/liked-companies", { credentials: "include" }),
-    ]).then(async ([checkRes, likedRes]) => {
+    ]).then(async ([check, likedRes]) => {
       if (cancelled) return;
 
-      const check = (await checkRes.json()) as { student?: { id: string } };
       if (!check.student?.id) {
         setIsStudent(false);
         return;
