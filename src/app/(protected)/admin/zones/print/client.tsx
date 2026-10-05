@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { Booth } from "@/lib/schema";
 import { Button } from "@/components/ui/button";
-import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";

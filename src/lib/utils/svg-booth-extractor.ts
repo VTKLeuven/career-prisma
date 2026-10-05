@@ -73,12 +73,6 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
     }
     buildParentMap(root);
 
-    // Helper: strip units from values
-    function stripUnit(value: string | null): string {
-      if (!value) return "0";
-      return value.replace(/[a-zA-Z%]+$/, "").trim();
-    }
-
     // Parse transform attribute - returns full matrix info for path transforms
     function parseTransform(transformStr: string | null): { 
       tx: number; 
@@ -167,7 +161,6 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
       const commands = pathData.match(/[MmLlHhVvZz][^MmLlHhVvZz]*/g);
       if (!commands || commands.length < 4) return null;
 
-      const coords: number[] = [];
       let lastX = 0;
       let lastY = 0;
       let minX = Infinity;
@@ -241,23 +234,6 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
       }
 
       return null;
-    }
-
-    // Accumulate transforms up the ancestor chain
-    function accumulateTranslation(elem: Element): { tx: number; ty: number } {
-      let tx = 0;
-      let ty = 0;
-      let cur: Element | null = elem;
-
-      while (cur) {
-        const transform = cur.getAttribute("transform") || "";
-        const { tx: dtx, ty: dty } = parseTransform(transform);
-        tx += dtx;
-        ty += dty;
-        cur = parentMap.get(cur) || null;
-      }
-
-      return { tx, ty };
     }
 
     // Get full transform (including rotation from parent groups) for an element
@@ -762,6 +738,7 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
   }
 }
 
+// Strip a unit suffix: "12.5px" -> "12.5".
 function stripUnit(value: string | null): string {
   if (!value) return "0";
   return value.replace(/[a-zA-Z%]+$/, "").trim();

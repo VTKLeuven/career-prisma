@@ -1,5 +1,4 @@
 import { getUserFromCookies } from "@/lib/auth-server";
-import type { CareerEvent } from "@/lib/schema";
 import Link from "next/link";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";

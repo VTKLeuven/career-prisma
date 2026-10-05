@@ -18,7 +18,7 @@ import {
   fetchCVBooksAction,
   toggleCVBookFavouriteAction,
 } from "@/app/actions/cv-book"
-import type { Company, CVBook, AcademicYear } from "@/lib/schema"
+import type { CVBook, AcademicYear } from "@/lib/schema"
 import type { StudentCVGroup, StudentCVData } from "@/lib/repos/cv-book"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -31,7 +31,6 @@ export default function CVBookPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const cvBookIdParam = searchParams.get("cvBookId")
-  const [company, setCompany] = useState<Company | null>(null)
   const [loading, setLoading] = useState(true)
   const [hasAccess, setHasAccess] = useState(false)
   const [activeCVBooks, setActiveCVBooks] = useState<CVBook[]>([])
@@ -133,7 +132,6 @@ export default function CVBookPage() {
 
         if (!user?.admin && user?.company?.id) {
           const fetchedCompany = await fetchCompanyByIdAction(user.company.id)
-          setCompany(fetchedCompany ?? null)
           const companySubOption = getCompanySubOptionAnyStatus(fetchedCompany ?? null, "CV Book")
           const access = companySubOption !== null
           setHasAccess(access)
@@ -145,7 +143,6 @@ export default function CVBookPage() {
         }
       } catch (error) {
         console.error("[CVBookPage] Error fetching:", error)
-        setCompany(null)
         setHasAccess(false)
         setActiveCVBooks([])
       } finally {

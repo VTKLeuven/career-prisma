@@ -73,7 +73,6 @@ export function generateCalendarUrls(
  * Generate event confirmation email HTML
  */
 export function generateEventConfirmationEmailHtml({
-  subject,
   fullName,
   personalizedContent,
   eventDate,
@@ -441,11 +440,8 @@ export function generateCompanyPageRequestEmailHtml({
  * Generate company form confirmation email HTML
  */
 export function generateCompanyFormConfirmationEmailHtml({
-  subject,
-  submitterName,
   personalizedContent,
   formName,
-  companyName,
 }: {
   subject: string;
   submitterName: string;

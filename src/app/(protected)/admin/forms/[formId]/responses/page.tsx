@@ -73,7 +73,6 @@ export default function FormResponsesPage() {
   const [editing, setEditing] = useState(false);
   const [editingField, setEditingField] = useState<{ responseId: string; fieldName: string } | null>(null);
   const [editingFieldValue, setEditingFieldValue] = useState("");
-  const [savingField, setSavingField] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [firstResponseDate, setFirstResponseDate] = useState<string | null>(null);
@@ -1196,10 +1195,6 @@ export default function FormResponsesPage() {
     v.schema?.fields?.some((f) => f.type === "file")
   );
 
-  const hasMasterDegreesFields = versions.some((v) =>
-    v.schema?.fields?.some((f) => f.type === "master-degrees")
-  );
-
   const handleDeleteClick = (response: FormResponse) => {
     setResponseToDelete(response);
     setDeleteDialogOpen(true);
@@ -1292,7 +1287,7 @@ export default function FormResponsesPage() {
     }
   };
 
-  const valueToEditString = (value: unknown, fieldType: string): string => {
+  const valueToEditString = (value: unknown): string => {
     if (value === null || value === undefined) return "";
     if (Array.isArray(value)) return value.map((v) => String(v)).join("\n");
     if (typeof value === "object" && value !== null && "start" in value && "end" in value) {
@@ -1318,9 +1313,9 @@ export default function FormResponsesPage() {
     return trimmed;
   };
 
-  const handleInlineEditStart = (responseId: string, fieldName: string, value: unknown, fieldType: string) => {
+  const handleInlineEditStart = (responseId: string, fieldName: string, value: unknown) => {
     setEditingField({ responseId, fieldName });
-    setEditingFieldValue(valueToEditString(value, fieldType));
+    setEditingFieldValue(valueToEditString(value));
   };
 
   const handleInlineEditCancel = () => {
@@ -2720,7 +2715,7 @@ export default function FormResponsesPage() {
                                   variant="ghost"
                                   size="sm"
                                   className="h-7 px-2 text-muted-foreground hover:text-foreground shrink-0"
-                                  onClick={() => handleInlineEditStart(responseToEdit!.id, field.name, fieldValue, field.type)}
+                                  onClick={() => handleInlineEditStart(responseToEdit!.id, field.name, fieldValue)}
                                   title="Replace with text"
                                 >
                                   <Pencil className="h-3 w-3 mr-1" />

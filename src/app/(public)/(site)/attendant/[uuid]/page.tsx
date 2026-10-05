@@ -141,7 +141,6 @@ export default function AttendantPage() {
 
   const [liked, setLiked] = useState(false);
   const [comment, setComment] = useState<string>("");
-  const [initialFeedback, setInitialFeedback] = useState<{ liked: boolean; comment: string } | null>(null);
   const [savingFeedback, setSavingFeedback] = useState(false);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -183,7 +182,6 @@ export default function AttendantPage() {
         if (!isMounted) return;
         setLiked(nextLiked);
         setComment(nextComment);
-        setInitialFeedback({ liked: nextLiked, comment: nextComment });
       } catch {
         // Best-effort: keep defaults
       }
@@ -273,7 +271,6 @@ export default function AttendantPage() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error || `Failed to save feedback (${res.status})`);
       }
-      setInitialFeedback({ liked, comment });
       setShowConfirmation(true);
     } catch (e) {
       setFeedbackError(e instanceof Error ? e.message : "Failed to save feedback");

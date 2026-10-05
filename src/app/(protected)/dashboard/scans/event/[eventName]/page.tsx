@@ -86,7 +86,6 @@ export default function EventScansPage() {
   const [scans, setScans] = useState<AttendantScan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [eventId, setEventId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [favouritesOnly, setFavouritesOnly] = useState(false);
 
@@ -116,7 +115,6 @@ export default function EventScansPage() {
         );
 
         if (matchingEvent) {
-          setEventId(matchingEvent.id);
           const response = await fetch(`/api/scans?eventId=${encodeURIComponent(matchingEvent.id)}`);
           if (!isMounted) return;
           if (!response.ok) throw new Error("Failed to load scans");

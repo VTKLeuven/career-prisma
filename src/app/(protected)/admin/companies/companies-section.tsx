@@ -2697,10 +2697,6 @@ function CompanyFormDialog({ onRefresh }: { onRefresh?: () => void }) {
     const city = String(fd.get("city") ?? "").trim();
     const country = String(fd.get("country") ?? "").trim() || "BE";
 
-    const addr = [street && `${street} ${number}`.trim(), zip && `${zip} ${city}`.trim(), country]
-      .filter(Boolean)
-      .join(", ");
-
     if (!salesperson) {
       setCreateError("Please select a salesperson.");
       return;

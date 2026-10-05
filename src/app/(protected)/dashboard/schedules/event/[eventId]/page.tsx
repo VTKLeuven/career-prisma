@@ -25,7 +25,6 @@ export default function DashboardSchedulesPage() {
   const params = useParams();
   const eventId = (Array.isArray(params?.eventId) ? params.eventId?.[0] : params?.eventId) as string | undefined;
 
-  const [company, setCompany] = useState<Company | null>(null);
   const [schedules, setSchedules] = useState<Array<{ id: string; master?: { name?: string }; pdf?: { id?: string } }>>([]);
   const [eventName, setEventName] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -58,7 +57,6 @@ export default function DashboardSchedulesPage() {
           return;
         }
 
-        setCompany(fetchedCompany as Company);
         const hasAccess = getCompanySubOptionAnyStatus(fetchedCompany as Company, "Student Schedules") !== null;
 
         if (!hasAccess) {

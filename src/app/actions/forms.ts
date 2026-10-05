@@ -4,7 +4,6 @@
 import {
   listForms,
   getFormById,
-  getFormBySlug,
   getPublicFormBySlug,
   createForm,
   updateForm,

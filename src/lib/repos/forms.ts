@@ -1332,22 +1332,6 @@ export async function getCompanyFormFieldValuesFromForm(
   }
 }
 
-/** Get dedupe key for an option - same master/faculty = same key, so we don't show duplicates. */
-function getOptionDedupeKey(opt: { value: string; label: string }, masters: { id: string; name: string }[]): string {
-  const v = opt.value.trim();
-  const norm = (s: string) => (s ?? "").replace(/\s+/g, " ").trim().toLowerCase();
-  if (norm(v) === "other" || norm(v) === "others") return "other";
-  const facMaster = v.match(/^fac:[^:]+:([^:]+)$/);
-  if (facMaster) return `master:${facMaster[1]}`;
-  if (/^[0-9a-f-]{36}$/i.test(v)) return `master:${v}`;
-  const facOnly = v.match(/^fac:([^:]+)$/);
-  if (facOnly) return `fac:${facOnly[1]}`;
-  const afterDash = v.split(" - ").pop()?.trim();
-  const match = masters.find((m) => norm(m.name) === norm(afterDash ?? v));
-  if (match) return `master:${match.id}`;
-  return v;
-}
-
 export type FloorplanCategoryOption = { value: string; label: string; logo?: string };
 export type FloorplanCategoryOptionGroup = { groupLabel: string; options: FloorplanCategoryOption[] };
 
@@ -1483,7 +1467,7 @@ export async function getCompanyCategoriesFromFormResponses(
       return null;
     };
 
-    for (const { formId, formVersionId, fieldName } of categoryFields) {
+    for (const { formId, fieldName } of categoryFields) {
       const versions = await listFormVersionsForServer(formId);
       const versionIds = versions.map((v) => v.id);
       if (versionIds.length === 0) continue;

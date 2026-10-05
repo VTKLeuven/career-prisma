@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { IconFileCv, IconMail } from "@tabler/icons-react";
 import { Linkedin } from "lucide-react";
 import { CVFirstPagePreview } from "@/components/cv-first-page-preview";
@@ -42,7 +42,6 @@ import { PageHeader } from "@/components/admin/PageHeader";
 
 export default function CVBookScreeningPage() {
   const { user } = useUser();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const cvBookIdParam = searchParams.get("cvBookId");
 

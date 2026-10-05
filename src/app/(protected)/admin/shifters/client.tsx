@@ -13,7 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { toggleShifterStatusAction, listAllUsersAction } from "@/app/actions/shifters";
 import { useRouter } from "next/navigation";
-import { Check, X, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 

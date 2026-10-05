@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { listCompaniesWithRepresentatives } from "@/lib/repos/company";
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ formId: string }> }
-) {
+export async function POST(request: NextRequest) {
   try {
     // Check authentication
     const user = await getUserFromCookies();
@@ -13,7 +10,6 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { formId } = await params;
     const body = await request.json();
     const { companyIds } = body;
 

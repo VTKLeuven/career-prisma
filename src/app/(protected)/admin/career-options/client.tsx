@@ -96,7 +96,6 @@ export default function CareerOptionsClient({
   const [selectedYearId, setSelectedYearId] = React.useState(
     currentAcademicYearId || String(academicYears[0]?.id ?? "")
   );
-  const router = useRouter();
 
   const yearOptions: SelectOption[] = academicYears.map((year) => ({
     value: String(year.id),

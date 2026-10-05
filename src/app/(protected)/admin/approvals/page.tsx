@@ -24,8 +24,6 @@ function PendingApprovalsSection() {
   const [pendingRequests, setPendingRequests] = React.useState<PendingApprovalRequest[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [processing, setProcessing] = React.useState<string | null>(null);
-  const [errorCount, setErrorCount] = React.useState(0);
-  const [lastError, setLastError] = React.useState<string | null>(null);
 
   const shouldShow = user?.admin;
   const MAX_CONSECUTIVE_ERRORS = 3;
@@ -50,8 +48,6 @@ function PendingApprovalsSection() {
         if (!alive) return;
         
         setPendingRequests(requests);
-        setErrorCount(0);
-        setLastError(null);
         consecutiveErrors = 0;
         
         // Schedule next fetch with normal polling interval
@@ -62,10 +58,6 @@ function PendingApprovalsSection() {
         if (!alive) return;
         
         consecutiveErrors++;
-        setErrorCount(consecutiveErrors);
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        setLastError(errorMessage);
-        
         console.error(`Failed to fetch pending approval requests (attempt ${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, error);
         
         // Stop polling after too many consecutive errors

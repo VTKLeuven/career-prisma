@@ -46,29 +46,12 @@ export async function POST(req: Request) {
 
     // Step 2: Read SVG file content and prepare for upload
     let svgText: string;
-    let viewBox: string;
     let svgFileForUpload: File;
     
     try {
       // Read the file as ArrayBuffer first so we can use it multiple times
       const arrayBuffer = await svgFile.arrayBuffer();
       svgText = new TextDecoder().decode(arrayBuffer);
-      
-      // Get dimensions from SVG
-      const viewBoxMatch = svgText.match(/viewBox=["']([^"']+)["']/);
-      let width = 1000;
-      let height = 600;
-      
-      if (viewBoxMatch) {
-        const parts = viewBoxMatch[1].split(/\s+/);
-        if (parts.length >= 4) {
-          width = parseFloat(parts[2]) || width;
-          height = parseFloat(parts[3]) || height;
-        }
-        viewBox = viewBoxMatch[1];
-      } else {
-        viewBox = `0 0 ${width} ${height}`;
-      }
       
       // Create a new File from the ArrayBuffer for upload
       svgFileForUpload = new File([arrayBuffer], svgFile.name, { type: svgFile.type });

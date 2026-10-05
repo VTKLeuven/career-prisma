@@ -2,7 +2,7 @@
 "use server";
 import { listCompanies, getCompanyById, createCompany, updateCompany, getCompaniesForEvent } from "@/lib/repos/company";
 import { createRep, updateRep, waitForApproval, deleteUser, fetchPendingApprovalRequests, findUserByEmail, userEmailExists, setUserCompany, setUserStatusAndRole, getUserContact, getCompanyUserRequest, setCompanyUserRequestStatus, type PendingApprovalRequest } from "@/lib/repos/users";
-import { Company, CompanyRep, CareerEventOption, type UserSummary } from "@/lib/schema";
+import { Company, CompanyRep, type UserSummary } from "@/lib/schema";
 import { sendEmail } from "@/lib/email";
 import { uploadFile } from "@/lib/file-storage";
 import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
@@ -23,67 +23,6 @@ function formatAddress(c: Company) {
     .filter((p) => p.length > 0);
 
   return parts.length ? parts.join(", ") : "Not set";
-}
-
-/**
- * Check if company has all required information filled in for publishing
- * Required fields: name, VAT, all address fields, logo, short_description, website, location, at least one category
- * Excluded: page_image, long_description
- */
-function isCompanyInfoComplete(company: Company): boolean {
-  // Check name
-  if (!company.name || company.name.trim().length === 0) {
-    return false;
-  }
-
-  // Check VAT
-  if (!company.VAT || company.VAT.trim().length === 0) {
-    return false;
-  }
-
-  // Check all address fields
-  if (!company.address_street || company.address_street.trim().length === 0) {
-    return false;
-  }
-  if (!company.address_number || company.address_number.trim().length === 0) {
-    return false;
-  }
-  if (!company.address_zip || company.address_zip.trim().length === 0) {
-    return false;
-  }
-  if (!company.address_city || company.address_city.trim().length === 0) {
-    return false;
-  }
-  if (!company.address_country || company.address_country.trim().length === 0) {
-    return false;
-  }
-
-  // Check logo
-  if (!company.logo || (typeof company.logo === "string" && company.logo.trim().length === 0)) {
-    return false;
-  }
-
-  // Check short_description
-  if (!company.short_description || company.short_description.trim().length === 0) {
-    return false;
-  }
-
-  // Check website
-  if (!company.website || company.website.trim().length === 0) {
-    return false;
-  }
-
-  // Check location
-  if (!company.location || company.location.trim().length === 0) {
-    return false;
-  }
-
-  // Check category (at least one master category)
-  if (!company.category || !Array.isArray(company.category) || company.category.length === 0) {
-    return false;
-  }
-
-  return true;
 }
 
 export async function fetchCompaniesAction() {
@@ -787,48 +726,6 @@ export async function addOptionToCompanyAction(companyId: string, optionId: stri
   return loadCompanyById(companyId);
 }
 
-/** Extract sub_option IDs from a junction entry (handles various Directus formats) */
-function getSubOptionIdsFromJunction(opt: unknown): string[] {
-  if (!opt || typeof opt !== 'object' || !('sub_options' in opt)) return [];
-  const subOpts = (opt as { sub_options?: unknown[] }).sub_options;
-  if (!Array.isArray(subOpts)) return [];
-  return subOpts
-    .map((s) => {
-      if (typeof s === 'string') return s;
-      if (s && typeof s === 'object' && 'id' in s) return (s as { id: string }).id;
-      if (s && typeof s === 'object' && 'career_sub_option_id' in s) {
-        const ref = (s as { career_sub_option_id: string | { id: string } | null }).career_sub_option_id;
-        return typeof ref === 'string' ? ref : ref?.id ?? '';
-      }
-      return '';
-    })
-    .filter(Boolean);
-}
-
-/** Build option junctions preserving sub_options and junction id for Directus update */
-function buildOptionJunctions(company: Company): Array<{ id?: string | number; career_event_option_id: string; sub_options?: string[] }> {
-  if (!company.options || !Array.isArray(company.options)) return [];
-  return (company.options as unknown[]).map((opt) => {
-    let optId = '';
-    let junctionId: string | number | undefined;
-    if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
-      const junction = opt as { id?: string | number; career_event_option_id: CareerEventOption | string | null };
-      junctionId = junction.id;
-      optId = typeof junction.career_event_option_id === 'string'
-        ? junction.career_event_option_id
-        : (junction.career_event_option_id as { id?: string })?.id ?? '';
-    } else if (opt && typeof opt === 'object' && 'id' in opt) {
-      const o = opt as { id: string };
-      optId = o.id ?? '';
-    }
-    const subIds = getSubOptionIdsFromJunction(opt).map((id) => String(id));
-    const result: { id?: string | number; career_event_option_id: string; sub_options?: string[] } = { career_event_option_id: optId };
-    if (junctionId != null) result.id = junctionId;
-    if (subIds.length > 0) result.sub_options = subIds;
-    return result;
-  }).filter((j) => j.career_event_option_id);
-}
-
 /** Add sub-option via company_career_sub_option junction (company.sub_options M2M) */
 async function addSubOptionViaJunction(companyId: string, subOptionId: string): Promise<boolean> {
   if (!Number.isSafeInteger(Number(subOptionId))) return false;
@@ -1079,7 +976,6 @@ async function createUserFromApprovedRequest(request: any): Promise<void> {
     const existingUser = await findUserByEmail(request.email);
 
     let userId: string | undefined;
-    let isNewUser = false;
 
     if (existingUser) {
         // User already exists - use existing user ID
@@ -1098,7 +994,6 @@ async function createUserFromApprovedRequest(request: any): Promise<void> {
         }
     } else {
         // User doesn't exist, create it
-        isNewUser = true;
         console.log(`[createUserFromApprovedRequest] Creating new user for ${request.email}`);
 
         const repPayload: Partial<CompanyRep> = {

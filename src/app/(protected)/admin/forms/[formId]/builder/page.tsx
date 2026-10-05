@@ -49,12 +49,11 @@ import {
   ChevronDown,
   GripVertical,
   X,
-  Image as ImageIcon,
   Linkedin,
   GraduationCap,
   BookOpen,
   CalendarRange,
-  CopyPlus
+  CopyPlus,
 } from "lucide-react";
 import type { Form, FormVersion, FormField, FormSchema } from "@/lib/schema";
 import { studyFieldOptions } from "@/lib/form-fields";

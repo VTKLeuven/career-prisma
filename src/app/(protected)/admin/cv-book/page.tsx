@@ -47,7 +47,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Check, X, Plus } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useUser } from "@/providers/UserProvider";

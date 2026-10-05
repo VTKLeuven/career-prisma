@@ -139,7 +139,6 @@ export default function DrinksClient({
     initialActiveEventId?: string | null;
     events?: CareerEvent[];
 }) {
-    const [drinks, setDrinks] = useState(initialDrinks);
     const [isOpen, setIsOpen] = useState(false);
     const [editingDrink, setEditingDrink] = useState<Drink | null>(null);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);

@@ -156,15 +156,11 @@ export async function fetchCompletedOrdersAction() {
     // Use the active_event_id to determine the event day to filter by.
     const { activeEventId } = await getOrderingSettings();
     let eventDateString = "";
-    let eventStartHour = "11:00";
-    let eventEndHour = "17:30";
 
     if (activeEventId) {
         const event = await getEventTimes(activeEventId);
         if (event) {
             if (event.date) eventDateString = event.date;
-            if (event.start_hour) eventStartHour = event.start_hour;
-            if (event.end_hour) eventEndHour = event.end_hour;
         }
     }
 

@@ -7,8 +7,6 @@ import { COMPANY_INCLUDE, shapeCompany } from "@/lib/repos/_shape";
 import type { MatchingSoftware, StudentMatchingResponse, CompanyMatchingResponse, RIASECType, OCIAType } from "@/lib/schema";
 import { countGeneralInfoOverlap, type GeneralInfoAnswers } from "@/lib/matching-general-info";
 
-const RIASEC_TYPES: RIASECType[] = ["R", "I", "A", "S", "E", "C"];
-
 /** RIASEC → OCIA mapping: Clan=S+A, Adhocracy=A+E, Market=R+E, Hierarchy=C+I. 6/4 scales 6 RIASEC dims to 4 OCIA dims. */
 function riasecToOcia(riasec: Record<RIASECType, number>): Record<OCIAType, number> {
   return {

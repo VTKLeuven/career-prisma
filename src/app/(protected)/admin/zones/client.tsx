@@ -50,7 +50,6 @@ export default function ZonesClient({
     careerEventPages: CareerEventPage[];
 }) {
     const [selectedEventPageId, setSelectedEventPageId] = useState<string>("");
-    const [zones, setZones] = useState(initialZones);
     const [isOpen, setIsOpen] = useState(false);
     const [editingZone, setEditingZone] = useState<Zone | null>(null);
     const router = useRouter();

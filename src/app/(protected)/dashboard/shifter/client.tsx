@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { fetchOrdersAction, finishOrderAction, pickUpOrderAction, fetchCompletedOrdersAction, deleteOrderAction } from "@/app/actions/orders";
-import type { Order, Zone, OrderItem } from "@/lib/schema";
+import type { Order, Zone } from "@/lib/schema";
 import { Check, Clock, History, Loader2, Play, Trash2 } from "lucide-react";
 
 type ExtendedOrder = Order & {

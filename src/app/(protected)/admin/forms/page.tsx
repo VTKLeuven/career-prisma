@@ -19,8 +19,7 @@ import {
   fetchFormVersionsAction,
   updateFormVersionAction,
 } from "@/app/actions/forms";
-import { UNIVERSITIES } from "@/lib/universities";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,9 +50,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power, ChevronUp, ChevronDown, Building2, RefreshCw, Search, Hammer, Inbox } from "lucide-react";
+import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power, Building2, RefreshCw, Search, Hammer, Inbox } from "lucide-react";
 import { useUser } from "@/providers/UserProvider";
-import type { FormSchema, FormField, Form, CareerEvent, CareerEventOption } from "@/lib/schema";
+import type { FormSchema, FormField, CareerEvent } from "@/lib/schema";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatDateBE, formatDateTimeBE, utcToLocalDateTimeLocal, localDateTimeLocalToUtc } from "@/lib/date-utils";
@@ -1075,8 +1074,6 @@ function EditFormDialog({
   const [deadline, setDeadline] = useState(
     form.metadata?.deadline ? utcToLocalDateTimeLocal(form.metadata.deadline as string) : ''
   );
-  const [deadlineDateDisplay, setDeadlineDateDisplay] = useState("");
-  const [deadlineTimeDisplay, setDeadlineTimeDisplay] = useState("");
   const [maxEntries, setMaxEntries] = useState(
     form.metadata?.max_entries ? String(form.metadata.max_entries) : ''
   );

@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import NextImage from "next/image";
 import { getFileUrl } from "@/components/Images";
 import { validatePageImageDimensions } from "@/lib/utils/image-validation";
-import type { Company, Master } from "@/lib/schema";
+import type { Master } from "@/lib/schema";
 
 type CompanyFormData = {
   id: string;

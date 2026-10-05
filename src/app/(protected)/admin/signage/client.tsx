@@ -40,7 +40,6 @@ import {
     FileText,
     Film,
     Eye,
-    X,
     Clock,
     AlertTriangle,
 } from "lucide-react";
