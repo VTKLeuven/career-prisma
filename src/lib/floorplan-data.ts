@@ -11,6 +11,25 @@ import {
   type FloorplanCategoryOptionGroup,
 } from "@/lib/repos/forms";
 import { getCachedFloorplan, setCachedFloorplan } from "@/lib/floorplan-cache";
+import { createTtlCache } from "@/lib/ttl-cache";
+
+// Sanitised SVG markup per file id. Sanitising takes about 400 ms per 600 KB
+// of SVG (floorplans are CAD exports, often larger), and an upload never
+// changes -- a new file gets a new id -- so the result can be kept.
+const sanitizedSvgCache = createTtlCache("floorplan-svg", 24 * 60 * 60 * 1000);
+
+async function readSanitizedSvg(svgFileId: string): Promise<string> {
+  const cached = sanitizedSvgCache.get(svgFileId) as string | null;
+  if (cached != null) return cached;
+  const stored = await getStoredFile(svgFileId);
+  if (!stored) throw new Error("Floorplan SVG not found");
+  const svgText = await readFile(stored.filePath, "utf8");
+  const sanitized = DOMPurify.sanitize(svgText, {
+    ADD_ATTR: ['target', 'rel', 'allow', 'allowfullscreen', 'frameborder'],
+  });
+  sanitizedSvgCache.set(svgFileId, sanitized);
+  return sanitized;
+}
 import { getStoredFile } from "@/lib/file-storage";
 import { toPublicCompany } from "@/lib/repos/_shape";
 import type { CareerEventPage, Booth, Master } from "@/lib/schema";
@@ -27,18 +46,11 @@ import type { CareerEventPage, Booth, Master } from "@/lib/schema";
 export async function loadFloorplanData(page: CareerEventPage) {
   if (!page.floorplan?.svg_file || page.floorplan.svg_file.length === 0) return null;
 
-  const svgFileId = page.floorplan.svg_file;
-  const stored = await getStoredFile(svgFileId);
-  if (!stored) throw new Error("Floorplan SVG not found");
-  const svgText = await readFile(stored.filePath, "utf8");
-
-  // Fetch booths data
-  const data = await listBooths(page.floorplan, { limit: -1 });
-
-  // Sanitize SVG
-  const sanitizedSvg = DOMPurify.sanitize(svgText, {
-    ADD_ATTR: ['target', 'rel', 'allow', 'allowfullscreen', 'frameborder'],
-  });
+  // The SVG and the booths in parallel.
+  const [sanitizedSvg, data] = await Promise.all([
+    readSanitizedSvg(page.floorplan.svg_file),
+    listBooths(page.floorplan, { limit: -1 }),
+  ]);
 
   if (!data) return { svg: sanitizedSvg, booths: [] as Booth[], backgroundImage: page.floorplan.background_image || null };
 
