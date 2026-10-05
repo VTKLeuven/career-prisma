@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import type { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import type { AppUser } from "@/lib/schema";
@@ -55,14 +56,20 @@ async function getUserById(userId: string): Promise<AppUser | undefined> {
   };
 }
 
-export async function getUserFromCookies(): Promise<AppUser | undefined> {
+/**
+ * The signed-in company user or admin. Memoised per request with React
+ * `cache()`: the layout, the page and every action check for themselves (there
+ * is no middleware), and each lookup loads the user with their company's full
+ * include, so without it one page view repeated the same queries several times.
+ */
+export const getUserFromCookies = cache(async (): Promise<AppUser | undefined> => {
   const cookieStore = await cookies();
   const session = verifySessionToken(
     cookieStore.get(USER_SESSION_COOKIE)?.value,
     "user"
   );
   return session ? getUserById(session.sub) : undefined;
-}
+});
 
 export async function requireAdminUser() {
   const user = await getUserFromCookies();

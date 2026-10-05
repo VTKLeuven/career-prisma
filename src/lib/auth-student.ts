@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { cookies } from "next/headers";
 import type { Student } from "@/lib/schema";
 import {
@@ -42,7 +43,8 @@ function shapeStudent(row: StudentRowWithPassword): Student {
   };
 }
 
-export async function getStudentFromCookies(): Promise<Student | null> {
+/** The signed-in student. Memoised per request, like getUserFromCookies. */
+export const getStudentFromCookies = cache(async (): Promise<Student | null> => {
   const cookieStore = await cookies();
   const session = verifySessionToken(
     cookieStore.get(STUDENT_SESSION_COOKIE)?.value,
@@ -58,7 +60,7 @@ export async function getStudentFromCookies(): Promise<Student | null> {
     omit: { password: false },
   });
   return student ? shapeStudent(student) : null;
-}
+});
 
 export async function clearStudentSession(): Promise<void> {
   const cookieStore = await cookies();
