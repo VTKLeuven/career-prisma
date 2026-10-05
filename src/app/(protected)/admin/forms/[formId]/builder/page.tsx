@@ -143,7 +143,13 @@ export default function FormBuilderPage() {
       setActiveVersion(active ?? null);
 
       if (active) {
-        setFields(active.schema.fields ?? []);
+        // Fields from older or imported schemas can lack an id, which the
+        // field list uses as its React key; give them a stable one.
+        setFields(
+          (active.schema.fields ?? []).map((field, index) =>
+            field.id ? field : { ...field, id: `field_${index}_${field.name}` }
+          )
+        );
       }
     } catch (error) {
       console.error("Error loading form:", error);
