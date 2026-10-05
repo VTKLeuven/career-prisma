@@ -35,12 +35,7 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '10mb',
     },
   },
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      // Allow dynamic imports for pdf-into-svg
-      config.externals = config.externals || [];
-      // Don't externalize pdf-into-svg - we want to bundle it
-    }
+  webpack: (config) => {
     // Fix Windows standalone build: node:inspector produces invalid filenames (colons) on NTFS
     config.resolve = config.resolve || {};
     config.resolve.alias = { ...config.resolve.alias, "node:inspector": "inspector" };
