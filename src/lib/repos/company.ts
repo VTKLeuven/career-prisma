@@ -1,5 +1,5 @@
 // lib/repos/company.ts
-"use server"
+import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { COMPANY_INCLUDE, shapeCompany } from "@/lib/repos/_shape";

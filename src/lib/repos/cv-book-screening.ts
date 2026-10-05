@@ -1,5 +1,5 @@
 // lib/repos/cv-book-screening.ts
-"use server";
+import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { getUserFromCookies } from "@/lib/auth-server";

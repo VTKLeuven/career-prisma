@@ -1,4 +1,4 @@
-"use server"
+import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { ORDER_INCLUDE, shapeOrder } from "@/lib/repos/_shape";

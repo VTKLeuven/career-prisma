@@ -1,5 +1,5 @@
 // Shared server-side email transport.
-"use server";
+import "server-only";
 
 import nodemailer from "nodemailer";
 

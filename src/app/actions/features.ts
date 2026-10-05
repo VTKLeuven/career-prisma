@@ -1,58 +1,32 @@
-// app/actions/floorplan.ts
+// app/actions/features.ts
 "use server";
-import { listBooths, listMasters, listFaculties } from "@/lib/repos/features";
-import { CareerEventPage, Booth, Master } from "@/lib/schema";
-import DOMPurify from "isomorphic-dompurify"
-import { readFile } from "fs/promises";
-import { getStoredFile } from "@/lib/file-storage";
+import { listMasters, listFaculties } from "@/lib/repos/features";
+import type { CareerEventPage, Booth } from "@/lib/schema";
+import { getEventPageWithFloorplan, getBoothsForFloorplan } from "@/lib/repos/floorplan";
+import { loadFloorplanData } from "@/lib/floorplan-data";
 import { requireAdminUser } from "@/lib/auth-server";
 
-export async function fetchFloorplanAction(page: CareerEventPage) {
-  if (!page.floorplan?.svg_file || page.floorplan.svg_file.length === 0) return null;
+/**
+ * The floorplan editor's data for one event. Loads the event page itself
+ * rather than taking one from the client: `loadFloorplanData()` reads the file
+ * the page names, so a client-supplied page could read any upload.
+ */
+export async function fetchFloorplanForEventAction(eventId: string) {
+  await requireAdminUser();
+  const page = await getEventPageWithFloorplan(eventId);
+  if (!page) return null;
+  return loadFloorplanData(page);
+}
 
-  const svgFileId = page.floorplan.svg_file;
-  const stored = await getStoredFile(svgFileId);
-  if (!stored) throw new Error("Floorplan SVG not found");
-  const svgText = await readFile(stored.filePath, "utf8");
+/** The event page with its floorplan and flattened companies (admin screens). */
+export async function fetchEventPageWithFloorplanAction(eventId: string): Promise<CareerEventPage | null> {
+  await requireAdminUser();
+  return getEventPageWithFloorplan(eventId);
+}
 
-  // Fetch booths data
-  const data = await listBooths(page.floorplan, { limit: -1 });
-  if (!data) return { svg: svgText, booths: [] };
-
-  // Sanitize SVG
-  const sanitizedSvg = DOMPurify.sanitize(svgText, {
-    ADD_ATTR: ['target', 'rel', 'allow', 'allowfullscreen', 'frameborder'],
-  });
-
-  // Parse booths
-  const booths: Booth[] = (data as Booth[])
-    .map((booth) => {
-      if (!booth) return null;
-
-      // Parse coords if stored as JSON string
-      let coords;
-      try {
-        coords = typeof booth.coords === "string" ? JSON.parse(booth.coords) : booth.coords;
-      } catch {
-        return null;
-      }
-
-      // Unwrap company.category -> Master[]
-      if (booth.company?.category) {
-        booth.company.category = (booth.company.category as unknown as Array<{ master_id: Master }>)
-          .map((item) => item.master_id) // unwrap master_id
-          .filter((m: Master | null): m is Master => !!m); // ensure non-null
-      }
-
-      return { ...booth, coords };
-    })
-    .filter((b): b is Booth => !!b); // remove nulls
-
-  return {
-    svg: sanitizedSvg,
-    booths,
-    backgroundImage: page.floorplan.background_image || null,
-  };
+export async function fetchBoothsForFloorplanAction(floorplanId: string): Promise<Booth[]> {
+  await requireAdminUser();
+  return getBoothsForFloorplan(floorplanId);
 }
 
 export async function fetchMastersAction() {

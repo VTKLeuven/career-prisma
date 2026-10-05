@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchEventPageBySlugAction } from "@/app/actions/events";
-import { fetchFloorplanAction } from "@/app/actions/features";
+import { loadFloorplanData } from "@/lib/floorplan-data";
 import { getCachedEventPage, setCachedEventPage } from "@/lib/event-page-cache";
 import { getCachedFloorplan, setCachedFloorplan } from "@/lib/floorplan-cache";
 import { isDevEnvironment } from "@/lib/dev-environment";
@@ -44,7 +44,7 @@ export async function GET(
       );
     }
 
-    const data = await fetchFloorplanAction(page);
+    const data = await loadFloorplanData(page);
     if (!data) {
       return NextResponse.json(
         { error: "Floorplan data not available" },

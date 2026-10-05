@@ -1,4 +1,4 @@
-"use server"
+import "server-only";
 
 // lib/repos/zones.ts
 import { prisma } from "@/lib/prisma";

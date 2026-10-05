@@ -1,5 +1,5 @@
 // lib/repos/speakers.ts
-"use server";
+import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { SPEAKER_INCLUDE, shapeSpeaker } from "@/lib/repos/_shape";

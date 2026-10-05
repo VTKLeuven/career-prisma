@@ -1337,6 +1337,15 @@ export async function requestCompanyPageAction(): Promise<{ success: boolean; er
   }
 }
 
+/** The CV Book's price, shown to a company rep before requesting access. */
+export async function fetchCVBookPriceAction(): Promise<string | null> {
+  const user = await getUserFromCookies();
+  if (!user) return null;
+  const { getCVBookSubOption } = await import("@/lib/repos/option");
+  const cvBookSubOption = await getCVBookSubOption();
+  return cvBookSubOption?.price != null ? String(cvBookSubOption.price) : null;
+}
+
 export async function requestCVBookAccessAction(): Promise<{ success: boolean; error?: string }> {
   try {
     const user = await getUserFromCookies();

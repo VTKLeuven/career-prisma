@@ -1,5 +1,5 @@
 // lib/repos/event-page.ts
-"use server";
+import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { createTimetable, updateTimetable } from "@/lib/repos/timetable";

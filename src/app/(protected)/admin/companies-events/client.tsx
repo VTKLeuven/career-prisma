@@ -8,6 +8,9 @@ import { listMatchingSoftwareAction, createMatchingSoftwareAction } from "@/app/
 import { fetchAcademicYearsAction } from "@/app/actions/cv-book";
 import { fetchFormsAction } from "@/app/actions/forms";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
+import { listSubOptionsAction, listEventOptionsAction } from "@/app/actions/career-options";
+import { fetchEventPageWithFloorplanAction } from "@/app/actions/features";
+import { hasSchedulesForEventAction } from "@/app/actions/schedules";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
   ColumnDef,
@@ -1793,8 +1796,7 @@ function SubOptionsDialog({
   React.useEffect(() => {
     if (open && availableSubOptions.length === 0) {
       setLoading(true);
-      import("@/lib/repos/option")
-        .then(({ listCareerSubOptions }) => listCareerSubOptions())
+      listSubOptionsAction()
         .then((opts) => {
           setAllSubOptions(opts ?? []);
         })
@@ -2205,9 +2207,8 @@ function OptionFormDialog({ company, onCreate }: {
     let alive = true;
     setLoading(true);
     
-    // Import the option repository function
-    import("@/lib/repos/option")
-      .then(({ listCareerEventOptions }) => listCareerEventOptions({ limit: 1000 }))
+    // Load the option catalogue through its admin action
+    listEventOptionsAction()
       .then((options) => {
         if (!alive) return;
         
@@ -2487,8 +2488,7 @@ function OptionFormDialog({ company, onCreate }: {
   // Fetch all sub-options when dialog opens
   React.useEffect(() => {
     if (open) {
-      import("@/lib/repos/option")
-        .then(({ listCareerSubOptions }) => listCareerSubOptions({ limit: 200 }))
+      listSubOptionsAction()
         .then((opts) => setAllSubOptions(opts ?? []))
         .catch((err) => {
           console.error("Error loading sub-options:", err);
@@ -3571,8 +3571,7 @@ function EventCard({ event, onChanged }: { event: CareerEvent; onChanged?: () =>
   React.useEffect(() => {
     const checkFloorplan = async () => {
       try {
-        const { getEventPageWithFloorplan } = await import("@/lib/repos/floorplan");
-        const eventPage = await getEventPageWithFloorplan(event.id);
+        const eventPage = await fetchEventPageWithFloorplanAction(event.id);
         setHasEventPage(Boolean(eventPage));
         setHasFloorplan(!!eventPage?.floorplan);
         // Check if company_guide exists (could be string ID or object with id)
@@ -3591,8 +3590,7 @@ function EventCard({ event, onChanged }: { event: CareerEvent; onChanged?: () =>
         // Check if matching software exists for this event
         const matchingList = await listMatchingSoftwareAction({ eventId: event.id });
         setHasMatchingSoftware((matchingList?.length ?? 0) > 0);
-        const { hasSchedulesForEvent } = await import("@/lib/repos/schedule");
-        setHasSchedules(await hasSchedulesForEvent(event.id));
+        setHasSchedules(await hasSchedulesForEventAction(event.id));
       } catch (error) {
         console.error("Error checking floorplan:", error);
         setHasFloorplan(false);
@@ -4060,8 +4058,7 @@ function AddCompaniesDialog({ event }: { event: CareerEvent }) {
   React.useEffect(() => {
     const checkExistingCompanies = async () => {
       try {
-        const { getEventPageWithFloorplan } = await import("@/lib/repos/floorplan");
-        const eventPage = await getEventPageWithFloorplan(event.id);
+        const eventPage = await fetchEventPageWithFloorplanAction(event.id);
         const companies = eventPage?.companies;
         setHasExistingCompanies(!!companies && Array.isArray(companies) && companies.length > 0);
       } catch (error) {

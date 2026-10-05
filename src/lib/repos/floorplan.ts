@@ -1,5 +1,5 @@
 // lib/repos/floorplan.ts
-"use server";
+import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { COMPANY_INCLUDE, shapeBooth, shapeCompany, shapeEventPage } from "@/lib/repos/_shape";

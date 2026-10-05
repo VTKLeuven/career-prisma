@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
-import { fetchFloorplanAction, updateFloorplanCategoryFormFieldsAction, updateFloorplanCompanyNameFormFieldsAction } from "@/app/actions/features"
+import { fetchFloorplanForEventAction, fetchEventPageWithFloorplanAction, fetchBoothsForFloorplanAction, updateFloorplanCategoryFormFieldsAction, updateFloorplanCompanyNameFormFieldsAction } from "@/app/actions/features"
 import { fetchCompaniesForEventAction } from "@/app/actions/companies"
 import { fetchAllCompanyFormsForEventAction, fetchCompanyIdsMatchingFormFieldOptionAction, fetchCompanyFormFieldValuesAction } from "@/app/actions/forms"
 import type { CareerEventPage, Booth, Company } from '@/lib/schema'
@@ -80,10 +80,8 @@ export default function AdminFloorplanPage() {
       if (!eventId) return
       
       try {
-        const { getEventPageWithFloorplan, getBoothsForFloorplan } = await import("@/lib/repos/floorplan")
-        
         // Fetch event page with floorplan
-        const eventPage = await getEventPageWithFloorplan(eventId)
+        const eventPage = await fetchEventPageWithFloorplanAction(eventId)
         if (!eventPage || !eventPage.floorplan) {
           console.error("No floorplan found for this event")
           return
@@ -100,10 +98,10 @@ export default function AdminFloorplanPage() {
         setCompanyNameFormFields(nameFields)
         
         // Fetch SVG content and booths first (need booths for viewBox calculation)
-        const data = await fetchFloorplanAction(eventPage)
-        const boothsData = eventPage.floorplan.id
-          ? await getBoothsForFloorplan(eventPage.floorplan.id)
-          : []
+        const [data, boothsData] = await Promise.all([
+          fetchFloorplanForEventAction(eventId),
+          eventPage.floorplan.id ? fetchBoothsForFloorplanAction(eventPage.floorplan.id) : Promise.resolve([]),
+        ])
         
         if (data) {
           setSvgContent(data.svg || "")
@@ -329,8 +327,7 @@ export default function AdminFloorplanPage() {
 
       // Refresh booths
       if (page?.floorplan?.id) {
-        const { getBoothsForFloorplan } = await import("@/lib/repos/floorplan")
-        const updatedBooths = await getBoothsForFloorplan(page.floorplan.id)
+        const updatedBooths = await fetchBoothsForFloorplanAction(page.floorplan.id)
         setBooths(updatedBooths)
         
         // Update selected booth
@@ -527,8 +524,7 @@ export default function AdminFloorplanPage() {
         }
       }
 
-      const { getBoothsForFloorplan } = await import("@/lib/repos/floorplan")
-      const updatedBooths = await getBoothsForFloorplan(page.floorplan.id)
+      const updatedBooths = await fetchBoothsForFloorplanAction(page.floorplan.id)
       setBooths(updatedBooths)
       setLoadCsvError(null)
     } catch (err) {

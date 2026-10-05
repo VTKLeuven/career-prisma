@@ -1,5 +1,5 @@
 // lib/repos/student-liked-companies.ts
-"use server";
+import "server-only";
 
 import { prisma } from "@/lib/prisma";
 

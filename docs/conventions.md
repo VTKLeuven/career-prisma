@@ -6,6 +6,12 @@
   function instead. Repos return the legacy Directus-shaped objects the UI
   expects; `src/lib/repos/_shape.ts` is the only place that knows about that
   translation.
+- Repos start with `import "server-only"`, **never `"use server"`**. A
+  `"use server"` module turns every export into a server action — a public
+  POST endpoint with no auth check — the moment any client component imports
+  it. Client components reach data through `src/app/actions/`, which check
+  `requireAdminUser()` / the session first; `server-only` makes the build fail
+  if a client imports a repo directly.
 - Schema changes go through `npx prisma migrate dev`. Do not hand-write SQL
   against the running database.
 - Do not edit `prisma/migrations/00000000000000_init` — it is the captured

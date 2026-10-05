@@ -1,4 +1,4 @@
-"use server";
+import "server-only";
 
 import { randomBytes, createHash } from "crypto";
 import type { Student } from "@/lib/schema";

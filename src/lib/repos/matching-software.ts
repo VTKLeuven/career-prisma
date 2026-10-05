@@ -1,5 +1,5 @@
 // lib/repos/matching-software.ts
-"use server";
+import "server-only";
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
