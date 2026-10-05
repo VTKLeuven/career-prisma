@@ -11,7 +11,7 @@ import {
   getCompanyMatchingResponseAction,
 } from "@/app/actions/matching-software";
 import { hasSchedulesForEventAction } from "@/app/actions/schedules";
-import { getCompanyOrderingTabInfo } from "@/app/actions/ordering";
+import { getCompanyOrderingTabInfo } from "@/lib/company-ordering";
 import { getCompanySubOptionAnyStatus } from "@/lib/utils/company-access";
 import { getUpcomingEventsWithFallback } from "@/lib/utils/events";
 import { getCompanyEvents, getCompanyOptionIds } from "@/lib/utils/company-events";

@@ -1,4 +1,6 @@
-"use server";
+// Not a server action: only server components and the sidebar loader call it,
+// and as one it told anyone a company's booth number.
+import "server-only";
 
 import { getOrderingSettings } from "@/lib/repos/ordering-settings";
 import { getBoothIdForCompany } from "@/lib/repos/booths";

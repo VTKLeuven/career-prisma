@@ -3,7 +3,7 @@ import "server-only";
 import type { AppUser, CareerEvent } from "@/lib/schema";
 import { fetchEventsAction } from "@/app/actions/events";
 import { fetchPendingApprovalRequestsAction } from "@/app/actions/companies";
-import { getCompanyOrderingTabInfo } from "@/app/actions/ordering";
+import { getCompanyOrderingTabInfo } from "@/lib/company-ordering";
 import { listScannedEventIdsForCompany } from "@/lib/repos/scans";
 import { getCompanyEventIds } from "@/lib/utils/company-events";
 
