@@ -4,11 +4,9 @@ import { fetchFloorplanAction } from "@/app/actions/features";
 import { getCachedEventPage, setCachedEventPage } from "@/lib/event-page-cache";
 import { getCachedFloorplan, setCachedFloorplan } from "@/lib/floorplan-cache";
 import { isDevEnvironment } from "@/lib/dev-environment";
+import { sharedCacheHeaders } from "@/lib/http-cache";
 
-const CACHE_HEADERS = {
-  "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
-  "CDN-Cache-Control": "public, s-maxage=300",
-};
+const CACHE_HEADERS = sharedCacheHeaders(300, 600);
 
 export async function GET(
   request: NextRequest,
@@ -42,7 +40,7 @@ export async function GET(
     if (!page || !page.floorplan) {
       return NextResponse.json(
         { error: "Floorplan not found" },
-        { status: 404, headers: { "Cache-Control": "public, s-maxage=60" } }
+        { status: 404, headers: sharedCacheHeaders(60) }
       );
     }
 
@@ -50,7 +48,7 @@ export async function GET(
     if (!data) {
       return NextResponse.json(
         { error: "Floorplan data not available" },
-        { status: 404, headers: { "Cache-Control": "public, s-maxage=60" } }
+        { status: 404, headers: sharedCacheHeaders(60) }
       );
     }
 

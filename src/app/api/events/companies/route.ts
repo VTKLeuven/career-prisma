@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompaniesForEvent } from "@/lib/repos/company";
+import { sharedCacheHeaders } from "@/lib/http-cache";
 
 export async function GET(request: NextRequest) {
   const eventId = request.nextUrl.searchParams.get("eventId");
@@ -10,7 +11,7 @@ export async function GET(request: NextRequest) {
     const companies = await getCompaniesForEvent(eventId, true);
     return NextResponse.json(
       { companies },
-      { headers: { "Cache-Control": "public, s-maxage=60" } }
+      { headers: sharedCacheHeaders(60) }
     );
   } catch (error) {
     console.error("[events/companies] Error:", error);

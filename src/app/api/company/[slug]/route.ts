@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchCompanyBySlugWithSubOptionsAction, fetchSpeakersForCompanyAction } from "@/app/actions/companies";
 import { getCachedCompanyPage, setCachedCompanyPage } from "@/lib/company-page-cache";
+import { sharedCacheHeaders } from "@/lib/http-cache";
 
-const CACHE_HEADERS = {
-  "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
-  "CDN-Cache-Control": "public, s-maxage=300",
-};
+const CACHE_HEADERS = sharedCacheHeaders(300, 600);
 
 export async function GET(
   request: NextRequest,
@@ -27,7 +25,7 @@ export async function GET(
     if (!result.company) {
       return NextResponse.json(
         { error: "Company not found" },
-        { status: 404, headers: { "Cache-Control": "public, s-maxage=60" } }
+        { status: 404, headers: sharedCacheHeaders(60) }
       );
     }
 

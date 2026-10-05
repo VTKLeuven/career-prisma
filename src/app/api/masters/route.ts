@@ -2,11 +2,9 @@
 import { NextResponse } from "next/server";
 import { fetchMastersAction } from "@/app/actions/features";
 import { getCachedOurStudents, setCachedOurStudents } from "@/lib/our-students-cache";
+import { sharedCacheHeaders } from "@/lib/http-cache";
 
-const CACHE_HEADERS = {
-  "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
-  "CDN-Cache-Control": "public, s-maxage=300",
-};
+const CACHE_HEADERS = sharedCacheHeaders(300, 600);
 
 export async function GET() {
   try {
