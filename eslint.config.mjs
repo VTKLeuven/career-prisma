@@ -9,6 +9,25 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    // Database access goes through src/lib/repos/ (docs/conventions.md); the
+    // repos are what keep the Directus-era shapes contained.
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/lib/repos/**", "src/lib/prisma.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@/lib/prisma",
+              message: "Query the database through a repo in src/lib/repos/ (see docs/conventions.md).",
+            },
+          ],
+        },
+      ],
+    },
+  },
   globalIgnores([
     ".next/**",
     "out/**",
