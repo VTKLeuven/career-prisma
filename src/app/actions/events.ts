@@ -10,9 +10,9 @@ import type { ActionResult } from "@/components/admin/types";
 import { slugifyEventName } from "@/lib/utils/slugify";
 import { getActiveMatchingSoftwareForEvent } from "@/lib/repos/matching-software";
 import DOMPurify from 'isomorphic-dompurify';
-import type { Company, CareerEvent, CareerEventOption, Speaker, TimeSlot, TimetableType } from "@/lib/schema";
+import type { Company, CareerEvent, Speaker, TimeSlot, TimetableType } from "@/lib/schema";
 import { listCareerEventOptions } from "@/lib/repos/option";
-import { listCompanies } from "@/lib/repos/company";
+import { getCompaniesForEvent } from "@/lib/repos/company";
 import { getOrCreateEventPage } from "@/lib/repos/floorplan";
 import { getUserFromCookies } from "@/lib/auth-server";
 import prisma from "@/lib/prisma";
@@ -256,78 +256,9 @@ export async function fetchEventPageBySlugAction(slug: string) {
 export async function findCompaniesWithEventOptions(eventId: string): Promise<Company[]> {
   await requireAdminUser();
   try {
-    // Fetch all companies with their options - use -1 for unlimited
-    const allCompanies = await listCompanies({ limit: -1 }) ?? [];
-
-    // Filter companies that have options with this event
-    const companiesWithEvent: Company[] = [];
-
-    for (const company of allCompanies) {
-      if (!company.options || company.options.length === 0) continue;
-
-      // Check if any option has this event
-      for (const opt of company.options) {
-        let rawOption: CareerEventOption | null = null;
-
-        // Handle junction table format
-        if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
-          const junction = opt as { career_event_option_id: CareerEventOption | null };
-          rawOption = junction.career_event_option_id;
-        } else {
-          rawOption = opt as CareerEventOption;
-        }
-
-        if (!rawOption) continue;
-
-        // Check if option has events array
-        if (rawOption.events && Array.isArray(rawOption.events)) {
-          const hasEvent = rawOption.events.some((eventOrJunction: unknown) => {
-            if (!eventOrJunction || typeof eventOrJunction !== 'object') return false;
-
-            // Check if it's a junction table entry
-            const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
-            for (const fieldName of possibleJunctionFields) {
-              if (fieldName in eventOrJunction) {
-                const junction = eventOrJunction as Record<string, CareerEvent | string | null>;
-                const eventRef = junction[fieldName];
-                if (eventRef && typeof eventRef === 'object' && 'id' in eventRef) {
-                  return (eventRef as CareerEvent).id === eventId;
-                }
-                if (typeof eventRef === 'string') {
-                  return eventRef === eventId;
-                }
-              }
-            }
-
-            // Check if it's a direct event object
-            if ('id' in eventOrJunction) {
-              return (eventOrJunction as CareerEvent).id === eventId;
-            }
-
-            return false;
-          });
-
-          if (hasEvent) {
-            companiesWithEvent.push(company);
-            break; // Found a matching option, no need to check others
-          }
-        } else if (rawOption.event) {
-          // Fallback for backward compatibility
-          const eventRef = rawOption.event;
-          if (typeof eventRef === 'object' && eventRef !== null && 'id' in eventRef) {
-            if ((eventRef as CareerEvent).id === eventId) {
-              companiesWithEvent.push(company);
-              break;
-            }
-          } else if (typeof eventRef === 'string' && eventRef === eventId) {
-            companiesWithEvent.push(company);
-            break;
-          }
-        }
-      }
-    }
-
-    return companiesWithEvent;
+    // One join in the database. This used to load every company with its
+    // full include and walk five shapes of option/event junction in JS.
+    return await getCompaniesForEvent(eventId);
   } catch (error) {
     console.error("Error finding companies with event options:", error);
     return [];
