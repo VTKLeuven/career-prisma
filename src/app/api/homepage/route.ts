@@ -1,10 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchPublicEventsAction } from "@/app/actions/events";
-import { fetchSalespersonsAction } from "@/app/actions/salespeople";
-import {
-  readHomepageCache,
-  writeHomepageCache,
-} from "@/lib/homepage-cache";
+import { loadHomepageData } from "@/lib/homepage-data";
 
 /**
  * Browsers must revalidate; shared caches may serve a cached copy. Splitting the
@@ -20,22 +15,7 @@ const CACHE_HEADERS = {
 
 export async function GET() {
   try {
-    const cached = readHomepageCache();
-    if (cached) {
-      return NextResponse.json(cached, { headers: CACHE_HEADERS });
-    }
-
-    // Fetch both in parallel for faster loading
-    // This endpoint is public and uncredentialed -- it feeds the homepage and
-    // the site header -- so it must never carry draft editions.
-    const [events, salespersons] = await Promise.all([
-      fetchPublicEventsAction(),
-      fetchSalespersonsAction(),
-    ]);
-
-    const data = { events, salespersons };
-    writeHomepageCache(data);
-
+    const data = await loadHomepageData();
     return NextResponse.json(data, { headers: CACHE_HEADERS });
   } catch (error) {
     console.error('[homepage API] Error fetching homepage data:', error);
