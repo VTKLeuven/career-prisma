@@ -253,6 +253,13 @@ export async function fetchEventPageBySlugAction(slug: string) {
 /**
  * Find companies that have options registered for a specific event
  */
+/** The admin event cards' setup status for several events, in one call. */
+export async function fetchEventSetupStatusesAction(eventIds: string[]) {
+  await requireAdminUser();
+  const { getEventSetupStatuses } = await import("@/lib/repos/event-page");
+  return getEventSetupStatuses(eventIds);
+}
+
 export async function findCompaniesWithEventOptions(eventId: string): Promise<Company[]> {
   await requireAdminUser();
   try {

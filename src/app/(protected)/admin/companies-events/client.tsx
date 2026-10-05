@@ -1,16 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { fetchCompaniesAction, fetchCompaniesWithSubOptionsAction, createCompanyAction, updateCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, addSubOptionToCompanyAction, removeSubOptionFromCompanyAction, addSubOptionToCompanyOnlyAction, removeSubOptionFromCompanyOnlyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction, fetchCompanyOptionsDebugAction } from "@/app/actions/companies";
-import { fetchEventsAction, findCompaniesWithEventOptions, addCompaniesToEventPageAction, createEventAction, updateEventAction, deleteEventAction } from "@/app/actions/events";
+import { fetchCompaniesWithSubOptionsAction, createCompanyAction, updateCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, addSubOptionToCompanyAction, removeSubOptionFromCompanyAction, addSubOptionToCompanyOnlyAction, removeSubOptionFromCompanyOnlyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction, fetchCompanyOptionsDebugAction } from "@/app/actions/companies";
+import { fetchEventsAction, fetchEventSetupStatusesAction, findCompaniesWithEventOptions, addCompaniesToEventPageAction, createEventAction, updateEventAction, deleteEventAction } from "@/app/actions/events";
 import { uploadFileAction } from "@/app/actions/media";
-import { listMatchingSoftwareAction, createMatchingSoftwareAction } from "@/app/actions/matching-software";
+import { createMatchingSoftwareAction } from "@/app/actions/matching-software";
 import { fetchAcademicYearsAction } from "@/app/actions/cv-book";
 import { fetchFormsAction } from "@/app/actions/forms";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { listSubOptionsAction, listEventOptionsAction } from "@/app/actions/career-options";
-import { fetchEventPageWithFloorplanAction } from "@/app/actions/features";
-import { hasSchedulesForEventAction } from "@/app/actions/schedules";
+import type { EventSetupStatus } from "@/lib/repos/event-page";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
   ColumnDef,
@@ -28,7 +27,6 @@ from "@tanstack/react-table";
 import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, MoreHorizontal, Package, Pencil, Search, Upload, Users, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -67,8 +65,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { IconBuilding, IconCalendarEvent, IconColumns, IconMail, IconPlus, IconTaxEuro, IconFileCv } from "@tabler/icons-react";
-import type { AcademicYear, CareerEvent, Company, CompanyRep, CareerEventOption, CareerEventPage, Booth, HeaderButtonType, CareerSubOption } from "@/lib/schema";
+import { IconBuilding, IconCalendarEvent, IconColumns, IconMail, IconPlus, IconTaxEuro } from "@tabler/icons-react";
+import type { AcademicYear, CareerEvent, Company, CompanyRep, CareerEventOption, HeaderButtonType, CareerSubOption } from "@/lib/schema";
 import { useUser } from "@/providers/UserProvider";
 import type { UserSummary as AppUser } from "@/lib/schema";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
@@ -3289,22 +3287,31 @@ function formatAddress(r: Company) {
  * ------------------------------------------------------------------ */
 export function EventsSection({ academicYearId }: { academicYearId?: string }) {
   const [events, setEvents] = React.useState<CareerEvent[]>([]);
+  const [statuses, setStatuses] = React.useState<Record<string, EventSetupStatus>>({});
   const [loading, setLoading] = React.useState(true);
 
-  const refresh = React.useCallback(() => {
-    return fetchEventsAction(academicYearId ? { academicYearId } : undefined)
-      .then(rows => { setEvents(rows ?? []); })
-      .catch(console.error);
+  // The events, then every card's setup status in one call (each card used to
+  // ask for its own with four server actions, which run one at a time).
+  const load = React.useCallback(async () => {
+    const rows = (await fetchEventsAction(academicYearId ? { academicYearId } : undefined)) ?? [];
+    const status = await fetchEventSetupStatusesAction(rows.map((e) => e.id));
+    return { rows, status };
   }, [academicYearId]);
+
+  const refresh = React.useCallback(() => {
+    return load()
+      .then(({ rows, status }) => { setEvents(rows); setStatuses(status); })
+      .catch(console.error);
+  }, [load]);
 
   React.useEffect(() => {
     let alive = true;
-    fetchEventsAction(academicYearId ? { academicYearId } : undefined)
-      .then(rows => { if (!alive) return; setEvents(rows ?? []); })
+    load()
+      .then(({ rows, status }) => { if (!alive) return; setEvents(rows); setStatuses(status); })
       .catch(console.error)
       .finally(() => setLoading(false));
     return () => { alive = false; };
-  }, [academicYearId]);
+  }, [load]);
 
   return (
     <Card className="rounded-xl">
@@ -3322,7 +3329,7 @@ export function EventsSection({ academicYearId }: { academicYearId?: string }) {
           <div className="h-24 grid place-items-center text-sm text-muted-foreground">Loading events…</div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
-            {events.map(e => <EventCard key={e.id ?? e.name} event={e} onChanged={refresh} />)}
+            {events.map(e => <EventCard key={e.id ?? e.name} event={e} status={statuses[e.id]} onChanged={refresh} />)}
           </div>
         )}
       </CardContent>
@@ -3557,53 +3564,18 @@ function EventFormDialog({
   );
 }
 
-function EventCard({ event, onChanged }: { event: CareerEvent; onChanged?: () => void }) {
+function EventCard({ event, status, onChanged }: { event: CareerEvent; status?: EventSetupStatus; onChanged?: () => void }) {
   const hours = [event.start_hour, event.end_hour].filter(Boolean).join(" – ");
-  const [hasFloorplan, setHasFloorplan] = React.useState<boolean | null>(null);
-  const [hasCompanyGuide, setHasCompanyGuide] = React.useState<boolean | null>(null);
-  const [hasMatchingSoftware, setHasMatchingSoftware] = React.useState<boolean | null>(null);
-  const [hasSchedules, setHasSchedules] = React.useState<boolean | null>(null);
-  const [headerButtons, setHeaderButtons] = React.useState<HeaderButtonType[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  // Loaded with the list by EventsSection; the card keeps local copies it can
+  // update after a change.
+  const loading = !status;
+  const hasEventPage = status?.hasEventPage ?? false;
+  const hasFloorplan = status?.hasFloorplan ?? null;
+  const hasCompanyGuide = status?.hasCompanyGuide ?? null;
+  const hasSchedules = status?.hasSchedules ?? null;
+  const [hasMatchingSoftware, setHasMatchingSoftware] = React.useState<boolean | null>(status?.hasMatchingSoftware ?? null);
+  const [headerButtons, setHeaderButtons] = React.useState<HeaderButtonType[]>((status?.headerButtons ?? []) as HeaderButtonType[]);
   const [savingHeaderButtons, setSavingHeaderButtons] = React.useState(false);
-  const [hasEventPage, setHasEventPage] = React.useState(false);
-
-  React.useEffect(() => {
-    const checkFloorplan = async () => {
-      try {
-        const eventPage = await fetchEventPageWithFloorplanAction(event.id);
-        setHasEventPage(Boolean(eventPage));
-        setHasFloorplan(!!eventPage?.floorplan);
-        // Check if company_guide exists (could be string ID or object with id)
-        const companyGuide = eventPage?.company_guide;
-        if (companyGuide) {
-          const hasGuide = typeof companyGuide === 'string' 
-            ? !!companyGuide 
-            : !!(companyGuide as { id?: string })?.id;
-          setHasCompanyGuide(hasGuide);
-        } else {
-          setHasCompanyGuide(false);
-        }
-        // Load header_buttons config
-        const buttons = eventPage?.header_buttons;
-        setHeaderButtons(Array.isArray(buttons) ? buttons : []);
-        // Check if matching software exists for this event
-        const matchingList = await listMatchingSoftwareAction({ eventId: event.id });
-        setHasMatchingSoftware((matchingList?.length ?? 0) > 0);
-        setHasSchedules(await hasSchedulesForEventAction(event.id));
-      } catch (error) {
-        console.error("Error checking floorplan:", error);
-        setHasFloorplan(false);
-        setHasCompanyGuide(false);
-        setHasMatchingSoftware(false);
-        setHasSchedules(false);
-        setHasEventPage(false);
-      } finally {
-        setLoading(false);
-      }
-    };
-    checkFloorplan();
-  }, [event.id]);
 
   const toggleHeaderButton = async (btn: HeaderButtonType) => {
     const next = headerButtons.includes(btn)
@@ -3738,7 +3710,7 @@ function EventCard({ event, onChanged }: { event: CareerEvent; onChanged?: () =>
               </div>
             </div>
           )}
-          <AddCompaniesDialog event={event} />
+          <AddCompaniesDialog event={event} hasCompanies={status?.hasCompanies ?? false} />
           <AddCompanyGuideDialog event={event} hasCompanyGuide={hasCompanyGuide} />
           {loading ? (
             <Button variant="outline" size="sm" disabled className="w-full">
@@ -4044,7 +4016,7 @@ function AddFloorplanDialog({ event }: { event: CareerEvent }) {
   );
 }
 
-function AddCompaniesDialog({ event }: { event: CareerEvent }) {
+function AddCompaniesDialog({ event, hasCompanies }: { event: CareerEvent; hasCompanies: boolean }) {
   const [open, setOpen] = React.useState(false);
   const [companies, setCompanies] = React.useState<Company[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -4052,22 +4024,9 @@ function AddCompaniesDialog({ event }: { event: CareerEvent }) {
   const [error, setError] = React.useState<string | null>(null);
   const [selectedCompanyIds, setSelectedCompanyIds] = React.useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = React.useState("");
-  const [hasExistingCompanies, setHasExistingCompanies] = React.useState(false);
-
-  // Check if event page already has companies
-  React.useEffect(() => {
-    const checkExistingCompanies = async () => {
-      try {
-        const eventPage = await fetchEventPageWithFloorplanAction(event.id);
-        const companies = eventPage?.companies;
-        setHasExistingCompanies(!!companies && Array.isArray(companies) && companies.length > 0);
-      } catch (error) {
-        console.error("Error checking existing companies:", error);
-        setHasExistingCompanies(false);
-      }
-    };
-    checkExistingCompanies();
-  }, [event.id]);
+  // Whether the event page already lists companies; known from the card's
+  // status, and true once companies are added here.
+  const [hasExistingCompanies, setHasExistingCompanies] = React.useState(hasCompanies);
 
   // Load companies when dialog opens
   React.useEffect(() => {

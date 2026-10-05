@@ -377,3 +377,67 @@ async function getRow(id: number): Promise<AdminEventPageRow | null> {
   const row = await prisma.careerEventPage.findUnique({ where: { id }, include: ADMIN_INCLUDE });
   return row ? toRow(row) : null;
 }
+
+/** What the admin event cards show about an event's setup. */
+export type EventSetupStatus = {
+  hasEventPage: boolean;
+  hasFloorplan: boolean;
+  hasCompanyGuide: boolean;
+  /** The event page's header_buttons, or [] when unset. */
+  headerButtons: string[];
+  hasCompanies: boolean;
+  hasMatchingSoftware: boolean;
+  hasSchedules: boolean;
+};
+
+/**
+ * Setup status for several events in three queries. The admin event cards
+ * used to ask per card -- event page, matching software, schedules, and the
+ * event page again for its companies -- four server actions each, which Next
+ * runs one at a time.
+ */
+export async function getEventSetupStatuses(eventIds: string[]): Promise<Record<string, EventSetupStatus>> {
+  const ids = [...new Set(eventIds.filter(Boolean))];
+  if (ids.length === 0) return {};
+
+  const [pages, matching, schedules] = await Promise.all([
+    prisma.careerEventPage.findMany({
+      where: { event_id: { in: ids } },
+      select: {
+        event_id: true,
+        floorplan_id: true,
+        company_guide: true,
+        header_buttons: true,
+        _count: { select: { careerEventPageCompanies: true } },
+      },
+      orderBy: { id: "asc" },
+    }),
+    prisma.matchingSoftware.findMany({
+      where: { event_id: { in: ids } },
+      select: { event_id: true },
+    }),
+    prisma.schedule.findMany({
+      where: { event_id: { in: ids } },
+      select: { event_id: true },
+      distinct: ["event_id"],
+    }),
+  ]);
+
+  const withMatching = new Set(matching.map((m) => m.event_id));
+  const withSchedules = new Set(schedules.map((s) => s.event_id));
+  const result: Record<string, EventSetupStatus> = {};
+  for (const id of ids) {
+    // The first page of the event, as getEventPageWithFloorplan reads it.
+    const page = pages.find((p) => p.event_id === id);
+    result[id] = {
+      hasEventPage: !!page,
+      hasFloorplan: page?.floorplan_id != null,
+      hasCompanyGuide: !!page?.company_guide,
+      headerButtons: Array.isArray(page?.header_buttons) ? (page.header_buttons as string[]) : [],
+      hasCompanies: (page?._count.careerEventPageCompanies ?? 0) > 0,
+      hasMatchingSoftware: withMatching.has(id),
+      hasSchedules: withSchedules.has(id),
+    };
+  }
+  return result;
+}
