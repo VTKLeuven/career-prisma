@@ -9,6 +9,30 @@ import { revalidatePath } from "next/cache";
 import type { Order } from "@/lib/schema";
 import prisma from "@/lib/prisma";
 
+/**
+ * Who may work the drink orders: admins and shifter staff accounts, or a
+ * student marked as shifter -- the same rule the shifter page applies. Any
+ * other signed-in company user used to pass the checks below.
+ */
+async function getShifter(): Promise<
+    | { kind: "user"; id: string; name: string }
+    | { kind: "student"; id: string; name: string }
+    | null
+> {
+    const user = await getUserFromCookies();
+    if (user) {
+        return user.admin || user.is_shifter
+            ? { kind: "user", id: user.id, name: user.name || user.email || "Staff" }
+            : null;
+    }
+    const student = await getStudentFromCookies();
+    if (student?.is_shifter) {
+        const name = [student.first_name, student.last_name].filter(Boolean).join(" ") || student.full_name || student.username || "Student";
+        return { kind: "student", id: String(student.id), name };
+    }
+    return null;
+}
+
 // Resolve zone for an order - must match getOrderZone logic in shifter client
 function getOrderZoneId(order: { booth?: { id?: string } | string; zone?: { id?: string } | string }, zones: { id: string; booths?: any[] }[]): string | null {
     const boothId = (order.booth as any)?.id ?? order.booth;
@@ -41,6 +65,7 @@ function getOrderZoneId(order: { booth?: { id?: string } | string; zone?: { id?:
 }
 
 export async function fetchOrdersAction(zoneId?: string) {
+    if (!(await getShifter())) return [];
     const allOrders = await listOrders({});
 
     let activeOrders = allOrders.filter(o => o.status !== 'finished');
@@ -55,26 +80,11 @@ export async function fetchOrdersAction(zoneId?: string) {
 }
 
 export async function pickUpOrderAction(orderId: string) {
-    let user = await getUserFromCookies();
-    let userId = user?.id;
-    let isStudentShifter = false;
-    let shifterDisplayName = "";
-
-    if (!user) {
-        const student = await getStudentFromCookies();
-        if (student && student.is_shifter) {
-            userId = student.id;
-            isStudentShifter = true;
-            shifterDisplayName = [student.first_name, student.last_name].filter(Boolean).join(" ") || student.full_name || student.username || "Student";
-        } else if (student) {
-            return { success: false, error: "Not authorized as shifter" };
-        }
-    } else {
-        // Directus user — build display name
-        shifterDisplayName = user.name || user.email || "Staff";
-    }
-
-    if (!userId) return { success: false, error: "Not authenticated" };
+    const shifter = await getShifter();
+    if (!shifter) return { success: false, error: "Not authorized as shifter" };
+    const userId = shifter.id;
+    const isStudentShifter = shifter.kind === "student";
+    const shifterDisplayName = shifter.name;
 
     console.log("[pickUpOrderAction] orderId:", orderId, "userId:", userId, "isStudentShifter:", isStudentShifter, "shifterName:", shifterDisplayName);
 
@@ -109,18 +119,7 @@ export async function pickUpOrderAction(orderId: string) {
 }
 
 export async function finishOrderAction(orderId: string) {
-    // Check auth (even though we don't need user ID for the update, we need permission)
-    let user = await getUserFromCookies();
-    let isAuthorized = !!user;
-
-    if (!user) {
-        const student = await getStudentFromCookies();
-        if (student && student.is_shifter) {
-            isAuthorized = true;
-        }
-    }
-
-    if (!isAuthorized) return { success: false, error: "Not authorized" };
+    if (!(await getShifter())) return { success: false, error: "Not authorized" };
 
     await prisma.order.update({
         where: { id: Number(orderId) },
@@ -174,6 +173,7 @@ type CompletedOrdersStats = {
 };
 
 export async function fetchCompletedOrdersAction() {
+    if (!(await getShifter())) throw new Error("Not authorized");
     const allOrders = await listOrders({});
     const finishedOrders = allOrders.filter(o => o.status === "finished");
 
@@ -387,18 +387,7 @@ export async function fetchCompletedOrdersAction() {
 }
 
 export async function deleteOrderAction(orderId: string) {
-    // Check auth
-    let user = await getUserFromCookies();
-    let isAuthorized = !!user;
-
-    if (!user) {
-        const student = await getStudentFromCookies();
-        if (student && student.is_shifter) {
-            isAuthorized = true;
-        }
-    }
-
-    if (!isAuthorized) return { success: false, error: "Not authorized" };
+    if (!(await getShifter())) return { success: false, error: "Not authorized" };
 
     try {
         await prisma.order.delete({ where: { id: Number(orderId) } });
