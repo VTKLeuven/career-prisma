@@ -1,8 +1,7 @@
 "use client"
 
 import * as React from "react";
-import { useEffect, useState } from 'react';
-import { fetchCompanyByIdAction, requestRepAction } from "@/app/actions/companies";
+import { requestRepAction } from "@/app/actions/companies";
 import { Company, CompanyRep } from '@/lib/schema';
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
@@ -21,26 +20,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useUser } from "@/providers/UserProvider";
+import { useSettingsCompany } from "../settings-company";
 
 
 export default function CompanyUsersPage() {
-  const { user } = useUser();
-  const [company, setCompany] = useState<Company | null>(null);
-
-  useEffect(() => {
-      async function loadCompany() {
-        if (!user?.company) return;
-        try {
-          const fetchedCompany = await fetchCompanyByIdAction(user.company.id);
-          setCompany(fetchedCompany ?? null);
-        } catch (err) {
-          console.error("Error fetching company:", err);
-          setCompany(null);
-        }
-      }
-      loadCompany();
-  }, [user?.company]);
+  const { company } = useSettingsCompany();
 
   return (
     <>

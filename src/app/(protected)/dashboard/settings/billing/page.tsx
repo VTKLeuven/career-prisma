@@ -1,23 +1,24 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { IconCheck, IconRefresh } from "@tabler/icons-react";
 import type { Company } from "@/lib/schema";
-import { updateCompanyAction, fetchCompanyByIdAction } from "@/app/actions/companies";
-import { useUser } from "@/providers/UserProvider";
+import { updateCompanyAction } from "@/app/actions/companies";
+import { toast } from "sonner";
+import { useSettingsCompany } from "../settings-company";
 
 // --- Main Form ---
 export default function BillingForm() {
-  const { user } = useUser();
-  const [company, setCompany] = useState<Company | null>(null);
+  const { company: loadedCompany, setCompany: setSettingsCompany } = useSettingsCompany();
+  const [company, setCompany] = useState<Company | null>(loadedCompany);
 
   const [savedSnapshot, setSavedSnapshot] = useState<{
     company: Company;
-  } | null>(null);
+  } | null>(loadedCompany ? { company: loadedCompany } : null);
 
   const emptyCompany: Company = {
     id: "",
@@ -38,30 +39,6 @@ export default function BillingForm() {
   };
 
   const formCompany = company || emptyCompany;
-
-  // --- Load Company ---
-  useEffect(() => {
-    async function loadCompany() {
-      if (!user?.company) return;
-      try {
-        const fetchedCompany = await fetchCompanyByIdAction(user.company.id);
-        if (fetchedCompany) {
-          setCompany(fetchedCompany);
-          setSavedSnapshot({
-            company: fetchedCompany,
-          });
-        } else {
-          setCompany(null);
-          setSavedSnapshot(null);
-        }
-      } catch (err) {
-        console.error("Error fetching company:", err);
-        setCompany(null);
-        setSavedSnapshot(null);
-      }
-    }
-    loadCompany();
-  }, [user?.company]);
 
   // --- Update Form Field ---
   function updateField<K extends keyof Company>(field: K, value: Company[K]) {
@@ -98,9 +75,11 @@ export default function BillingForm() {
           ...updated,
         });
         setSavedSnapshot({ company: updated });
+        setSettingsCompany(updated);
       }
     } catch (err) {
       console.error("Error updating company:", err);
+      toast.error("Failed to save the billing details. Please try again.");
     }
   }
 
