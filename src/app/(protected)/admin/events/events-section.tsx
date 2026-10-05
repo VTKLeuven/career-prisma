@@ -36,10 +36,19 @@ import type { CareerEvent, Company, HeaderButtonType } from "@/lib/schema";
 import { SimpleRichTextEditor } from "@/components/admin/SimpleRichTextEditor";
 import { toast } from "sonner";
 
-export function EventsSection({ academicYearId }: { academicYearId?: string }) {
-  const [events, setEvents] = React.useState<CareerEvent[]>([]);
-  const [statuses, setStatuses] = React.useState<Record<string, EventSetupStatus>>({});
-  const [loading, setLoading] = React.useState(true);
+export type EventsSectionData = { events: CareerEvent[]; statuses: Record<string, EventSetupStatus> };
+
+export function EventsSection({
+  academicYearId,
+  initialData,
+}: {
+  academicYearId?: string;
+  /** Loaded on the server for the year the page opens on. */
+  initialData?: EventsSectionData;
+}) {
+  const [events, setEvents] = React.useState<CareerEvent[]>(initialData?.events ?? []);
+  const [statuses, setStatuses] = React.useState<Record<string, EventSetupStatus>>(initialData?.statuses ?? {});
+  const [loading, setLoading] = React.useState(!initialData);
 
   // The events, then every card's setup status in one call (each card used to
   // ask for its own with four server actions, which run one at a time).
@@ -56,13 +65,14 @@ export function EventsSection({ academicYearId }: { academicYearId?: string }) {
   }, [load]);
 
   React.useEffect(() => {
+    if (initialData) return;
     let alive = true;
     load()
       .then(({ rows, status }) => { if (!alive) return; setEvents(rows); setStatuses(status); })
       .catch(console.error)
       .finally(() => setLoading(false));
     return () => { alive = false; };
-  }, [load]);
+  }, [load, initialData]);
 
   return (
     <Card className="rounded-xl">
