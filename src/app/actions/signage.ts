@@ -54,6 +54,7 @@ function shapeSlot(row: any): SignageScheduleSlot {
 }
 
 export async function fetchScreensAction(): Promise<SignageScreen[]> {
+  await requireAdmin();
   const rows = await prisma.signageScreen.findMany({ orderBy: { name: "asc" } });
   return rows.map((row) => ({ ...row, id: String(row.id) })) as SignageScreen[];
 }
@@ -110,6 +111,7 @@ export async function deleteScreenAction(id: string) {
 }
 
 export async function fetchMediaAction(): Promise<SignageMedia[]> {
+  await requireAdmin();
   const rows = await prisma.signageMedia.findMany({
     include: { file: true },
     orderBy: { id: "desc" },
@@ -152,6 +154,7 @@ export async function deleteMediaAction(id: string) {
 export async function fetchScheduleSlotsAction(
   screenId: string
 ): Promise<SignageScheduleSlot[]> {
+  await requireAdmin();
   const rows = await prisma.signageScheduleSlot.findMany({
     where: { screen_id: Number(screenId) },
     include: { screen: true, file: { include: { file: true } } },
