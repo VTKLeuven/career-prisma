@@ -75,12 +75,11 @@ export type Student = {
   sso_study_years: string[]; // What the SSO last sent, verbatim (may be [])
   sso_locale?: string; // The SSO's `locale` claim as sent, e.g. "nl-BE"
   preferred_language?: string; // "nl" | "en", chosen on /student/account
-  sso_access_token?: string; // Stored on login; nothing reads it (no offline_access)
-  sso_token_expires_at?: string; // ISO date when that token expires
-  password?: string; // Hashed password for non-OAuth students
+  // The password hash, SSO access token and verification token never leave
+  // the database layer (see SECRET_COLUMNS in lib/prisma.ts). Code that has
+  // to check a password loads the hash on its own (getStudentPasswordHash).
+  has_password?: boolean; // Set by getStudentFromCookies: a password account
   verified?: boolean; // Whether email has been verified
-  verification_token_hash?: string; // Hash of verification token
-  verification_token_created?: string; // When verification token was created
   date_created?: string;
   date_updated?: string;
   is_shifter?: boolean;

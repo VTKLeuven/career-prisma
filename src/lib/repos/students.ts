@@ -28,16 +28,25 @@ function shapeStudent(row: NonNullable<StudentRow>): Student {
     sso_study_years: row.sso_study_years ?? [],
     sso_locale: row.sso_locale ?? undefined,
     preferred_language: row.preferred_language ?? undefined,
-    sso_access_token: row.sso_access_token ?? undefined,
-    sso_token_expires_at: row.sso_token_expires_at?.toISOString(),
-    password: row.password ?? undefined,
     verified: row.verified ?? undefined,
-    verification_token_hash: row.verification_token_hash ?? undefined,
-    verification_token_created: row.verification_token_created?.toISOString(),
     date_created: row.date_created?.toISOString(),
     date_updated: row.date_updated?.toISOString(),
     is_shifter: row.is_shifter ?? undefined,
   };
+}
+
+/**
+ * The stored argon2 hash, for the few places that must check a password.
+ * Every other query leaves it out (SECRET_COLUMNS in lib/prisma.ts).
+ */
+export async function getStudentPasswordHash(id: string | number): Promise<string | null> {
+  const studentId = Number(id);
+  if (!Number.isSafeInteger(studentId)) return null;
+  const row = await prisma.student.findUnique({
+    where: { id: studentId },
+    select: { password: true },
+  });
+  return row?.password ?? null;
 }
 
 export async function findStudentByEmail(email: string): Promise<Student | null> {

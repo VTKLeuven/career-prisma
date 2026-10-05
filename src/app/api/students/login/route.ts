@@ -24,6 +24,7 @@ export async function POST(request: Request) {
 
     const student = await prisma.student.findUnique({
       where: { email: email.trim().toLowerCase() },
+      omit: { password: false },
     });
     if (!student?.password || !student.verified) {
       return NextResponse.json(

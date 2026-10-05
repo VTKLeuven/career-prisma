@@ -19,7 +19,10 @@ async function studentForToken(token: string) {
     const id = Number(idValue);
     if (!Number.isSafeInteger(id) || !rawToken) return null;
 
-    const student = await prisma.student.findUnique({ where: { id } });
+    const student = await prisma.student.findUnique({
+      where: { id },
+      omit: { verification_token_hash: false, verification_token_created: false },
+    });
     if (
       !student ||
       student.verified ||

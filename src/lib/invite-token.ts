@@ -26,6 +26,7 @@ export async function validateInviteToken(token: string) {
   const user = await prisma.user.findUnique({
     where: { id: decoded.userId },
     include: { company: true },
+    omit: { invite_token_hash: false, invite_token_created: false },
   });
   if (
     !user ||
@@ -36,7 +37,9 @@ export async function validateInviteToken(token: string) {
   ) {
     return null;
   }
-  return user;
+  // The token material has done its job; callers only need who and where.
+  const { invite_token_hash: _hash, invite_token_created: _created, ...invitedUser } = user;
+  return invitedUser;
 }
 
 export async function generateInviteTokenServer(

@@ -26,8 +26,7 @@ export default async function StudentAccountPage() {
     redirect(`/student-login?redirectTo=${encodeURIComponent("/student/account")}`);
   }
 
-  // Only what the page shows. The shaped student also carries the password
-  // hash and the SSO access token, which must not reach the browser.
+  // Only what the page shows, not the whole shaped student.
   return (
     <StudentAccountClient
       name={student.full_name ?? ([student.first_name, student.last_name].filter(Boolean).join(" ") || student.email)}
@@ -36,7 +35,7 @@ export default async function StudentAccountPage() {
       lastName={student.last_name ?? ""}
       university={student.university ?? ""}
       studentNumber={student.student_number ?? null}
-      hasPassword={Boolean(student.password)}
+      hasPassword={Boolean(student.has_password)}
       viaSso={Boolean(student.sso_subject)}
       language={student.preferred_language === "nl" ? "nl" : student.preferred_language === "en" ? "en" : null}
       programmes={student.study_programmes}

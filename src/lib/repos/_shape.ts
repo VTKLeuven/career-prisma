@@ -48,6 +48,8 @@ function junction<Row, Key extends string>(
 
 /** The Prisma `include` that produces everything the legacy Company shape needs. */
 export const COMPANY_INCLUDE = {
+  // Representatives. Their password hash and token columns are left out by the
+  // client-wide omit in lib/prisma.ts.
   users: true,
   salesperson: { select: { id: true, first_name: true, last_name: true } },
   companyMasters: { include: { master: true } },

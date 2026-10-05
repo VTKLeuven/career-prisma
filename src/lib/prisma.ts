@@ -27,9 +27,35 @@ const adapterConfig = databaseHost
     }
   : { connectionString: connectionString! };
 
+// Credentials and single-use token material are never selected unless a query
+// opts back in with `omit: { password: false }` (login, password reset, invite
+// and verification flows). Users and students ride along on companies,
+// speakers, scans and orders that reach the browser -- including on public
+// pages -- so leaving these columns out by default is what keeps a password
+// hash from ending up in a JSON response through some nested include.
+const SECRET_COLUMNS = {
+  user: {
+    password: true,
+    password_reset_token: true,
+    password_reset_token_created: true,
+    invite_token_hash: true,
+    invite_token_created: true,
+  },
+  student: {
+    password: true,
+    password_reset_token: true,
+    password_reset_token_created: true,
+    verification_token_hash: true,
+    verification_token_created: true,
+    sso_access_token: true,
+    sso_token_expires_at: true,
+  },
+} as const;
+
 const createPrismaClient = () =>
   new PrismaClient({
     adapter: new PrismaPg(adapterConfig),
+    omit: SECRET_COLUMNS,
     log:
       process.env.NODE_ENV === "development"
         ? ["warn", "error"]

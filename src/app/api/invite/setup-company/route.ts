@@ -23,7 +23,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid invite token" }, { status: 400 });
     }
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      omit: { invite_token_hash: false, invite_token_created: false },
+    });
     const tokenHash = createHash("sha256").update(randomToken).digest("hex");
     if (
       !user ||

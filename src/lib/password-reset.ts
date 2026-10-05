@@ -24,6 +24,7 @@ export async function createUserPasswordResetToken(userId: string) {
 export async function findUserForPasswordReset(token: string) {
   const user = await prisma.user.findFirst({
     where: { password_reset_token: tokenHash(token) },
+    omit: { password_reset_token_created: false },
   });
   if (
     !user?.password_reset_token_created ||
@@ -50,6 +51,7 @@ export async function createStudentPasswordResetToken(studentId: number) {
 export async function findStudentForPasswordReset(token: string) {
   const student = await prisma.student.findFirst({
     where: { password_reset_token: tokenHash(token) },
+    omit: { password_reset_token_created: false },
   });
   if (
     !student?.password_reset_token_created ||
