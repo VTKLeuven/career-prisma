@@ -11,6 +11,7 @@ import { getStudentFromCookies } from "@/lib/auth-student";
 import { UserProvider } from "@/providers/UserProvider";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
+import { loadSidebarData } from "@/lib/sidebar-data";
 import type { Metadata } from "next";
 
 // The back office uses Inter (as Dopl does); the public site keeps Geist.
@@ -54,11 +55,13 @@ export default async function WithSidebarLayout({ children }: { children: React.
     );
   }
 
+  const sidebarData = await loadSidebarData(user);
+
   return (
     <UserProvider key={user?.id ?? "anon"} initialUser={user}>
       <ShellFont className={`${inter.variable} app-ui`} />
       <SidebarProvider className={`${inter.variable} app-ui h-svh overflow-hidden bg-canvas`}>
-        <AppSidebar />
+        <AppSidebar data={sidebarData} />
         <SidebarInset className="min-h-0 overflow-hidden">
           <ShellHeader isAdmin={Boolean(user.admin)}>
             {user.company && (

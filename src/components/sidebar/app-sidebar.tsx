@@ -38,12 +38,9 @@ import {
 } from "./admin-nav";
 import { useUser } from "@/providers/UserProvider";
 import { fetchPendingApprovalRequestsAction, fetchCompanyByIdAction } from "@/app/actions/companies";
-import { getCompanyOrderingTabInfo } from "@/app/actions/ordering";
 import { validateExistingPageImage } from "@/lib/utils/image-validation";
 import { getFileUrl } from "@/components/Images";
-import { fetchEventsAction } from "@/app/actions/events";
-import type { CareerEvent, Company } from "@/lib/schema";
-import { hasCompanyPageAccess } from "@/lib/utils/company-access";
+import type { SidebarData } from "@/lib/sidebar-data";
 
 // Updated sidebar data
 const data = {
@@ -117,68 +114,53 @@ const data = {
   ],
 };
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+export function AppSidebar({ data: sidebarData, ...props }: React.ComponentProps<typeof Sidebar> & { data: SidebarData }) {
   const { user } = useUser();
   const pathname = usePathname();
-  const [pendingCount, setPendingCount] = React.useState<number>(0);
+  const [pendingCount, setPendingCount] = React.useState<number>(sidebarData.pendingApprovals);
   const [pageImageInvalid, setPageImageInvalid] = React.useState<boolean>(false);
-  const [companyEvents, setCompanyEvents] = React.useState<CareerEvent[]>([]);
-  const [company, setCompany] = React.useState<Company | null>(null);
-  const [companyOrderingBoothId, setCompanyOrderingBoothId] = React.useState<string | null>(null);
+  const companyEvents = sidebarData.companyEvents;
+  const companyOrderingBoothId = sidebarData.orderingBoothId;
 
-  // Function to check page image validity
-  const checkPageImage = React.useCallback(async () => {
-    if (!user?.company?.id) {
+  // Flag the company page image when it no longer meets the requirements. The
+  // check loads the image, so it runs in the browser.
+  const checkPageImage = React.useCallback(async (pageImageId: string | null) => {
+    const pageImageUrl = pageImageId ? getFileUrl(pageImageId) : null;
+    if (!pageImageUrl) {
       setPageImageInvalid(false);
       return;
     }
-
     try {
-      const company = await fetchCompanyByIdAction(user.company.id);
-      if (!company) {
-        setPageImageInvalid(false);
-        return;
-      }
-
-      const pageImageUrl = company.page_image ? getFileUrl(company.page_image) : null;
-      if (pageImageUrl) {
-        const validation = await validateExistingPageImage(pageImageUrl);
-        setPageImageInvalid(!validation.valid);
-      } else {
-        setPageImageInvalid(false);
-      }
+      const validation = await validateExistingPageImage(pageImageUrl);
+      setPageImageInvalid(!validation.valid);
     } catch (error) {
       console.error("Error checking page image validity:", error);
       setPageImageInvalid(false);
     }
-  }, [user?.company?.id]);
+  }, []);
 
-  // Check if company page image is invalid
   React.useEffect(() => {
-    checkPageImage();
-  }, [checkPageImage]);
+    checkPageImage(sidebarData.pageImageId);
+  }, [checkPageImage, sidebarData.pageImageId]);
 
-  // Listen for company update events
+  // The settings pages announce company edits; re-check the image then.
   React.useEffect(() => {
-    const handleCompanyUpdate = (event: CustomEvent) => {
-      // Re-check page image validity when company is updated
-      if (event.detail?.companyId === user?.company?.id) {
-        checkPageImage();
-      }
+    const companyId = user?.company?.id;
+    const handleCompanyUpdate = async (event: CustomEvent) => {
+      if (!companyId || event.detail?.companyId !== companyId) return;
+      const company = await fetchCompanyByIdAction(companyId).catch(() => null);
+      checkPageImage(company?.page_image ? String(company.page_image) : null);
     };
 
-    window.addEventListener('company-updated', handleCompanyUpdate as EventListener);
-
+    window.addEventListener('company-updated', handleCompanyUpdate as unknown as EventListener);
     return () => {
-      window.removeEventListener('company-updated', handleCompanyUpdate as EventListener);
+      window.removeEventListener('company-updated', handleCompanyUpdate as unknown as EventListener);
     };
   }, [checkPageImage, user?.company?.id]);
 
-  // Fetch pending approvals count for admins/salespeople only
-  // Company reps should not see this, so we check both admin and salesperson status
+  // Keep the admins' pending-approvals badge current. The layout supplies the
+  // first count, so this only polls -- and not while the tab is hidden.
   React.useEffect(() => {
-    // Only fetch for admins - salespeople will be checked in the action itself
-    // This prevents unnecessary API calls for company reps
     if (!user?.admin) {
       return;
     }
@@ -187,11 +169,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     let consecutiveErrors = 0;
     let pollTimeout: NodeJS.Timeout | null = null;
     const MAX_CONSECUTIVE_ERRORS = 3;
-    const POLLING_INTERVAL = 10000; // 10 seconds
+    const POLLING_INTERVAL = 30000; // 30 seconds
     const ERROR_BACKOFF_MULTIPLIER = 2;
 
     const fetchCount = async () => {
       if (!alive) return;
+      if (document.visibilityState === "hidden") {
+        pollTimeout = setTimeout(fetchCount, POLLING_INTERVAL);
+        return;
+      }
 
       try {
         const requests = await fetchPendingApprovalRequestsAction();
@@ -224,7 +210,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       }
     };
 
-    fetchCount();
+    pollTimeout = setTimeout(fetchCount, POLLING_INTERVAL);
 
     return () => {
       alive = false;
@@ -233,117 +219,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       }
     };
   }, [user?.admin]);
-
-  // Load company events for sidebar
-  React.useEffect(() => {
-    const companyId = user?.company?.id;
-    if (!companyId) {
-      setCompanyEvents([]);
-      setCompanyOrderingBoothId(null);
-      return;
-    }
-
-    let alive = true;
-
-    (async () => {
-      try {
-        const [{ enabled, boothId }, companyData, allEvents, scans] = await Promise.all([
-          getCompanyOrderingTabInfo(companyId).catch((error) => {
-            console.error("Sidebar: failed to load ordering tab info:", error);
-            return { enabled: false, boothId: null as string | null };
-          }),
-          fetchCompanyByIdAction(companyId),
-          fetchEventsAction(),
-          fetch("/api/scans").then((res) => (res.ok ? res.json() : [])).catch(() => []),
-        ]);
-
-        if (!alive) return;
-
-        if (enabled && boothId) setCompanyOrderingBoothId(boothId);
-        else setCompanyOrderingBoothId(null);
-
-        setCompany(companyData as Company | null);
-
-        // Extract company events from purchased options (same logic as dashboard page)
-        const companyOptions = (companyData as Company)?.options ?? [];
-        const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
-        const hasEvents = (v: unknown): v is { events: unknown } => isRecord(v) && 'events' in v;
-        const hasEvent = (v: unknown): v is { event: unknown } => isRecord(v) && 'event' in v;
-
-        const companyEventIds = new Set<string>();
-
-        companyOptions.forEach((opt: unknown) => {
-          if (!opt || !isRecord(opt)) return;
-
-          let optionWithEvents: Record<string, unknown> | null = null;
-
-          if ('career_event_option_id' in opt && opt.career_event_option_id) {
-            const ceo = opt.career_event_option_id;
-            if (isRecord(ceo)) {
-              optionWithEvents = ceo;
-            }
-          } else if (hasEvents(opt)) {
-            optionWithEvents = opt;
-          } else if (hasEvent(opt)) {
-            const eventRef = (opt as { event: unknown }).event;
-            if (isRecord(eventRef) && 'id' in eventRef) {
-              const eventId = (eventRef as { id: string }).id;
-              if (eventId) companyEventIds.add(eventId);
-            }
-            return;
-          }
-
-          if (!optionWithEvents) return;
-
-          if (hasEvents(optionWithEvents) && Array.isArray(optionWithEvents.events)) {
-            optionWithEvents.events.forEach((eventOrJunction: unknown) => {
-              if (isRecord(eventOrJunction)) {
-                if ('id' in eventOrJunction) {
-                  companyEventIds.add((eventOrJunction as { id: string }).id);
-                } else {
-                  // Check junction table fields
-                  const possibleFields = ['career_event_id', 'career_event', 'event_id', 'event'];
-                  for (const field of possibleFields) {
-                    if (field in eventOrJunction) {
-                      const ref = (eventOrJunction as Record<string, unknown>)[field];
-                      if (isRecord(ref) && 'id' in ref) {
-                        companyEventIds.add((ref as { id: string }).id);
-                        break;
-                      }
-                    }
-                  }
-                }
-              }
-            });
-          }
-        });
-
-        // Also add events from scans (so events show up even if company hasn't purchased options)
-        if (Array.isArray(scans)) {
-          scans.forEach((scan: any) => {
-            const metadata = scan.form_response_id?.form_version_id?.metadata;
-            if (metadata && typeof metadata === 'object' && 'event_id' in metadata && metadata.event_id) {
-              companyEventIds.add(metadata.event_id as string);
-            }
-          });
-        }
-
-        const filteredEvents = (allEvents ?? []).filter((e: CareerEvent) => companyEventIds.has(e.id));
-        setCompanyEvents(filteredEvents);
-      } catch (error) {
-        // Catch-all to avoid unhandled promise rejections on every page render.
-        console.error("Sidebar: failed to load company sidebar data:", error);
-        if (!alive) return;
-        setCompany(null);
-        setCompanyEvents([]);
-        setCompanyOrderingBoothId(null);
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [user?.company?.id]);
 
   // Whether the user is currently browsing the admin area (/admin/*).
   const inAdminArea = pathname === "/admin" || pathname.startsWith("/admin/");
@@ -394,7 +269,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             title: "All Scans",
             url: "/dashboard/scans/all",
           },
-          ...companyEvents.map((event: CareerEvent) => ({
+          ...companyEvents.map((event) => ({
             title: event.name,
             url: `/dashboard/scans/event/${encodeURIComponent(event.name)}`,
           })),
