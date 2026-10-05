@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { UserRoundCheck } from "lucide-react";
-import { CompaniesSection } from "../companies-events/client";
+import { CompaniesSection } from "./companies-section";
 import { Button } from "@/components/ui/button";
 import { useUser } from "@/providers/UserProvider";
 import { PageHeader } from "@/components/admin/PageHeader";

@@ -12,7 +12,7 @@ import {
   Loader2,
   Mic2,
 } from "lucide-react";
-import { EventsSection } from "../companies-events/client";
+import { EventsSection } from "./events-section";
 import { fetchAcademicYearsAction } from "@/app/actions/cv-book";
 import { copyAnnualCatalogAction } from "@/app/actions/annual-catalog";
 import { Button } from "@/components/ui/button";
