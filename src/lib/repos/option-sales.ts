@@ -246,3 +246,30 @@ export async function deleteSubOptionSale(id: number): Promise<void> {
   });
   invalidatePublicSalePages();
 }
+
+/** Cancels a company's current-year sale of a sub-option (by sub-option, not sale id). */
+export async function cancelCompanySubOption(companyId: string, subOptionId: string): Promise<boolean> {
+  const subOption = Number(subOptionId);
+  if (!Number.isSafeInteger(subOption)) return false;
+  const academicYearId = await assertAcademicYearWritable(await resolveAcademicYearId());
+  await prisma.companyCareerSubOption.updateMany({
+    where: { company_id: companyId, career_sub_option_id: subOption, academic_year_id: academicYearId },
+    data: { status: "cancelled" },
+  });
+  invalidatePublicSalePages();
+  return true;
+}
+
+/** Cancels a company's current-year sale of an option (by option, not sale id). */
+export async function cancelCompanyOption(companyId: string, optionId: string): Promise<void> {
+  const academicYearId = await assertAcademicYearWritable(await resolveAcademicYearId());
+  await prisma.companyCareerEventOption.updateMany({
+    where: {
+      company_id: companyId,
+      career_event_option_id: optionId,
+      academic_year_id: academicYearId,
+    },
+    data: { status: "cancelled" },
+  });
+  invalidatePublicSalePages();
+}

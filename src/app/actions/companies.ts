@@ -1,7 +1,7 @@
 // app/actions/companies.ts
 "use server";
 import { listCompanies, getCompanyById, createCompany, updateCompany, getCompaniesForEvent } from "@/lib/repos/company";
-import { createRep, updateRep, waitForApproval, deleteUser, fetchPendingApprovalRequests, fetchSalespersonByID, type PendingApprovalRequest } from "@/lib/repos/users";
+import { createRep, updateRep, waitForApproval, deleteUser, fetchPendingApprovalRequests, findUserByEmail, userEmailExists, setUserCompany, setUserStatusAndRole, getUserContact, getCompanyUserRequest, setCompanyUserRequestStatus, type PendingApprovalRequest } from "@/lib/repos/users";
 import { Company, CompanyRep, CareerEventOption, type UserSummary } from "@/lib/schema";
 import { sendEmail } from "@/lib/email";
 import { uploadFile } from "@/lib/file-storage";
@@ -9,13 +9,9 @@ import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
 import { fetchMastersAction } from "@/app/actions/features";
 import { generateCompanyPageRequestEmailHtml, generateCVBookRequestEmailHtml } from "@/lib/email-templates";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
-import prisma from "@/lib/prisma";
-import { invalidateCompanyPageCache } from "@/lib/company-page-cache";
 import { toPublicCompany, toPublicSpeaker } from "@/lib/repos/_shape";
-import { invalidateEventPageCache } from "@/lib/event-page-cache";
+
 type AppUser = UserSummary;
-
-
 
 function formatAddress(c: Company) {
   const parts = [
@@ -412,10 +408,7 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
     };
 
     const createdCompany = await createCompany(payload as Partial<Company>);
-    await prisma.user.update({
-      where: { id: repIdForCompany },
-      data: { company_id: createdCompany.id },
-    });
+    await setUserCompany(repIdForCompany, createdCompany.id);
 
     // Send invitation email to the representative
     if (repPayload.email && newRep?.id) {
@@ -600,9 +593,7 @@ export async function requestRepAction(repPayload: Partial<CompanyRep>) {
   }
 
   // Check if user already exists (might have been created by approveRepRequestAction)
-  const existingUser = await prisma.user.findUnique({
-    where: { email: repPayload.email.trim().toLowerCase() },
-  });
+  const existingUser = await findUserByEmail(repPayload.email);
   let userId: string | undefined = existingUser?.id;
 
   // If user doesn't exist, create it (fallback for cases where approval happened but user wasn't created)
@@ -840,52 +831,21 @@ function buildOptionJunctions(company: Company): Array<{ id?: string | number; c
 
 /** Add sub-option via company_career_sub_option junction (company.sub_options M2M) */
 async function addSubOptionViaJunction(companyId: string, subOptionId: string): Promise<boolean> {
-  const subOption = Number(subOptionId);
-  if (!Number.isSafeInteger(subOption)) return false;
-  const { assertAcademicYearWritable, resolveAcademicYearId } = await import("@/lib/repos/academic-year");
-  const academicYearId = await assertAcademicYearWritable(await resolveAcademicYearId());
-  const definition = await prisma.careerSubOption.findUnique({ where: { id: subOption } });
-  if (!definition) return false;
-  await prisma.companyCareerSubOption.upsert({
-    where: {
-      company_id_career_sub_option_id_academic_year_id: {
-        company_id: companyId,
-        career_sub_option_id: subOption,
-        academic_year_id: academicYearId,
-      },
-    },
-    create: {
-      company_id: companyId,
-      career_sub_option_id: subOption,
-      academic_year_id: academicYearId,
-      price_at_sale: definition.price,
-      name_at_sale: definition.name,
-    },
-    update: {
-      status: "sold",
-      price_at_sale: definition.price,
-      name_at_sale: definition.name,
-      date_created: new Date(),
-    },
-  });
-  invalidateCompanyPageCache();
-  invalidateEventPageCache();
-  return true;
+  if (!Number.isSafeInteger(Number(subOptionId))) return false;
+  try {
+    const { createSubOptionSale } = await import("@/lib/repos/option-sales");
+    await createSubOptionSale({ companyId, subOptionId });
+    return true;
+  } catch (error) {
+    if (error instanceof Error && error.message === "Sub-option not found") return false;
+    throw error;
+  }
 }
 
 /** Remove sub-option via company_career_sub_option junction */
 async function removeSubOptionViaJunction(companyId: string, subOptionId: string): Promise<boolean> {
-  const subOption = Number(subOptionId);
-  if (!Number.isSafeInteger(subOption)) return false;
-  const { assertAcademicYearWritable, resolveAcademicYearId } = await import("@/lib/repos/academic-year");
-  const academicYearId = await assertAcademicYearWritable(await resolveAcademicYearId());
-  await prisma.companyCareerSubOption.updateMany({
-    where: { company_id: companyId, career_sub_option_id: subOption, academic_year_id: academicYearId },
-    data: { status: "cancelled" },
-  });
-  invalidateCompanyPageCache();
-  invalidateEventPageCache();
-  return true;
+  const { cancelCompanySubOption } = await import("@/lib/repos/option-sales");
+  return cancelCompanySubOption(companyId, subOptionId);
 }
 
 /** Add sub-option to company without requiring an option (company-level only). */
@@ -936,18 +896,8 @@ export async function removeSubOptionFromCompanyAction(companyId: string, option
 
 export async function removeOptionFromCompanyAction(companyId: string, optionId: string) {
   await requireAdminUser();
-  const { assertAcademicYearWritable, resolveAcademicYearId } = await import("@/lib/repos/academic-year");
-  const academicYearId = await assertAcademicYearWritable(await resolveAcademicYearId());
-  await prisma.companyCareerEventOption.updateMany({
-    where: {
-      company_id: companyId,
-      career_event_option_id: optionId,
-      academic_year_id: academicYearId,
-    },
-    data: { status: "cancelled" },
-  });
-  invalidateCompanyPageCache();
-  invalidateEventPageCache();
+  const { cancelCompanyOption } = await import("@/lib/repos/option-sales");
+  await cancelCompanyOption(companyId, optionId);
   return loadCompanyById(companyId);
 }
 
@@ -1126,9 +1076,7 @@ async function createUserFromApprovedRequest(request: any): Promise<void> {
     const userRole = request.role || DEFAULT_COMPANY_REP_ROLE;
 
     // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email: request.email.trim().toLowerCase() },
-    });
+    const existingUser = await findUserByEmail(request.email);
 
     let userId: string | undefined;
     let isNewUser = false;
@@ -1141,20 +1089,10 @@ async function createUserFromApprovedRequest(request: any): Promise<void> {
         // Update user status to "invited" if it's not already set
         // Also update role if needed
         try {
-          const updatePayload: any = {};
-          if (existingUser.status !== "invited") {
-            updatePayload.status = "invited";
-          }
-          if (existingUser.role_id !== userRole) {
-            updatePayload.role_id = userRole;
-          }
-
-          if (Object.keys(updatePayload).length > 0) {
-            await prisma.user.update({
-              where: { id: userId },
-              data: updatePayload,
-            });
-          }
+          await setUserStatusAndRole(userId, {
+            ...(existingUser.status !== "invited" && { status: "invited" }),
+            ...(existingUser.role_id !== userRole && { role_id: userRole }),
+          });
         } catch (err) {
           console.warn(`[createUserFromApprovedRequest] Error updating existing user:`, err);
         }
@@ -1266,10 +1204,7 @@ export async function approveRepRequestAction(
     if (!Number.isSafeInteger(id)) {
       return { success: false, error: "Invalid request ID" };
     }
-    const request = await prisma.companyUserRequest.findUnique({
-      where: { id },
-      include: { company: true },
-    });
+    const request = await getCompanyUserRequest(id);
     if (!request) {
       return { success: false, error: "Request not found" };
     }
@@ -1282,25 +1217,15 @@ export async function approveRepRequestAction(
 
     const status = action === "approve" ? "approved" : "rejected";
     if (action === "approve" && request.email) {
-      const duplicate = await prisma.user.findUnique({
-        where: { email: request.email.trim().toLowerCase() },
-        select: { id: true },
-      });
-      if (duplicate) {
-        await prisma.companyUserRequest.update({
-          where: { id },
-          data: { status: "rejected" },
-        });
+      if (await userEmailExists(request.email)) {
+        await setCompanyUserRequestStatus(id, "rejected");
         return {
           success: false,
           error: "A user with this email already exists",
         };
       }
     }
-    await prisma.companyUserRequest.update({
-      where: { id },
-      data: { status },
-    });
+    await setCompanyUserRequestStatus(id, status);
 
     if (action === "approve") {
       await createUserFromApprovedRequest({
@@ -1350,10 +1275,7 @@ export async function requestCompanyPageAction(): Promise<{ success: boolean; er
       const salespersonId = typeof company.salesperson === "string"
         ? company.salesperson
         : company.salesperson.id;
-      const salesperson = await prisma.user.findUnique({
-        where: { id: salespersonId },
-        select: { email: true, first_name: true, last_name: true },
-      });
+      const salesperson = await getUserContact(salespersonId);
       if (salesperson) {
         salespersonEmail = salesperson.email;
         salespersonName =
@@ -1431,10 +1353,7 @@ export async function requestCVBookAccessAction(): Promise<{ success: boolean; e
       const salespersonId = typeof company.salesperson === "string"
         ? company.salesperson
         : company.salesperson.id;
-      const salesperson = await prisma.user.findUnique({
-        where: { id: salespersonId },
-        select: { email: true, first_name: true, last_name: true },
-      });
+      const salesperson = await getUserContact(salespersonId);
       if (salesperson) {
         salespersonEmail = salesperson.email;
         salespersonName =

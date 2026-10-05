@@ -15,7 +15,7 @@ import { listCareerEventOptions } from "@/lib/repos/option";
 import { getCompaniesForEvent } from "@/lib/repos/company";
 import { getOrCreateEventPage } from "@/lib/repos/floorplan";
 import { getUserFromCookies } from "@/lib/auth-server";
-import prisma from "@/lib/prisma";
+import { addCompaniesToEventPage } from "@/lib/repos/event-page";
 import { compareTimetableItems } from "@/lib/utils/timetable";
 import { toPublicCompany, toPublicSpeaker } from "@/lib/repos/_shape";
 
@@ -295,28 +295,7 @@ export async function addCompaniesToEventPageAction(
       return { success: false, error: "Failed to get or create event page" };
     }
 
-    // Get current companies on the event page
-    const currentLinks = await prisma.careerEventPageCompany.findMany({
-      where: { career_event_page_id: Number(eventPage.id) },
-      select: { company_id: true },
-    });
-    const existingCompanyIds = new Set(
-      currentLinks.map((item) => item.company_id).filter(Boolean) as string[]
-    );
-
-    // Filter out companies that are already on the page
-    const newCompanyIds = companyIds.filter((id) => !existingCompanyIds.has(id));
-
-    if (newCompanyIds.length === 0) {
-      return { success: true }; // All companies already added
-    }
-
-    await prisma.careerEventPageCompany.createMany({
-      data: newCompanyIds.map((companyId) => ({
-        career_event_page_id: Number(eventPage.id),
-        company_id: companyId,
-      })),
-    });
+    await addCompaniesToEventPage(Number(eventPage.id), companyIds);
 
     return { success: true };
   } catch (error) {

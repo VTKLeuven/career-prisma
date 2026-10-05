@@ -436,3 +436,49 @@ export async function fetchPendingApprovalRequests(
     title: request.title,
   }));
 }
+
+/** A user by (case-insensitive) email, or null. */
+export async function findUserByEmail(email: string) {
+  return prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+}
+
+/** Whether an account already uses this email. */
+export async function userEmailExists(email: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { email: email.trim().toLowerCase() },
+    select: { id: true },
+  });
+  return !!user;
+}
+
+export async function setUserCompany(userId: string, companyId: string): Promise<void> {
+  await prisma.user.update({ where: { id: userId }, data: { company_id: companyId } });
+}
+
+export async function setUserStatusAndRole(
+  userId: string,
+  data: { status?: string; role_id?: string }
+): Promise<void> {
+  if (data.status === undefined && data.role_id === undefined) return;
+  await prisma.user.update({ where: { id: userId }, data });
+}
+
+/** Name and email, for addressing a user (e.g. a company's salesperson) in mail. */
+export async function getUserContact(id: string) {
+  return prisma.user.findUnique({
+    where: { id },
+    select: { email: true, first_name: true, last_name: true },
+  });
+}
+
+/** A rep's request to join a company, with the company. */
+export async function getCompanyUserRequest(id: number) {
+  return prisma.companyUserRequest.findUnique({
+    where: { id },
+    include: { company: true },
+  });
+}
+
+export async function setCompanyUserRequestStatus(id: number, status: string): Promise<void> {
+  await prisma.companyUserRequest.update({ where: { id }, data: { status } });
+}

@@ -441,3 +441,20 @@ export async function getEventSetupStatuses(eventIds: string[]): Promise<Record<
   }
   return result;
 }
+
+/** Lists companies on an event page (those not on it yet); returns how many were added. */
+export async function addCompaniesToEventPage(eventPageId: number, companyIds: string[]): Promise<number> {
+  const current = await prisma.careerEventPageCompany.findMany({
+    where: { career_event_page_id: eventPageId },
+    select: { company_id: true },
+  });
+  const existing = new Set(current.map((item) => item.company_id).filter(Boolean) as string[]);
+  const toAdd = [...new Set(companyIds)].filter((id) => !existing.has(id));
+  if (toAdd.length === 0) return 0;
+  await prisma.careerEventPageCompany.createMany({
+    data: toAdd.map((companyId) => ({ career_event_page_id: eventPageId, company_id: companyId })),
+  });
+  // The public event page lists them.
+  invalidateEventPageCache();
+  return toAdd.length;
+}
