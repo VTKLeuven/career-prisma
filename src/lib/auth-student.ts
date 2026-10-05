@@ -7,11 +7,9 @@ import {
   STUDENT_SESSION_COOKIE,
   verifySessionToken,
 } from "@/lib/auth-session";
-import prisma from "@/lib/prisma";
+import { getStudentForSession } from "@/lib/repos/sessions";
 
-type StudentRowWithPassword = NonNullable<Awaited<ReturnType<typeof prisma.student.findUnique>>> & {
-  password: string | null;
-};
+type StudentRowWithPassword = NonNullable<Awaited<ReturnType<typeof getStudentForSession>>>;
 
 function shapeStudent(row: StudentRowWithPassword): Student {
   const { password: _password, ...student } = row;
@@ -55,10 +53,7 @@ export const getStudentFromCookies = cache(async (): Promise<Student | null> => 
   const id = Number(session.sub);
   if (!Number.isSafeInteger(id)) return null;
   // The hash is loaded only to set `has_password`; the shape never carries it.
-  const student = await prisma.student.findUnique({
-    where: { id },
-    omit: { password: false },
-  });
+  const student = await getStudentForSession(id);
   return student ? shapeStudent(student) : null;
 });
 

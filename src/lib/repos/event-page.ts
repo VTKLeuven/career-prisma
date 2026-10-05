@@ -458,3 +458,12 @@ export async function addCompaniesToEventPage(eventPageId: number, companyIds: s
   invalidateEventPageCache();
   return toAdd.length;
 }
+
+/** Sets an event page's company guide (a file id) and drops the public cache. */
+export async function setEventPageCompanyGuide(eventPageId: number, fileId: string): Promise<void> {
+  await prisma.careerEventPage.update({
+    where: { id: eventPageId },
+    data: { company_guide: fileId },
+  });
+  invalidateEventPageCache();
+}

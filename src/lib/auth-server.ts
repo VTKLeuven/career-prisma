@@ -8,8 +8,8 @@ import {
   USER_SESSION_COOKIE,
   verifySessionToken,
 } from "@/lib/auth-session";
-import prisma from "@/lib/prisma";
-import { COMPANY_INCLUDE, shapeCompany } from "@/lib/repos/_shape";
+import { shapeCompany } from "@/lib/repos/_shape";
+import { getUserForSession, isShifterStudentEmail } from "@/lib/repos/sessions";
 
 // The two internal roles. Their names read backwards from what you would guess,
 // so always match on the id: "VTK Career" is the sales role, and "Administrator"
@@ -22,21 +22,12 @@ const ADMINISTRATOR_ROLE_ID = "c4e63615-ed81-45d1-8145-1b88137e60cb";
 type CookieToSet = { name: string; value: string; options: Record<string, unknown> };
 
 async function getUserById(userId: string): Promise<AppUser | undefined> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: {
-      role: true,
-      company: { include: COMPANY_INCLUDE },
-    },
-  });
+  const user = await getUserForSession(userId);
   if (!user || user.status !== "active" || !user.email || !user.role) {
     return undefined;
   }
 
-  const student = await prisma.student.findUnique({
-    where: { email: user.email },
-    select: { is_shifter: true },
-  });
+  const isShifter = await isShifterStudentEmail(user.email);
 
   return {
     id: user.id,
@@ -52,7 +43,7 @@ async function getUserById(userId: string): Promise<AppUser | undefined> {
       user.role.id === ADMINISTRATOR_ROLE_ID,
     company: user.company ? shapeCompany(user.company) : null,
     status: user.status,
-    is_shifter: student?.is_shifter === true,
+    is_shifter: isShifter,
   };
 }
 

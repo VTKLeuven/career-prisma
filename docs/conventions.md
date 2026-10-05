@@ -12,6 +12,11 @@
   it. Client components reach data through `src/app/actions/`, which check
   `requireAdminUser()` / the session first; `server-only` makes the build fail
   if a client imports a repo directly.
+- Password hashes and token columns (reset, invite, verification, SSO) are
+  left out of every query by the client-wide `omit` in `src/lib/prisma.ts`.
+  `repos/credentials.ts` is the one module that opts them back in; the session
+  lookups behind `getUserFromCookies()` / `getStudentFromCookies()` live in
+  `repos/sessions.ts`.
 - Schema changes go through `npx prisma migrate dev`. Do not hand-write SQL
   against the running database.
 - Do not edit `prisma/migrations/00000000000000_init` — it is the captured

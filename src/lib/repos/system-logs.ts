@@ -176,3 +176,8 @@ export async function latestAppliedMigration(): Promise<{
     ? { name: rows[0].migration_name, finishedAt: rows[0].finished_at }
     : null;
 }
+
+/** Throws when PostgreSQL cannot be reached. */
+export async function pingDatabase(): Promise<void> {
+  await prisma.$queryRaw`SELECT 1`;
+}

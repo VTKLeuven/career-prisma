@@ -3,7 +3,7 @@ import "server-only";
 import { randomUUID } from "crypto";
 import { mkdir, open, rename, unlink, writeFile } from "fs/promises";
 import path from "path";
-import prisma from "@/lib/prisma";
+import { createFileRecord, deleteFileRecord, getFileRecord } from "@/lib/repos/files";
 
 export const uploadsDirectory = path.resolve(
   process.env.UPLOADS_DIR || path.join(process.cwd(), "directus-uploads")
@@ -18,7 +18,7 @@ function safeDiskName(filename: string): string {
 }
 
 export async function getStoredFile(fileId: string) {
-  const metadata = await prisma.file.findUnique({ where: { id: fileId } });
+  const metadata = await getFileRecord(fileId);
   if (!metadata?.filename_disk) return null;
 
   const filenameDisk = safeDiskName(metadata.filename_disk);
@@ -52,25 +52,20 @@ export async function uploadFile(
   await writeFile(temporaryPath, bytes, { flag: "wx" });
 
   try {
-    await prisma.file.create({
-      data: {
-        id,
-        storage: "local",
-        filename_disk: filenameDisk,
-        filename_download: file.name || id,
-        title: file.name || id,
-        type: file.type || "application/octet-stream",
-        folder: folder || null,
-        uploaded_by: uploadedBy || null,
-        filesize: BigInt(file.size),
-        uploaded_on: new Date(),
-      },
+    await createFileRecord({
+      id,
+      filenameDisk,
+      filenameDownload: file.name || id,
+      type: file.type || "application/octet-stream",
+      size: file.size,
+      uploadedBy,
+      folder,
     });
     await rename(temporaryPath, finalPath);
     return id;
   } catch (error) {
     await unlink(temporaryPath).catch(() => undefined);
-    await prisma.file.delete({ where: { id } }).catch(() => undefined);
+    await deleteFileRecord(id).catch(() => undefined);
     throw error;
   }
 }
@@ -78,7 +73,7 @@ export async function uploadFile(
 export async function deleteStoredFile(fileId: string): Promise<void> {
   const stored = await getStoredFile(fileId);
   if (!stored) return;
-  await prisma.file.delete({ where: { id: fileId } });
+  await deleteFileRecord(fileId);
   await unlink(stored.filePath).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== "ENOENT") throw error;
   });
