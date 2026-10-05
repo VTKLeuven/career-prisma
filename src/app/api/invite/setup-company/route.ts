@@ -4,6 +4,7 @@ import sharp from "sharp";
 import prisma from "@/lib/prisma";
 import { uploadFile } from "@/lib/file-storage";
 import { validatePageImageDimensionsFromSize } from "@/lib/utils/image-validation";
+import { sanitizeRichText } from "@/lib/sanitize-html";
 
 export async function POST(request: Request) {
   try {
@@ -83,8 +84,9 @@ export async function POST(request: Request) {
       name: String(formData.get("name") || "").trim(),
       website: String(formData.get("website") || "").trim(),
       location: String(formData.get("location") || "").trim(),
-      short_description: String(formData.get("short_description") || "").trim(),
-      long_description: String(formData.get("long_description") || "").trim(),
+      // Rendered as HTML on the public company page.
+      short_description: sanitizeRichText(String(formData.get("short_description") || "").trim()),
+      long_description: sanitizeRichText(String(formData.get("long_description") || "").trim()),
       VAT: String(formData.get("VAT") || "") || null,
       address_street: String(formData.get("address_street") || "") || null,
       address_number: String(formData.get("address_number") || "") || null,

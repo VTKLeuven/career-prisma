@@ -694,6 +694,28 @@ export async function requestRepAction(repPayload: Partial<CompanyRep>) {
   return { id: userId, email: repPayload.email };
 }
 
+/**
+ * What a company's own representatives may change: its profile (information
+ * page) and billing details. Status, salesperson and the rest stay with VTK
+ * -- the action used to write whatever fields the browser sent.
+ */
+const REP_EDITABLE_COMPANY_FIELDS = [
+  "name",
+  "short_description",
+  "long_description",
+  "location",
+  "website",
+  "logo",
+  "page_image",
+  "category",
+  "VAT",
+  "address_street",
+  "address_number",
+  "address_zip",
+  "address_city",
+  "address_country",
+] as const;
+
 export async function updateCompanyAction(
   id: string,
   payload: Partial<Company>
@@ -702,7 +724,14 @@ export async function updateCompanyAction(
   if (!user?.admin && user?.company?.id !== id) {
     throw new Error("Unauthorized");
   }
-  const res = await updateCompany(id, payload);
+  const allowed: Partial<Company> = user?.admin
+    ? payload
+    : Object.fromEntries(
+        Object.entries(payload).filter(([key]) =>
+          (REP_EDITABLE_COMPANY_FIELDS as readonly string[]).includes(key)
+        )
+      );
+  const res = await updateCompany(id, allowed);
   return res as Company | null;
 }
 
@@ -724,14 +753,21 @@ export async function setupCompanyAction(
       .filter((m) => selectedMasters.includes(m.id))
       .map((m) => ({ master_id: m.id }));
 
-    // Update company with all fields and set status to published
+    // Update company with the profile fields and set status to published.
+    // The repo is called directly: updateCompanyAction keeps representatives
+    // away from `status`, which this onboarding step sets on purpose.
+    const profile = Object.fromEntries(
+      Object.entries(payload).filter(([key]) =>
+        (REP_EDITABLE_COMPANY_FIELDS as readonly string[]).includes(key)
+      )
+    ) as Partial<Company>;
     const updatePayload: Partial<Company> = {
-      ...payload,
+      ...profile,
       category: categoryPayload as unknown as Company['category'],
       status: "published",
     };
 
-    const updated = await updateCompanyAction(companyId, updatePayload);
+    const updated = await updateCompany(companyId, updatePayload);
 
     if (!updated) {
       return { success: false, error: "Failed to update company" };

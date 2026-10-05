@@ -17,7 +17,7 @@ import { getOrCreateEventPage } from "@/lib/repos/floorplan";
 import { getUserFromCookies } from "@/lib/auth-server";
 import prisma from "@/lib/prisma";
 import { compareTimetableItems } from "@/lib/utils/timetable";
-import { toPublicCompany, toPublicPerson, toPublicSpeaker } from "@/lib/repos/_shape";
+import { toPublicCompany, toPublicSpeaker } from "@/lib/repos/_shape";
 
 export async function fetchEventsAction(opts?: {
   academicYearId?: string;
@@ -219,13 +219,13 @@ export async function fetchEventPageBySlugAction(slug: string) {
     const time = speaker.time;
     const startTime = time?.start_time ? time.start_time.slice(0, -3) : undefined;
     const endTime = time?.end_time ? time.end_time.slice(0, -3) : undefined;
-    return {
+    return toPublicSpeaker({
       id: (speaker as { id?: string }).id ?? "",
       personal_information: (speaker as Speaker).personal_information ?? null,
       content: (speaker as Speaker).content ?? null,
-      representative: rep ? toPublicPerson(rep) : null,
+      representative: rep ?? null,
       time: time ? { ...time, start_time: startTime ?? time.start_time, end_time: endTime ?? time.end_time } : null,
-    } as Speaker;
+    } as Speaker);
   }).filter((s): s is Speaker => !!s) ?? [];
 
   // ✅ Clean up event times

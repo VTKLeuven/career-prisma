@@ -6,6 +6,7 @@ import { COMPANY_INCLUDE, shapeCompany } from "@/lib/repos/_shape";
 import type { Company } from "@/lib/schema";
 import { resolveAcademicYearId } from "@/lib/repos/academic-year";
 import { invalidateCompanyPageCache } from "@/lib/company-page-cache";
+import { sanitizeRichText } from "@/lib/sanitize-html";
 
 /** Minimal company shape for vacancy cards / public listing. */
 export type CompanyBasicForVacancy = Pick<Company, "id" | "name" | "logo" | "website">;
@@ -182,6 +183,9 @@ function toCompanyWrite(payload: Partial<Company>): Record<string, unknown> {
 
   return {
     ...rest,
+    // Representatives write these and public pages render them as HTML.
+    ...(typeof rest.short_description === "string" ? { short_description: sanitizeRichText(rest.short_description) } : {}),
+    ...(typeof rest.long_description === "string" ? { long_description: sanitizeRichText(rest.long_description) } : {}),
     ...(logo !== undefined ? { logo_id: logo || null } : {}),
     ...(page_image !== undefined ? { page_image: page_image || null } : {}),
     ...(salesperson !== undefined

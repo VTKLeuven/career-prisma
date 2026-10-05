@@ -15,6 +15,8 @@
 // consumer is eventually updated to read Prisma's shape directly, delete the
 // corresponding mapper rather than adding a second variant.
 
+import { sanitizeRichText } from "@/lib/sanitize-html";
+
 type Nullable<T> = T | null | undefined;
 
 /** PostgreSQL `date`/`time` values are Date objects in Prisma, while the
@@ -360,9 +362,11 @@ export function toPublicPerson<T>(person: T): T {
 }
 
 /**
- * A shaped company without its sales (prices paid) history, and with its
+ * A shaped company without its sales (prices paid) history, with its
  * representatives reduced to `toPublicPerson` -- the floorplan app shows stand
- * representatives by name, but nothing public needs their email or phone.
+ * representatives by name, but nothing public needs their email or phone --
+ * and with its descriptions sanitised: representatives write them and public
+ * pages render them as HTML.
  */
 export function toPublicCompany<T>(company: T): T {
   if (!company || typeof company !== "object") return company;
@@ -370,17 +374,31 @@ export function toPublicCompany<T>(company: T): T {
     representatives,
     option_history: _optionHistory,
     sub_option_history: _subOptionHistory,
+    short_description,
+    long_description,
     ...rest
   } = company as Record<string, unknown>;
   return {
     ...rest,
+    short_description: typeof short_description === "string" ? sanitizeRichText(short_description) : short_description,
+    long_description: typeof long_description === "string" ? sanitizeRichText(long_description) : long_description,
     representatives: Array.isArray(representatives) ? representatives.map(toPublicPerson) : [],
   } as T;
 }
 
-/** A speaker whose representative is reduced to `toPublicPerson`. */
+/**
+ * A speaker whose representative is reduced to `toPublicPerson`, and whose
+ * representative's company (a raw row) to `toPublicCompany`.
+ */
 export function toPublicSpeaker<T>(speaker: T): T {
   if (!speaker || typeof speaker !== "object") return speaker;
   const s = speaker as Record<string, unknown>;
-  return s.representative ? ({ ...s, representative: toPublicPerson(s.representative) } as T) : speaker;
+  if (!s.representative || typeof s.representative !== "object") return speaker;
+  const representative = toPublicPerson(s.representative) as Record<string, unknown>;
+  return {
+    ...s,
+    representative: representative.company
+      ? { ...representative, company: toPublicCompany(representative.company) }
+      : representative,
+  } as T;
 }
