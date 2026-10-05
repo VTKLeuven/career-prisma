@@ -94,3 +94,39 @@ export async function getActiveOrderForBooth(boothId: string) {
 
     return (shapeOrder(row) as Order) ?? null;
 }
+
+/** An order's booth and status, for ownership and state checks; null when missing. */
+export async function getOrderBoothAndStatus(id: string): Promise<{ booth_id: number | null; status: string | null } | null> {
+    return prisma.order.findUnique({
+        where: { id: Number(id) },
+        select: { booth_id: true, status: true },
+    });
+}
+
+export async function deleteOrder(id: string): Promise<void> {
+    await prisma.order.delete({ where: { id: Number(id) } });
+}
+
+/**
+ * A shifter picked the order up. Staff accounts are linked through shifter_id;
+ * student shifters have integer ids that cannot go in that users FK, so only
+ * their name is kept.
+ */
+export async function markOrderPreparing(id: string, shifterName: string, shifterUserId: string | null): Promise<void> {
+    await prisma.order.update({
+        where: { id: Number(id) },
+        data: {
+            status: "preparing",
+            shifter_name: shifterName,
+            ...(shifterUserId ? { shifter_id: shifterUserId } : {}),
+            date_updated: new Date(),
+        },
+    });
+}
+
+export async function markOrderFinished(id: string): Promise<void> {
+    await prisma.order.update({
+        where: { id: Number(id) },
+        data: { status: "finished", date_updated: new Date() },
+    });
+}

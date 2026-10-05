@@ -1,7 +1,7 @@
 "use server"
 
 import { createOrder, getActiveOrderForBooth } from "@/lib/repos/orders";
-import prisma from "@/lib/prisma";
+import { deleteOrder, getOrderBoothAndStatus } from "@/lib/repos/orders";
 import { revalidatePath } from "next/cache";
 
 export async function placeOrderAction(boothId: string, companyId: string | null | undefined, items: { drink_id: string; name: string; quantity: number }[]) {
@@ -44,7 +44,7 @@ export async function checkOrderStatusAction(boothId: string) {
 
 export async function cancelOrderAction(boothId: string, orderId: string) {
     try {
-        const order = await prisma.order.findUnique({ where: { id: Number(orderId) } });
+        const order = await getOrderBoothAndStatus(orderId);
         if (!order) return { success: false, error: "Order not found" };
 
         const orderBoothId = order.booth_id;
@@ -56,7 +56,7 @@ export async function cancelOrderAction(boothId: string, orderId: string) {
             return { success: false, error: "Only pending orders can be cancelled" };
         }
 
-        await prisma.order.delete({ where: { id: Number(orderId) } });
+        await deleteOrder(orderId);
         revalidatePath(`/booth/${boothId}`);
         return { success: true };
     } catch (error) {

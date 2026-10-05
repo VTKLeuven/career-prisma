@@ -558,3 +558,33 @@ export async function createNonOAuthStudent(studentData: {
     return null;
   }
 }
+
+/** Students for the shifter admin: matching a search, or the current shifters. */
+export async function searchStudentsForShifters(search?: string) {
+  return prisma.student.findMany({
+    where: search
+      ? {
+          OR: [
+            { first_name: { contains: search, mode: "insensitive" } },
+            { last_name: { contains: search, mode: "insensitive" } },
+            { email: { contains: search, mode: "insensitive" } },
+          ],
+        }
+      : { is_shifter: true },
+    select: {
+      id: true,
+      first_name: true,
+      last_name: true,
+      email: true,
+      is_shifter: true,
+    },
+    take: 50,
+  });
+}
+
+export async function setStudentShifter(id: string, isShifter: boolean): Promise<void> {
+  await prisma.student.update({
+    where: { id: Number(id) },
+    data: { is_shifter: isShifter, date_updated: new Date() },
+  });
+}

@@ -353,3 +353,17 @@ export async function getSpeakersForCompany(companyId: string): Promise<SpeakerW
     return [];
   }
 }
+
+/** An event's date and hours as stored ("YYYY-MM-DD", "HH:MM"), or null. */
+export async function getEventTimes(id: string): Promise<{ date: string | null; start_hour: string | null; end_hour: string | null } | null> {
+  const event = await prisma.careerEvent.findUnique({
+    where: { id },
+    select: { date: true, start_hour: true, end_hour: true },
+  });
+  if (!event) return null;
+  return {
+    date: event.date ? event.date.toISOString().split("T")[0] : null,
+    start_hour: event.start_hour ? event.start_hour.toISOString().slice(11, 16) : null,
+    end_hour: event.end_hour ? event.end_hour.toISOString().slice(11, 16) : null,
+  };
+}

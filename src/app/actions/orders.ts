@@ -7,7 +7,8 @@ import { getStudentFromCookies } from "@/lib/auth-student";
 import { getOrderingSettings } from "@/lib/repos/ordering-settings";
 import { revalidatePath } from "next/cache";
 import type { Order } from "@/lib/schema";
-import prisma from "@/lib/prisma";
+import { deleteOrder, markOrderFinished, markOrderPreparing } from "@/lib/repos/orders";
+import { getEventTimes } from "@/lib/repos/event";
 
 /**
  * Who may work the drink orders: admins and shifter staff accounts, or a
@@ -82,32 +83,8 @@ export async function fetchOrdersAction(zoneId?: string) {
 export async function pickUpOrderAction(orderId: string) {
     const shifter = await getShifter();
     if (!shifter) return { success: false, error: "Not authorized as shifter" };
-    const userId = shifter.id;
-    const isStudentShifter = shifter.kind === "student";
-    const shifterDisplayName = shifter.name;
-
-    console.log("[pickUpOrderAction] orderId:", orderId, "userId:", userId, "isStudentShifter:", isStudentShifter, "shifterName:", shifterDisplayName);
-
-    const updateData: any = {
-        status: "preparing",
-        shifter_name: shifterDisplayName,
-    };
-
-    // Only set the shifter FK for Directus users (UUID).
-    // Student IDs are integers and can't be stored in the shifter field (UUID FK to directus_users).
-    if (!isStudentShifter && userId) {
-        updateData.shifter = userId;
-    }
-
-    await prisma.order.update({
-        where: { id: Number(orderId) },
-        data: {
-            status: updateData.status,
-            shifter_name: updateData.shifter_name,
-            ...(!isStudentShifter && userId ? { shifter_id: userId } : {}),
-            date_updated: new Date(),
-        },
-    });
+    // Only staff accounts go in the shifter FK; see markOrderPreparing.
+    await markOrderPreparing(orderId, shifter.name, shifter.kind === "user" ? shifter.id : null);
 
     revalidatePath("/dashboard/shifter");
     try {
@@ -121,10 +98,7 @@ export async function pickUpOrderAction(orderId: string) {
 export async function finishOrderAction(orderId: string) {
     if (!(await getShifter())) return { success: false, error: "Not authorized" };
 
-    await prisma.order.update({
-        where: { id: Number(orderId) },
-        data: { status: "finished", date_updated: new Date() },
-    });
+    await markOrderFinished(orderId);
 
     revalidatePath("/dashboard/shifter");
     return { success: true };
@@ -186,14 +160,11 @@ export async function fetchCompletedOrdersAction() {
     let eventEndHour = "17:30";
 
     if (activeEventId) {
-        const event = await prisma.careerEvent.findUnique({
-            where: { id: activeEventId },
-            select: { date: true, start_hour: true, end_hour: true },
-        });
+        const event = await getEventTimes(activeEventId);
         if (event) {
-            if (event.date) eventDateString = event.date.toISOString().split("T")[0];
-            if (event.start_hour) eventStartHour = event.start_hour.toISOString().slice(11, 16);
-            if (event.end_hour) eventEndHour = event.end_hour.toISOString().slice(11, 16);
+            if (event.date) eventDateString = event.date;
+            if (event.start_hour) eventStartHour = event.start_hour;
+            if (event.end_hour) eventEndHour = event.end_hour;
         }
     }
 
@@ -390,7 +361,7 @@ export async function deleteOrderAction(orderId: string) {
     if (!(await getShifter())) return { success: false, error: "Not authorized" };
 
     try {
-        await prisma.order.delete({ where: { id: Number(orderId) } });
+        await deleteOrder(orderId);
         revalidatePath("/dashboard/shifter");
         return { success: true };
     } catch (error) {

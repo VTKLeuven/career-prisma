@@ -86,3 +86,13 @@ export async function getBoothIdForCompany(
         return null;
     }
 }
+
+/** A booth with its company (and floorplan), or null. */
+export async function getBoothWithCompany(id: string) {
+  const boothId = Number(id);
+  if (!Number.isSafeInteger(boothId)) return null;
+  return prisma.booth.findUnique({
+    where: { id: boothId },
+    include: { company: true, floorplan: true },
+  });
+}

@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import BoothClient from "./client";
 import { listDrinks } from "@/lib/repos/drinks";
 import { getActiveOrderForBooth } from "@/lib/repos/orders";
-import prisma from "@/lib/prisma";
+import { getBoothWithCompany } from "@/lib/repos/booths";
 
 export default async function BoothPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
@@ -11,10 +11,7 @@ export default async function BoothPage({ params }: { params: Promise<{ id: stri
     // Assuming booth ID is passed, OR booth number if slug?
     // User said "Each booth should get their own QR code". Direct link `booth/[id]`.
 
-    const boothData = await prisma.booth.findUnique({
-        where: { id: Number(id) },
-        include: { company: true, floorplan: true },
-    });
+    const boothData = await getBoothWithCompany(id);
     if (!boothData) notFound();
     const drinks = await listDrinks({ visible_only: true });
     // Active order checking might fail if permissions are tight, but let's try
