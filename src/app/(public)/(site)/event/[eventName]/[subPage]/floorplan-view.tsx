@@ -588,15 +588,18 @@ function Floorplan({
   return (
     <>
       {backgroundImage && (
-        <div
-          className="fixed inset-0 z-0"
-          style={{
-            backgroundImage: `url(${getFileUrl(backgroundImage) || ""})`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-            backgroundRepeat: "no-repeat",
-          }}
-        />
+        // next/image rather than a CSS background, so the upload is resized
+        // and served as WebP instead of downloaded at full size.
+        <div className="fixed inset-0 z-0">
+          <NextImage
+            src={getFileUrl(backgroundImage)!}
+            alt=""
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover"
+          />
+        </div>
       )}
       <div className={`pt-32 md:pt-[90px] flex flex-col items-center w-full px-2 sm:px-4 pb-4 ${backgroundImage ? "relative z-10" : ""}`}>
         {/* One floorplan. On mobile it pinch-zooms and pans; on desktop it does not. */}
