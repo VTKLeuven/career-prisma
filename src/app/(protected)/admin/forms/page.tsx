@@ -74,8 +74,8 @@ type FormRow = {
     deadline?: string;
     [key: string]: unknown;
   };
-  created_at: string;
-  updated_at: string;
+  created_at: string | null;
+  updated_at: string | null;
   activeVersion: {
     id: string;
     version_number: number;
@@ -303,7 +303,7 @@ function FormTableRow({ form, onUpdate }: { form: FormRow; onUpdate: () => void 
           <span className="tabular">{form.submissionCount}</span>
         )}
       </TableCell>
-      <TableCell className="text-muted-foreground tabular">{formatDateBE(form.updated_at)}</TableCell>
+      <TableCell className="text-muted-foreground tabular">{formatDateBE(form.updated_at ?? form.created_at) || "—"}</TableCell>
       <TableCell className="pr-2">
         <div className="flex items-center justify-end gap-0.5">
           <TooltipProvider delayDuration={300}>

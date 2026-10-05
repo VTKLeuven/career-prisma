@@ -1,7 +1,10 @@
 /**
  * Format date to Belgian format (dd/mm/yyyy)
  */
-export function formatDateBE(date: Date | string): string {
+export function formatDateBE(date: Date | string | null | undefined): string {
+  // Rows from the Directus era can lack a date (a form never edited has no
+  // updated_at); that renders as blank instead of crashing the page.
+  if (!date) return '';
   const d = typeof date === 'string' ? new Date(date) : date;
   
   if (isNaN(d.getTime())) {
@@ -18,7 +21,8 @@ export function formatDateBE(date: Date | string): string {
 /**
  * Format date and time to Belgian format (dd/mm/yyyy HH:mm)
  */
-export function formatDateTimeBE(date: Date | string): string {
+export function formatDateTimeBE(date: Date | string | null | undefined): string {
+  if (!date) return '';
   const d = typeof date === 'string' ? new Date(date) : date;
   
   if (isNaN(d.getTime())) {

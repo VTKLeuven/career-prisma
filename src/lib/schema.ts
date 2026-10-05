@@ -351,8 +351,9 @@ export type Form = {
   slug: string;
   description?: string;
   is_active?: boolean;
-  created_at: string;
-  updated_at: string;
+  // Nullable in the database: forms from the Directus era can lack either.
+  created_at: string | null;
+  updated_at: string | null;
   form_versions?: FormVersion[];  // Changed from 'versions' to 'form_versions'
 };
 
