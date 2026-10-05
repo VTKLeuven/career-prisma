@@ -123,13 +123,43 @@ export async function createCompany(payload: Partial<Company>) {
 }
 
 export async function updateCompany(id: string, payload: Partial<Company>) {
-  const row = await prisma.company.update({
-    where: { id },
-    data: { ...toCompanyWrite(payload), date_updated: new Date() },
-    include: COMPANY_INCLUDE,
+  const masterIds = categoryMasterIds(payload.category);
+  const row = await prisma.$transaction(async (tx) => {
+    // `category` is the company's masters (company_master). It used to be
+    // dropped here like the other relations, so the masters a company picked
+    // on its information page looked saved and were gone on the next load.
+    if (masterIds) {
+      await tx.companyMaster.deleteMany({ where: { company_id: id } });
+      if (masterIds.length > 0) {
+        await tx.companyMaster.createMany({
+          data: masterIds.map((master_id) => ({ company_id: id, master_id })),
+        });
+      }
+    }
+    return tx.company.update({
+      where: { id },
+      data: { ...toCompanyWrite(payload), date_updated: new Date() },
+      include: COMPANY_INCLUDE,
+    });
   });
   invalidateCompanyPageCache();
   return shapeCompany(row) as Company;
+}
+
+/**
+ * Master ids from a legacy `category` payload -- `[{ master_id }]` junction
+ * rows (as the settings pages send), master objects, or bare ids. Undefined
+ * when the payload does not touch `category`, so other edits leave the
+ * masters alone.
+ */
+function categoryMasterIds(category: unknown): number[] | undefined {
+  if (!Array.isArray(category)) return undefined;
+  const ids = category.map((item) => {
+    const ref = item && typeof item === "object" && "master_id" in item ? (item as { master_id: unknown }).master_id : item;
+    const id = ref && typeof ref === "object" && "id" in ref ? (ref as { id: unknown }).id : ref;
+    return Number(id);
+  });
+  return [...new Set(ids.filter((id) => Number.isSafeInteger(id)))];
 }
 
 /**
