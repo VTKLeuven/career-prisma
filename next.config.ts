@@ -15,7 +15,11 @@ const nextConfig: NextConfig = {
     ],
     // Enable image optimization caching
     minimumCacheTTL: 31536000, // 1 year
-    formats: ['image/avif', 'image/webp'],
+    // WebP only. Images are resized on first request, and the optimiser cache
+    // starts empty after every deploy: encoding AVIF took 4-10 s for the
+    // homepage hero (a 12 MB photo) against 1-2 s for WebP, for files of the
+    // same size. The first visitor after a deploy was the one who waited.
+    formats: ['image/webp'],
   },
   // Enable experimental features for better caching
   experimental: {
