@@ -53,7 +53,7 @@ import {
   createVacancySectionConfigAction,
   updateVacancySectionConfigAction,
   deleteVacancySectionConfigAction,
-  fetchAllVacanciesAction,
+  fetchVacancyAdminDataAction,
   updateVacancyAction,
   deleteVacancyAction,
 } from "@/app/actions/vacancies";
@@ -329,12 +329,7 @@ export default function AdminVacanciesPage() {
 
   const reload = async () => {
     setLoading(true);
-    const [t, s, sc, v] = await Promise.all([
-      fetchVacancyTypesAction(false),
-      fetchVacancySectorsAction(false),
-      fetchVacancySectionConfigsAction(false),
-      fetchAllVacanciesAction({ limit: 200 }),
-    ]);
+    const { types: t, sectors: s, sectionConfigs: sc, vacancies: v } = await fetchVacancyAdminDataAction();
     setTypes(t ?? []);
     setSectors(s ?? []);
     setSectionConfigs(sc ?? []);

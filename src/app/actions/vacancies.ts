@@ -278,12 +278,20 @@ export async function deleteVacancySectionConfigAction(
 // Admin: list all vacancies (across companies)
 // ---------------------------------------------------------------------------
 
-export async function fetchAllVacanciesAction(opts?: {
-  sort?: string;
-  limit?: number;
-  page?: number;
-}) {
+/**
+ * Everything /admin/vacancies opens with, in one round trip: types, sectors
+ * and section configs (inactive ones included) and the newest vacancies. The
+ * page used to make four server actions, which Next runs one at a time.
+ */
+export async function fetchVacancyAdminDataAction() {
   assertDevEnvironment();
   await requireAdmin();
-  return listVacancies({ ...opts, sort: opts?.sort ?? "-date_created" });
+  const [types, sectors, sectionConfigs, vacancies] = await Promise.all([
+    listVacancyTypes(false),
+    listVacancySectors(false),
+    listVacancySectionConfigs(false),
+    listVacancies({ limit: 200, sort: "-date_created" }),
+  ]);
+  return { types, sectors, sectionConfigs, vacancies };
 }
+
