@@ -4,7 +4,6 @@ import * as React from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter, usePathname } from "next/navigation"
-import { motion, AnimatePresence } from "framer-motion"
 import { ChevronDown, LogOut, User, UserCog, Bell, Star } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -390,181 +389,169 @@ export function SiteHeader({
         </div>
       </div>
 
-      {/* Mobile menu panel */}
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.div
-            ref={mobileMenuRef}
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18 }}
-            className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 md:hidden"
-          >
-            <div className="mx-auto max-w-7xl px-2 sm:px-4">
+      {/* Mobile menu panel. Fades in with CSS (tw-animate-css): framer-motion
+          here put a 36 KB chunk on every public page for two menu fades. */}
+      {mobileMenuOpen && (
+        <div
+          ref={mobileMenuRef}
+          className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 md:hidden animate-in fade-in-0 slide-in-from-top-2 duration-200"
+        >
+          <div className="mx-auto max-w-7xl px-2 sm:px-4">
+            <div
+              className={`rounded-xl sm:rounded-2xl border backdrop-blur-md shadow-xl p-4 ${
+                dark ? "bg-neutral-800/95 border-neutral-600/50" : "bg-white/95"
+              }`}
+            >
+              {eventsMenuEnabled && (
+                <div className="mb-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className={`text-sm font-semibold ${dark ? "text-neutral-100" : "text-neutral-900"}`}>
+                      Upcoming events
+                    </h3>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className={`h-7 rounded-full text-xs px-3 ${
+                        dark
+                          ? "border-white/60 text-white hover:bg-white/20"
+                          : "border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5"
+                      }`}
+                      onClick={viewAllEvents}
+                    >
+                      View all
+                    </Button>
+                  </div>
+                  <ul className="space-y-2 max-h-[50vh] overflow-y-auto">
+                    {upcoming.slice(0, 6).map((event) => (
+                      <li key={event.name}>
+                        <Link
+                          href={event.href ?? "#"}
+                          className={`block rounded-lg border p-3 transition ${
+                            dark
+                              ? "bg-neutral-700/50 border-neutral-600/50 hover:bg-neutral-600/50"
+                              : "bg-neutral-50 hover:bg-vtk-light/40"
+                          }`}
+                          onClick={() => setMobileMenuOpen(false)}
+                        >
+                          <div className={`text-sm font-medium ${dark ? "text-neutral-100" : "text-neutral-900"}`}>
+                            {event.name}
+                          </div>
+                          <div className={`mt-1 text-xs ${dark ? "text-neutral-400" : "text-neutral-600"}`}>
+                            {event.date} · {event.location}
+                          </div>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <div
-                className={`rounded-xl sm:rounded-2xl border backdrop-blur-md shadow-xl p-4 ${
-                  dark ? "bg-neutral-800/95 border-neutral-600/50" : "bg-white/95"
+                className={`space-y-2 ${eventsMenuEnabled ? "border-t pt-4" : ""} ${
+                  dark ? "border-neutral-600/50" : ""
                 }`}
               >
-                {eventsMenuEnabled && (
-                  <div className="mb-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <h3 className={`text-sm font-semibold ${dark ? "text-neutral-100" : "text-neutral-900"}`}>
-                        Upcoming events
-                      </h3>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className={`h-7 rounded-full text-xs px-3 ${
-                          dark
-                            ? "border-white/60 text-white hover:bg-white/20"
-                            : "border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5"
-                        }`}
-                        onClick={viewAllEvents}
-                      >
-                        View all
-                      </Button>
-                    </div>
-                    <ul className="space-y-2 max-h-[50vh] overflow-y-auto">
-                      {upcoming.slice(0, 6).map((event) => (
-                        <li key={event.name}>
-                          <Link
-                            href={event.href ?? "#"}
-                            className={`block rounded-lg border p-3 transition ${
-                              dark
-                                ? "bg-neutral-700/50 border-neutral-600/50 hover:bg-neutral-600/50"
-                                : "bg-neutral-50 hover:bg-vtk-light/40"
-                            }`}
-                            onClick={() => setMobileMenuOpen(false)}
-                          >
-                            <div className={`text-sm font-medium ${dark ? "text-neutral-100" : "text-neutral-900"}`}>
-                              {event.name}
-                            </div>
-                            <div className={`mt-1 text-xs ${dark ? "text-neutral-400" : "text-neutral-600"}`}>
-                              {event.date} · {event.location}
-                            </div>
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <div
-                  className={`space-y-2 ${eventsMenuEnabled ? "border-t pt-4" : ""} ${
-                    dark ? "border-neutral-600/50" : ""
-                  }`}
-                >
-                  <MobileAccountButtons
-                    companyRep={companyRep}
-                    student={student}
-                    router={router}
-                    dark={dark}
-                    onNavigate={() => setMobileMenuOpen(false)}
-                  />
-                </div>
+                <MobileAccountButtons
+                  companyRep={companyRep}
+                  student={student}
+                  router={router}
+                  dark={dark}
+                  onNavigate={() => setMobileMenuOpen(false)}
+                />
               </div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        </div>
+      )}
 
       {/* Desktop events mega menu */}
-      <AnimatePresence>
-        {eventsMenuEnabled && openMenu === "events" && (
-          <motion.div
-            ref={eventsMenuRef}
-            id="mega-events"
-            key="mega"
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18 }}
-            className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 hidden md:block"
-            onMouseEnter={() => setOpenMenu("events")}
-            onMouseLeave={() => {
-              if (!menuOpenedViaClick) setOpenMenu(null)
-            }}
-          >
-            <div className="mx-auto max-w-7xl px-4">
-              <div
-                className={`rounded-2xl border backdrop-blur-md shadow-xl -mx-8 ${
-                  dark ? "bg-neutral-800/90 border-neutral-600/50" : "bg-white/85"
-                }`}
-              >
-                <div className="grid grid-cols-1 gap-8 px-4 py-8 md:grid-cols-3">
-                  <div className="md:col-span-2">
-                    <div className="mb-4 flex items-center justify-between">
-                      <h3 className={`text-sm font-medium ${dark ? "text-neutral-100" : "text-neutral-900"}`}>
-                        Upcoming events
-                      </h3>
+      {eventsMenuEnabled && openMenu === "events" && (
+        <div
+          ref={eventsMenuRef}
+          id="mega-events"
+          className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 hidden md:block animate-in fade-in-0 slide-in-from-top-2 duration-200"
+          onMouseEnter={() => setOpenMenu("events")}
+          onMouseLeave={() => {
+            if (!menuOpenedViaClick) setOpenMenu(null)
+          }}
+        >
+          <div className="mx-auto max-w-7xl px-4">
+            <div
+              className={`rounded-2xl border backdrop-blur-md shadow-xl -mx-8 ${
+                dark ? "bg-neutral-800/90 border-neutral-600/50" : "bg-white/85"
+              }`}
+            >
+              <div className="grid grid-cols-1 gap-8 px-4 py-8 md:grid-cols-3">
+                <div className="md:col-span-2">
+                  <div className="mb-4 flex items-center justify-between">
+                    <h3 className={`text-sm font-medium ${dark ? "text-neutral-100" : "text-neutral-900"}`}>
+                      Upcoming events
+                    </h3>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className={`rounded-full ${
+                        dark
+                          ? "border-white/60 text-white hover:bg-white/20"
+                          : "border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5"
+                      }`}
+                      onClick={viewAllEvents}
+                    >
+                      View all
+                    </Button>
+                  </div>
+                  <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {upcoming.slice(0, 8).map((event) => (
+                      <li
+                        key={event.name}
+                        className={`rounded-xl border p-3 ${
+                          dark ? "border-neutral-600/50 hover:bg-neutral-700/50" : "hover:bg-vtk-light/40"
+                        }`}
+                      >
+                        <Link href={event.href ?? "#"} className="block">
+                          <div className={`text-sm font-medium ${dark ? "text-neutral-100" : "text-neutral-900"}`}>
+                            {event.name}
+                          </div>
+                          <div className={`mt-0.5 text-xs ${dark ? "text-neutral-400" : "text-neutral-600"}`}>
+                            {event.date} · {event.location}
+                          </div>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="hidden md:block">
+                  <div
+                    className={`h-full rounded-2xl border p-5 ${
+                      dark ? "bg-neutral-700/50 border-neutral-600/50" : "bg-vtk-light"
+                    }`}
+                  >
+                    <div className={`text-sm font-medium ${dark ? "text-neutral-100" : "text-neutral-900"}`}>
+                      Featured
+                    </div>
+                    <p className={`mt-1 text-sm ${dark ? "text-neutral-300" : "text-neutral-700"}`}>
+                      Meet 200+ companies at our flagship jobfair in Leuven.
+                    </p>
+                    <div className="mt-4">
                       <Button
-                        size="sm"
-                        variant="outline"
+                        asChild
                         className={`rounded-full ${
                           dark
-                            ? "border-white/60 text-white hover:bg-white/20"
-                            : "border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5"
+                            ? "bg-white/20 text-white hover:bg-white/30 border border-white/40"
+                            : "bg-vtk-blue hover:bg-vtk-blueDark"
                         }`}
-                        onClick={viewAllEvents}
                       >
-                        View all
+                        <Link href="/event/vtk-jobfair">Explore jobfair</Link>
                       </Button>
-                    </div>
-                    <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {upcoming.slice(0, 8).map((event) => (
-                        <li
-                          key={event.name}
-                          className={`rounded-xl border p-3 ${
-                            dark ? "border-neutral-600/50 hover:bg-neutral-700/50" : "hover:bg-vtk-light/40"
-                          }`}
-                        >
-                          <Link href={event.href ?? "#"} className="block">
-                            <div className={`text-sm font-medium ${dark ? "text-neutral-100" : "text-neutral-900"}`}>
-                              {event.name}
-                            </div>
-                            <div className={`mt-0.5 text-xs ${dark ? "text-neutral-400" : "text-neutral-600"}`}>
-                              {event.date} · {event.location}
-                            </div>
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="hidden md:block">
-                    <div
-                      className={`h-full rounded-2xl border p-5 ${
-                        dark ? "bg-neutral-700/50 border-neutral-600/50" : "bg-vtk-light"
-                      }`}
-                    >
-                      <div className={`text-sm font-medium ${dark ? "text-neutral-100" : "text-neutral-900"}`}>
-                        Featured
-                      </div>
-                      <p className={`mt-1 text-sm ${dark ? "text-neutral-300" : "text-neutral-700"}`}>
-                        Meet 200+ companies at our flagship jobfair in Leuven.
-                      </p>
-                      <div className="mt-4">
-                        <Button
-                          asChild
-                          className={`rounded-full ${
-                            dark
-                              ? "bg-white/20 text-white hover:bg-white/30 border border-white/40"
-                              : "bg-vtk-blue hover:bg-vtk-blueDark"
-                          }`}
-                        >
-                          <Link href="/event/vtk-jobfair">Explore jobfair</Link>
-                        </Button>
-                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        </div>
+      )}
     </header>
   )
 }
