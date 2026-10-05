@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { recordCheckins } from "@/lib/repos/checkins";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function barcodeToUuid(barcode: string): string {
-  const h = barcode.replace(/-/g, "").toLowerCase();
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
-}
 
 function validateBarcode(barcode: unknown): barcode is string {
   return typeof barcode === "string" && /^[0-9a-fA-F]{32}$/.test(barcode.replace(/-/g, ""));
@@ -67,38 +62,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Body must be a JSON object or array" }, { status: 400 });
   }
 
-  const results: { barcode: string; status: string }[] = [];
-
-  for (const entry of entries) {
-    const uuid = barcodeToUuid(entry.barcode);
-
-    const response = await prisma.formResponse.findFirst({
-      where: { attendant_uuid: uuid, archived: { not: true } },
-      select: { id: true },
-    });
-    if (!response) {
-      results.push({ barcode: entry.barcode, status: "not_found" });
-      continue;
-    }
-
-    const existing = await prisma.eventCheckin.findFirst({
-      where: { barcode: entry.barcode, event_id: eventId },
-    });
-    if (existing) {
-      results.push({ barcode: entry.barcode, status: "already_checked_in" });
-      continue;
-    }
-
-    await prisma.eventCheckin.create({
-      data: {
-        barcode: entry.barcode,
-        event_id: eventId,
-        checked_in_at: new Date(entry.checked_in_at),
-      },
-    });
-
-    results.push({ barcode: entry.barcode, status: "checked_in" });
-  }
+  const results = await recordCheckins(eventId, entries);
 
   return NextResponse.json({ results });
 }

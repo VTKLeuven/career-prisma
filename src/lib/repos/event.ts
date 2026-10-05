@@ -367,3 +367,9 @@ export async function getEventTimes(id: string): Promise<{ date: string | null; 
     end_hour: event.end_hour ? event.end_hour.toISOString().slice(11, 16) : null,
   };
 }
+
+/** An event's name, or null when it does not exist. */
+export async function getEventName(id: string): Promise<string | null> {
+  const event = await prisma.careerEvent.findUnique({ where: { id }, select: { name: true } });
+  return event?.name ?? null;
+}

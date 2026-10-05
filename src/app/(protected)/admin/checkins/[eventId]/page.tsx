@@ -1,7 +1,7 @@
 import { getUserFromCookies } from "@/lib/auth-server";
 import Link from "next/link";
 import CheckinsClient from "./client";
-import prisma from "@/lib/prisma";
+import { getEventName } from "@/lib/repos/event";
 import { PageHeader } from "@/components/admin/PageHeader";
 
 export default async function AdminCheckinEventPage({
@@ -14,11 +14,7 @@ export default async function AdminCheckinEventPage({
 
   const { eventId } = await params;
 
-  const event = await prisma.careerEvent.findUnique({
-    where: { id: eventId },
-    select: { name: true },
-  });
-  const eventName = event?.name || "Event";
+  const eventName = (await getEventName(eventId)) || "Event";
 
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-6">
