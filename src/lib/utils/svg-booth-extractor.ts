@@ -1,7 +1,24 @@
 // lib/utils/svg-booth-extractor.ts
-"use server";
+// Not "use server": that would make extractBoothsFromSVG a public action. Only
+// the upload-floorplan route calls it.
+import "server-only";
 
-import { BoothExtraction } from "./pdf-processor";
+export interface BoothExtraction {
+  booth_number: number;
+  coords: {
+    type: "rect";
+    x_pct: number;
+    y_pct: number;
+    width_pct: number;
+    height_pct: number;
+    x_px: number;
+    y_px: number;
+    w_px: number;
+    h_px: number;
+    match: "sibling" | "contains" | "nearest" | "no_rects_found";
+    rotation_deg?: number; // For rotated booths
+  };
+}
 
 /**
  * Extract booths from SVG file
