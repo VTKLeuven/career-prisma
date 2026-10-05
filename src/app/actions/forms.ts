@@ -953,17 +953,6 @@ export async function fetchCompanyFormsForEventAction(
   }
 }
 
-export async function fetchAllCompanyFormsForEventAction(eventId: string) {
-  await requireAdminUser();
-  try {
-    const { getAllCompanyFormsForEvent } = await import("@/lib/repos/forms");
-    return await getAllCompanyFormsForEvent(eventId);
-  } catch (error) {
-    console.error("[fetchAllCompanyFormsForEventAction] Error:", error);
-    return [];
-  }
-}
-
 export async function fetchCompanyIdsMatchingFormFieldOptionAction(
   formVersionId: string,
   fieldName: string,

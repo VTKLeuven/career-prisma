@@ -1,27 +1,30 @@
 // app/actions/features.ts
 "use server";
 import { listMasters, listFaculties } from "@/lib/repos/features";
-import type { CareerEventPage, Booth } from "@/lib/schema";
+import type { Booth } from "@/lib/schema";
 import { getEventPageWithFloorplan, getBoothsForFloorplan } from "@/lib/repos/floorplan";
 import { loadFloorplanData } from "@/lib/floorplan-data";
 import { requireAdminUser } from "@/lib/auth-server";
 
 /**
- * The floorplan editor's data for one event. Loads the event page itself
- * rather than taking one from the client: `loadFloorplanData()` reads the file
- * the page names, so a client-supplied page could read any upload.
+ * Everything the floorplan editor opens with -- event page, SVG, booths, the
+ * event's companies and its company forms -- loaded in parallel in one round
+ * trip. The editor used to make five server actions, which Next runs one at a
+ * time.
  */
-export async function fetchFloorplanForEventAction(eventId: string) {
+export async function fetchFloorplanEditorAction(eventId: string) {
   await requireAdminUser();
   const page = await getEventPageWithFloorplan(eventId);
-  if (!page) return null;
-  return loadFloorplanData(page);
-}
-
-/** The event page with its floorplan and flattened companies (admin screens). */
-export async function fetchEventPageWithFloorplanAction(eventId: string): Promise<CareerEventPage | null> {
-  await requireAdminUser();
-  return getEventPageWithFloorplan(eventId);
+  if (!page?.floorplan) return null;
+  const { getCompaniesForEvent } = await import("@/lib/repos/company");
+  const { getAllCompanyFormsForEvent } = await import("@/lib/repos/forms");
+  const [floorplan, booths, companies, forms] = await Promise.all([
+    loadFloorplanData(page),
+    page.floorplan.id ? getBoothsForFloorplan(String(page.floorplan.id)) : Promise.resolve([] as Booth[]),
+    getCompaniesForEvent(eventId),
+    getAllCompanyFormsForEvent(eventId).catch(() => []),
+  ]);
+  return { page, svg: floorplan?.svg ?? "", booths, companies, forms };
 }
 
 export async function fetchBoothsForFloorplanAction(floorplanId: string): Promise<Booth[]> {
