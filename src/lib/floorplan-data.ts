@@ -4,6 +4,7 @@ import DOMPurify from "isomorphic-dompurify";
 import { readFile } from "fs/promises";
 import { listBooths } from "@/lib/repos/features";
 import { getStoredFile } from "@/lib/file-storage";
+import { toPublicCompany } from "@/lib/repos/_shape";
 import type { CareerEventPage, Booth, Master } from "@/lib/schema";
 
 /**
@@ -53,7 +54,8 @@ export async function loadFloorplanData(page: CareerEventPage) {
           .filter((m: Master | null): m is Master => !!m); // ensure non-null
       }
 
-      return { ...booth, coords };
+      // Public floorplan: the booth's company without staff or sales history.
+      return { ...booth, company: toPublicCompany(booth.company), coords } as Booth;
     })
     .filter((b): b is Booth => !!b); // remove nulls
 

@@ -11,6 +11,7 @@ import { generateCompanyPageRequestEmailHtml, generateCVBookRequestEmailHtml } f
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import prisma from "@/lib/prisma";
 import { invalidateCompanyPageCache } from "@/lib/company-page-cache";
+import { toPublicCompany, toPublicSpeaker } from "@/lib/repos/_shape";
 import { invalidateEventPageCache } from "@/lib/event-page-cache";
 type AppUser = UserSummary;
 
@@ -346,13 +347,14 @@ export async function fetchCompanyBySlugWithSubOptionsAction(slug: string): Prom
   for (const s of allFromList ?? []) {
     if (!byIdMap.has(String(s.id))) byIdMap.set(String(s.id), s);
   }
-  return { company, allSubOptions: Array.from(byIdMap.values()) };
+  // Feeds the public company page: no representatives or sales history.
+  return { company: toPublicCompany(company), allSubOptions: Array.from(byIdMap.values()) };
 }
 
 /** Fetch speakers for a company (representatives who speak at events) */
 export async function fetchSpeakersForCompanyAction(companyId: string) {
   const { getSpeakersForCompany } = await import("@/lib/repos/event");
-  return getSpeakersForCompany(companyId);
+  return (await getSpeakersForCompany(companyId)).map(toPublicSpeaker);
 }
 
 export async function createCompanyAction(companyPayload: Partial<Company>, repPayload?: Partial<CompanyRep>) {

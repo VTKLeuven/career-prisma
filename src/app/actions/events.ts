@@ -17,6 +17,7 @@ import { getOrCreateEventPage } from "@/lib/repos/floorplan";
 import { getUserFromCookies } from "@/lib/auth-server";
 import prisma from "@/lib/prisma";
 import { compareTimetableItems } from "@/lib/utils/timetable";
+import { toPublicCompany, toPublicPerson, toPublicSpeaker } from "@/lib/repos/_shape";
 
 export async function fetchEventsAction(opts?: {
   academicYearId?: string;
@@ -200,14 +201,14 @@ export async function fetchEventPageBySlugAction(slug: string) {
       ? slot.type.filter((t): t is TimetableType => validTypes.includes(t as TimetableType))
       : undefined;
     const speaker = slot.speaker ?? slot.speaker_id ?? undefined;
-    return { ...slot, type, speaker };
+    return { ...slot, type, speaker: toPublicSpeaker(speaker) };
   }) ?? []).sort(compareTimetableItems) as TimeSlot[];
 
-  page.companies = (page.companies as unknown as Array<{ company_id: Company }>)?.map((item) => {
-    const company = item.company_id;
-
-    return company;
-  }) ?? [];
+  // This feeds the public event page and /api/events/<slug>: companies lose
+  // their representatives and sales history, speakers their contact details.
+  page.companies = (page.companies as unknown as Array<{ company_id: Company }>)?.map((item) =>
+    toPublicCompany(item.company_id)
+  ) ?? [];
 
   // ✅ Flatten speakers (M2M: speakers.speaker_id or speakers direct)
   page.speakers = (page.speakers as unknown as Array<{ speaker_id?: Speaker; id?: string; representative?: Speaker["representative"]; time?: Speaker["time"] }>)?.map((item) => {
@@ -221,7 +222,7 @@ export async function fetchEventPageBySlugAction(slug: string) {
       id: (speaker as { id?: string }).id ?? "",
       personal_information: (speaker as Speaker).personal_information ?? null,
       content: (speaker as Speaker).content ?? null,
-      representative: rep ?? null,
+      representative: rep ? toPublicPerson(rep) : null,
       time: time ? { ...time, start_time: startTime ?? time.start_time, end_time: endTime ?? time.end_time } : null,
     } as Speaker;
   }).filter((s): s is Speaker => !!s) ?? [];

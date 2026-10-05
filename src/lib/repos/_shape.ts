@@ -337,3 +337,50 @@ export function shapeSchedule(row: Nullable<CompanyRow>): any {
     master: master ? shapeMaster(master) : (master_id ?? null),
   };
 }
+
+/* ------------------------------------------------------------------ *
+ * Public payloads
+ *
+ * The shapes above are what the back office works with. Public pages and
+ * endpoints (event pages, company pages, the floorplan) get trimmed copies:
+ * no company staff contact details and no sales history. These run at the
+ * public boundary rather than in the shapes, because the admin screens do
+ * need the full objects.
+ * ------------------------------------------------------------------ */
+
+/** User columns that identify or reach a person and that no public page shows. */
+const PRIVATE_PERSON_FIELDS = ["email", "tel", "status", "role_id", "last_access", "company_id"] as const;
+
+/** A user (speaker, representative) as public pages may see them: name, title, photo, company. */
+export function toPublicPerson<T>(person: T): T {
+  if (!person || typeof person !== "object") return person;
+  const copy: Record<string, unknown> = { ...(person as Record<string, unknown>) };
+  for (const field of PRIVATE_PERSON_FIELDS) delete copy[field];
+  return copy as T;
+}
+
+/**
+ * A shaped company without its sales (prices paid) history, and with its
+ * representatives reduced to `toPublicPerson` -- the floorplan app shows stand
+ * representatives by name, but nothing public needs their email or phone.
+ */
+export function toPublicCompany<T>(company: T): T {
+  if (!company || typeof company !== "object") return company;
+  const {
+    representatives,
+    option_history: _optionHistory,
+    sub_option_history: _subOptionHistory,
+    ...rest
+  } = company as Record<string, unknown>;
+  return {
+    ...rest,
+    representatives: Array.isArray(representatives) ? representatives.map(toPublicPerson) : [],
+  } as T;
+}
+
+/** A speaker whose representative is reduced to `toPublicPerson`. */
+export function toPublicSpeaker<T>(speaker: T): T {
+  if (!speaker || typeof speaker !== "object") return speaker;
+  const s = speaker as Record<string, unknown>;
+  return s.representative ? ({ ...s, representative: toPublicPerson(s.representative) } as T) : speaker;
+}

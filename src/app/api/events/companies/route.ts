@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompaniesForEvent } from "@/lib/repos/company";
+import { toPublicCompany } from "@/lib/repos/_shape";
 import { sharedCacheHeaders } from "@/lib/http-cache";
 
 export async function GET(request: NextRequest) {
@@ -8,7 +9,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ companies: [] });
   }
   try {
-    const companies = await getCompaniesForEvent(eventId, true);
+    const companies = (await getCompaniesForEvent(eventId, true)).map(toPublicCompany);
     return NextResponse.json(
       { companies },
       { headers: sharedCacheHeaders(60) }
