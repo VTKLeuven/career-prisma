@@ -91,6 +91,7 @@ function isCompanyInfoComplete(company: Company): boolean {
 }
 
 export async function fetchCompaniesAction() {
+  await requireAdminUser();
   const companies = (await listCompanies({ limit: 10000, sort: "name" })) ?? [];
 
   return companies.map((c: Company) => ({
@@ -159,6 +160,7 @@ export async function fetchCompaniesWithSubOptionsAction(): Promise<{
   companies: Awaited<ReturnType<typeof fetchCompaniesAction>>;
   allSubOptions: import("@/lib/schema").CareerSubOption[];
 }> {
+  await requireAdminUser();
   const companies = (await fetchCompaniesAction()) ?? [];
   const optionIds = extractAllSubOptionIdsFromCompanies(companies);
   const { listCareerSubOptions, getCareerSubOptionsByIds } = await import("@/lib/repos/option");
@@ -177,7 +179,7 @@ export async function fetchCompaniesWithSubOptionsAction(): Promise<{
   return { companies, allSubOptions };
 }
 
-export async function fetchCompanyByIdAction(company_id: string, usePublic = false, useServerClient = false): Promise<Company | null> {
+async function loadCompanyById(company_id: string, usePublic = false, useServerClient = false): Promise<Company | null> {
   try {
     const company = (await getCompanyById(company_id, usePublic, 2, useServerClient)) as Company | null;
     return company;
@@ -188,6 +190,21 @@ export async function fetchCompanyByIdAction(company_id: string, usePublic = fal
   }
 }
 
+/**
+ * A company, for whoever is asking: the full record for admins and the
+ * company's own users, the public view (no representatives' contact details,
+ * no sales history) for anyone else. The company-form page is open to
+ * visitors who pick their company from a list, so this cannot simply require
+ * a login.
+ */
+export async function fetchCompanyByIdAction(company_id: string, usePublic = false, useServerClient = false): Promise<Company | null> {
+  const company = await loadCompanyById(company_id, usePublic, useServerClient);
+  if (!company) return null;
+  const viewer = await getUserFromCookies();
+  if (viewer?.admin || viewer?.company?.id === company.id) return company;
+  return toPublicCompany(company);
+}
+
 import { slugifyCompanyName } from "@/lib/utils/slugify";
 
 function slugifyName(name?: string | null): string {
@@ -196,7 +213,10 @@ function slugifyName(name?: string | null): string {
 
 export async function fetchCompaniesForEventAction(eventId: string, usePublic = false) {
   try {
-    return await getCompaniesForEvent(eventId, usePublic);
+    const companies = await getCompaniesForEvent(eventId, usePublic);
+    // The company-form page lists these to anonymous visitors.
+    const viewer = await getUserFromCookies();
+    return viewer?.admin ? companies : companies.map(toPublicCompany);
   } catch (error) {
     console.error("[fetchCompaniesForEventAction] Error fetching companies for event:", error);
     return [];
@@ -210,9 +230,10 @@ export async function fetchCompanyOptionsDebugAction(companyId: string): Promise
   junctionDiscovery?: Record<string, unknown>;
   error?: string;
 }> {
+  await requireAdminUser();
   try {
     const [company, allSubOptions, { getCareerSubOptionsByIds }] = await Promise.all([
-      fetchCompanyByIdAction(companyId),
+      loadCompanyById(companyId),
       import("@/lib/repos/option").then((m) => m.listCareerSubOptions({ limit: 50 })),
       import("@/lib/repos/option"),
     ]);
@@ -296,11 +317,11 @@ function extractSubOptionIdsFromCompany(company: Company | null): (string | numb
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function fetchCompanyBySlugAction(slugOrId: string): Promise<Company | null> {
+async function fetchCompanyBySlugAction(slugOrId: string): Promise<Company | null> {
   const trimmed = slugOrId.trim();
   // If param looks like a UUID or numeric ID, fetch by ID directly (more reliable for matching software links)
   if (UUID_REGEX.test(trimmed) || /^\d+$/.test(trimmed)) {
-    const company = await fetchCompanyByIdAction(trimmed, false, true);
+    const company = await loadCompanyById(trimmed, false, true);
     if (company) return company;
     return null;
   }
@@ -325,7 +346,7 @@ export async function fetchCompanyBySlugAction(slugOrId: string): Promise<Compan
   if (!match) return null;
 
   // Fetch full company details with all relations (use server client for nested options - public role may lack permission)
-  return fetchCompanyByIdAction(match.id, false, true);
+  return loadCompanyById(match.id, false, true);
 }
 
 /** Fetch company by slug + suboptions for access check (resolves IDs from options) */
@@ -467,7 +488,7 @@ export async function createCompanyRepAction(companyId: string, repPayload: Part
     company: { id: companyId } as Company,
   });
 
-  const company = await fetchCompanyByIdAction(companyId);
+  const company = await loadCompanyById(companyId);
 
   if (!company) { return; }
 
@@ -573,7 +594,7 @@ export async function requestRepAction(repPayload: Partial<CompanyRep>) {
   }
 
   // Fetch company details (needed for email and adding to representatives)
-  const company = await fetchCompanyByIdAction(repPayload.company.id);
+  const company = await loadCompanyById(repPayload.company.id);
   if (!company) {
     throw new Error("Company not found");
   }
@@ -736,7 +757,7 @@ export async function addOptionToCompanyAction(companyId: string, optionId: stri
   await requireAdminUser();
   const { createOptionSale } = await import("@/lib/repos/option-sales");
   await createOptionSale({ companyId, optionId, subOptionIds });
-  return fetchCompanyByIdAction(companyId);
+  return loadCompanyById(companyId);
 }
 
 /** Extract sub_option IDs from a junction entry (handles various Directus formats) */
@@ -845,7 +866,7 @@ export async function removeSubOptionFromCompanyOnlyAction(companyId: string, su
 
 export async function addSubOptionToCompanyAction(companyId: string, optionId: string, subOptionId: string): Promise<Company | null> {
   await requireAdminUser();
-  const company = await fetchCompanyByIdAction(companyId);
+  const company = await loadCompanyById(companyId);
   if (!company) return null;
 
   const subIdStr = String(subOptionId);
@@ -854,7 +875,7 @@ export async function addSubOptionToCompanyAction(companyId: string, optionId: s
 
   const viaJunction = await addSubOptionViaJunction(companyId, subIdStr);
   if (viaJunction) {
-    return fetchCompanyByIdAction(companyId);
+    return loadCompanyById(companyId);
   }
 
   return null;
@@ -862,7 +883,7 @@ export async function addSubOptionToCompanyAction(companyId: string, optionId: s
 
 export async function removeSubOptionFromCompanyAction(companyId: string, optionId: string, subOptionId: string): Promise<Company | null> {
   await requireAdminUser();
-  const company = await fetchCompanyByIdAction(companyId);
+  const company = await loadCompanyById(companyId);
   if (!company) return null;
 
   const subIdStr = String(subOptionId);
@@ -871,7 +892,7 @@ export async function removeSubOptionFromCompanyAction(companyId: string, option
 
   const viaJunction = await removeSubOptionViaJunction(companyId, subIdStr);
   if (viaJunction) {
-    return fetchCompanyByIdAction(companyId);
+    return loadCompanyById(companyId);
   }
 
   return company;
@@ -891,12 +912,12 @@ export async function removeOptionFromCompanyAction(companyId: string, optionId:
   });
   invalidateCompanyPageCache();
   invalidateEventPageCache();
-  return fetchCompanyByIdAction(companyId);
+  return loadCompanyById(companyId);
 }
 
 export async function removeUserFromCompanyAction(companyId: string, userId: string) {
   await requireAdminUser();
-  const company = await fetchCompanyByIdAction(companyId);
+  const company = await loadCompanyById(companyId);
 
   if (!company) return { success: false, error: "Company not found" };
 
@@ -942,7 +963,7 @@ export async function resendInviteAction(userId: string, companyId: string): Pro
   try {
     await requireAdminUser();
     // Verify user exists and is in "invited" status
-    const company = await fetchCompanyByIdAction(companyId);
+    const company = await loadCompanyById(companyId);
     if (!company) {
       return { success: false, error: "Company not found" };
     }
@@ -1058,7 +1079,7 @@ async function createUserFromApprovedRequest(request: any): Promise<void> {
     }
 
     // Fetch company details
-    const company = await fetchCompanyByIdAction(request.company.id);
+    const company = await loadCompanyById(request.company.id);
     if (!company) {
       console.error("[createUserFromApprovedRequest] Company not found:", request.company.id);
       return;
@@ -1271,7 +1292,7 @@ export async function requestCompanyPageAction(): Promise<{ success: boolean; er
       return { success: false, error: "User not authenticated or no company associated" };
     }
 
-    const company = await fetchCompanyByIdAction(user.company.id);
+    const company = await loadCompanyById(user.company.id);
     if (!company) {
       return { success: false, error: "Company not found" };
     }
@@ -1355,7 +1376,7 @@ export async function requestCVBookAccessAction(): Promise<{ success: boolean; e
       return { success: false, error: "User not authenticated or no company associated" };
     }
 
-    const company = await fetchCompanyByIdAction(user.company.id);
+    const company = await loadCompanyById(user.company.id);
     if (!company) {
       return { success: false, error: "Company not found" };
     }
