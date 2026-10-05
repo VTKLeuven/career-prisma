@@ -61,6 +61,7 @@ export async function fetchPublicEventsAction() {
 }
 
 export async function fetchOptionsForEventAction(eventId: string) {
+  await requireAdminUser();
   try {
     const allOptions = await listCareerEventOptions({ limit: 1000 }) ?? [];
 
@@ -253,6 +254,7 @@ export async function fetchEventPageBySlugAction(slug: string) {
  * Find companies that have options registered for a specific event
  */
 export async function findCompaniesWithEventOptions(eventId: string): Promise<Company[]> {
+  await requireAdminUser();
   try {
     // Fetch all companies with their options - use -1 for unlimited
     const allCompanies = await listCompanies({ limit: -1 }) ?? [];
