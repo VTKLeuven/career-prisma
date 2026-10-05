@@ -1,5 +1,6 @@
 // Service Worker for caching
-const CACHE_NAME = 'career-frontend-v2';
+// Bumped when a precached asset changes (v3: the logo shrank from 2.9 MB).
+const CACHE_NAME = 'career-frontend-v3';
 const IMAGE_CACHE_NAME = 'career-images-v1';
 
 // Assets to cache on install
