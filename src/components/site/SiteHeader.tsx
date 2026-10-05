@@ -91,9 +91,6 @@ export function SiteHeader({
 }: SiteHeaderProps) {
   const eventsMenuEnabled = showEventsMenu ?? navItems === undefined
   const items = navItems ?? [...DEFAULT_NAV, ...(extraNavItems ?? [])]
-  // A custom nav replaces the standard one; the mobile strip then scrolls
-  // sideways, because an event page can carry five buttons.
-  const scrollingMobileNav = navItems !== undefined
 
   const [openMenu, setOpenMenu] = React.useState<null | "events">(null)
   const [menuOpenedViaClick, setMenuOpenedViaClick] = React.useState(false)
@@ -183,33 +180,45 @@ export function SiteHeader({
     }
   }, [mobileMenuOpen, openMenu])
 
-  const linkClass = (isMobile: boolean) =>
-    [
-      isMobile ? "rounded-full px-3 py-1.5 text-xs font-medium" : "rounded-full px-4 py-2 text-sm font-medium",
-      dark ? "text-neutral-200 hover:bg-neutral-700/50" : "text-neutral-800 hover:bg-neutral-100",
-      scrollingMobileNav && isMobile ? "whitespace-nowrap shrink-0" : "",
-    ]
-      .filter(Boolean)
-      .join(" ")
+  // On a phone the link strip scrolls; bring the current page's link into view.
+  const mobileNavRef = React.useRef<HTMLElement>(null)
+  React.useEffect(() => {
+    const nav = mobileNavRef.current
+    const current = nav?.querySelector<HTMLElement>('[aria-current="page"]')
+    if (!nav || !current || nav.scrollWidth <= nav.clientWidth) return
+    const offset = current.getBoundingClientRect().left - nav.getBoundingClientRect().left + nav.scrollLeft
+    nav.scrollLeft = offset - (nav.clientWidth - current.offsetWidth) / 2
+  }, [pathname])
 
-  const homeClass = (isMobile: boolean) =>
+  /** Whether a link points at the page being viewed (Home only on the homepage). */
+  const isCurrent = (href: string | undefined) =>
+    !!href && (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`))
+
+  /** A nav link; the current page's is the filled pill (it used to be Home, always). */
+  const linkClass = (isMobile: boolean, current = false) =>
     [
-      isMobile ? "rounded-full px-3 py-1.5 text-xs font-medium" : "rounded-full px-4 py-2 text-sm font-medium",
-      dark ? "bg-[#262626] text-white hover:bg-[#333] border-0" : "bg-vtk-blue text-white",
-      scrollingMobileNav && isMobile ? "whitespace-nowrap shrink-0" : "",
-    ]
-      .filter(Boolean)
-      .join(" ")
+      isMobile ? "whitespace-nowrap shrink-0 rounded-full px-3 py-1.5 text-xs font-medium" : "rounded-full px-4 py-2 text-sm font-medium",
+      current
+        ? dark ? "bg-[#262626] text-white hover:bg-[#333] border-0" : "bg-vtk-blue text-white"
+        : dark ? "text-neutral-200 hover:bg-neutral-700/50" : "text-neutral-800 hover:bg-neutral-100",
+    ].join(" ")
 
   const renderNavItem = (item: SiteHeaderNavItem, isMobile: boolean) => {
-    const className = linkClass(isMobile)
+    const current = isCurrent(item.href)
+    const className = linkClass(isMobile, current)
     if (item.render) {
       return <React.Fragment key={item.key}>{item.render({ isMobile, className })}</React.Fragment>
     }
     const label = isMobile ? item.mobileLabel ?? item.label : item.label
     if (item.href) {
       return (
-        <Link key={item.key} href={item.href} className={className} onClick={() => setMobileMenuOpen(false)}>
+        <Link
+          key={item.key}
+          href={item.href}
+          className={className}
+          aria-current={current ? "page" : undefined}
+          onClick={() => setMobileMenuOpen(false)}
+        >
           {label}
         </Link>
       )
@@ -297,13 +306,13 @@ export function SiteHeader({
 
           {/* Desktop nav */}
           <nav className="hidden items-center gap-2 md:flex">
-            <Link href="/" className={homeClass(false)}>
+            <Link href="/" className={linkClass(false, isCurrent("/"))} aria-current={isCurrent("/") ? "page" : undefined}>
               Home
             </Link>
 
             {eventsMenuEnabled ? (
               FEATURED_EVENT_LINK ? (
-                <Link href={FEATURED_EVENT_LINK.href} className={linkClass(false)}>
+                <Link href={FEATURED_EVENT_LINK.href} className={linkClass(false, isCurrent(FEATURED_EVENT_LINK.href))}>
                   {FEATURED_EVENT_LINK.label}
                 </Link>
               ) : (
@@ -318,7 +327,7 @@ export function SiteHeader({
                       setOpenMenu("events")
                       setMenuOpenedViaClick(true)
                     }}
-                    className={`inline-flex items-center gap-1 ${linkClass(false)}`}
+                    className={`inline-flex items-center gap-1 ${linkClass(false, pathname.startsWith("/event"))}`}
                     aria-expanded={openMenu === "events"}
                     aria-controls="mega-events"
                   >
@@ -331,28 +340,23 @@ export function SiteHeader({
             {items.map((item) => renderNavItem(item, false))}
           </nav>
 
-          {/* Mobile nav */}
-          <nav
-            className={
-              scrollingMobileNav
-                ? "md:hidden flex items-center gap-1.5 overflow-x-auto flex-1 min-w-0 scrollbar-hide"
-                : "md:hidden flex items-center gap-2"
-            }
-          >
-            <Link href="/" className={homeClass(true)}>
+          {/* Mobile nav: scrolls sideways when the links don't fit (an event page
+              can carry five), so the menu button stays on screen. */}
+          <nav ref={mobileNavRef} className="md:hidden flex items-center gap-1.5 overflow-x-auto flex-1 min-w-0 scrollbar-hide">
+            <Link href="/" className={linkClass(true, isCurrent("/"))} aria-current={isCurrent("/") ? "page" : undefined}>
               Home
             </Link>
 
             {eventsMenuEnabled ? (
               FEATURED_EVENT_LINK ? (
-                <Link href={FEATURED_EVENT_LINK.href} className={linkClass(true)}>
+                <Link href={FEATURED_EVENT_LINK.href} className={linkClass(true, isCurrent(FEATURED_EVENT_LINK.href))}>
                   {FEATURED_EVENT_LINK.label}
                 </Link>
               ) : (
                 <button
                   type="button"
                   onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                  className={linkClass(true)}
+                  className={linkClass(true, pathname.startsWith("/event"))}
                   aria-expanded={mobileMenuOpen}
                 >
                   Events
