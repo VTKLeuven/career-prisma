@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getUserFromRequestWithRefresh } from "@/lib/auth-server";
-import prisma from "@/lib/prisma";
+import { recordAttendantScan } from "@/lib/repos/scans";
 
 export async function POST(
   request: NextRequest,
@@ -20,44 +20,13 @@ export async function POST(
     );
   }
 
-  const response = await prisma.formResponse.findFirst({
-    where: { attendant_uuid: uuid, archived: { not: true } },
-    select: { id: true },
-  });
-  if (!response) {
+  const result = await recordAttendantScan(uuid, companyId, user.id);
+  if (!result) {
     return NextResponse.json({ error: "Attendant not found" }, { status: 404 });
   }
-
-  const existing = await prisma.attendantScan.findFirst({
-    where: {
-      attendant_uuid: uuid,
-      OR: [
-        { company_id: companyId },
-        { scannedBy: { is: { company_id: companyId } } },
-      ],
-    },
-    orderBy: { scanned_at: "desc" },
-  });
-  if (existing) {
-    return NextResponse.json({
-      success: true,
-      message: "Attendant already scanned",
-      scanId: existing.id,
-    });
-  }
-
-  const scan = await prisma.attendantScan.create({
-    data: {
-      attendant_uuid: uuid,
-      form_response_id: response.id,
-      company_id: companyId,
-      scanned_by: user.id,
-      scanned_at: new Date(),
-    },
-  });
   return NextResponse.json({
     success: true,
-    message: "Attendant scanned successfully",
-    scanId: scan.id,
+    message: result.existed ? "Attendant already scanned" : "Attendant scanned successfully",
+    scanId: result.scanId,
   });
 }
