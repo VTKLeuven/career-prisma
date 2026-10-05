@@ -159,25 +159,12 @@ export async function saveCompanyMatchingResponseAction(
   });
 }
 
-export async function getStudentMatchingResponseAction(
-  studentId: string,
-  matchingSoftwareId: string
-) {
-  return getStudentMatchingResponse(studentId, matchingSoftwareId);
-}
-
 /** Get the current logged-in student's matching response. Uses getStudentFromCookies so we always use the server's student ID. */
 export async function getStudentMatchingResponseForCurrentUserAction(matchingSoftwareId: string) {
   const { getStudentFromCookies } = await import("@/lib/auth-student");
   const student = await getStudentFromCookies();
-  console.log("[getStudentMatchingResponseForCurrentUserAction] student from cookies:", student ? { id: student.id, idType: typeof student.id } : null, "matchingSoftwareId:", matchingSoftwareId);
-  if (!student?.id) {
-    console.log("[getStudentMatchingResponseForCurrentUserAction] No student - returning null");
-    return null;
-  }
-  const result = await getStudentMatchingResponse(student.id, matchingSoftwareId);
-  console.log("[getStudentMatchingResponseForCurrentUserAction] result:", result ? "found" : "null");
-  return result;
+  if (!student?.id) return null;
+  return getStudentMatchingResponse(student.id, matchingSoftwareId);
 }
 
 export async function submitStudentMatchingAction(
