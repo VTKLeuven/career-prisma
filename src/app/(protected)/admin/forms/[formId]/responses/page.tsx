@@ -4,7 +4,7 @@ import * as React from "react";
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { fetchFormByIdAction, fetchFormVersionsAction, fetchFormResponsesAction, fetchFormResponsesTotalCountAction, fetchAllFormResponsesAction, fetchFirstFormResponseAction, fetchLatestFormResponseAction, deleteFormResponseAction, updateFormResponseAction, initializeAttendantUuidsAction, archiveDuplicateFormResponsesAction, fetchFormResponsesForAllVersionsAction, fetchFormResponsesTotalCountForAllVersionsAction, fetchFirstFormResponseForAllVersionsAction, fetchLatestFormResponseForAllVersionsAction, fetchAllFormResponsesForAllVersionsAction, updateFormVersionAction } from "@/app/actions/forms";
+import { fetchFormWithVersionsAction, fetchFormResponsesPageAction, fetchAllFormResponsesAction, deleteFormResponseAction, updateFormResponseAction, initializeAttendantUuidsAction, archiveDuplicateFormResponsesAction, fetchAllFormResponsesForAllVersionsAction, updateFormVersionAction } from "@/app/actions/forms";
 import { fetchCompaniesForEventAction } from "@/app/actions/companies";
 import { fetchMastersAction, fetchFacultiesAction } from "@/app/actions/features";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -144,10 +144,7 @@ export default function FormResponsesPage() {
   const loadFormData = useCallback(async () => {
     setLoading(true);
     try {
-      const [formData, versionsData] = await Promise.all([
-        fetchFormByIdAction(formId),
-        fetchFormVersionsAction(formId),
-      ]);
+      const { form: formData, versions: versionsData } = await fetchFormWithVersionsAction(formId);
 
       setForm({
         id: formData.id,
@@ -174,28 +171,13 @@ export default function FormResponsesPage() {
   const loadResponses = useCallback(async (versionId: string | null, page: number = 1, allVersions: boolean = false) => {
     setLoadingResponses(true);
     try {
-      if (allVersions && formId) {
-        const [responsesData, total, firstResponse, latestResponse] = await Promise.all([
-          fetchFormResponsesForAllVersionsAction(formId, { limit: 25, page }),
-          fetchFormResponsesTotalCountForAllVersionsAction(formId),
-          fetchFirstFormResponseForAllVersionsAction(formId),
-          fetchLatestFormResponseForAllVersionsAction(formId),
-        ]);
+      const scope = allVersions && formId ? { formId } : versionId ? { versionId } : null;
+      if (scope) {
+        const { responses: responsesData, total, first, latest } = await fetchFormResponsesPageAction(scope, { limit: 25, page });
         setResponses(responsesData);
         setTotalCount(total);
-        setFirstResponseDate(firstResponse?.submitted_at || null);
-        setLatestResponseDate(latestResponse?.submitted_at || null);
-      } else if (versionId) {
-        const [responsesData, total, firstResponse, latestResponse] = await Promise.all([
-          fetchFormResponsesAction(versionId, { limit: 25, page }),
-          fetchFormResponsesTotalCountAction(versionId),
-          fetchFirstFormResponseAction(versionId),
-          fetchLatestFormResponseAction(versionId),
-        ]);
-        setResponses(responsesData);
-        setTotalCount(total);
-        setFirstResponseDate(firstResponse?.submitted_at || null);
-        setLatestResponseDate(latestResponse?.submitted_at || null);
+        setFirstResponseDate(first?.submitted_at || null);
+        setLatestResponseDate(latest?.submitted_at || null);
       }
     } catch (error) {
       console.error("Error loading responses:", error);

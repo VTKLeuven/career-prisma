@@ -286,30 +286,6 @@ export async function setActiveVersionAction(versionId: string) {
 
 // ===================== FORM RESPONSE ACTIONS =====================
 
-export async function fetchFormResponsesAction(formVersionId: string, opts?: {
-  limit?: number;
-  page?: number;
-}) {
-  try {
-    await requireAdminUser();
-    return await listFormResponses(formVersionId, opts);
-  } catch (error) {
-    console.error("Error fetching form responses:", error);
-    throw error;
-  }
-}
-
-export async function fetchFormResponsesTotalCountAction(formVersionId: string) {
-  try {
-    await requireAdminUser();
-    const { getFormResponsesTotalCount } = await import("@/lib/repos/forms");
-    return await getFormResponsesTotalCount(formVersionId);
-  } catch (error) {
-    console.error("Error fetching form responses total count:", error);
-    return 0;
-  }
-}
-
 export async function fetchAllFormResponsesAction(formVersionId: string) {
   try {
     await requireAdminUser();
@@ -320,74 +296,40 @@ export async function fetchAllFormResponsesAction(formVersionId: string) {
   }
 }
 
-export async function fetchFirstFormResponseAction(formVersionId: string) {
-  try {
-    await requireAdminUser();
-    const { getFirstFormResponse } = await import("@/lib/repos/forms");
-    return await getFirstFormResponse(formVersionId);
-  } catch (error) {
-    console.error("Error fetching first form response:", error);
-    return null;
-  }
+/** A form and its versions, for the responses page -- one round trip. */
+export async function fetchFormWithVersionsAction(formId: string) {
+  await requireAdminUser();
+  const [form, versions] = await Promise.all([getFormById(formId), listFormVersions(formId)]);
+  return { form, versions };
 }
 
-export async function fetchLatestFormResponseAction(formVersionId: string) {
-  try {
-    await requireAdminUser();
-    const { getLatestFormResponse } = await import("@/lib/repos/forms");
-    return await getLatestFormResponse(formVersionId);
-  } catch (error) {
-    console.error("Error fetching latest form response:", error);
-    return null;
-  }
-}
-
-// Actions for fetching responses across all versions
-export async function fetchFormResponsesForAllVersionsAction(formId: string, opts?: {
-  limit?: number;
-  page?: number;
-}) {
-  try {
-    await requireAdminUser();
-    const { listFormResponsesForAllVersions } = await import("@/lib/repos/forms");
-    return await listFormResponsesForAllVersions(formId, opts);
-  } catch (error) {
-    console.error("Error fetching form responses for all versions:", error);
-    throw error;
-  }
-}
-
-export async function fetchFormResponsesTotalCountForAllVersionsAction(formId: string) {
-  try {
-    await requireAdminUser();
-    const { getFormResponsesTotalCountForAllVersions } = await import("@/lib/repos/forms");
-    return await getFormResponsesTotalCountForAllVersions(formId);
-  } catch (error) {
-    console.error("Error fetching form responses total count for all versions:", error);
-    return 0;
-  }
-}
-
-export async function fetchFirstFormResponseForAllVersionsAction(formId: string) {
-  try {
-    await requireAdminUser();
-    const { getFirstFormResponseForAllVersions } = await import("@/lib/repos/forms");
-    return await getFirstFormResponseForAllVersions(formId);
-  } catch (error) {
-    console.error("Error fetching first form response for all versions:", error);
-    return null;
-  }
-}
-
-export async function fetchLatestFormResponseForAllVersionsAction(formId: string) {
-  try {
-    await requireAdminUser();
-    const { getLatestFormResponseForAllVersions } = await import("@/lib/repos/forms");
-    return await getLatestFormResponseForAllVersions(formId);
-  } catch (error) {
-    console.error("Error fetching latest form response for all versions:", error);
-    return null;
-  }
+/**
+ * One page of a form's responses -- across all versions, or for one version --
+ * with the total and the first and latest submission. One round trip: the
+ * responses page used to make four, and Next runs a client's server actions
+ * one at a time.
+ */
+export async function fetchFormResponsesPageAction(
+  scope: { formId: string } | { versionId: string },
+  opts: { limit: number; page: number }
+) {
+  await requireAdminUser();
+  const repo = await import("@/lib/repos/forms");
+  const [responses, total, first, latest] =
+    "formId" in scope
+      ? await Promise.all([
+          repo.listFormResponsesForAllVersions(scope.formId, opts),
+          repo.getFormResponsesTotalCountForAllVersions(scope.formId).catch(() => 0),
+          repo.getFirstFormResponseForAllVersions(scope.formId).catch(() => null),
+          repo.getLatestFormResponseForAllVersions(scope.formId).catch(() => null),
+        ])
+      : await Promise.all([
+          listFormResponses(scope.versionId, opts),
+          repo.getFormResponsesTotalCount(scope.versionId).catch(() => 0),
+          repo.getFirstFormResponse(scope.versionId).catch(() => null),
+          repo.getLatestFormResponse(scope.versionId).catch(() => null),
+        ]);
+  return { responses, total, first, latest };
 }
 
 export async function fetchAllFormResponsesForAllVersionsAction(formId: string) {
