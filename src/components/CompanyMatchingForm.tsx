@@ -32,8 +32,8 @@ import { cn } from "@/lib/utils";
 import { getScanningDisplayValues, hasScanningColumns } from "@/lib/utils/scanning-columns";
 import { CSV_UTF8_BOM } from "@/lib/utils/slugify";
 import { toast } from "sonner";
+import { normalizeStudents, type MatchedStudent } from "@/lib/matching-students";
 
-type MatchedStudent = { id: string; first_name: string | null; last_name: string | null; email: string };
 
 type Question = {
   id: number;
@@ -163,27 +163,27 @@ function calculateCulturePercentages(answers: Record<string, string>): Record<st
   };
 }
 
-function normalizeStudents(raw: unknown): MatchedStudent[] {
-  if (!raw) return [];
-  let arr: unknown[] = [];
-  if (Array.isArray(raw)) arr = raw;
-  else if (typeof raw === "object" && raw !== null && "data" in raw && Array.isArray((raw as { data: unknown }).data)) {
-    arr = (raw as { data: unknown[] }).data;
-  } else return [];
-  return arr
-    .map((item): MatchedStudent | null => {
-      if (item == null) return null;
-      if (typeof item === "string") return { id: item, first_name: null, last_name: null, email: "" };
-      if (typeof item !== "object") return null;
-      const o = item as Record<string, unknown>;
-      const id = typeof o.id === "string" ? o.id : typeof o.id === "number" ? String(o.id) : null;
-      if (!id) return null;
-      const first_name = o.first_name != null ? String(o.first_name) : null;
-      const last_name = o.last_name != null ? String(o.last_name) : null;
-      const email = typeof o.email === "string" ? o.email : "";
-      return { id, first_name, last_name, email };
-    })
-    .filter((s): s is MatchedStudent => s !== null);
+
+type CompanyResponse = Awaited<ReturnType<typeof getCompanyMatchingResponseForCompanyViewAction>>;
+type StudentFormData = Map<string, { data: Record<string, unknown>; scanning_columns?: { university?: string; faculty?: string; master?: string; year_of_study?: string } }>;
+
+/** The saved response and the matched students' form data, loaded by the page on the server. */
+export type CompanyMatchingInitialData = { response: CompanyResponse; studentFormData: StudentFormData };
+
+const EMPTY_GENERAL_INFO: GeneralInfoAnswers = { work_preference: [], company_type: [], work_options: [] };
+
+/** The form state a saved response opens with (null when there is none yet). */
+function stateFromResponse(existing: CompanyResponse, companiesCanViewMatches: boolean) {
+  if (!existing) return null;
+  const answers: Record<string, string> = existing.ocia_answers ? { ...existing.ocia_answers } : {};
+  const generalInfo = (existing as { general_info_answers?: GeneralInfoAnswers }).general_info_answers ?? EMPTY_GENERAL_INFO;
+  return {
+    answers,
+    generalInfo,
+    students: normalizeStudents((existing as { students?: unknown }).students),
+    // Open on the Matches tab when the company may see them and has answered every question.
+    activeTab: companiesCanViewMatches && Object.keys(answers).length >= 13 ? ("matches" as const) : ("questions" as const),
+  };
 }
 
 type Props = {
@@ -192,55 +192,45 @@ type Props = {
   eventId?: string;
   eventName?: string;
   companiesCanViewMatches?: boolean;
+  /** When given, the form opens with it instead of fetching on mount. */
+  initialData?: CompanyMatchingInitialData;
 };
 
-export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventId, eventName, companiesCanViewMatches = false }: Props) {
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [generalInfo, setGeneralInfo] = useState<GeneralInfoAnswers>({
-    work_preference: [],
-    company_type: [],
-    work_options: [],
-  });
-  const [savedSnapshot, setSavedSnapshot] = useState<Record<string, string> | null>(null);
-  const [savedGeneralInfoSnapshot, setSavedGeneralInfoSnapshot] = useState<GeneralInfoAnswers | null>(null);
-  const [students, setStudents] = useState<MatchedStudent[]>([]);
-  const [studentFormData, setStudentFormData] = useState<Map<string, { data: Record<string, unknown>; scanning_columns?: { university?: string; faculty?: string; master?: string; year_of_study?: string } }>>(new Map());
-  const [loading, setLoading] = useState(true);
+export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventId, eventName, companiesCanViewMatches = false, initialData }: Props) {
+  const [initial] = useState(() => (initialData ? stateFromResponse(initialData.response, companiesCanViewMatches) : null));
+  const [answers, setAnswers] = useState<Record<string, string>>(initial?.answers ?? {});
+  const [generalInfo, setGeneralInfo] = useState<GeneralInfoAnswers>(initial?.generalInfo ?? EMPTY_GENERAL_INFO);
+  const [savedSnapshot, setSavedSnapshot] = useState<Record<string, string> | null>(initial?.answers ?? null);
+  const [savedGeneralInfoSnapshot, setSavedGeneralInfoSnapshot] = useState<GeneralInfoAnswers | null>(initial?.generalInfo ?? null);
+  const [students, setStudents] = useState<MatchedStudent[]>(initial?.students ?? []);
+  const [studentFormData, setStudentFormData] = useState<StudentFormData>(initialData?.studentFormData ?? new Map());
+  const [loading, setLoading] = useState(!initialData);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
-  const [activeTab, setActiveTab] = useState<"questions" | "matches">("questions");
+  const [activeTab, setActiveTab] = useState<"questions" | "matches">(initial?.activeTab ?? "questions");
 
   async function loadResponse() {
     const existing = await getCompanyMatchingResponseForCompanyViewAction(companyId, matchingSoftwareId);
-    if (existing) {
-      const existingAnswers = existing.ocia_answers ? { ...existing.ocia_answers } : {};
-      setAnswers(existingAnswers);
-      setSavedSnapshot(existingAnswers);
-      const gi = (existing as { general_info_answers?: GeneralInfoAnswers })?.general_info_answers ?? {
-        work_preference: [],
-        company_type: [],
-        work_options: [],
-      };
-      setGeneralInfo(gi);
-      setSavedGeneralInfoSnapshot(gi);
-      const rawStudents = (existing as { students?: unknown }).students;
-      const normalized = normalizeStudents(rawStudents);
-      setStudents(normalized);
-      if (eventId && normalized.length > 0) {
-        getStudentFormResponseDataForEventAction(eventId, normalized.map((s) => s.id), { companyId, matchingSoftwareId })
+    const state = stateFromResponse(existing, companiesCanViewMatches);
+    if (state) {
+      setAnswers(state.answers);
+      setSavedSnapshot(state.answers);
+      setGeneralInfo(state.generalInfo);
+      setSavedGeneralInfoSnapshot(state.generalInfo);
+      setStudents(state.students);
+      if (eventId && state.students.length > 0) {
+        getStudentFormResponseDataForEventAction(eventId, state.students.map((s) => s.id), { companyId, matchingSoftwareId })
           .then(setStudentFormData)
           .catch(console.error);
       } else {
         setStudentFormData(new Map());
       }
-      // Default to Matches tab when company has access and has completed questions
-      if (companiesCanViewMatches && existingAnswers && Object.keys(existingAnswers).length >= 13) {
-        setActiveTab("matches");
-      }
+      setActiveTab(state.activeTab);
     }
     return existing;
   }
 
   useEffect(() => {
+    if (initialData) return;
     loadResponse().catch(console.error).finally(() => setLoading(false));
   }, [companyId, matchingSoftwareId, eventId]);
 
