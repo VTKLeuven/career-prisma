@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { findUserByEmail } from "@/lib/repos/users";
 import { sendEmail } from "@/lib/email";
 import {
   generateInvitationEmailHtml,
@@ -26,9 +26,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { email: email.trim().toLowerCase() },
-    });
+    const user = await findUserByEmail(email);
     if (
       !user?.email ||
       (user.status !== "active" && user.status !== "invited")

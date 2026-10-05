@@ -1,7 +1,12 @@
 import "server-only";
 
 import { createHash, randomBytes } from "crypto";
-import prisma from "@/lib/prisma";
+import {
+  findStudentByPasswordResetToken,
+  findUserByPasswordResetToken,
+  setStudentPasswordResetToken,
+  setUserPasswordResetToken,
+} from "@/lib/repos/credentials";
 
 export const PASSWORD_RESET_MAX_AGE_MS = 60 * 60 * 1000;
 
@@ -11,21 +16,12 @@ function tokenHash(token: string) {
 
 export async function createUserPasswordResetToken(userId: string) {
   const token = randomBytes(32).toString("base64url");
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      password_reset_token: tokenHash(token),
-      password_reset_token_created: new Date(),
-    },
-  });
+  await setUserPasswordResetToken(userId, tokenHash(token));
   return token;
 }
 
 export async function findUserForPasswordReset(token: string) {
-  const user = await prisma.user.findFirst({
-    where: { password_reset_token: tokenHash(token) },
-    omit: { password_reset_token_created: false },
-  });
+  const user = await findUserByPasswordResetToken(tokenHash(token));
   if (
     !user?.password_reset_token_created ||
     Date.now() - user.password_reset_token_created.getTime() >
@@ -38,21 +34,12 @@ export async function findUserForPasswordReset(token: string) {
 
 export async function createStudentPasswordResetToken(studentId: number) {
   const token = randomBytes(32).toString("base64url");
-  await prisma.student.update({
-    where: { id: studentId },
-    data: {
-      password_reset_token: tokenHash(token),
-      password_reset_token_created: new Date(),
-    },
-  });
+  await setStudentPasswordResetToken(studentId, tokenHash(token));
   return token;
 }
 
 export async function findStudentForPasswordReset(token: string) {
-  const student = await prisma.student.findFirst({
-    where: { password_reset_token: tokenHash(token) },
-    omit: { password_reset_token_created: false },
-  });
+  const student = await findStudentByPasswordResetToken(tokenHash(token));
   if (
     !student?.password_reset_token_created ||
     Date.now() - student.password_reset_token_created.getTime() >

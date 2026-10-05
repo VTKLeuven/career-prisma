@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash, randomBytes } from "crypto";
-import prisma from "@/lib/prisma";
+import { findUserWithInvite, setUserInviteToken } from "@/lib/repos/credentials";
 
 export const INVITE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -10,7 +10,9 @@ export function decodeInviteToken(token: string) {
     const [userId, rawToken] = Buffer.from(token, "base64url")
       .toString("utf8")
       .split(":");
-    if (!userId || !rawToken) return null;
+    // User ids are UUIDs; anything else is a mangled link, not a lookup
+    // (Postgres would reject it with an error).
+    if (!userId || !rawToken || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) return null;
     return {
       userId,
       tokenHash: createHash("sha256").update(rawToken).digest("hex"),
@@ -23,11 +25,7 @@ export function decodeInviteToken(token: string) {
 export async function validateInviteToken(token: string) {
   const decoded = decodeInviteToken(token);
   if (!decoded) return null;
-  const user = await prisma.user.findUnique({
-    where: { id: decoded.userId },
-    include: { company: true },
-    omit: { invite_token_hash: false, invite_token_created: false },
-  });
+  const user = await findUserWithInvite(decoded.userId);
   if (
     !user ||
     user.status !== "invited" ||
@@ -45,21 +43,14 @@ export async function validateInviteToken(token: string) {
 export async function generateInviteTokenServer(
   userId: string
 ): Promise<{ token: string; email: string } | null> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user?.email) return null;
   const rawToken = randomBytes(32).toString("base64url");
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      invite_token_hash: createHash("sha256")
-        .update(rawToken)
-        .digest("hex"),
-      invite_token_created: new Date(),
-      status: "invited",
-    },
-  });
+  const email = await setUserInviteToken(
+    userId,
+    createHash("sha256").update(rawToken).digest("hex")
+  );
+  if (!email) return null;
   return {
     token: Buffer.from(`${userId}:${rawToken}`).toString("base64url"),
-    email: user.email,
+    email,
   };
 }

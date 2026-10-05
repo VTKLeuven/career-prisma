@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { findStudentByEmail } from "@/lib/repos/students";
 import { sendEmail } from "@/lib/email";
 import { generatePasswordResetEmailHtml } from "@/lib/email-templates";
 import { createStudentPasswordResetToken } from "@/lib/password-reset";
@@ -14,11 +14,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const student = await prisma.student.findUnique({
-      where: { email: email.trim().toLowerCase() },
-    });
+    const student = await findStudentByEmail(email);
     if (student?.verified) {
-      const token = await createStudentPasswordResetToken(student.id);
+      const token = await createStudentPasswordResetToken(Number(student.id));
       const baseUrl = (
         process.env.NEXT_PUBLIC_APP_URL ||
         process.env.NEXT_PUBLIC_FORM_DOMAIN ||

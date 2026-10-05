@@ -1,6 +1,6 @@
 import argon2 from "argon2";
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { findUserCredentials, recordUserLogin } from "@/lib/repos/credentials";
 import {
   createSessionToken,
   sessionCookieOptions,
@@ -30,10 +30,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: email.trim().toLowerCase() },
-      omit: { password: false },
-    });
+    const user = await findUserCredentials(email);
     if (
       !user ||
       user.status !== "active" ||
@@ -55,10 +52,7 @@ export async function POST(request: Request) {
       createSessionToken(user.id, "user", maxAge),
       sessionCookieOptions(request, maxAge),
     );
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { last_access: new Date() },
-    });
+    await recordUserLogin(user.id);
     return response;
   } catch (error) {
     console.error("Login error:", error);

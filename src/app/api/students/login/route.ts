@@ -1,6 +1,6 @@
 import argon2 from "argon2";
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { findStudentCredentials } from "@/lib/repos/credentials";
 import {
   createSessionToken,
   sessionCookieOptions,
@@ -22,10 +22,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const student = await prisma.student.findUnique({
-      where: { email: email.trim().toLowerCase() },
-      omit: { password: false },
-    });
+    const student = await findStudentCredentials(email);
     if (!student?.password || !student.verified) {
       return NextResponse.json(
         { error: "Invalid email or password." },

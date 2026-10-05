@@ -1,7 +1,7 @@
 import argon2 from "argon2";
 import { NextResponse } from "next/server";
 import { validateInviteToken } from "@/lib/invite-token";
-import prisma from "@/lib/prisma";
+import { acceptUserInvite } from "@/lib/repos/credentials";
 
 export async function POST(request: Request) {
   const { token, password } = await request.json();
@@ -24,14 +24,6 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      password: await argon2.hash(password),
-      status: "active",
-      invite_token_hash: null,
-      invite_token_created: null,
-    },
-  });
+  await acceptUserInvite(user.id, await argon2.hash(password));
   return NextResponse.json({ success: true });
 }
