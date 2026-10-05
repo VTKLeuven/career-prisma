@@ -338,21 +338,6 @@ export async function getActiveMatchingSoftwareForEvent(eventId: string): Promis
   }
 }
 
-/** Get first active matching software (for company dashboard - no event context). */
-export async function getFirstActiveMatchingSoftware(): Promise<MatchingSoftware | null> {
-  try {
-    const row = await prisma.matchingSoftware.findFirst({
-      where: { active: true },
-      include: MS_INCLUDE,
-      orderBy: { id: "desc" },
-    });
-    return shapeMatchingSoftware(row);
-  } catch (error) {
-    console.error("[getFirstActiveMatchingSoftware] Error:", error);
-    return null;
-  }
-}
-
 const OCIA_DIMENSIONS: OCIAType[] = ["Clan", "Adhocracy", "Market", "Hierarchy"];
 
 /** Check if response is complete: ocia_answers with 13+ keys OR ocia with all 4 dimensions. */
@@ -1184,6 +1169,17 @@ export async function getMatchedCompanyIdsForResponse(responseId: string): Promi
     select: { company_id: true },
   });
   return rows.map((r) => r.company_id).filter((v): v is string => v != null);
+}
+
+/** The student who owns a matching response, as a string id; null when unknown. */
+export async function getStudentMatchingResponseStudentId(responseId: string): Promise<string | null> {
+  const id = toInt(responseId);
+  if (id == null) return null;
+  const row = await prisma.studentMatchingResponse.findUnique({
+    where: { id },
+    select: { student_id: true },
+  });
+  return row?.student_id != null ? String(row.student_id) : null;
 }
 
 /** Fetch matched companies for a student response by reading the junction table directly. */

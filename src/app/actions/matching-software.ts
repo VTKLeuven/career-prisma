@@ -3,7 +3,6 @@
 import {
   listMatchingSoftware,
   getActiveMatchingSoftwareForEvent,
-  getFirstActiveMatchingSoftware,
   getMatchingSoftwareById,
   createMatchingSoftware,
   updateMatchingSoftware,
@@ -21,17 +20,21 @@ import {
   computeAndStoreCompanyMatches,
   getCompaniesByIds,
   getMatchedCompaniesForResponse,
+  getStudentMatchingResponseStudentId,
   getMatchScoresForResponse,
   shouldRecomputeMatches,
 } from "@/lib/repos/matching-software";
 import type { MatchingSoftware, RIASECType } from "@/lib/schema";
 import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
+import { getStudentFromCookies } from "@/lib/auth-student";
+import { toPublicCompany } from "@/lib/repos/_shape";
 
 export async function listMatchingSoftwareAction(opts?: {
   eventId?: string;
   yearId?: string;
   active?: boolean;
 }) {
+  await requireAdminUser();
   return listMatchingSoftware(opts);
 }
 
@@ -52,10 +55,6 @@ export async function updateMatchingSoftwareAction(id: string, data: { active?: 
 
 export async function getMatchingSoftwareForEventAction(eventId: string) {
   return getActiveMatchingSoftwareForEvent(eventId);
-}
-
-export async function getFirstActiveMatchingSoftwareAction() {
-  return getFirstActiveMatchingSoftware();
 }
 
 export async function getCompanyMatchingResponseAction(companyId: string, matchingSoftwareId: string) {
@@ -97,6 +96,7 @@ export async function getCompanyMatchingResponseCompletedIdsAction(
   matchingSoftwareId: string,
   companyIds: string[]
 ) {
+  await requireAdminUser();
   return getCompanyMatchingResponseCompletedIds(matchingSoftwareId, companyIds);
 }
 
@@ -203,12 +203,24 @@ export async function submitStudentMatchingAction(
 
 /** Fetch company names for given IDs. */
 export async function fetchMatchedCompaniesAction(companyIds: string[]) {
+  await requireAdminUser();
   return getCompaniesByIds(companyIds);
 }
 
-/** Fetch matched companies for a response by reading the junction table directly. */
+/**
+ * The companies matched to a student's response -- for that student (or an
+ * admin) only, and in their public view: students see company names and
+ * logos, not company staff.
+ */
 export async function fetchMatchedCompaniesForResponseAction(responseId: string) {
-  return getMatchedCompaniesForResponse(responseId);
+  const student = await getStudentFromCookies();
+  if (!student) {
+    const user = await getUserFromCookies();
+    if (!user?.admin) return [];
+  } else if ((await getStudentMatchingResponseStudentId(responseId)) !== String(student.id)) {
+    return [];
+  }
+  return (await getMatchedCompaniesForResponse(responseId)).map(toPublicCompany);
 }
 
 /** Fetch matched company IDs for the current student on an event. Returns { matchedIds, hasMatchingSoftware }. */
@@ -269,7 +281,11 @@ export async function checkStudentPrerequisiteAction(
   studentId: string,
   formId: string
 ) {
-  const response = await getStudentFormResponseForForm(studentId, formId);
+  // Only the signed-in student's own response: the id comes from the browser,
+  // and student ids are sequential.
+  const student = await getStudentFromCookies();
+  if (!student || String(student.id) !== String(studentId)) return null;
+  const response = await getStudentFormResponseForForm(String(student.id), formId);
   return response ?? null;
 }
 
