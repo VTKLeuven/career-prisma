@@ -1,5 +1,5 @@
 // Service Worker for caching
-// Bumped when a precached asset changes (v3: the logo shrank from 2.9 MB).
+// Bumped when a precached asset or this worker's caching changes.
 const CACHE_NAME = 'career-frontend-v3';
 const IMAGE_CACHE_NAME = 'career-images-v1';
 
@@ -37,6 +37,13 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
+  // Only same-origin GETs can be answered from the caches below. Everything
+  // else -- server actions (POSTs), scripts, cross-origin calls -- goes to the
+  // network directly instead of through this worker, which cached none of it.
+  if (request.method !== 'GET' || url.origin !== self.location.origin) {
+    return;
+  }
 
   // Cache immutable files served by the local file API.
   if (url.origin === self.location.origin && url.pathname.startsWith('/api/files/')) {
@@ -108,20 +115,21 @@ self.addEventListener('fetch', (event) => {
     return; // Let the browser handle navigation requests normally
   }
 
-  // For other requests (resources, API calls), use network-first strategy
-  event.respondWith(
-    fetch(request).catch(() => {
-      return caches.match(request).then((cachedResponse) => {
-        if (cachedResponse) {
-          return cachedResponse;
-        }
-        // If no cache available, return a proper error response
-        return new Response('Network error', {
-          status: 503,
-          statusText: 'Service Unavailable',
-          headers: { 'Content-Type': 'text/plain' }
-        });
-      });
-    })
-  );
+  // The precached assets: network first, the cached copy when offline.
+  if (STATIC_ASSETS.includes(url.pathname)) {
+    event.respondWith(
+      fetch(request).catch(() =>
+        caches.match(request).then(
+          (cachedResponse) =>
+            cachedResponse ||
+            new Response('Network error', {
+              status: 503,
+              statusText: 'Service Unavailable',
+              headers: { 'Content-Type': 'text/plain' }
+            })
+        )
+      )
+    );
+  }
+  // Anything else is not handled here, so the browser fetches it as usual.
 });
