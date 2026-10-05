@@ -1,6 +1,6 @@
 import { cache } from "react";
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { fetchPublicFormBySlugAction } from "@/app/actions/forms";
 import { PublicFormClient, type PublicForm } from "./form-client";
 
@@ -25,7 +25,10 @@ export default async function PublicFormPage({ params }: { params: Params }) {
   const { slug } = await params;
   const form = (await loadForm(slug)) as PublicForm | null;
 
-  if (form?.requiresLogin && !form.isAuthenticated) {
+  // ./not-found.tsx explains, with a 404 status.
+  if (!form) notFound();
+
+  if (form.requiresLogin && !form.isAuthenticated) {
     redirect(`/student-login?redirectTo=${encodeURIComponent(`/forms/${slug}`)}`);
   }
 
