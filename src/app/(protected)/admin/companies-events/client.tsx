@@ -1212,65 +1212,71 @@ function getUserColumns(onRemoveUser: (userId: string) => void, companyId: strin
     {
       id: "actions",
       enableHiding: false,
-      cell: ({ row }) => {
-        const user = row.original;
-        const [isResending, setIsResending] = React.useState(false);
-        const userStatus = user?.status;
-        const isInvited = userStatus === "invited";
-
-        const handleResendInvite = async () => {
-          if (!user?.id) return;
-          
-          setIsResending(true);
-          try {
-            const result = await resendInviteAction(user.id, companyId);
-            if (result.success) {
-              // You could add a toast notification here
-              console.log("Invitation resent successfully");
-            } else {
-              console.error("Failed to resend invitation:", result.error);
-              alert(`Failed to resend invitation: ${result.error || "Unknown error"}`);
-            }
-          } catch (error) {
-            console.error("Error resending invitation:", error);
-            alert(`Error resending invitation: ${error instanceof Error ? error.message : "Unknown error"}`);
-          } finally {
-            setIsResending(false);
-          }
-        };
-
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal /></Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => console.log("Edit user", user)}>Edit</DropdownMenuItem>
-              {user?.id && isInvited && (
-                <DropdownMenuItem 
-                  onClick={handleResendInvite}
-                  disabled={isResending}
-                >
-                  {isResending ? "Resending..." : "Resend invite"}
-                </DropdownMenuItem>
-              )}
-              {user?.id && (
-                <>
-                  <DropdownMenuSeparator />
-                  <RemoveUserDialog
-                    user={user}
-                    companyId={companyId}
-                    onRemove={() => onRemoveUser(user.id!)}
-                  />
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        );
-      },
+      cell: ({ row }) => (
+        <UserRowActions user={row.original} companyId={companyId} onRemoveUser={onRemoveUser} />
+      ),
     },
   ];
+}
+
+/** ------------------------------------------------------------------
+ * Row actions for a company user. A component of its own because it holds
+ * state: hooks cannot be called from a column's `cell` renderer.
+ * ------------------------------------------------------------------ */
+function UserRowActions({ user, companyId, onRemoveUser }: {
+  user: Partial<CompanyRep>;
+  companyId: string;
+  onRemoveUser: (userId: string) => void;
+}) {
+  const [isResending, setIsResending] = React.useState(false);
+  const isInvited = user?.status === "invited";
+
+  const handleResendInvite = async () => {
+    if (!user?.id) return;
+
+    setIsResending(true);
+    try {
+      const result = await resendInviteAction(user.id, companyId);
+      if (result.success) {
+        alert(`Invitation resent to ${user.email ?? "the user"}.`);
+      } else {
+        console.error("Failed to resend invitation:", result.error);
+        alert(`Failed to resend invitation: ${result.error || "Unknown error"}`);
+      }
+    } catch (error) {
+      console.error("Error resending invitation:", error);
+      alert(`Error resending invitation: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  if (!user?.id) return null;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" className="h-8 w-8 p-0" aria-label="User actions"><MoreHorizontal /></Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+        {isInvited && (
+          <DropdownMenuItem
+            onClick={handleResendInvite}
+            disabled={isResending}
+          >
+            {isResending ? "Resending..." : "Resend invite"}
+          </DropdownMenuItem>
+        )}
+        {isInvited && <DropdownMenuSeparator />}
+        <RemoveUserDialog
+          user={user}
+          companyId={companyId}
+          onRemove={() => onRemoveUser(user.id!)}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 /** ------------------------------------------------------------------
