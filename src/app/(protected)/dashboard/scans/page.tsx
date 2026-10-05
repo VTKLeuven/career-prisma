@@ -1,15 +1,7 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-
+// Redirected on the server: the client-side router.replace() this used to be
+// first loaded and hydrated an empty page.
 export default function MyScansPage() {
-  const router = useRouter();
-  
-  useEffect(() => {
-    // Redirect to all scans page
-    router.replace("/dashboard/scans/all");
-  }, [router]);
-
-  return null;
+  redirect("/dashboard/scans/all");
 }

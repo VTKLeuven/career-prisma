@@ -65,7 +65,8 @@ export async function listCompanyScans(
     include: {
       scannedBy: { select: { first_name: true, last_name: true, email: true } },
       formResponse: {
-        include: { formVersion: { include: { form: true } } },
+        // The pages show the form's name; the metadata carries the event id.
+        include: { formVersion: { select: { metadata: true, form: { select: { id: true, name: true } } } } },
       },
     },
     orderBy: { scanned_at: "desc" },
