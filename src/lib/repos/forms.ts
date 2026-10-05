@@ -1383,13 +1383,18 @@ export async function getFloorplanCategoryOptions(
   }
 }
 
-/** Get company IDs that have ALL selected values (in any of the configured form fields).
- * Uses same logic as getCompanyMasterDegreesFromForm: all form versions, normalize label->value. */
-export async function getCompanyIdsMatchingFloorplanCategory(
-  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>,
-  selectedValues: string[]
-): Promise<string[]> {
-  if (selectedValues.length === 0) return [];
+/**
+ * Every company's canonical floorplan-category values, from the latest response
+ * per company in each configured form field. Uses the same logic as
+ * getCompanyMasterDegreesFromForm: all form versions, normalize label->value.
+ *
+ * The public floorplan sends this map to the browser once and filters there,
+ * instead of asking the server again on every category click.
+ */
+export async function getCompanyFloorplanCategoryValues(
+  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>
+): Promise<Map<string, Set<string>>> {
+  const companyCanonicalValues = new Map<string, Set<string>>();
   try {
     const { listMasters, listFaculties } = await import("@/lib/repos/features");
     const { normalizeMasterDegreesValues, normalizeFaculties } = await import("@/lib/utils/master-degree-options");
@@ -1410,7 +1415,6 @@ export async function getCompanyIdsMatchingFloorplanCategory(
       return null;
     };
 
-    const companyCanonicalValues = new Map<string, Set<string>>();
     for (const { formId, formVersionId, fieldName } of categoryFields) {
       const form = await getFormById(formId);
       const version = form?.form_versions?.find((v) => v.id === formVersionId) as FormVersion & { schema?: { fields?: FormField[] } };
@@ -1448,23 +1452,26 @@ export async function getCompanyIdsMatchingFloorplanCategory(
         companyCanonicalValues.set(companyId, set);
       }
     }
-
-    const selectedSet = new Set(selectedValues.map((v) => v.trim()).filter(Boolean));
-    const result: string[] = [];
-    for (const [companyId, canonValues] of companyCanonicalValues) {
-      const hasAll = [...selectedSet].every((sel) => canonValues.has(sel));
-      if (hasAll) result.push(companyId);
-    }
-    console.log("[floorplan-category] getCompanyIdsMatchingFloorplanCategory", {
-      selectedValues: selectedValues.length,
-      categoryFieldsCount: categoryFields.length,
-      matchingCompanyCount: result.length,
-    });
-    return result;
   } catch (error) {
-    console.error("[getCompanyIdsMatchingFloorplanCategory] Error:", error);
-    return [];
+    console.error("[getCompanyFloorplanCategoryValues] Error:", error);
   }
+  return companyCanonicalValues;
+}
+
+/** Get company IDs that have ALL selected values (in any of the configured form fields). */
+export async function getCompanyIdsMatchingFloorplanCategory(
+  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>,
+  selectedValues: string[]
+): Promise<string[]> {
+  if (selectedValues.length === 0) return [];
+  const companyCanonicalValues = await getCompanyFloorplanCategoryValues(categoryFields);
+  const selectedSet = new Set(selectedValues.map((v) => v.trim()).filter(Boolean));
+  const result: string[] = [];
+  for (const [companyId, canonValues] of companyCanonicalValues) {
+    const hasAll = [...selectedSet].every((sel) => canonValues.has(sel));
+    if (hasAll) result.push(companyId);
+  }
+  return result;
 }
 
 /** Get company categories (interested study fields) from form responses. Returns Map<companyId, string[]> of display labels for matching. */

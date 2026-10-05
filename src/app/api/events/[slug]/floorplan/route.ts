@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchEventPageBySlugAction } from "@/app/actions/events";
-import { loadFloorplanData } from "@/lib/floorplan-data";
-import { getCachedEventPage, setCachedEventPage } from "@/lib/event-page-cache";
-import { getCachedFloorplan, setCachedFloorplan } from "@/lib/floorplan-cache";
+import { loadPublicFloorplan } from "@/lib/floorplan-data";
+import { loadEventPage } from "@/lib/event-page-data";
 import { isDevEnvironment } from "@/lib/dev-environment";
 import { sharedCacheHeaders } from "@/lib/http-cache";
 
 const CACHE_HEADERS = sharedCacheHeaders(300, 600);
 
+/**
+ * The public floorplan as JSON, for the floorplan app in vtk-floorplan-app/.
+ * The web page renders the same data (loadPublicFloorplan) on the server.
+ */
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ slug: string }> }
@@ -21,22 +23,9 @@ export async function GET(
   }
 
   try {
-    const params = await context.params;
-    const { slug } = params;
+    const { slug } = await context.params;
 
-    // Check floorplan cache first
-    const cachedFloorplan = getCachedFloorplan(slug);
-    if (cachedFloorplan) {
-      return NextResponse.json(cachedFloorplan, { headers: CACHE_HEADERS });
-    }
-
-    // Get event page (use event cache)
-    let page = getCachedEventPage(slug) as Awaited<ReturnType<typeof fetchEventPageBySlugAction>> | null;
-    if (!page) {
-      page = await fetchEventPageBySlugAction(slug);
-      if (page) setCachedEventPage(slug, page);
-    }
-
+    const page = await loadEventPage(slug);
     if (!page || !page.floorplan) {
       return NextResponse.json(
         { error: "Floorplan not found" },
@@ -44,7 +33,7 @@ export async function GET(
       );
     }
 
-    const data = await loadFloorplanData(page);
+    const data = await loadPublicFloorplan(page, slug);
     if (!data) {
       return NextResponse.json(
         { error: "Floorplan data not available" },
@@ -52,7 +41,6 @@ export async function GET(
       );
     }
 
-    setCachedFloorplan(slug, data);
     return NextResponse.json(data, { headers: CACHE_HEADERS });
   } catch (error) {
     console.error("[floorplan API] Error fetching floorplan:", error);
