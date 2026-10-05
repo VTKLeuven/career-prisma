@@ -10,6 +10,8 @@ import { fetchMastersAction } from "@/app/actions/features";
 import { generateCompanyPageRequestEmailHtml, generateCVBookRequestEmailHtml } from "@/lib/email-templates";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import prisma from "@/lib/prisma";
+import { invalidateCompanyPageCache } from "@/lib/company-page-cache";
+import { invalidateEventPageCache } from "@/lib/event-page-cache";
 type AppUser = UserSummary;
 
 
@@ -807,6 +809,8 @@ async function addSubOptionViaJunction(companyId: string, subOptionId: string): 
       date_created: new Date(),
     },
   });
+  invalidateCompanyPageCache();
+  invalidateEventPageCache();
   return true;
 }
 
@@ -820,6 +824,8 @@ async function removeSubOptionViaJunction(companyId: string, subOptionId: string
     where: { company_id: companyId, career_sub_option_id: subOption, academic_year_id: academicYearId },
     data: { status: "cancelled" },
   });
+  invalidateCompanyPageCache();
+  invalidateEventPageCache();
   return true;
 }
 
@@ -881,6 +887,8 @@ export async function removeOptionFromCompanyAction(companyId: string, optionId:
     },
     data: { status: "cancelled" },
   });
+  invalidateCompanyPageCache();
+  invalidateEventPageCache();
   return fetchCompanyByIdAction(companyId);
 }
 

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { COMPANY_INCLUDE, shapeCompany } from "@/lib/repos/_shape";
 import type { Company } from "@/lib/schema";
 import { resolveAcademicYearId } from "@/lib/repos/academic-year";
+import { invalidateCompanyPageCache } from "@/lib/company-page-cache";
 
 /** Minimal company shape for vacancy cards / public listing. */
 export type CompanyBasicForVacancy = Pick<Company, "id" | "name" | "logo" | "website">;
@@ -117,6 +118,7 @@ export async function createCompany(payload: Partial<Company>) {
     data: toCompanyWrite(payload),
     include: COMPANY_INCLUDE,
   });
+  invalidateCompanyPageCache();
   return shapeCompany(row) as Company;
 }
 
@@ -126,6 +128,7 @@ export async function updateCompany(id: string, payload: Partial<Company>) {
     data: { ...toCompanyWrite(payload), date_updated: new Date() },
     include: COMPANY_INCLUDE,
   });
+  invalidateCompanyPageCache();
   return shapeCompany(row) as Company;
 }
 

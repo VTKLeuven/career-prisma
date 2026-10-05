@@ -2,6 +2,15 @@
 
 import { prisma } from "@/lib/prisma";
 import { assertAcademicYearWritable, resolveAcademicYearId } from "@/lib/repos/academic-year";
+import { invalidateCompanyPageCache } from "@/lib/company-page-cache";
+import { invalidateEventPageCache } from "@/lib/event-page-cache";
+
+// A sale decides which options a company page shows and which companies an
+// event page lists, so every write drops both public caches.
+function invalidatePublicSalePages() {
+  invalidateCompanyPageCache();
+  invalidateEventPageCache();
+}
 
 export type AdminOptionSale = {
   id: string;
@@ -170,6 +179,7 @@ export async function createOptionSale(input: {
     return saved;
   });
 
+  invalidatePublicSalePages();
   const complete = await prisma.companyCareerEventOption.findUnique({
     where: { id: sale.id },
     include: SALE_INCLUDE,
@@ -185,6 +195,7 @@ export async function deleteOptionSale(id: number): Promise<void> {
     where: { id },
     data: { status: "cancelled" },
   });
+  invalidatePublicSalePages();
 }
 
 export async function createSubOptionSale(input: {
@@ -222,6 +233,7 @@ export async function createSubOptionSale(input: {
       date_created: new Date(),
     },
   });
+  invalidatePublicSalePages();
 }
 
 export async function deleteSubOptionSale(id: number): Promise<void> {
@@ -232,4 +244,5 @@ export async function deleteSubOptionSale(id: number): Promise<void> {
     where: { id },
     data: { status: "cancelled" },
   });
+  invalidatePublicSalePages();
 }

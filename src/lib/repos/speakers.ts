@@ -4,6 +4,15 @@
 import { prisma } from "@/lib/prisma";
 import { SPEAKER_INCLUDE, shapeSpeaker } from "@/lib/repos/_shape";
 import type { Speaker } from "@/lib/schema";
+import { invalidateCompanyPageCache } from "@/lib/company-page-cache";
+import { invalidateEventPageCache } from "@/lib/event-page-cache";
+
+// Speakers are shown on public company and event pages, so every write drops
+// both caches.
+function invalidatePublicSpeakerPages() {
+  invalidateCompanyPageCache();
+  invalidateEventPageCache();
+}
 
 export async function listSpeakers(opts?: { limit?: number }): Promise<Speaker[]> {
   try {
@@ -44,6 +53,7 @@ export async function createSpeaker(payload: Record<string, any>): Promise<Speak
     data: { ...toSpeakerWrite(payload), date_created: new Date() },
     include: SPEAKER_INCLUDE,
   });
+  invalidatePublicSpeakerPages();
   return shapeSpeaker(row) as Speaker;
 }
 
@@ -53,6 +63,7 @@ export async function updateSpeaker(id: number, payload: Record<string, any>): P
     data: { ...toSpeakerWrite(payload), date_updated: new Date() },
     include: SPEAKER_INCLUDE,
   });
+  invalidatePublicSpeakerPages();
   return shapeSpeaker(row) as Speaker;
 }
 
@@ -63,4 +74,5 @@ export async function deleteSpeaker(id: number): Promise<void> {
     prisma.timetable.updateMany({ where: { speaker_id: id }, data: { speaker_id: null } }),
     prisma.speaker.delete({ where: { id } }),
   ]);
+  invalidatePublicSpeakerPages();
 }
