@@ -1,17 +1,18 @@
+import { createTtlCache } from "@/lib/ttl-cache";
+
 // In-memory cache for our-students page (masters list). Same TTL pattern as event pages.
-let cachedMasters: { data: unknown; timestamp: number } | null = null;
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const ourStudentsCache = createTtlCache("our-students", 5 * 60 * 1000); // 5 minutes
+const KEY = "masters";
 
 export function getCachedOurStudents(): unknown | null {
-  if (cachedMasters && Date.now() - cachedMasters.timestamp < CACHE_TTL) return cachedMasters.data;
-  return null;
+  return ourStudentsCache.get(KEY);
 }
 
 export function setCachedOurStudents(data: unknown): void {
-  cachedMasters = { data, timestamp: Date.now() };
+  ourStudentsCache.set(KEY, data);
 }
 
 /** Call when masters data is updated so the page shows fresh data. */
 export function invalidateOurStudentsCache(): void {
-  cachedMasters = null;
+  ourStudentsCache.clear();
 }

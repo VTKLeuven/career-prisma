@@ -80,7 +80,9 @@ example of both:
 
 The cache lives on `globalThis`, like the client in `lib/prisma.ts`: the route
 that reads it and the actions that clear it can be bundled separately, and a
-plain module variable would give each its own copy.
+plain module variable would give each its own copy. The event-page, floorplan,
+company-page and our-students caches get this from `createTtlCache()` in
+`src/lib/ttl-cache.ts`; build a new cache on it rather than on a module `Map`.
 
 ## Background work
 
