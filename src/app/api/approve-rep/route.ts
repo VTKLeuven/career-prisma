@@ -16,7 +16,9 @@ export async function GET(request: NextRequest) {
 
   const user = await getUserFromCookies();
   if (!user) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    // Relative, for the same reason as api/cv-file: request.url may carry the
+    // container's internal origin.
+    return new NextResponse(null, { status: 307, headers: { Location: "/login" } });
   }
 
   const repRequest = await prisma.companyUserRequest.findUnique({

@@ -8,7 +8,11 @@ export async function GET(request: NextRequest) {
       { status: 400 }
     );
   }
-  return NextResponse.redirect(
-    new URL(`/api/files/${encodeURIComponent(fileId)}`, request.url)
-  );
+  // Relative Location on purpose: in the standalone container request.url
+  // can carry the internal listener origin (http://0.0.0.0:3000), and an
+  // absolute redirect built from it sends browsers there. See api/cv-file.
+  return new NextResponse(null, {
+    status: 307,
+    headers: { Location: `/api/files/${encodeURIComponent(fileId)}` },
+  });
 }
