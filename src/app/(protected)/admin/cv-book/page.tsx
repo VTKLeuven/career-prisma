@@ -63,6 +63,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, ChevronDown, Trash2, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { toast } from "sonner";
 
 type CVBookRow = CVBook & {
   year: AcademicYear;
@@ -138,7 +139,7 @@ function CVBooksTable() {
     if (result.success) {
       loadCVBooks();
     } else {
-      alert(`Failed to delete CV Book: ${result.error}`);
+      toast.error(`Failed to delete CV Book: ${result.error}`);
     }
   };
 
@@ -147,7 +148,7 @@ function CVBooksTable() {
     if (result.success) {
       loadCVBooks();
     } else {
-      alert(`Failed to ${active ? 'activate' : 'deactivate'} CV Book: ${result.error}`);
+      toast.error(`Failed to ${active ? 'activate' : 'deactivate'} CV Book: ${result.error}`);
     }
   };
 
@@ -480,7 +481,7 @@ function CreateCVBookDialog({ onCreated }: { onCreated?: () => void }) {
     e.preventDefault();
     
     if (!selectedYearId || !selectedFormId || !studentFirstNameField || !studentLastNameField || !studentEmailField || !studentStudyField || !studentCVField) {
-      alert("Please fill in all fields");
+      toast.error("Please fill in all fields");
       return;
     }
 
@@ -531,11 +532,11 @@ function CreateCVBookDialog({ onCreated }: { onCreated?: () => void }) {
           onCreated();
         }
       } else {
-        alert(`Failed to create CV Book: ${result.error}`);
+        toast.error(`Failed to create CV Book: ${result.error}`);
       }
     } catch (error) {
       console.error("[CreateCVBookDialog] Error:", error);
-      alert("Failed to create CV Book");
+      toast.error("Failed to create CV Book");
     } finally {
       setLoading(false);
     }
@@ -974,7 +975,7 @@ function EditCVBookDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!studentFirstNameField || !studentLastNameField || !studentEmailField || !studentStudyField || !studentCVField) {
-      alert("Please fill in all required fields");
+      toast.error("Please fill in all required fields");
       return;
     }
 
@@ -1002,11 +1003,11 @@ function EditCVBookDialog({
         onOpenChange(false);
         onUpdated();
       } else {
-        alert(`Failed to update CV Book: ${result.error}`);
+        toast.error(`Failed to update CV Book: ${result.error}`);
       }
     } catch (error) {
       console.error("[EditCVBookDialog] Error:", error);
-      alert("Failed to update CV Book");
+      toast.error("Failed to update CV Book");
     } finally {
       setLoading(false);
     }

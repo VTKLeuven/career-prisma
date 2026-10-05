@@ -63,6 +63,7 @@ import { slugifyEventName } from "@/lib/utils/slugify";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { toast } from "sonner";
 
 type FormRow = {
   id: string;
@@ -628,7 +629,7 @@ function CreateFormDialog() {
       router.push(`/admin/forms/${created.id}/builder`);
     } catch (error) {
       console.error("Error creating form:", error);
-      alert("Failed to create form");
+      toast.error("Failed to create form");
     } finally {
       setLoading(false);
     }
@@ -1405,7 +1406,7 @@ function EditFormDialog({
       onUpdate();
     } catch (error) {
       console.error("Error updating form:", error);
-      alert("Failed to update form");
+      toast.error("Failed to update form");
     } finally {
       setLoading(false);
     }
@@ -1774,7 +1775,7 @@ function DeleteFormDialog({
       onDeleted();
     } catch (error) {
       console.error("Error deleting form:", error);
-      alert("Failed to delete form");
+      toast.error("Failed to delete form");
     } finally {
       setLoading(false);
     }
@@ -1818,7 +1819,7 @@ function ToggleFormStatusMenuItem({ form, onUpdate }: { form: FormRow; onUpdate:
       onUpdate();
     } catch (error) {
       console.error("Error toggling form status:", error);
-      alert(`Failed to update form status: ${error instanceof Error ? error.message : String(error)}`);
+      toast.error(`Failed to update form status: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setToggling(false);
     }
@@ -1954,10 +1955,10 @@ function VersionsDialog({
       await setActiveVersionAction(versionId);
       await loadVersions();
       onUpdate();
-      alert('Version activated successfully! The form list will refresh.');
+      toast.success('Version activated successfully! The form list will refresh.');
     } catch (error) {
       console.error("[VersionsDialog] Error activating version:", error);
-      alert(`Failed to activate version: ${error}`);
+      toast.error(`Failed to activate version: ${error}`);
     } finally {
       setActivating(null);
     }

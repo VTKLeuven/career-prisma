@@ -28,6 +28,7 @@ import {
   submitStudentMatchingAction,
 } from "@/app/actions/matching-software";
 import type { RIASECType } from "@/lib/schema";
+import { toast } from "sonner";
 
 const RIASEC_DESCRIPTIONS: Record<RIASECType, { title: string; description: string }> = {
   R: {
@@ -320,7 +321,7 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to submit. Please try again.");
+      toast.error("Failed to submit. Please try again.");
     } finally {
       setSubmitting(false);
     }

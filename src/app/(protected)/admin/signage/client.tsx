@@ -57,6 +57,7 @@ import {
     deleteScheduleSlotAction,
 } from "@/app/actions/signage";
 import type { SignageScreen, SignageMedia, SignageScheduleSlot } from "@/lib/schema";
+import { toast } from "sonner";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -374,7 +375,7 @@ function MediaTab({
 
                 if (!res.ok) {
                     const err = await res.json().catch(() => ({ error: "Upload failed" }));
-                    alert(`Upload failed: ${err.error}`);
+                    toast.error(`Upload failed: ${err.error}`);
                     continue;
                 }
             }

@@ -28,6 +28,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { toast } from "sonner";
 
 export default function AdminFloorplanPage() {
   const params = useParams()
@@ -195,9 +196,9 @@ export default function AdminFloorplanPage() {
         eventId,
         categoryFormFields.filter(e => e.formVersionId && e.fieldName)
       )
-      if (!result.success) alert(result.error ?? "Failed to save")
+      if (!result.success) toast.error(result.error ?? "Failed to save")
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to save")
+      toast.error(e instanceof Error ? e.message : "Failed to save")
     } finally {
       setCategoryFormFieldsSaving(false)
     }
@@ -224,9 +225,9 @@ export default function AdminFloorplanPage() {
         eventId,
         companyNameFormFields.filter(e => e.formVersionId && e.fieldName)
       )
-      if (!result.success) alert(result.error ?? "Failed to save")
+      if (!result.success) toast.error(result.error ?? "Failed to save")
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to save")
+      toast.error(e instanceof Error ? e.message : "Failed to save")
     } finally {
       setCompanyNameFormFieldsSaving(false)
     }
@@ -313,7 +314,7 @@ export default function AdminFloorplanPage() {
       }
     } catch (error) {
       console.error("Error assigning company:", error)
-      alert(error instanceof Error ? error.message : "Failed to assign company")
+      toast.error(error instanceof Error ? error.message : "Failed to assign company")
     } finally {
       setUpdating(false)
     }
@@ -341,7 +342,7 @@ export default function AdminFloorplanPage() {
       router.push("/admin")
     } catch (error) {
       console.error("Error deleting floorplan:", error)
-      alert(error instanceof Error ? error.message : "Failed to delete floorplan")
+      toast.error(error instanceof Error ? error.message : "Failed to delete floorplan")
       setDeleting(false)
     }
   }

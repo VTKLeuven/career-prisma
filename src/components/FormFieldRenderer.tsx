@@ -16,6 +16,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Download, FileIcon } from "lucide-react";
 import type { FormField } from "@/lib/schema";
 import { studyFieldOptions } from "@/lib/form-fields";
+import { toast } from "sonner";
 
 type MasterOption = { value: string; label: string };
 type Master = { id: string; name: string };
@@ -717,7 +718,7 @@ export function FormFieldRenderer({
 
                 const oversizedFiles = files.filter((file) => file.size > maxFileSize);
                 if (oversizedFiles.length > 0) {
-                  alert(`Some files exceed the maximum size of ${maxFileSizeMB}MB. Please select smaller files.`);
+                  toast.error(`Some files exceed the maximum size of ${maxFileSizeMB}MB. Please select smaller files.`);
                   e.target.value = "";
                   return;
                 }
@@ -730,7 +731,7 @@ export function FormFieldRenderer({
                       )
                   );
                   if (invalidFiles.length > 0) {
-                    alert(
+                    toast.error(
                       `Some files have invalid types. Allowed types: ${field.validation.allowedFileTypes.join(", ")}`
                     );
                     e.target.value = "";
@@ -755,7 +756,7 @@ export function FormFieldRenderer({
                   onChange(isMultiple ? uploadedIds : uploadedIds[0]);
                 } catch (error) {
                   console.error("File upload error:", error);
-                  alert(`Failed to upload file: ${error instanceof Error ? error.message : String(error)}`);
+                  toast.error(`Failed to upload file: ${error instanceof Error ? error.message : String(error)}`);
                   e.target.value = "";
                 }
               }}

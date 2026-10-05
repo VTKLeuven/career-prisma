@@ -35,6 +35,7 @@ import { Plus, RefreshCw, Loader2, BarChart3, ArrowUp, ArrowDown } from "lucide-
 import { useUser } from "@/providers/UserProvider";
 import type { MatchingSoftware, AcademicYear, Form, CareerEvent } from "@/lib/schema";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { toast } from "sonner";
 
 type MatchingSoftwareRow = MatchingSoftware & {
   year: AcademicYear;
@@ -107,7 +108,7 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
       );
     } catch (err) {
       console.error(err);
-      alert("Failed to update. Please try again.");
+      toast.error("Failed to update. Please try again.");
     } finally {
       setTogglingId(null);
     }
@@ -123,7 +124,7 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
       );
     } catch (err) {
       console.error(err);
-      alert("Failed to update. Please try again.");
+      toast.error("Failed to update. Please try again.");
     } finally {
       setTogglingViewId(null);
     }
@@ -451,7 +452,7 @@ function CreateMatchingSoftwareDialog({ eventId: preselectedEventId, onCreated }
     e.preventDefault();
     const eventToUse = selectedEventId || preselectedEventId;
     if (!selectedYearId || !eventToUse) {
-      alert("Please select year and event");
+      toast.error("Please select year and event");
       return;
     }
 
@@ -470,7 +471,7 @@ function CreateMatchingSoftwareDialog({ eventId: preselectedEventId, onCreated }
       onCreated?.();
     } catch (err) {
       console.error(err);
-      alert("Failed to create the matching software configuration.");
+      toast.error("Failed to create the matching software configuration.");
     } finally {
       setLoading(false);
     }

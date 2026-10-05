@@ -15,6 +15,7 @@ import { toggleShifterStatusAction, listAllUsersAction } from "@/app/actions/shi
 import { useRouter } from "next/navigation";
 import { Check, X, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 
 export default function ShiftersClient({ initialUsers }: { initialUsers: any[] }) {
     const [users, setUsers] = useState(initialUsers);
@@ -30,7 +31,7 @@ export default function ShiftersClient({ initialUsers }: { initialUsers: any[] }
         if (!res.success) {
             // Revert if failed
             setUsers(prev => prev.map(u => u.id === user.id ? { ...u, is_shifter: !newStatus } : u));
-            alert("Failed to update status");
+            toast.error("Failed to update status");
         } else {
             router.refresh();
         }

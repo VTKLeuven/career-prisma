@@ -44,6 +44,7 @@ import { uploadFileAction } from "@/app/actions/media";
 import { SimpleRichTextEditor } from "@/components/admin/SimpleRichTextEditor";
 import type { FieldConfig, ResourceConfig, SelectOption } from "@/components/admin/types";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 type FormValues = Record<string, unknown>;
 
@@ -262,7 +263,7 @@ export function ResourceManager<T extends Record<string, unknown>>({
     try {
       const result = await config.actions.remove(id);
       if (!result.success) {
-        alert(result.error ?? `Failed to delete ${config.singular.toLowerCase()}`);
+        toast.error(result.error ?? `Failed to delete ${config.singular.toLowerCase()}`);
         return false;
       }
       setRows((prev) => prev.filter((r) => config.getId(r) !== id));

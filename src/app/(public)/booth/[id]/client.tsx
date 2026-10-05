@@ -8,6 +8,7 @@ import { placeOrderAction, checkOrderStatusAction, cancelOrderAction } from "@/a
 import type { Drink, Order } from "@/lib/schema";
 import { useRouter } from "next/navigation";
 import { getFileUrl } from "@/components/Images";
+import { toast } from "sonner";
 
 export default function BoothClient({
     boothId,
@@ -82,7 +83,7 @@ export default function BoothClient({
             setCart({});
             router.refresh();
         } else {
-            alert(res.error || "Failed");
+            toast.error(res.error || "Failed");
         }
         setSubmitting(false);
     };
@@ -95,7 +96,7 @@ export default function BoothClient({
             setActiveOrder(null);
             router.refresh();
         } else {
-            alert(res.error || "Failed to cancel order");
+            toast.error(res.error || "Failed to cancel order");
         }
         setCancelling(false);
     };

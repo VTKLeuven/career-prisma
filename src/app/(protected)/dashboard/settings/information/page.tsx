@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { validatePageImageDimensions, validateExistingPageImage } from "@/lib/utils/image-validation";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
+import { toast } from "sonner";
 
 // --- Helpers ---
 function isFileLike(value: unknown): value is File {
@@ -400,12 +401,12 @@ export default function CompanyForm() {
     const longWordCount = countWords(longDescriptionText);
     
     if (shortWordCount > SHORT_DESC_WORD_LIMIT) {
-      alert(`Short description exceeds the word limit of ${SHORT_DESC_WORD_LIMIT} words. Current: ${shortWordCount} words.`);
+      toast.error(`Short description exceeds the word limit of ${SHORT_DESC_WORD_LIMIT} words. Current: ${shortWordCount} words.`);
       return;
     }
     
     if (longWordCount > LONG_DESC_WORD_LIMIT) {
-      alert(`Long description exceeds the word limit of ${LONG_DESC_WORD_LIMIT} words. Current: ${longWordCount} words.`);
+      toast.error(`Long description exceeds the word limit of ${LONG_DESC_WORD_LIMIT} words. Current: ${longWordCount} words.`);
       return;
     }
 
@@ -506,12 +507,12 @@ export default function CompanyForm() {
       // Show user-friendly error message
       if (err instanceof Error) {
         if (err.message.includes("Body exceeded") || err.message.includes("413")) {
-          alert(`The data you're trying to save is too large. Please reduce the size of your descriptions or contact support if this persists. Error: ${err.message}`);
+          toast.error(`The data you're trying to save is too large. Please reduce the size of your descriptions or contact support if this persists. Error: ${err.message}`);
         } else {
-          alert(`Failed to save company information. Please try again. Error: ${err.message}`);
+          toast.error(`Failed to save company information. Please try again. Error: ${err.message}`);
         }
       } else {
-        alert("Failed to save company information. Please try again.");
+        toast.error("Failed to save company information. Please try again.");
       }
     }
   }

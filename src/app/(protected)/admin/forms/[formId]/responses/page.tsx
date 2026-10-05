@@ -48,6 +48,7 @@ import NextImage from "next/image";
 import { resolveMasterDegreeValueToDisplayLabel, normalizeFaculties, type FacultyItem } from "@/lib/utils/master-degree-options";
 import type { Master } from "@/lib/schema";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { toast } from "sonner";
 
 export default function FormResponsesPage() {
   const params = useParams();
@@ -624,7 +625,7 @@ export default function FormResponsesPage() {
       }
     } catch (error) {
       console.error("Error loading recipients:", error);
-      alert(`Failed to load recipients: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Failed to load recipients: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoadingRecipients(false);
     }
@@ -720,7 +721,7 @@ export default function FormResponsesPage() {
       ? (qrEmailStats?.unsent ?? 0)
       : (qrEmailStats?.total ?? 0);
     if (targetCount === 0) {
-      alert("No attendees to send QR code emails to.");
+      toast.info("No attendees to send QR code emails to.");
       return;
     }
 
@@ -739,7 +740,7 @@ export default function FormResponsesPage() {
       if (!response.ok) {
         const error = await response.json();
         if (response.status === 409) {
-          alert("A QR email job is already running for this form. Please wait for it to finish.");
+          toast.info("A QR email job is already running for this form. Please wait for it to finish.");
           setSendingQrEmails(false);
           return;
         }
@@ -748,7 +749,7 @@ export default function FormResponsesPage() {
 
       const result = await response.json();
       if (!result.jobId) {
-        alert(result.message || "No emails to send.");
+        toast.info(result.message || "No emails to send.");
         setSendingQrEmails(false);
         return;
       }
@@ -756,7 +757,7 @@ export default function FormResponsesPage() {
       setQrJobId(result.jobId);
     } catch (error) {
       console.error("Error starting QR email job:", error);
-      alert(`Failed to start QR email job: ${error instanceof Error ? error.message : "Unknown error"}`);
+      toast.error(`Failed to start QR email job: ${error instanceof Error ? error.message : "Unknown error"}`);
       setSendingQrEmails(false);
     }
   };
@@ -865,7 +866,7 @@ export default function FormResponsesPage() {
     });
 
     if (selectedRecipients.length === 0) {
-      alert("Please select at least one recipient to send reminders to.");
+      toast.error("Please select at least one recipient to send reminders to.");
       return;
     }
 
@@ -886,7 +887,7 @@ export default function FormResponsesPage() {
       if (!response.ok) {
         const error = await response.json();
         if (response.status === 409) {
-          alert("A reminder job is already running for this form. Please wait for it to finish.");
+          toast.info("A reminder job is already running for this form. Please wait for it to finish.");
           setSendingReminders(false);
           return;
         }
@@ -895,7 +896,7 @@ export default function FormResponsesPage() {
 
       const result = await response.json();
       if (!result.jobId) {
-        alert(result.message || "No emails to send.");
+        toast.info(result.message || "No emails to send.");
         setSendingReminders(false);
         return;
       }
@@ -903,7 +904,7 @@ export default function FormResponsesPage() {
       setReminderJobId(result.jobId);
     } catch (error) {
       console.error("Error starting reminder job:", error);
-      alert(`Failed to start reminder job: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Failed to start reminder job: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setSendingReminders(false);
     }
   };
@@ -964,12 +965,12 @@ export default function FormResponsesPage() {
       }
     } catch (error) {
       console.error("Error fetching all responses for export:", error);
-      alert("Failed to fetch all responses. Please try again.");
+      toast.error("Failed to fetch all responses. Please try again.");
       return;
     }
 
     if (allResponses.length === 0) {
-      alert("No responses to export.");
+      toast.info("No responses to export.");
       return;
     }
 
@@ -1185,7 +1186,7 @@ export default function FormResponsesPage() {
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error("Error downloading all files:", error);
-      alert(`Failed to download files: ${error instanceof Error ? error.message : "Unknown error"}`);
+      toast.error(`Failed to download files: ${error instanceof Error ? error.message : "Unknown error"}`);
     } finally {
       setDownloadingAllFiles(false);
     }
@@ -1217,7 +1218,7 @@ export default function FormResponsesPage() {
       setResponseToDelete(null);
     } catch (error) {
       console.error("Error deleting response:", error);
-      alert("Failed to delete response. Please try again.");
+      toast.error("Failed to delete response. Please try again.");
     } finally {
       setDeleting(false);
     }
@@ -1285,7 +1286,7 @@ export default function FormResponsesPage() {
       setResponseToEdit(null);
     } catch (error) {
       console.error("Error updating response:", error);
-      alert("Failed to update response. Please try again.");
+      toast.error("Failed to update response. Please try again.");
     } finally {
       setEditing(false);
     }
@@ -1356,11 +1357,11 @@ export default function FormResponsesPage() {
     setArchivingDuplicates(true);
     try {
       const result = await archiveDuplicateFormResponsesAction(formId);
-      alert(result.archived > 0 ? `Archived ${result.archived} duplicate response(s).` : "No duplicate responses found.");
+      toast.success(result.archived > 0 ? `Archived ${result.archived} duplicate response(s).` : "No duplicate responses found.");
       await loadResponses(isAllVersions ? "" : selectedVersionId, currentPage, isAllVersions);
     } catch (error) {
       console.error("Error archiving duplicates:", error);
-      alert("Failed to archive duplicates. Please try again.");
+      toast.error("Failed to archive duplicates. Please try again.");
     } finally {
       setArchivingDuplicates(false);
     }
@@ -1371,7 +1372,7 @@ export default function FormResponsesPage() {
     
     const isEventRegistration = selectedVersion?.metadata?.is_event_registration;
     if (!isEventRegistration) {
-      alert("This form is not an event registration form. UUIDs are only needed for event registration forms.");
+      toast.info("This form is not an event registration form. UUIDs are only needed for event registration forms.");
       return;
     }
 
@@ -1383,17 +1384,17 @@ export default function FormResponsesPage() {
     try {
       const result = await initializeAttendantUuidsAction(form.id);
       if (result.success) {
-        alert(result.message);
+        toast.success(result.message);
         // Reload responses to show updated data
         if (selectedVersionId) {
           await loadResponses(selectedVersionId, currentPage);
         }
       } else {
-        alert(`Failed: ${result.message}`);
+        toast.error(`Failed: ${result.message}`);
       }
     } catch (error) {
       console.error("Error initializing UUIDs:", error);
-      alert("Failed to initialize UUIDs. Please try again.");
+      toast.error("Failed to initialize UUIDs. Please try again.");
     } finally {
       setInitializingUuids(false);
     }

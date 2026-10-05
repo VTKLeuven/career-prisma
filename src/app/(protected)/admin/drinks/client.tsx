@@ -126,6 +126,7 @@ import { useRouter } from "next/navigation";
 import { Trash2, Edit, Plus, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { toast } from "sonner";
 
 export default function DrinksClient({
     initialDrinks,
@@ -160,7 +161,7 @@ export default function DrinksClient({
             setActiveEventId(eventId);
             router.refresh();
         } else {
-            alert(res.error || "Failed to update setting");
+            toast.error(res.error || "Failed to update setting");
         }
     };
 
@@ -210,7 +211,7 @@ export default function DrinksClient({
 
                 const uploadRes = await uploadFileAction(uploadFormData);
                 if (!uploadRes.success || !uploadRes.data) {
-                    alert("Failed to upload image: " + (uploadRes.error || "Unknown error"));
+                    toast.error("Failed to upload image: " + (uploadRes.error || "Unknown error"));
                     setUploading(false);
                     return;
                 }
@@ -246,7 +247,7 @@ export default function DrinksClient({
             router.refresh();
         } catch (err) {
             console.error(err);
-            alert("Error saving drink");
+            toast.error("Error saving drink");
         } finally {
             setUploading(false);
         }

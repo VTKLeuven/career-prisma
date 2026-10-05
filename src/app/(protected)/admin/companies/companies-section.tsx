@@ -63,6 +63,7 @@ import { IconBuilding, IconColumns, IconMail, IconPlus, IconTaxEuro } from "@tab
 import type { AcademicYear, CareerEvent, Company, CompanyRep, CareerEventOption, CareerSubOption } from "@/lib/schema";
 import type { UserSummary as AppUser } from "@/lib/schema";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
+import { toast } from "sonner";
 
 /**
  * Notes about typing decisions:
@@ -1203,14 +1204,14 @@ function UserRowActions({ user, companyId, onRemoveUser }: {
     try {
       const result = await resendInviteAction(user.id, companyId);
       if (result.success) {
-        alert(`Invitation resent to ${user.email ?? "the user"}.`);
+        toast.success(`Invitation resent to ${user.email ?? "the user"}.`);
       } else {
         console.error("Failed to resend invitation:", result.error);
-        alert(`Failed to resend invitation: ${result.error || "Unknown error"}`);
+        toast.error(`Failed to resend invitation: ${result.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Error resending invitation:", error);
-      alert(`Error resending invitation: ${error instanceof Error ? error.message : "Unknown error"}`);
+      toast.error(`Error resending invitation: ${error instanceof Error ? error.message : "Unknown error"}`);
     } finally {
       setIsResending(false);
     }

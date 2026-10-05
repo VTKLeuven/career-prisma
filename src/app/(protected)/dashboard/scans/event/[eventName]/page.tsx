@@ -36,6 +36,7 @@ import type { CareerEvent } from "@/lib/schema";
 import { slugifyEventName, CSV_UTF8_BOM } from "@/lib/utils/slugify";
 import { Input } from "@/components/ui/input";
 import { getScanningDisplayValues, hasScanningColumns, type ScanningColumns } from "@/lib/utils/scanning-columns";
+import { toast } from "sonner";
 
 type AttendantScan = {
   id: string;
@@ -195,7 +196,7 @@ export default function EventScansPage() {
 
   const exportToCSV = () => {
     if (scans.length === 0) {
-      alert("No scans to export.");
+      toast.info("No scans to export.");
       return;
     }
 

@@ -6,6 +6,7 @@ import type { PendingApprovalRequest } from "@/lib/repos/users";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useUser } from "@/providers/UserProvider";
+import { toast } from "sonner";
 
 export default function PendingApprovalsPage() {
   const { user } = useUser();
@@ -108,11 +109,11 @@ function PendingApprovalsSection() {
             .catch(console.error);
         }, 1000);
       } else {
-        alert(`Failed to approve: ${result.error}`);
+        toast.error(`Failed to approve: ${result.error}`);
       }
     } catch (error) {
       console.error("Error approving request:", error);
-      alert("Failed to approve request");
+      toast.error("Failed to approve request");
     } finally {
       setProcessing(null);
     }
@@ -126,11 +127,11 @@ function PendingApprovalsSection() {
         // Remove from list
         setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
       } else {
-        alert(`Failed to reject: ${result.error}`);
+        toast.error(`Failed to reject: ${result.error}`);
       }
     } catch (error) {
       console.error("Error rejecting request:", error);
-      alert("Failed to reject request");
+      toast.error("Failed to reject request");
     } finally {
       setProcessing(null);
     }

@@ -34,6 +34,7 @@ import { Label } from "@/components/ui/label";
 import { IconPlus } from "@tabler/icons-react";
 import type { CareerEvent, Company, HeaderButtonType } from "@/lib/schema";
 import { SimpleRichTextEditor } from "@/components/admin/SimpleRichTextEditor";
+import { toast } from "sonner";
 
 export function EventsSection({ academicYearId }: { academicYearId?: string }) {
   const [events, setEvents] = React.useState<CareerEvent[]>([]);
@@ -346,7 +347,7 @@ function EventCard({ event, status, onChanged }: { event: CareerEvent; status?: 
     } catch (err) {
       console.error("Failed to update header buttons:", err);
       setHeaderButtons(headerButtons); // Revert
-      alert(err instanceof Error ? err.message : "Failed to save header buttons.");
+      toast.error(err instanceof Error ? err.message : "Failed to save header buttons.");
     } finally {
       setSavingHeaderButtons(false);
     }
@@ -356,7 +357,7 @@ function EventCard({ event, status, onChanged }: { event: CareerEvent; status?: 
     if (!confirm(`Delete event "${event.name}"? This cannot be undone.`)) return;
     const res = await deleteEventAction(event.id);
     if (!res.success) {
-      alert(res.error ?? "Failed to delete event");
+      toast.error(res.error ?? "Failed to delete event");
       return;
     }
     onChanged?.();

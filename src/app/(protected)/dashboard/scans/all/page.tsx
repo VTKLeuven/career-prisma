@@ -37,6 +37,7 @@ import {
 import { fetchEventsAction } from "@/app/actions/events";
 import type { CareerEvent } from "@/lib/schema";
 import { getScanningDisplayValues, hasScanningColumns, type ScanningColumns } from "@/lib/utils/scanning-columns";
+import { toast } from "sonner";
 
 type AttendantScan = {
   id: string;
@@ -224,7 +225,7 @@ export default function AllScansPage() {
 
   const exportToCSV = () => {
     if (scans.length === 0) {
-      alert("No scans to export.");
+      toast.info("No scans to export.");
       return;
     }
 

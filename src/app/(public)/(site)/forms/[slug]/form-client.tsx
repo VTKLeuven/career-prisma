@@ -16,6 +16,7 @@ import NextImage from "next/image";
 import { FormFieldRenderer } from "@/components/FormFieldRenderer";
 import { userFacingFormSubmitErrorMessage } from "@/lib/form-submit-errors";
 import { fieldDisplayLabel } from "@/lib/form-fields";
+import { toast } from "sonner";
 
 export type PublicForm = {
   id: string;
@@ -150,7 +151,7 @@ export function PublicFormClient({ initialForm }: { initialForm: PublicForm | nu
       const deadline = new Date(form.metadata.deadline);
       const now = new Date();
       if (now > deadline) {
-        alert(`This form's deadline has passed. The deadline was ${formatDateTimeBE(deadline)}.`);
+        toast.error(`This form's deadline has passed. The deadline was ${formatDateTimeBE(deadline)}.`);
         return;
       }
     }

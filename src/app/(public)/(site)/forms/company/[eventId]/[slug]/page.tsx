@@ -32,6 +32,7 @@ import { fieldDisplayLabel } from "@/lib/form-fields";
 import { userFacingFormSubmitErrorMessage } from "@/lib/form-submit-errors";
 import type { Company, CareerEvent } from "@/lib/schema";
 import { fetchSessionCheck } from "@/lib/session-client"
+import { toast } from "sonner";
 
 function countWords(text: string): number {
   return text.trim().split(/\s+/).filter((word) => word.length > 0).length;
@@ -493,7 +494,7 @@ export default function CompanyFormPage() {
       const deadline = new Date(form.metadata.deadline);
       const now = new Date();
       if (now > deadline) {
-        alert(`This form's deadline has passed. The deadline was ${formatDateTimeBE(deadline)}.`);
+        toast.error(`This form's deadline has passed. The deadline was ${formatDateTimeBE(deadline)}.`);
         return;
       }
     }

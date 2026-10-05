@@ -62,6 +62,7 @@ import Link from "next/link";
 import { getFileUrl } from "@/components/Images";
 import NextImage from "next/image";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { toast } from "sonner";
 
 type FieldType = FormField["type"];
 
@@ -272,7 +273,7 @@ export default function FormBuilderPage() {
       router.push("/admin/forms");
     } catch (error) {
       console.error("Error saving form:", error);
-      alert("Failed to save form");
+      toast.error("Failed to save form");
     } finally {
       setSaving(false);
     }
@@ -508,7 +509,7 @@ function FieldEditor({
 
     // Validate file type
     if (!file.type.startsWith("image/")) {
-      alert("Please select an image file.");
+      toast.error("Please select an image file.");
       e.target.value = "";
       return;
     }
@@ -532,7 +533,7 @@ function FieldEditor({
       onUpdate({ image: result.id });
     } catch (error) {
       console.error('Image upload error:', error);
-      alert(`Failed to upload image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Failed to upload image: ${error instanceof Error ? error.message : 'Unknown error'}`);
       e.target.value = "";
     } finally {
       setUploadingImage(false);

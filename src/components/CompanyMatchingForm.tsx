@@ -31,6 +31,7 @@ import {
 import { cn } from "@/lib/utils";
 import { getScanningDisplayValues, hasScanningColumns } from "@/lib/utils/scanning-columns";
 import { CSV_UTF8_BOM } from "@/lib/utils/slugify";
+import { toast } from "sonner";
 
 type MatchedStudent = { id: string; first_name: string | null; last_name: string | null; email: string };
 
@@ -272,7 +273,7 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventId, ev
       setShowSuccessDialog(true);
     } catch (err) {
       console.error("[CompanyMatchingForm] Error saving:", err);
-      alert("Failed to save matching information. Please try again.");
+      toast.error("Failed to save matching information. Please try again.");
     }
   }
 
