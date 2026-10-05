@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getEmailMetrics } from "@/lib/email";
+import { getUserFromCookies } from "@/lib/auth-server";
 
 /**
  * API endpoint to get email sending metrics for diagnostics
@@ -13,6 +14,10 @@ import { getEmailMetrics } from "@/lib/email";
  * - Queue status
  */
 export async function GET() {
+  const user = await getUserFromCookies();
+  if (!user?.admin) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     const metrics = await getEmailMetrics();
     
