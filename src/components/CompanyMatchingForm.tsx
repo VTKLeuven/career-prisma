@@ -225,7 +225,7 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventId, ev
       const normalized = normalizeStudents(rawStudents);
       setStudents(normalized);
       if (eventId && normalized.length > 0) {
-        getStudentFormResponseDataForEventAction(eventId, normalized.map((s) => s.id))
+        getStudentFormResponseDataForEventAction(eventId, normalized.map((s) => s.id), { companyId, matchingSoftwareId })
           .then(setStudentFormData)
           .catch(console.error);
       } else {

@@ -1386,7 +1386,7 @@ export async function getFloorplanCategoryOptions(
 /**
  * Every company's canonical floorplan-category values, from the latest response
  * per company in each configured form field. Uses the same logic as
- * getCompanyMasterDegreesFromForm: all form versions, normalize label->value.
+ * getCompanyMasterDegreesFromFormBatch: all form versions, normalize label->value.
  *
  * The public floorplan sends this map to the browser once and filters there,
  * instead of asking the server again on every category click.
@@ -1458,22 +1458,6 @@ export async function getCompanyFloorplanCategoryValues(
   return companyCanonicalValues;
 }
 
-/** Get company IDs that have ALL selected values (in any of the configured form fields). */
-export async function getCompanyIdsMatchingFloorplanCategory(
-  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>,
-  selectedValues: string[]
-): Promise<string[]> {
-  if (selectedValues.length === 0) return [];
-  const companyCanonicalValues = await getCompanyFloorplanCategoryValues(categoryFields);
-  const selectedSet = new Set(selectedValues.map((v) => v.trim()).filter(Boolean));
-  const result: string[] = [];
-  for (const [companyId, canonValues] of companyCanonicalValues) {
-    const hasAll = [...selectedSet].every((sel) => canonValues.has(sel));
-    if (hasAll) result.push(companyId);
-  }
-  return result;
-}
-
 /** Get company categories (interested study fields) from form responses. Returns Map<companyId, string[]> of display labels for matching. */
 export async function getCompanyCategoriesFromFormResponses(
   categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>
@@ -1537,149 +1521,6 @@ export async function getCompanyCategoriesFromFormResponses(
   } catch (error) {
     console.error("[getCompanyCategoriesFromFormResponses] Error:", error);
     return result;
-  }
-}
-
-/** Get company's master/faculty logos from master-degrees form responses. Returns unique logo IDs only. */
-export async function getCompanyMasterDegreesFromForm(
-  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>,
-  companyId: string
-): Promise<string[]> {
-  try {
-    const { listMasters, listFaculties } = await import("@/lib/repos/features");
-    const { resolveLogosForValue, extractLogoId, normalizeFaculties } = await import("@/lib/utils/master-degree-options");
-
-    const { groups } = await getFloorplanCategoryOptions(categoryFields);
-    const opts = groups.flatMap((g) => g.options);
-    const masters = (await listMasters({ limit: 300, sort: "name" })) ?? [];
-    const rawFaculties = (await listFaculties({ limit: 100, sort: "name" })) ?? [];
-    const faculties = normalizeFaculties(rawFaculties);
-
-
-    const valuesSeen = new Set<string>();
-    const orderedValues: string[] = [];
-    for (const { formId, fieldName } of categoryFields) {
-      const versions = await listFormVersionsForServer(formId);
-      const versionIds = versions.map((v) => v.id);
-      if (versionIds.length === 0) continue;
-      const responses = await prisma.formResponse.findMany({
-        where: {
-          form_version_id: { in: nums(versionIds) },
-          company_id: companyId,
-          ...NOT_ARCHIVED,
-        },
-        select: { id: true, company_id: true, data: true },
-        orderBy: { submitted_at: "desc" },
-        take: 1,
-      }) as unknown as Array<{ data: Record<string, unknown> }>;
-      const data = responses?.[0]?.data ?? {};
-      const fieldValue = data[fieldName];
-      const extractVal = (v: unknown): string | null => {
-        if (v == null) return null;
-        if (typeof v === "string" && v.trim()) return v.trim();
-        if (typeof v === "object" && v !== null) {
-          const o = v as Record<string, unknown>;
-          const id = o.id ?? o.value ?? o.name ?? o.label;
-          if (id != null && String(id).trim()) return String(id).trim();
-        }
-        return null;
-      };
-      if (Array.isArray(fieldValue)) {
-        for (const v of fieldValue) {
-          const s = extractVal(v);
-          if (s && !valuesSeen.has(s)) {
-            valuesSeen.add(s);
-            orderedValues.push(s);
-          }
-        }
-      } else {
-        const s = extractVal(fieldValue);
-        if (s && !valuesSeen.has(s)) {
-          valuesSeen.add(s);
-          orderedValues.push(s);
-        }
-      }
-    }
-
-    type LogoSource = "master" | "faculty" | "other";
-    const logoSourceOrder: Record<LogoSource, number> = { master: 0, faculty: 1, other: 2 };
-    const getSourceFromValue = (v: string): LogoSource => {
-      const facMaster = v.match(/^fac:([^:]+):([^:]+)$/);
-      if (facMaster) return "master";
-      const facOnly = v.match(/^fac:([^:]+)$/);
-      if (facOnly) {
-        const f = faculties?.find((x) => x.id === facOnly[1]);
-        if (!f) return "faculty";
-        if (/^others?$/i.test((f.name ?? "").trim())) return "other";
-        const hasMasters = (f.masters ?? []).length > 0;
-        return hasMasters ? "master" : "faculty";
-      }
-      return "master";
-    };
-    const getSourceFromOptValue = (optValue: string): LogoSource => {
-      if (optValue.match(/^fac:[^:]+:[^:]+$/)) return "master";
-      const facOnly = optValue.match(/^fac:([^:]+)$/);
-      if (facOnly) {
-        const f = faculties?.find((x) => x.id === facOnly[1]);
-        if (f && /^others?$/i.test((f.name ?? "").trim())) return "other";
-        return "faculty";
-      }
-      return "master";
-    };
-
-    // Phase 1: Load all logos (with source) from values
-    const logoEntries: Array<{ logoId: string; source: LogoSource }> = [];
-    const seen = new Set<string>();
-    for (const val of orderedValues) {
-      const masterNameFromLabel = val.includes(" - ") ? val.split(" - ").pop()?.trim() : null;
-      const matchingOpts = opts.filter((o) =>
-        o.value === val || o.label === val ||
-        (masterNameFromLabel && (o.label === masterNameFromLabel || normalizeForMatch(o.label) === normalizeForMatch(masterNameFromLabel))) ||
-        normalizeForMatch(o.value) === normalizeForMatch(val) ||
-        normalizeForMatch(o.label) === normalizeForMatch(val) ||
-        valueMatchesOption(val, o.value) ||
-        (o.value.match(/^fac:[^:]+:([^:]+)$/)?.[1] === val.trim())
-      );
-      if (matchingOpts.length > 0) {
-        for (const opt of matchingOpts) {
-          const facOnly = opt.value.match(/^fac:([^:]+)$/);
-          if (facOnly) {
-            const f = faculties?.find((x) => x.id === facOnly[1]);
-            if (f && (f.masters ?? []).length > 0) continue;
-          }
-          let logo = extractLogoId(opt.logo);
-          if (!logo && opt.value.match(/^fac:[^:]+:([^:]+)$/)) {
-            const masterId = opt.value.split(":")[2];
-            const m = masters.find((x) => x.id === masterId);
-            logo = extractLogoId(m?.logo);
-          }
-          if (!logo && /^[0-9a-f-]{36}$/i.test(opt.value)) {
-            const m = masters.find((x) => x.id === opt.value);
-            logo = extractLogoId(m?.logo);
-          }
-          if (logo && !seen.has(logo)) {
-            seen.add(logo);
-            logoEntries.push({ logoId: logo, source: getSourceFromOptValue(opt.value) });
-          }
-        }
-      } else {
-        const resolved = resolveLogosForValue(val, masters, faculties);
-        const source = getSourceFromValue(val);
-        for (const logo of resolved) {
-          if (logo && !seen.has(logo)) {
-            seen.add(logo);
-            logoEntries.push({ logoId: logo, source });
-          }
-        }
-      }
-    }
-
-    // Phase 2: Sort by source (masters → faculties → other, left to right)
-    logoEntries.sort((a, b) => logoSourceOrder[a.source] - logoSourceOrder[b.source]);
-    return logoEntries.map((e) => e.logoId);
-  } catch (error) {
-    console.error("[getCompanyMasterDegreesFromForm] Error:", error);
-    return [];
   }
 }
 
@@ -1889,28 +1730,6 @@ export async function getCompanyFormBySlugAndEvent(eventId: string, slug: string
   }
 }
 
-export async function checkCompanyFormCompletion(companyId: string, formVersionIds: string[]) {
-  try {
-    // Use server client to ensure we have permissions to read company_id field
-
-    if (formVersionIds.length === 0) return new Set<string>();
-
-    const responses = await prisma.formResponse.findMany({
-      where: {
-        company_id: companyId,
-        form_version_id: { in: nums(formVersionIds) },
-      },
-      select: { form_version_id: true, company_id: true },
-    }) as unknown as Array<{ form_version_id: string; company_id: string }>;
-
-    // Return set of completed form version IDs
-    return new Set(responses.map((r) => r.form_version_id));
-  } catch (error) {
-    console.error("[checkCompanyFormCompletion] Error checking form completion:", error);
-    return new Set<string>();
-  }
-}
-
 /** Batch check form completion for multiple companies. Returns Map<companyId, Set<formVersionId>> */
 export async function checkCompanyFormCompletionBatch(
   companyIds: string[],
@@ -1935,50 +1754,6 @@ export async function checkCompanyFormCompletionBatch(
   } catch (error) {
     console.error("[checkCompanyFormCompletionBatch] Error:", error);
     return result;
-  }
-}
-
-export async function checkCompanyFormCompletionByFormIds(companyId: string, formIds: string[]) {
-  try {
-    // Use server client to ensure we have permissions to read company_id field
-
-    if (formIds.length === 0) return new Set<string>();
-
-
-    // First, get all form version IDs for these forms
-    const formVersions = await prisma.formVersion.findMany({
-      where: { form_id: { in: nums(formIds) } },
-      select: { id: true, form_id: true },
-    }) as unknown as Array<{ id: string; form_id: string }>;
-
-    if (formVersions.length === 0) return new Set<string>();
-
-    const formVersionIds = formVersions.map((fv) => fv.id);
-
-    // Check for responses across all versions of these forms
-    const responses = await prisma.formResponse.findMany({
-      where: {
-        company_id: companyId,
-        form_version_id: { in: nums(formVersionIds) },
-      },
-      select: { form_version_id: true, company_id: true },
-    }) as unknown as Array<{ form_version_id: string; company_id: string }>;
-
-    // Map form version IDs back to form IDs
-    const formVersionToFormId = new Map(formVersions.map((fv) => [fv.id, fv.form_id]));
-    const completedFormIds = new Set<string>();
-
-    responses.forEach((r) => {
-      const formId = formVersionToFormId.get(r.form_version_id);
-      if (formId) {
-        completedFormIds.add(formId);
-      }
-    });
-
-    return completedFormIds;
-  } catch (error) {
-    console.error("[checkCompanyFormCompletionByFormIds] Error checking form completion:", error);
-    return new Set<string>();
   }
 }
 

@@ -23,13 +23,12 @@ import {
   countFormVersionResponses,
 } from "@/lib/repos/forms";
 import type { Form, FormVersion, FormSchema, FormMetadata, FormResponse } from "@/lib/schema";
-import { uploadFile } from "@/lib/file-storage";
 import { getCompanyById } from "@/lib/repos/company";
 import {
   FORM_SUBMIT_SESSION_TIMEOUT_MESSAGE,
   isSessionTokenExpiredError,
 } from "@/lib/form-submit-errors";
-import { requireAdminUser } from "@/lib/auth-server";
+import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
 import { listMasters, listFaculties } from "@/lib/repos/features";
 import { studyPrefillForFields, type PrefillFaculty } from "@/lib/form-fields";
 import { setEventRegistrationLink } from "@/lib/repos/event-page";
@@ -997,17 +996,6 @@ async function sendEventConfirmationEmail({
 }
 // ===================== PUBLIC FORM ACTIONS =====================
 
-export async function uploadFileAction(formData: FormData) {
-  try {
-    const file = formData.get("file");
-    if (!(file instanceof File)) throw new Error("No file provided");
-    return { id: await uploadFile(file) };
-  } catch (error) {
-    console.error('[uploadFileAction] Error uploading file:', error);
-    throw error;
-  }
-}
-
 export async function fetchCompanyFormsForEventAction(
   eventId: string,
   companyOptionIds: string[],
@@ -1024,6 +1012,7 @@ export async function fetchCompanyFormsForEventAction(
 }
 
 export async function fetchAllCompanyFormsForEventAction(eventId: string) {
+  await requireAdminUser();
   try {
     const { getAllCompanyFormsForEvent } = await import("@/lib/repos/forms");
     return await getAllCompanyFormsForEvent(eventId);
@@ -1038,6 +1027,7 @@ export async function fetchCompanyIdsMatchingFormFieldOptionAction(
   fieldName: string,
   optionValue: string
 ) {
+  await requireAdminUser();
   try {
     const { getCompanyIdsMatchingFormFieldOption } = await import("@/lib/repos/forms");
     return await getCompanyIdsMatchingFormFieldOption(formVersionId, fieldName, optionValue);
@@ -1048,6 +1038,7 @@ export async function fetchCompanyIdsMatchingFormFieldOptionAction(
 }
 
 export async function fetchCompanyFormFieldValuesAction(formVersionId: string, fieldName: string) {
+  await requireAdminUser();
   try {
     const { getCompanyFormFieldValues } = await import("@/lib/repos/forms");
     return await getCompanyFormFieldValues(formVersionId, fieldName);
@@ -1057,68 +1048,8 @@ export async function fetchCompanyFormFieldValuesAction(formVersionId: string, f
   }
 }
 
-export async function fetchCompanyFormFieldValuesFromFormAction(formId: string, fieldName: string) {
-  try {
-    const { getCompanyFormFieldValuesFromForm } = await import("@/lib/repos/forms");
-    return await getCompanyFormFieldValuesFromForm(formId, fieldName);
-  } catch (error) {
-    console.error("[fetchCompanyFormFieldValuesFromFormAction] Error:", error);
-    return {};
-  }
-}
-
-export async function fetchFloorplanCategoryOptionsAction(
-  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>
-) {
-  try {
-    const { getFloorplanCategoryOptions } = await import("@/lib/repos/forms");
-    return await getFloorplanCategoryOptions(categoryFields);
-  } catch (error) {
-    console.error("[fetchFloorplanCategoryOptionsAction] Error:", error);
-    return { groups: [] };
-  }
-}
-
-export async function fetchCompanyIdsMatchingFloorplanCategoryAction(
-  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>,
-  selectedValues: string[]
-) {
-  try {
-    const { getCompanyIdsMatchingFloorplanCategory } = await import("@/lib/repos/forms");
-    return await getCompanyIdsMatchingFloorplanCategory(categoryFields, selectedValues);
-  } catch (error) {
-    console.error("[fetchCompanyIdsMatchingFloorplanCategoryAction] Error:", error);
-    return [];
-  }
-}
-
-export async function fetchCompanyMasterDegreesFromFormAction(
-  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>,
-  companyId: string
-) {
-  try {
-    const { getCompanyMasterDegreesFromForm } = await import("@/lib/repos/forms");
-    return await getCompanyMasterDegreesFromForm(categoryFields, companyId);
-  } catch (error) {
-    console.error("[fetchCompanyMasterDegreesFromFormAction] Error:", error);
-    return [];
-  }
-}
-
-export async function fetchCompanyMasterDegreesFromFormBatchAction(
-  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>,
-  companyIds: string[]
-): Promise<Record<string, string[]>> {
-  try {
-    const { getCompanyMasterDegreesFromFormBatch } = await import("@/lib/repos/forms");
-    return await getCompanyMasterDegreesFromFormBatch(categoryFields, companyIds);
-  } catch (error) {
-    console.error("[fetchCompanyMasterDegreesFromFormBatchAction] Error:", error);
-    return {};
-  }
-}
-
 export async function migrateFormResponsesMasterDegreesAction(formId: string) {
+  await requireAdminUser();
   try {
     const { migrateFormResponsesMasterDegrees } = await import("@/lib/repos/forms");
     return await migrateFormResponsesMasterDegrees(formId);
@@ -1138,71 +1069,51 @@ export async function fetchCompanyFormBySlugAndEventAction(eventId: string, slug
   }
 }
 
-export async function checkCompanyFormCompletionAction(companyId: string, formVersionIds: string[]) {
-  try {
-    const { checkCompanyFormCompletion } = await import("@/lib/repos/forms");
-    return await checkCompanyFormCompletion(companyId, formVersionIds);
-  } catch (error) {
-    console.error("[checkCompanyFormCompletionAction] Error checking form completion:", error);
-    return new Set<string>();
-  }
-}
-
-export async function checkCompanyFormCompletionBatchAction(
-  companyIds: string[],
-  formVersionIds: string[]
-): Promise<Map<string, Set<string>>> {
-  try {
-    const { checkCompanyFormCompletionBatch } = await import("@/lib/repos/forms");
-    return await checkCompanyFormCompletionBatch(companyIds, formVersionIds);
-  } catch (error) {
-    console.error("[checkCompanyFormCompletionBatchAction] Error:", error);
-    return new Map();
-  }
-}
-
-/** Batch check: has company completed ANY version of these forms? Returns Map<companyId, Set<formId>> */
-export async function checkCompanyFormCompletionByFormIdsBatchAction(
-  companyIds: string[],
-  formIds: string[]
-): Promise<Map<string, Set<string>>> {
-  try {
-    const { checkCompanyFormCompletionByFormIdsBatch } = await import("@/lib/repos/forms");
-    return await checkCompanyFormCompletionByFormIdsBatch(companyIds, formIds);
-  } catch (error) {
-    console.error("[checkCompanyFormCompletionByFormIdsBatchAction] Error:", error);
-    return new Map();
-  }
-}
-
-export async function checkCompanyFormCompletionByFormIdsAction(companyId: string, formIds: string[]) {
-  try {
-    const { checkCompanyFormCompletionByFormIds } = await import("@/lib/repos/forms");
-    return await checkCompanyFormCompletionByFormIds(companyId, formIds);
-  } catch (error) {
-    console.error("[checkCompanyFormCompletionByFormIdsAction] Error checking form completion:", error);
-    return new Set<string>();
-  }
-}
-
 /** Batch check form completion with compulsory support. For compulsory forms, company must complete this version or newer. */
 export async function checkCompanyFormCompletionBatchWithCompulsoryAction(
   companyIds: string[],
   forms: Array<{ formId: string; formVersionId: string; versionNumber?: number; isCompulsory?: boolean }>
 ): Promise<Map<string, Set<string>>> {
+  // Admins see every company's completion; a company user only their own.
+  const user = await getUserFromCookies();
+  if (!user) return new Map();
+  const allowedIds = user.admin ? companyIds : companyIds.filter((id) => id === user.company?.id);
+  if (allowedIds.length === 0) return new Map();
   try {
     const { checkCompanyFormCompletionBatchWithCompulsory } = await import("@/lib/repos/forms");
-    return await checkCompanyFormCompletionBatchWithCompulsory(companyIds, forms);
+    return await checkCompanyFormCompletionBatchWithCompulsory(allowedIds, forms);
   } catch (error) {
     console.error("[checkCompanyFormCompletionBatchWithCompulsoryAction] Error:", error);
     return new Map();
   }
 }
 
-export async function getStudentFormResponseDataForEventAction(eventId: string, studentIds: string[]) {
+/**
+ * Event-registration answers of the students matched to a company, for the
+ * company's matching page. The student ids from the browser are only a
+ * request: the company's matching response decides which students it may see
+ * (getCompanyMatchingResponseForCompanyViewAction checks the session, the
+ * company and whether matches are visible), so a rep cannot read other
+ * students' answers by sending other ids.
+ */
+export async function getStudentFormResponseDataForEventAction(
+  eventId: string,
+  studentIds: string[],
+  context: { companyId: string; matchingSoftwareId: string }
+) {
   try {
+    const { getCompanyMatchingResponseForCompanyViewAction } = await import("@/app/actions/matching-software");
+    const response = await getCompanyMatchingResponseForCompanyViewAction(context.companyId, context.matchingSoftwareId);
+    const rawStudents = (response as { students?: unknown } | null)?.students;
+    const visible = new Set(
+      (Array.isArray(rawStudents) ? rawStudents : [])
+        .map((s) => (typeof s === "string" || typeof s === "number" ? String(s) : s && typeof s === "object" && "id" in s ? String((s as { id: unknown }).id) : null))
+        .filter((id): id is string => !!id)
+    );
+    const allowedIds = studentIds.map(String).filter((id) => visible.has(id));
+    if (allowedIds.length === 0) return new Map();
     const { getStudentFormResponseDataForEvent } = await import("@/lib/repos/forms");
-    return await getStudentFormResponseDataForEvent(eventId, studentIds);
+    return await getStudentFormResponseDataForEvent(eventId, allowedIds);
   } catch (error) {
     console.error("[getStudentFormResponseDataForEventAction] Error:", error);
     return new Map();
