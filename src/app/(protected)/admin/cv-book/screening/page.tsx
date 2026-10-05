@@ -73,14 +73,6 @@ export default function CVBookScreeningPage() {
   const hasPrevStudent = selectedStudentIndex > 0;
   const hasNextStudent = selectedStudentIndex >= 0 && selectedStudentIndex < flatStudents.length - 1;
 
-  if (!user?.admin) {
-    return (
-      <div className="container mx-auto p-8">
-        <p className="text-destructive">Access denied. Admin only.</p>
-      </div>
-    );
-  }
-
   useEffect(() => {
     async function loadBooks() {
       setLoading(true);
@@ -233,6 +225,16 @@ export default function CVBookScreeningPage() {
     } catch {
       return iso;
     }
+  }
+
+  // After every hook: returning before them changes the hook order between
+  // renders. The admin layout already redirects non-admins; this is a fallback.
+  if (!user?.admin) {
+    return (
+      <div className="container mx-auto p-8">
+        <p className="text-destructive">Access denied. Admin only.</p>
+      </div>
+    );
   }
 
   return (
