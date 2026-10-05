@@ -10,6 +10,23 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
+    rules: {
+      // Dropping fields with a rest destructuring (`const { logo, ...rest } =
+      // company`) and a leading underscore both mark a deliberate discard; an
+      // unused catch binding is fine as well.
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          destructuredArrayIgnorePattern: "^_",
+          ignoreRestSiblings: true,
+          caughtErrors: "none",
+        },
+      ],
+    },
+  },
+  {
     // Database access goes through src/lib/repos/ (docs/conventions.md); the
     // repos are what keep the Directus-era shapes contained.
     files: ["src/**/*.{ts,tsx}"],
