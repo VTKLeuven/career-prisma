@@ -6,8 +6,6 @@ import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { ScrollCue } from '@/components/ScrollCue'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from "next/navigation"
-import { fetchEventPageBySlugAction } from "@/app/actions/events"
 import { SiteHeader, type SiteHeaderNavItem } from "@/components/site/SiteHeader"
 import { getFileUrl } from "@/components/Images";
 import { slugifyCompanyName, slugifyEventName, getSpeakerSlug } from "@/lib/utils/slugify";
@@ -28,128 +26,22 @@ const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.E
 
 export default function EventPageClient({ 
   initialPage,
-  eventName: initialEventName,
   floorplanEnabled = false
 }: { 
   initialPage?: CareerEventPage | null
-  eventName?: string
   /** Resolved on the server from DEV_ENVIRONMENT; see lib/dev-environment.ts. */
   floorplanEnabled?: boolean
 }) {
   const { setHideLayoutHeader } = usePageLayout()
-  const [page, setPage] = useState<CareerEventPage | null>(initialPage ?? null)
-  const [isLoading, setIsLoading] = useState(!initialPage)
+  // The server page loads the event page and remounts this component (key)
+  // for each event, so there is nothing to fetch here. It used to fetch
+  // /api/events/<slug> again on every visit, after the server had already
+  // rendered the same data.
+  const page = initialPage ?? null
+  const isLoading = false
   const [popupMessage, setPopupMessage] = useState<string>("")
   const [popupContent, setPopupContent] = useState<React.ReactNode>(null)
   useBannerPage()
-
-  const params = useParams()
-  const eventName = initialEventName || (Array.isArray(params.eventName)
-  ? params.eventName[0]
-  : params.eventName)
-
-  // Fetch the specific event page
-  const loadedEventRef = useRef<string | null>(null)
-  const pageCacheRef = useRef<Map<string, { data: CareerEventPage; ts: number }>>(new Map())
-  const fetchPromiseRef = useRef<Map<string, Promise<CareerEventPage | null>>>(new Map())
-  const CACHE_TTL_MS = 30_000 // 30s - so header_buttons updates show soon after admin changes
-
-  // Start fetching immediately, don't wait for useEffect
-  useEffect(() => {
-    // If we have initial page data, use it and skip fetching
-    if (initialPage && !page && eventName) {
-      setPage(initialPage)
-      pageCacheRef.current.set(eventName, { data: initialPage, ts: Date.now() })
-      setIsLoading(false)
-      return
-    }
-
-    // Skip if no eventName
-    if (!eventName) {
-      setIsLoading(false)
-      return
-    }
-
-    // Check cache first - use only if fresh (within TTL)
-    const cached = pageCacheRef.current.get(eventName)
-    if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
-      setPage(cached.data)
-      setIsLoading(false)
-      return
-    }
-
-    // Reset loading state when eventName changes (only if no initial page)
-    if (!initialPage) {
-      setIsLoading(true)
-      setPage(null)
-    }
-
-    // Prevent duplicate loads of the same event
-    if (loadedEventRef.current === eventName) {
-      return
-    }
-
-    // Mark as loading BEFORE async operation
-    loadedEventRef.current = eventName
-
-    async function load() {
-      if (!eventName) return
-      
-      try {
-        // Check cache again (might have been set by another component)
-        const cached = pageCacheRef.current.get(eventName)
-        if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
-          if (loadedEventRef.current !== eventName) return
-          setPage(cached.data)
-          setIsLoading(false)
-          return
-        }
-
-        // Check if there's already a fetch in progress for this event
-        let fetchPromise = fetchPromiseRef.current.get(eventName)
-        if (!fetchPromise) {
-          // Use API route for better caching and CDN support
-          fetchPromise = fetch(`/api/events/${encodeURIComponent(eventName)}`, { cache: 'no-store' })
-            .then(res => res.ok ? res.json() : null)
-            .catch(() => {
-              // Fallback to direct server action if API fails
-              return fetchEventPageBySlugAction(eventName)
-            })
-          fetchPromiseRef.current.set(eventName, fetchPromise)
-        }
-
-        const found = await fetchPromise
-        fetchPromiseRef.current.delete(eventName)
-
-        // Verify we're still loading the same event
-        if (loadedEventRef.current !== eventName) return
-
-        if (found) {
-          // Cache the result
-          pageCacheRef.current.set(eventName, { data: found, ts: Date.now() })
-          setPage(found)
-          
-          // Note: Next.js Image with priority will handle preloading automatically
-        } else {
-          setPage(null)
-        }
-      } catch (error) {
-        console.error('Error loading event page:', error)
-        if (eventName) {
-          fetchPromiseRef.current.delete(eventName)
-        }
-        // Reset ref on error so we can retry
-        if (loadedEventRef.current === eventName) {
-          loadedEventRef.current = null
-        }
-        setPage(null)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    load()
-  }, [eventName])
 
   const showPopupMessage = (msg: string) => {
     setPopupMessage(msg)
@@ -169,12 +61,6 @@ export default function EventPageClient({
   // Hide layout header since this page renders its own
   useEffect(() => {
     setHideLayoutHeader(true)
-    
-    // Prefetch homepage data when on event page for faster navigation back
-    if (typeof window !== 'undefined') {
-      fetch('/api/homepage').catch(() => {}) // Fire and forget
-    }
-    
     return () => setHideLayoutHeader(false)
   }, [setHideLayoutHeader])
 

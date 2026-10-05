@@ -54,8 +54,9 @@ export default async function EventPage({
   // isDevEnvironment() is server-only; the client cannot read it itself.
   return (
     <EventPageClient
+      // Remount per event: the client component takes its data from props.
+      key={eventName}
       initialPage={page}
-      eventName={eventName}
       floorplanEnabled={isDevEnvironment()}
     />
   );
