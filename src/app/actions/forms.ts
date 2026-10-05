@@ -529,6 +529,9 @@ export async function submitFormResponseAction(data: {
       }
       data.company_id = user.company.id;
       data.user_id = user.id;
+    } else {
+      // Only company forms belong to a company; ignore one sent with any other.
+      data.company_id = undefined;
     }
 
     // Check if this student already has a non-archived response for this form.
@@ -605,7 +608,7 @@ export async function submitFormResponseAction(data: {
           form_version_id: data.form_version_id,
           data: enhancedFormData,
           ...(data.attachments ? { attachments: data.attachments } : {}),
-          ...(data.company_id || _company_id ? { company_id: (data.company_id || _company_id) as string } : {}),
+          ...(data.company_id ? { company_id: data.company_id } : {}),
           ...(data.submitter_first_name || _submitter_first_name ? { submitter_first_name: (data.submitter_first_name || _submitter_first_name) as string } : {}),
           ...(data.submitter_last_name || _submitter_last_name ? { submitter_last_name: (data.submitter_last_name || _submitter_last_name) as string } : {}),
           ...(data.submitter_email || _submitter_email ? { submitter_email: (data.submitter_email || _submitter_email) as string } : {}),
@@ -619,7 +622,7 @@ export async function submitFormResponseAction(data: {
           data: enhancedFormData,
           attachments: data.attachments,
           ...(attendantUuid ? { attendant_uuid: attendantUuid } : {}),
-          ...(data.company_id || _company_id ? { company_id: (data.company_id || _company_id) as string } : {}),
+          ...(data.company_id ? { company_id: data.company_id } : {}),
           ...(data.submitter_first_name || _submitter_first_name ? { submitter_first_name: (data.submitter_first_name || _submitter_first_name) as string } : {}),
           ...(data.submitter_last_name || _submitter_last_name ? { submitter_last_name: (data.submitter_last_name || _submitter_last_name) as string } : {}),
           ...(data.submitter_email || _submitter_email ? { submitter_email: (data.submitter_email || _submitter_email) as string } : {}),
@@ -739,20 +742,12 @@ export async function submitFormResponseAction(data: {
 
       // Get company name
       let companyName = 'Your Company';
-      if (_company_id) {
+      // The submitter's own company, set above -- not the _company_id field the browser sent.
+      if (data.company_id) {
         try {
-          // Extract company ID - handle both string and object formats
-          const companyId = typeof _company_id === 'string'
-            ? _company_id
-            : (typeof _company_id === 'object' && _company_id !== null && 'id' in _company_id)
-              ? (_company_id as { id: string }).id
-              : null;
-
-          if (companyId) {
-            const company = await getCompanyById(companyId);
-            if (company?.name) {
-              companyName = company.name;
-            }
+          const company = await getCompanyById(data.company_id);
+          if (company?.name) {
+            companyName = company.name;
           }
         } catch (error) {
           console.warn("Could not get company name:", error);
