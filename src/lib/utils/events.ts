@@ -1,20 +1,51 @@
 import type { CareerEvent } from "@/lib/schema";
 
+/** Event dates and hours are Belgian wall-clock times. */
+const EVENT_TIME_ZONE = process.env.EVENT_TIMEZONE || "Europe/Brussels";
+
+/** How far `timeZone`'s wall clock runs ahead of UTC at `at`, in ms. */
+function zoneOffsetMs(at: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(at);
+  const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((p) => p.type === type)?.value);
+  const wall = Date.UTC(part("year"), part("month") - 1, part("day"), part("hour"), part("minute"), part("second"));
+  return wall - Math.floor(at.getTime() / 1000) * 1000;
+}
+
+/**
+ * The instant a wall-clock date and time ("2027-03-11", "09:45") happen in
+ * the event time zone. `new Date("2027-03-11T09:45")` would read it in the
+ * runtime's zone instead -- UTC on the server, an hour or two off.
+ */
+export function eventWallTimeToDate(date: string, time: string): Date {
+  const asUtc = new Date(`${date.slice(0, 10)}T${time}Z`);
+  const offset = zoneOffsetMs(asUtc, EVENT_TIME_ZONE);
+  const guess = new Date(asUtc.getTime() - offset);
+  // Across a daylight-saving change the offset at the result can differ.
+  const corrected = zoneOffsetMs(guess, EVENT_TIME_ZONE);
+  return corrected === offset ? guess : new Date(asUtc.getTime() - corrected);
+}
+
 /**
  * Returns true if the current time is between the event's start and end (inclusive).
- * Schedules should only be available during the event.
+ * Schedules should only be available during the event. The same answer on the
+ * server and in any browser, whatever their time zone.
  */
-export function isDuringEvent(event: CareerEvent): boolean {
+export function isDuringEvent(event: CareerEvent, now: Date = new Date()): boolean {
   const { date, start_hour, end_hour } = event;
   if (!date || !start_hour || !end_hour) return false;
-  try {
-    const start = new Date(`${date}T${start_hour}`);
-    const end = new Date(`${date}T${end_hour}`);
-    const now = new Date();
-    return now >= start && now <= end;
-  } catch {
-    return false;
-  }
+  const start = eventWallTimeToDate(String(date), String(start_hour));
+  const end = eventWallTimeToDate(String(date), String(end_hour));
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return false;
+  return now >= start && now <= end;
 }
 
 export type EventWithStatus = CareerEvent & {
