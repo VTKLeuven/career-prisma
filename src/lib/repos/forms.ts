@@ -1887,3 +1887,71 @@ export async function getLatestCompanyFormResponseForForm(formId: string, compan
 
 
 
+
+/* ------------------------------------------------------------------ *
+ * Admin form mailings and exports (send QR emails, reminders, ZIP)
+ * ------------------------------------------------------------------ */
+
+/** A form version with its form, or null. */
+export async function getFormVersionWithForm(formVersionId: string) {
+  const id = Number(formVersionId);
+  if (!Number.isSafeInteger(id)) return null;
+  return prisma.formVersion.findUnique({ where: { id }, include: { form: true } });
+}
+
+/** A version's live responses that have an attendant QR code. */
+export async function listAttendantResponses(formVersionId: string) {
+  return prisma.formResponse.findMany({
+    where: {
+      form_version_id: Number(formVersionId),
+      archived: { not: true },
+      attendant_uuid: { not: null },
+    },
+    select: { id: true, data: true, attendant_uuid: true },
+  });
+}
+
+/**
+ * Stamps `_qr_email_sent_at` into a response's data. Re-reads the data first so
+ * an edit made while the mailing ran is not overwritten.
+ */
+export async function markQrEmailSent(responseId: number, fallbackData: Record<string, unknown>): Promise<void> {
+  const fresh = await prisma.formResponse.findUnique({
+    where: { id: responseId },
+    select: { data: true },
+  });
+  await prisma.formResponse.update({
+    where: { id: responseId },
+    data: {
+      data: {
+        ...((fresh?.data || fallbackData) as Record<string, unknown>),
+        _qr_email_sent_at: new Date().toISOString(),
+      } as Prisma.InputJsonValue,
+    },
+  });
+}
+
+/** Every version's schema, newest first. */
+export async function listFormVersionSchemas(formId: string) {
+  return prisma.formVersion.findMany({
+    where: { form_id: Number(formId) },
+    select: { id: true, schema: true },
+    orderBy: { version_number: "desc" },
+  });
+}
+
+/** Live responses across the given versions (data only). */
+export async function listLiveResponsesForVersions(versionIds: Array<string | number>) {
+  return prisma.formResponse.findMany({
+    where: {
+      form_version_id: { in: versionIds.map(Number) },
+      archived: { not: true },
+    },
+    select: { id: true, data: true, form_version_id: true },
+  });
+}
+
+export async function getFormSlug(formId: string): Promise<string | null> {
+  const form = await prisma.form.findUnique({ where: { id: Number(formId) }, select: { slug: true } });
+  return form?.slug ?? null;
+}

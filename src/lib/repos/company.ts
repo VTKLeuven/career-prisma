@@ -235,3 +235,22 @@ export async function getCompaniesForEvent(eventId: string, _usePublic = false) 
     return [];
   }
 }
+
+/** Names of the given companies. */
+export async function listCompanyNames(ids: string[]): Promise<{ id: string; name: string | null }[]> {
+  if (ids.length === 0) return [];
+  return prisma.company.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
+}
+
+/** The given companies with their representatives' names and emails (form reminders). */
+export async function listCompaniesWithRepresentatives(ids: string[]) {
+  if (ids.length === 0) return [];
+  return prisma.company.findMany({
+    where: { id: { in: ids } },
+    select: {
+      id: true,
+      name: true,
+      users: { select: { id: true, email: true, first_name: true, last_name: true } },
+    },
+  });
+}

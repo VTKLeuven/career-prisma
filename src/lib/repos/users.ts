@@ -482,3 +482,12 @@ export async function getCompanyUserRequest(id: number) {
 export async function setCompanyUserRequestStatus(id: number, status: string): Promise<void> {
   await prisma.companyUserRequest.update({ where: { id }, data: { status } });
 }
+
+/** Names and emails of the given users. */
+export async function listUserContacts(ids: string[]) {
+  if (ids.length === 0) return [];
+  return prisma.user.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, first_name: true, last_name: true, email: true },
+  });
+}

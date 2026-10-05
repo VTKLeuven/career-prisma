@@ -7,9 +7,8 @@ import {
   type EmailTask,
   type EmailTaskResult,
 } from "@/lib/email-job-manager";
-import prisma from "@/lib/prisma";
+import { getFormVersionWithForm, listAttendantResponses, markQrEmailSent } from "@/lib/repos/forms";
 import { getStudentEmailsByIds } from "@/lib/repos/students";
-import { Prisma } from "@prisma/client";
 
 export async function POST(
   request: NextRequest,
@@ -32,10 +31,7 @@ export async function POST(
       );
     }
 
-    const formVersion = await prisma.formVersion.findUnique({
-      where: { id: Number(formVersionId) },
-      include: { form: true },
-    });
+    const formVersion = await getFormVersionWithForm(formVersionId);
 
     if (!formVersion) {
       return NextResponse.json(
@@ -59,14 +55,7 @@ export async function POST(
     const emailContent =
       "Please find your personal QR code ticket below. Present it at the entrance for a smooth check-in. We look forward to seeing you there!";
 
-    const responses = await prisma.formResponse.findMany({
-      where: {
-        form_version_id: Number(formVersionId),
-        archived: { not: true },
-        attendant_uuid: { not: null },
-      },
-      select: { id: true, data: true, attendant_uuid: true },
-    });
+    const responses = await listAttendantResponses(formVersionId);
 
     const formDomain =
       process.env.NEXT_PUBLIC_FORM_DOMAIN ||
@@ -147,20 +136,7 @@ export async function POST(
           html: emailHtml,
         });
 
-        // Fetch fresh data before updating to avoid overwriting concurrent changes
-        const freshResponse = await prisma.formResponse.findUnique({
-          where: { id: responseId },
-          select: { data: true },
-        });
-        await prisma.formResponse.update({
-          where: { id: responseId },
-          data: {
-            data: {
-              ...((freshResponse?.data || responseData) as Record<string, unknown>),
-              _qr_email_sent_at: new Date().toISOString(),
-            } as Prisma.InputJsonValue,
-          },
-        });
+        await markQrEmailSent(responseId, responseData as Record<string, unknown>);
 
         return "sent";
       });

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromCookies } from "@/lib/auth-server";
-import prisma from "@/lib/prisma";
+import { listCompaniesWithRepresentatives } from "@/lib/repos/company";
 
 export async function POST(
   request: NextRequest,
@@ -24,10 +24,7 @@ export async function POST(
       );
     }
 
-    const companies = await prisma.company.findMany({
-      where: { id: { in: companyIds } },
-      include: { users: true },
-    });
+    const companies = await listCompaniesWithRepresentatives(companyIds);
 
     // Format recipients
     const recipients = companies.map((company) => ({
