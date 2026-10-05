@@ -9,7 +9,6 @@ import {
   deleteScreen,
   getPublishedScreenBySlug,
   listMedia,
-  createMedia,
   deleteMedia,
   listScheduleSlots,
   createScheduleSlot,
@@ -78,21 +77,6 @@ export async function deleteScreenAction(id: string) {
 export async function fetchMediaAction(): Promise<SignageMedia[]> {
   await requireAdmin();
   return listMedia();
-}
-
-export async function createMediaAction(data: {
-  name: string;
-  type: "pdf" | "video" | "image";
-  file: string;
-}) {
-  try {
-    await requireAdmin();
-    const created = await createMedia(data);
-    revalidatePath("/admin/signage");
-    return { success: true, data: created };
-  } catch (error) {
-    return failure(error, "Failed to create media");
-  }
 }
 
 export async function deleteMediaAction(id: string) {

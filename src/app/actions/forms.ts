@@ -12,9 +12,7 @@ import {
   getFormVersionById,
   createFormVersion,
   updateFormVersion,
-  deleteFormVersion,
   listFormResponses,
-  getFormResponseById,
   createFormResponse,
   deleteFormResponse,
   updateFormResponse,
@@ -203,16 +201,6 @@ export async function fetchFormVersionsAction(formId: string) {
   }
 }
 
-export async function fetchFormVersionByIdAction(id: string) {
-  try {
-    await requireAdminUser();
-    return await getFormVersionById(id);
-  } catch (error) {
-    console.error("Error fetching form version:", error);
-    throw error;
-  }
-}
-
 export async function createFormVersionAction(data: {
   form_id: string;
   schema: FormSchema;
@@ -257,16 +245,6 @@ export async function updateFormVersionAction(id: string, data: Partial<FormVers
     return version;
   } catch (error) {
     console.error("Error updating form version:", error);
-    throw error;
-  }
-}
-
-export async function deleteFormVersionAction(id: string) {
-  try {
-    await requireAdminUser();
-    return await deleteFormVersion(id);
-  } catch (error) {
-    console.error("Error deleting form version:", error);
     throw error;
   }
 }
@@ -338,16 +316,6 @@ export async function fetchAllFormResponsesForAllVersionsAction(formId: string) 
     return await listFormResponsesForAllVersions(formId, { limit: -1 });
   } catch (error) {
     console.error("Error fetching all form responses for all versions:", error);
-    throw error;
-  }
-}
-
-export async function fetchFormResponseByIdAction(id: string) {
-  try {
-    await requireAdminUser();
-    return await getFormResponseById(id);
-  } catch (error) {
-    console.error("Error fetching form response:", error);
     throw error;
   }
 }
@@ -970,17 +938,6 @@ export async function fetchCompanyFormFieldValuesAction(formVersionId: string, f
   } catch (error) {
     console.error("[fetchCompanyFormFieldValuesAction] Error:", error);
     return {};
-  }
-}
-
-export async function migrateFormResponsesMasterDegreesAction(formId: string) {
-  await requireAdminUser();
-  try {
-    const { migrateFormResponsesMasterDegrees } = await import("@/lib/repos/forms");
-    return await migrateFormResponsesMasterDegrees(formId);
-  } catch (error) {
-    console.error("[migrateFormResponsesMasterDegreesAction] Error:", error);
-    throw error;
   }
 }
 

@@ -113,16 +113,6 @@ export async function getFormById(id: string) {
   }
 }
 
-export async function getFormBySlug(slug: string) {
-  try {
-    const row = await prisma.form.findUnique({ where: { slug }, include: FORM_INCLUDE });
-    return shapeForm(row);
-  } catch (error) {
-    console.error("[getFormBySlug] Error getting form by slug:", error);
-    throw error;
-  }
-}
-
 /**
  * Directus needed a separate public-client variant of the slug lookup because
  * the authenticated client would 403 for anonymous visitors. There is no
@@ -348,108 +338,7 @@ export async function updateFormVersion(id: string, data: Partial<FormVersion>) 
   }
 }
 
-export async function deleteFormVersion(id: string) {
-  try {
-    const versionId = num(id);
-    if (versionId == null) return true;
-
-    await prisma.$transaction(async (tx) => {
-      const responses = await tx.formResponse.findMany({
-        where: { form_version_id: versionId },
-        select: { id: true },
-      });
-      const responseIds = responses.map((r) => r.id);
-      if (responseIds.length > 0) {
-        await tx.attendantScan.deleteMany({ where: { form_response_id: { in: responseIds } } });
-        await tx.cvBookFavourite.deleteMany({ where: { form_response: { in: responseIds } } });
-        await tx.cvBookScreening.deleteMany({ where: { form_response: { in: responseIds } } });
-        await tx.formResponse.deleteMany({ where: { id: { in: responseIds } } });
-      }
-      await tx.formVersion.delete({ where: { id: versionId } });
-    });
-
-    return true;
-  } catch (error) {
-    console.error("Error deleting form version:", error);
-    throw error;
-  }
-}
-
-export async function getActiveFormVersion(formId: string) {
-  try {
-    const id = num(formId);
-    if (id == null) return null;
-    return (await prisma.formVersion.findFirst({
-      where: { form_id: id, is_active: true },
-    })) as unknown as FormVersion | null;
-  } catch (error) {
-    console.error("Error getting active form version:", error);
-    throw error;
-  }
-}
-
-/** Same query as getActiveFormVersion; kept because callers import it by name. */
-export async function getActiveFormVersionForServer(formId: string): Promise<FormVersion | null> {
-  try {
-    const id = num(formId);
-    if (id == null) return null;
-    return (await prisma.formVersion.findFirst({
-      where: { form_id: id, is_active: true },
-    })) as unknown as FormVersion | null;
-  } catch (error) {
-    console.error("[getActiveFormVersionForServer] Error:", error);
-    return null;
-  }
-}
-
 // ===================== FORM RESPONSES =====================
-
-/**
- * Archive this student's previous responses to a form.
- *
- * Previously this fetched every response across all versions of the form and
- * compared `data._student_id` in JavaScript, then issued one PATCH per match.
- * With jsonb the match happens in the database and the archive is one UPDATE.
- */
-export async function archivePreviousStudentResponsesForForm(
-  studentId: string,
-  formId: string
-): Promise<void> {
-  try {
-    const id = num(formId);
-    if (id == null) return;
-
-    await prisma.formResponse.updateMany({
-      where: {
-        formVersion: { form_id: id },
-        ...studentIdMatch(studentId),
-      },
-      data: { archived: true },
-    });
-  } catch (error) {
-    console.error("[archivePreviousStudentResponsesForForm] Error:", error);
-    // Non-fatal: continue with submission
-  }
-}
-
-/** Archive all previous form responses from this company for the given form. */
-export async function archivePreviousCompanyResponsesForForm(
-  companyId: string,
-  formId: string
-): Promise<void> {
-  try {
-    const id = num(formId);
-    if (id == null) return;
-
-    await prisma.formResponse.updateMany({
-      where: { formVersion: { form_id: id }, company_id: companyId },
-      data: { archived: true },
-    });
-  } catch (error) {
-    console.error("[archivePreviousCompanyResponsesForForm] Error:", error);
-    // Non-fatal: continue with submission
-  }
-}
 
 /** Archive duplicate student/company responses for a form, keeping only the most recent per student or company. */
 export async function archiveDuplicateResponsesForForm(formId: string): Promise<{ archived: number }> {
@@ -573,39 +462,6 @@ export async function getLatestFormResponse(formVersionId: string) {
   } catch (error) {
     console.error("Error getting latest form response:", error);
     return null;
-  }
-}
-
-/** Batch: get latest form response data for multiple students. Returns Map<studentId, data>. */
-export async function getStudentFormResponsesBatchForForm(
-  formId: string,
-  studentIds: string[]
-): Promise<Map<string, Record<string, unknown>>> {
-  if (studentIds.length === 0) return new Map();
-  const idSet = new Set(studentIds.map(String));
-  try {
-    const id = num(formId);
-    if (id == null) return new Map();
-
-    const responses = await prisma.formResponse.findMany({
-      where: { formVersion: { form_id: id }, ...NOT_ARCHIVED },
-      select: { id: true, form_version_id: true, data: true },
-      orderBy: { submitted_at: "desc" },
-    });
-
-    const byStudent = new Map<string, Record<string, unknown>>();
-    for (const r of responses) {
-      const data = r.data as Record<string, unknown> | null;
-      const fromData = data?._student_id ?? data?.student_id;
-      const sid = fromData != null ? String(fromData) : null;
-      if (sid != null && idSet.has(sid) && !byStudent.has(sid)) {
-        byStudent.set(sid, data ?? {});
-      }
-    }
-    return byStudent;
-  } catch (error) {
-    console.error("[getStudentFormResponsesBatchForForm] Error:", error);
-    return new Map();
   }
 }
 
@@ -779,20 +635,6 @@ export async function getLatestFormResponseForAllVersions(formId: string) {
   }
 }
 
-export async function getFormResponseById(id: string) {
-  try {
-    const responseId = num(id);
-    if (responseId == null) return null as unknown as FormResponse;
-    return (await prisma.formResponse.findUnique({
-      where: { id: responseId },
-      include: { formVersion: true, company: true },
-    })) as unknown as FormResponse;
-  } catch (error) {
-    console.error("Error getting form response:", error);
-    throw error;
-  }
-}
-
 export async function createFormResponse(data: {
   form_version_id: string;
   user_id?: string;
@@ -861,77 +703,6 @@ export async function deleteFormResponse(id: string) {
     return true;
   } catch (error) {
     console.error("Error deleting form response:", error);
-    throw error;
-  }
-}
-
-/** Migrate master-degrees fields in form responses from label format to canonical (fac:facId:masterId). */
-export async function migrateFormResponsesMasterDegrees(formId: string): Promise<{ updated: number; total: number }> {
-  try {
-    const { listMasters, listFaculties } = await import("@/lib/repos/features");
-    const { buildMasterDegreeOptionsForForm, normalizeMasterDegreesValues, normalizeFaculties } = await import("@/lib/utils/master-degree-options");
-
-    const id = num(formId);
-    if (id == null) return { updated: 0, total: 0 };
-
-    const form = await getFormById(formId);
-    if (!form?.form_versions?.length) return { updated: 0, total: 0 };
-
-    const masters = (await listMasters({ limit: 300, sort: "name" })) ?? [];
-    const rawFaculties = (await listFaculties({ limit: 100, sort: "name" })) ?? [];
-    const faculties = normalizeFaculties(rawFaculties);
-
-    const sortedVersions = [...form.form_versions].sort((a, b) => (b.version_number ?? 0) - (a.version_number ?? 0));
-    const masterDegreeFieldsByKey = new Map<string, FormField>();
-    for (const version of sortedVersions) {
-      const fields = (version as FormVersion & { schema?: { fields?: FormField[] } })?.schema?.fields ?? [];
-      for (const f of fields) {
-        if (f.type === "master-degrees" && !masterDegreeFieldsByKey.has(f.name)) {
-          masterDegreeFieldsByKey.set(f.name, f);
-        }
-      }
-    }
-    const masterDegreeFields = Array.from(masterDegreeFieldsByKey.values());
-    if (masterDegreeFields.length === 0) return { updated: 0, total: 0 };
-
-    const responses = await prisma.formResponse.findMany({
-      where: { formVersion: { form_id: id } },
-      select: { id: true, form_version_id: true, data: true },
-    });
-
-    let updated = 0;
-    for (const response of responses) {
-      const data = { ...((response.data as Record<string, unknown>) ?? {}) };
-      let changed = false;
-      for (const field of masterDegreeFields) {
-        const fieldValue = data[field.name];
-        if (fieldValue == null) continue;
-        const includeFaculties = field.masterDegreesIncludeFaculties ?? false;
-        const isMultiple = field.masterDegreesMultiple ?? false;
-        const options = buildMasterDegreeOptionsForForm(masters, faculties, includeFaculties);
-        const normalized = normalizeMasterDegreesValues(fieldValue, options, isMultiple, { masters, faculties });
-        const current = Array.isArray(fieldValue) ? fieldValue : [fieldValue];
-        const currentStr = current
-          .map((v) => (v != null && typeof v === "object" && ("id" in v || "value" in v || "label" in v)
-            ? String((v as Record<string, unknown>).id ?? (v as Record<string, unknown>).value ?? (v as Record<string, unknown>).label ?? v)
-            : String(v)))
-          .filter(Boolean);
-        if (JSON.stringify([...normalized].sort()) !== JSON.stringify([...currentStr].sort())) {
-          data[field.name] = isMultiple ? normalized : normalized[0] ?? null;
-          changed = true;
-        }
-      }
-      if (changed) {
-        await prisma.formResponse.update({
-          where: { id: response.id },
-          data: { data: data as Prisma.InputJsonValue },
-        });
-        updated++;
-      }
-    }
-    return { updated, total: responses.length };
-  } catch (error) {
-    console.error("[migrateFormResponsesMasterDegrees] Error:", error);
     throw error;
   }
 }

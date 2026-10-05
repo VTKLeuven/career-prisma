@@ -13,9 +13,6 @@ import {
   getCompanyMatchCounts,
   getCompanyGeneralInfoForCompanies,
   createOrUpdateCompanyMatchingResponse,
-  syncCompanyMatchedStudents,
-  syncAllCompanyMatchedStudents,
-  fullUpdateAllMatches,
   getStudentFormResponseForForm,
   computeAndStoreCompanyMatches,
   getCompaniesByIds,
@@ -97,36 +94,6 @@ export async function getCompanyMatchingResponseCompletedIdsAction(
 ) {
   await requireAdminUser();
   return getCompanyMatchingResponseCompletedIds(matchingSoftwareId, companyIds);
-}
-
-export async function syncCompanyMatchedStudentsAction(
-  companyId: string,
-  matchingSoftwareId: string
-) {
-  await requireAdminUser();
-  return syncCompanyMatchedStudents(companyId, matchingSoftwareId);
-}
-
-/** Sync matched students for all companies with a matching response. Admin only. */
-export async function syncAllCompanyMatchedStudentsAction(matchingSoftwareId: string) {
-  await requireAdminUser();
-  return syncAllCompanyMatchedStudents(matchingSoftwareId);
-}
-
-/** Full update: recompute all student matches, then sync company matches. Returns logs for admin display. */
-export async function fullUpdateAllMatchesAction(matchingSoftwareId: string) {
-  try {
-    await requireAdminUser();
-    return await fullUpdateAllMatches(matchingSoftwareId);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return {
-      studentsUpdated: 0,
-      companiesSynced: 0,
-      errors: [`Update failed: ${msg}`],
-      logs: [`[Error] ${msg}`],
-    };
-  }
 }
 
 /** Get match counts per company for admin overview. */

@@ -3,18 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { requireAdminUser } from "@/lib/auth-server";
 import {
-  listFaculties,
   createFaculty,
   updateFaculty,
   deleteFaculty,
 } from "@/lib/repos/features";
 import type { ActionResult } from "@/components/admin/types";
 import type { Faculty } from "@/lib/schema";
-
-export async function listFacultiesAction(): Promise<Faculty[]> {
-  await requireAdminUser();
-  return (await listFaculties({ limit: 200, sort: "name" })) ?? [];
-}
 
 export async function createFacultyAction(data: Record<string, unknown>): Promise<ActionResult<Faculty>> {
   try {

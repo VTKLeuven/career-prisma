@@ -58,41 +58,6 @@ export async function listScreeningForCVBook(cvBookId: string): Promise<CVBookSc
   }
 }
 
-/** Get screening record for a form response in a CV Book */
-export async function getScreeningRecord(
-  cvBookId: string,
-  formResponseId: string
-): Promise<CVBookScreeningRecord | null> {
-  try {
-    const row = await prisma.cvBookScreening.findFirst({
-      where: { cv_book: num(cvBookId), form_response: num(formResponseId) },
-    });
-    return row ? shapeRecord(row) : null;
-  } catch (error) {
-    console.error("[getScreeningRecord] Error:", error);
-    return null;
-  }
-}
-
-/**
- * Get screening map (form_response_id -> record). Used by getCVBookStudentData.
- *
- * The Directus version had to try three column spellings (form_response,
- * form_response_id, form_responses_id) and unwrap possibly-expanded relations,
- * because `depth` was not reliably suppressed. The column is `form_response`.
- */
-export async function getScreeningMap(
-  cvBookId: string
-): Promise<Map<string, CVBookScreeningRecord>> {
-  const records = await listScreeningForCVBook(cvBookId);
-  const map = new Map<string, CVBookScreeningRecord>();
-  for (const r of records) {
-    if (!r.form_response) continue;
-    map.set(r.form_response, r);
-  }
-  return map;
-}
-
 /** Approve or reject a CV */
 export async function setScreeningStatus(
   cvBookId: string,

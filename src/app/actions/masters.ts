@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdminUser } from "@/lib/auth-server";
 import { invalidateOurStudentsCache } from "@/lib/our-students-cache";
 import { invalidateCompanyPageCache } from "@/lib/company-page-cache";
-import { listMasters, createMaster, updateMaster, deleteMaster } from "@/lib/repos/features";
+import { createMaster, updateMaster, deleteMaster } from "@/lib/repos/features";
 import type { ActionResult } from "@/components/admin/types";
 import type { Master } from "@/lib/schema";
 
@@ -13,11 +13,6 @@ import type { Master } from "@/lib/schema";
 function invalidatePublicMasterPages() {
   invalidateOurStudentsCache();
   invalidateCompanyPageCache();
-}
-
-export async function listMastersAction(): Promise<Master[]> {
-  await requireAdminUser();
-  return (await listMasters({ limit: 500, sort: "name" })) ?? [];
 }
 
 export async function createMasterAction(data: Record<string, unknown>): Promise<ActionResult<Master>> {

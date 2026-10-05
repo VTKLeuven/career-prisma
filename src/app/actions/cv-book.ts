@@ -20,7 +20,6 @@ import {
   markCVBookScreeningComplete,
 } from "@/lib/repos/cv-book-screening";
 import {
-  listFavourites,
   addFavourite,
   removeFavourite,
 } from "@/lib/repos/cv-book-favourites";
@@ -182,30 +181,6 @@ export async function fetchCVBookStudentDataForScreeningAction(cvBook: CVBook): 
     return await getCVBookStudentData(cvBook, { forScreening: true });
   } catch (error) {
     console.error("[fetchCVBookStudentDataForScreeningAction] Error:", error);
-    return [];
-  }
-}
-
-// ===================== CV BOOK FAVOURITES =====================
-
-export async function fetchCVBookFavouritesAction(
-  cvBookId: string,
-  clientCompanyId?: string
-): Promise<string[]> {
-  try {
-    const user = await getUserFromCookies();
-    if (!user?.id) return [];
-
-    let companyId: string | undefined =
-      (user.company && (typeof user.company === "string" ? user.company : user.company.id)) ?? undefined;
-    if (!companyId && user.admin && clientCompanyId) {
-      companyId = clientCompanyId;
-    }
-    if (!companyId) return [];
-
-    return await listFavourites(companyId, cvBookId);
-  } catch (error) {
-    console.error("[fetchCVBookFavouritesAction] Error:", error);
     return [];
   }
 }

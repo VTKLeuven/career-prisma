@@ -355,25 +355,6 @@ export async function listSalespersons(opts?: {
   });
 }
 
-export async function fetchSalespersonByID(salespersonId: string) {
-  return prisma.user.findFirst({
-    where: {
-      id: salespersonId,
-      role_id: SALESPERSON_ROLE_ID,
-      status: "active",
-    },
-    select: {
-      id: true,
-      first_name: true,
-      last_name: true,
-      email: true,
-      avatar: true,
-      title: true,
-      profile_link: true,
-    },
-  });
-}
-
 export type PendingApprovalRequest = {
   id: string;
   email: string;

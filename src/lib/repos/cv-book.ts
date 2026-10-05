@@ -46,17 +46,6 @@ export async function listAcademicYears(opts?: {
   }
 }
 
-export async function getAcademicYearById(id: string) {
-  try {
-    return (await prisma.academicYear.findUnique({
-      where: { id: num(id) },
-    })) as unknown as AcademicYear;
-  } catch (error) {
-    console.error("[getAcademicYearById] Error getting academic year:", error);
-    throw error;
-  }
-}
-
 // ===================== CV BOOKS =====================
 
 /**

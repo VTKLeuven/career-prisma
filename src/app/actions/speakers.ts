@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { requireAdminUser } from "@/lib/auth-server";
 import {
-  listSpeakers,
   createSpeaker,
   updateSpeaker,
   deleteSpeaker,
@@ -11,11 +10,6 @@ import {
 import { listUsersBasic } from "@/lib/repos/users";
 import type { ActionResult, SelectOption } from "@/components/admin/types";
 import type { Speaker } from "@/lib/schema";
-
-export async function listSpeakersAction(): Promise<Speaker[]> {
-  await requireAdminUser();
-  return listSpeakers({ limit: 1000 });
-}
 
 /** Users available to be a speaker's representative, formatted for a dropdown. */
 export async function listRepresentativeOptionsAction(): Promise<SelectOption[]> {

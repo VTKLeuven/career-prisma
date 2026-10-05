@@ -1,15 +1,9 @@
 "use server"
 
 import { createDrink, deleteDrink, updateDrink } from "@/lib/repos/drinks";
-import { getOrderingSettings, setOrderingSettings } from "@/lib/repos/ordering-settings";
+import { setOrderingSettings } from "@/lib/repos/ordering-settings";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { revalidatePath } from "next/cache";
-
-export async function getOrderingSettingsAction(): Promise<{ enabled: boolean, activeEventId: string | null }> {
-    const user = await getUserFromCookies();
-    if (!user?.admin) return { enabled: false, activeEventId: null };
-    return getOrderingSettings();
-}
 
 export async function setOrderingSettingsAction(enabled: boolean, activeEventId: string | null) {
     const user = await getUserFromCookies();

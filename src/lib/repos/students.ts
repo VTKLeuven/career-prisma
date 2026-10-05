@@ -120,14 +120,6 @@ export async function deleteStudent(id: number): Promise<void> {
   ]);
 }
 
-/** Looks a student up by their SSO subject (the OIDC `sub`). */
-export async function findStudentBySsoSubject(
-  subject: string
-): Promise<Student | null> {
-  const row = await prisma.student.findUnique({ where: { sso_subject: subject } });
-  return row ? shapeStudent(row) : null;
-}
-
 /** What the SSO flow hands over. Mirrors `SsoProfile` in `lib/vtk-sso-claims.ts`. */
 export interface SsoStudentUpsert {
   subject: string;

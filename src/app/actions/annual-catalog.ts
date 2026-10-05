@@ -65,23 +65,6 @@ export async function updateAcademicYearAction(data: {
   }
 }
 
-export async function createOptionSaleAction(data: {
-  companyId: string;
-  optionId: string;
-  academicYearId: string;
-}) {
-  try {
-    await requireAdminUser();
-    const sale = await createOptionSale(data);
-    revalidatePath("/admin/career-options");
-    revalidatePath("/admin/companies-events");
-    revalidatePath("/admin/events");
-    return { success: true, data: sale };
-  } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : "Failed to record sale" };
-  }
-}
-
 export async function createCatalogSaleAction(data: {
   companyId: string;
   itemId: string;

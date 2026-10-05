@@ -11,40 +11,6 @@ import { sanitizeRichText } from "@/lib/sanitize-html";
 /** Minimal company shape for vacancy cards / public listing. */
 export type CompanyBasicForVacancy = Pick<Company, "id" | "name" | "logo" | "website">;
 
-/**
- * Load companies by id.
- *
- * The `opts` parameter is retained for call-site compatibility. Under Directus
- * it selected which client (user JWT / server token / public) to use, because
- * policies allowed a direct `company` read while forbidding the same fields
- * when expanded from `vacancies`. Prisma has no such policy layer, so a single
- * query serves every caller.
- */
-export async function getCompaniesBasicByIds(
-  ids: string[],
-  _opts?: { preferServerToken?: boolean }
-): Promise<CompanyBasicForVacancy[]> {
-  const unique = [...new Set(ids.filter(Boolean))];
-  if (unique.length === 0) return [];
-
-  try {
-    const rows = await prisma.company.findMany({
-      where: { id: { in: unique } },
-      select: { id: true, name: true, logo_id: true, website: true },
-    });
-
-    return rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      logo: r.logo_id,
-      website: r.website,
-    })) as CompanyBasicForVacancy[];
-  } catch (err) {
-    console.error("[getCompaniesBasicByIds] Error:", err);
-    return [];
-  }
-}
-
 /** id + name for company dropdowns. */
 export async function listCompaniesBasic(): Promise<{ id: string; name: string | null }[]> {
   try {

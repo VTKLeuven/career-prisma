@@ -6,7 +6,6 @@ import { Company, CompanyRep, type UserSummary } from "@/lib/schema";
 import { sendEmail } from "@/lib/email";
 import { uploadFile } from "@/lib/file-storage";
 import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
-import { fetchMastersAction } from "@/app/actions/features";
 import { generateCompanyPageRequestEmailHtml, generateCVBookRequestEmailHtml } from "@/lib/email-templates";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { toPublicCompany, toPublicSpeaker } from "@/lib/repos/_shape";
@@ -663,54 +662,6 @@ export async function updateCompanyAction(
       );
   const res = await updateCompany(id, allowed);
   return res as Company | null;
-}
-
-export async function setupCompanyAction(
-  companyId: string,
-  payload: Partial<Company>,
-  selectedMasters: string[]
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const user = await getUserFromCookies();
-    if (!user?.admin && user?.company?.id !== companyId) {
-      return { success: false, error: "Unauthorized" };
-    }
-    // Fetch masters to get full master objects
-    const masters = await fetchMastersAction();
-
-    // Build category payload from selected master IDs
-    const categoryPayload = masters
-      .filter((m) => selectedMasters.includes(m.id))
-      .map((m) => ({ master_id: m.id }));
-
-    // Update company with the profile fields and set status to published.
-    // The repo is called directly: updateCompanyAction keeps representatives
-    // away from `status`, which this onboarding step sets on purpose.
-    const profile = Object.fromEntries(
-      Object.entries(payload).filter(([key]) =>
-        (REP_EDITABLE_COMPANY_FIELDS as readonly string[]).includes(key)
-      )
-    ) as Partial<Company>;
-    const updatePayload: Partial<Company> = {
-      ...profile,
-      category: categoryPayload as unknown as Company['category'],
-      status: "published",
-    };
-
-    const updated = await updateCompany(companyId, updatePayload);
-
-    if (!updated) {
-      return { success: false, error: "Failed to update company" };
-    }
-
-    return { success: true };
-  } catch (error) {
-    console.error("Error setting up company:", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
-  }
 }
 
 export async function uploadCompanyLogo(file: File) {

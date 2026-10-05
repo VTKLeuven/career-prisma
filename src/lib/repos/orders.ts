@@ -62,27 +62,6 @@ export async function createOrder(data: Partial<Order>) {
     return shapeOrder(row) as Order;
 }
 
-export async function updateOrder(id: string, data: Partial<Order>) {
-    const { booth, shifter, id: _ignored, ...rest } = data as Record<string, any>;
-
-    const row = await prisma.order.update({
-        where: { id: Number(id) },
-        data: {
-            ...rest,
-            ...(booth !== undefined
-                ? { booth_id: booth == null ? null : typeof booth === "object" ? Number(booth.id) : Number(booth) }
-                : {}),
-            ...(shifter !== undefined
-                ? { shifter_id: shifter == null ? null : typeof shifter === "object" ? shifter.id : shifter }
-                : {}),
-            date_updated: new Date(),
-        },
-        include: ORDER_INCLUDE,
-    });
-
-    return shapeOrder(row) as Order;
-}
-
 export async function getActiveOrderForBooth(boothId: string) {
     const row = await prisma.order.findFirst({
         where: {
