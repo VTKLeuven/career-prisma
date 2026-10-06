@@ -106,7 +106,10 @@ function Hero() {
             <div className="pointer-events-none absolute right-[-30px] bottom-20 h-28 w-28 rotate-6 rounded-2xl bg-vtk-light/80 blur-xl" />
 
             <div className="relative mx-auto grid max-w-7xl grid-cols-1 items-center gap-8 sm:gap-10 px-4 pt-20 sm:pt-28 md:pt-36 pb-12 sm:pb-16 md:pb-24">
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+                {/* A CSS entrance: it runs from the first paint. With framer-motion
+                    the server-rendered headline stayed at opacity 0 until the
+                    page had hydrated -- about a second on a phone. */}
+                <div className="animate-in fade-in slide-in-from-bottom-5 duration-600">
                     <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs text-white">
                         <Sparkles className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Organiser of the biggest engineering fair in the BeNeLux</span><span className="sm:hidden">BeNeLux&apos;s biggest engineering fair</span>
                     </div>
@@ -124,7 +127,7 @@ function Hero() {
                             <Link href="#team">Meet the team</Link>
                         </Button>
                     </div>
-                </motion.div>
+                </div>
             </div>
 
             <ScrollCue />

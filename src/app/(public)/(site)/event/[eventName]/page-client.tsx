@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
+import { motion, useScroll, useTransform } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { ScrollCue } from '@/components/ScrollCue'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -327,80 +327,67 @@ function Hero({
       {/* Text - Mobile: bottom aligned with more padding, Desktop: original position */}
       <div className="absolute inset-x-0 bottom-0 md:top-4/7 md:bottom-auto pb-6 sm:pb-4 md:pb-0 md:-translate-y-1/2">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <AnimatePresence mode="wait">
-            {!isLoading && page?.event ? (
-              <motion.div
-                key="event-content"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.5 }}
-              >
-                <div className="mb-3 sm:mb-4 inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-2.5 sm:px-3 py-0.5 sm:py-1 text-[10px] sm:text-xs text-white backdrop-blur-sm">
-                  {page.tagline}
-                </div>
-                <h1 className="text-balance text-5xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold leading-[1.05] sm:leading-[1.1] tracking-tight text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.6)] mb-3 sm:mb-2">
-                  {page.event.name}
-                </h1>
-                <p className="max-w-2xl font-black text-white/95 text-lg sm:text-lg md:text-xl lg:text-2xl mt-2 sm:mt-1 uppercase drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]">
-                  {page.event.date} – {page.event.location}
-                </p>
-                <div
-                  className="prose prose-invert max-w-2xl text-white/90 text-sm sm:text-base md:text-lg mt-4 sm:mt-4 drop-shadow-sm"
-                  dangerouslySetInnerHTML={{ __html: page.description_EN }}
-                />
-                <div className="mt-5 sm:mt-6 md:mt-10 flex flex-wrap items-center gap-2 sm:gap-3">
-                  {/* Register button */}
+          {!isLoading && page?.event ? (
+            // A CSS entrance, running from the first paint: framer-motion kept
+            // the server-rendered text invisible until the page had hydrated.
+            <div className="animate-in fade-in slide-in-from-bottom-5 duration-500">
+              <div className="mb-3 sm:mb-4 inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-2.5 sm:px-3 py-0.5 sm:py-1 text-[10px] sm:text-xs text-white backdrop-blur-sm">
+                {page.tagline}
+              </div>
+              <h1 className="text-balance text-5xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold leading-[1.05] sm:leading-[1.1] tracking-tight text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.6)] mb-3 sm:mb-2">
+                {page.event.name}
+              </h1>
+              <p className="max-w-2xl font-black text-white/95 text-lg sm:text-lg md:text-xl lg:text-2xl mt-2 sm:mt-1 uppercase drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]">
+                {page.event.date} – {page.event.location}
+              </p>
+              <div
+                className="prose prose-invert max-w-2xl text-white/90 text-sm sm:text-base md:text-lg mt-4 sm:mt-4 drop-shadow-sm"
+                dangerouslySetInnerHTML={{ __html: page.description_EN }}
+              />
+              <div className="mt-5 sm:mt-6 md:mt-10 flex flex-wrap items-center gap-2 sm:gap-3">
+                {/* Register button */}
+                <Button
+                  variant="ghost"
+                  className="rounded-full bg-vtk-yellow text-black hover:brightness-95 cursor-pointer text-sm sm:text-base"
+                  onClick={handleRegisterClick}
+                >
+                  Student registration
+                </Button>
+
+                {/* Floorplan button only when floorplan is in header_buttons (admin panel), otherwise Explore companies */}
+                {shouldShowHeaderButton(page, "floorplan", floorplanEnabled) ? (
+                  <Button
+                    asChild
+                    variant="ghost"
+                    className="rounded-full bg-vtk-blue-dark text-white hover:brightness-95 cursor-pointer text-sm sm:text-base"
+                  >
+                    <Link href={`/event/${page.event.series_key || slugifyEventName(page.event.name)}/floorplan`}>
+                      Floorplan
+                    </Link>
+                  </Button>
+                ) : (
                   <Button
                     variant="ghost"
-                    className="rounded-full bg-vtk-yellow text-black hover:brightness-95 cursor-pointer text-sm sm:text-base"
-                    onClick={handleRegisterClick}
+                    className="rounded-full bg-vtk-blue-dark text-white hover:brightness-95 cursor-pointer text-sm sm:text-base"
+                    onClick={handleExploreCompanies}
                   >
-                    Student registration
+                    Explore companies
                   </Button>
-
-                  {/* Floorplan button only when floorplan is in header_buttons (admin panel), otherwise Explore companies */}
-                  {shouldShowHeaderButton(page, "floorplan", floorplanEnabled) ? (
-                    <Button
-                      asChild
-                      variant="ghost"
-                      className="rounded-full bg-vtk-blue-dark text-white hover:brightness-95 cursor-pointer text-sm sm:text-base"
-                    >
-                      <Link href={`/event/${page.event.series_key || slugifyEventName(page.event.name)}/floorplan`}>
-                        Floorplan
-                      </Link>
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      className="rounded-full bg-vtk-blue-dark text-white hover:brightness-95 cursor-pointer text-sm sm:text-base"
-                      onClick={handleExploreCompanies}
-                    >
-                      Explore companies
-                    </Button>
-                  )}
-                </div>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="loading-skeleton"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-                className="space-y-4"
-              >
-                <div className="h-6 w-32 rounded-full bg-white/20 animate-pulse" />
-                <div className="h-16 sm:h-20 md:h-24 w-3/4 rounded-lg bg-white/20 animate-pulse" />
-                <div className="h-6 w-48 rounded-lg bg-white/20 animate-pulse" />
-                <div className="h-20 sm:h-24 w-full max-w-2xl rounded-lg bg-white/20 animate-pulse" />
-                <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-5 sm:mt-6 md:mt-10">
-                  <div className="h-10 w-24 rounded-full bg-white/20 animate-pulse" />
-                  <div className="h-10 w-32 rounded-full bg-white/20 animate-pulse" />
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="h-6 w-32 rounded-full bg-white/20 animate-pulse" />
+              <div className="h-16 sm:h-20 md:h-24 w-3/4 rounded-lg bg-white/20 animate-pulse" />
+              <div className="h-6 w-48 rounded-lg bg-white/20 animate-pulse" />
+              <div className="h-20 sm:h-24 w-full max-w-2xl rounded-lg bg-white/20 animate-pulse" />
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-5 sm:mt-6 md:mt-10">
+                <div className="h-10 w-24 rounded-full bg-white/20 animate-pulse" />
+                <div className="h-10 w-32 rounded-full bg-white/20 animate-pulse" />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
