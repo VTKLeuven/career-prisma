@@ -49,6 +49,7 @@ import { resolveMasterDegreeValueToDisplayLabel, normalizeFaculties, type Facult
 import type { Master } from "@/lib/schema";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 
 export type FormResponsesInitialData = {
   form: { id: string; name: string; slug: string } | null;
@@ -1334,7 +1335,7 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
 
   const handleArchiveDuplicates = async () => {
     if (!form || !formId) return;
-    if (!confirm(`Archive duplicate responses for "${form.name}"? This will keep only the most recent response per student or company and archive older ones.`)) {
+    if (!(await confirmDialog({ title: `Archive duplicate responses for "${form.name}"?`, description: "Only the most recent response per student or company is kept; older ones are archived.", confirmLabel: "Archive duplicates" }))) {
       return;
     }
     setArchivingDuplicates(true);
@@ -1359,7 +1360,7 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
       return;
     }
 
-    if (!confirm(`Initialize UUIDs for all responses in "${form.name}"? This will generate QR code links for existing responses.`)) {
+    if (!(await confirmDialog({ title: `Initialize UUIDs for all responses in "${form.name}"?`, description: "This generates QR code links for the existing responses.", confirmLabel: "Initialize" }))) {
       return;
     }
 

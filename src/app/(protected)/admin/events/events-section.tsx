@@ -35,6 +35,7 @@ import { IconPlus } from "@tabler/icons-react";
 import type { CareerEvent, Company, HeaderButtonType } from "@/lib/schema";
 import { SimpleRichTextEditor } from "@/components/admin/SimpleRichTextEditor";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 
 export type EventsSectionData = { events: CareerEvent[]; statuses: Record<string, EventSetupStatus> };
 
@@ -364,7 +365,7 @@ function EventCard({ event, status, onChanged }: { event: CareerEvent; status?: 
   };
 
   const handleDelete = async () => {
-    if (!confirm(`Delete event "${event.name}"? This cannot be undone.`)) return;
+    if (!(await confirmDialog({ title: `Delete event "${event.name}"?`, description: "This cannot be undone.", confirmLabel: "Delete", destructive: true }))) return;
     const res = await deleteEventAction(event.id);
     if (!res.success) {
       toast.error(res.error ?? "Failed to delete event");

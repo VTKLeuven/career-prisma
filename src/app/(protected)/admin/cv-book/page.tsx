@@ -63,6 +63,7 @@ import {
 import { MoreHorizontal, ChevronDown, Trash2, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 
 type CVBookRow = CVBook & {
   year: AcademicYear;
@@ -130,7 +131,7 @@ function CVBooksTable() {
   }, []);
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this CV Book? This action cannot be undone.")) {
+    if (!(await confirmDialog({ title: "Delete this CV Book?", description: "This cannot be undone.", confirmLabel: "Delete", destructive: true }))) {
       return;
     }
 

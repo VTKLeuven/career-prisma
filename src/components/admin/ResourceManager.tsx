@@ -45,6 +45,7 @@ import { SimpleRichTextEditor } from "@/components/admin/SimpleRichTextEditor";
 import type { FieldConfig, ResourceConfig, SelectOption } from "@/components/admin/types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 
 type FormValues = Record<string, unknown>;
 
@@ -257,7 +258,7 @@ export function ResourceManager<T extends Record<string, unknown>>({
   /** Resolves to true once the row is gone, so callers can close the panel. */
   const handleDelete = async (row: T): Promise<boolean> => {
     const label = config.getLabel?.(row) ?? config.singular;
-    if (!confirm(`Delete ${label}? This cannot be undone.`)) return false;
+    if (!(await confirmDialog({ title: `Delete ${label}?`, description: "This cannot be undone.", confirmLabel: "Delete", destructive: true }))) return false;
     const id = config.getId(row);
     setDeletingId(id);
     try {

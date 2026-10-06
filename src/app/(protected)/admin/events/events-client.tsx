@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { confirmDialog } from "@/components/confirm-dialog";
 
 export type AcademicYearOption = {
   id: string;
@@ -114,7 +115,7 @@ export function AdminEventsClient({
                 type="button"
                 disabled={!selectedYearId || !sourceYearId || copying}
                 onClick={async () => {
-                  if (!confirm("Create missing event editions, pages, timetables and career options from this year? Company sales are never copied.")) return;
+                  if (!(await confirmDialog({ title: "Create annual editions from this year?", description: "Missing event editions, pages, timetables and career options are created. Company sales are never copied.", confirmLabel: "Create editions" }))) return;
                   setCopying(true);
                   setMessage(null);
                   const result = await copyAnnualCatalogAction(sourceYearId, selectedYearId);

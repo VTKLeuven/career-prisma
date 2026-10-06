@@ -38,6 +38,7 @@ import {
   createCatalogSaleAction,
   deleteOptionSaleAction,
 } from "@/app/actions/annual-catalog";
+import { confirmDialog } from "@/components/confirm-dialog";
 
 /** Strips HTML tags for a plain-text table preview. */
 function stripHtml(html?: string): string {
@@ -373,7 +374,7 @@ function SalesHistory({
                 <TableCell>{sale.date_created ? new Date(sale.date_created).toLocaleDateString("en-GB") : "—"}</TableCell>
                 <TableCell className="text-right">
                   {!isPastYear && sale.status === "sold" ? <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={async () => {
-                    if (!confirm("Cancel this sale? Its history will be retained.")) return;
+                    if (!(await confirmDialog({ title: "Cancel this sale?", description: "Its history will be retained.", confirmLabel: "Cancel sale", destructive: true }))) return;
                     await deleteOptionSaleAction(sale.id, sale.kind);
                     router.refresh();
                   }}><Trash2 className="h-4 w-4" /></Button> : null}

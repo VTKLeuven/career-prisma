@@ -118,6 +118,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { confirmDialog } from "@/components/confirm-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { createDrinkAction, deleteDrinkAction, updateDrinkAction, setOrderingSettingsAction } from "@/app/actions/drinks";
 import { uploadFileAction } from "@/app/actions/media";
@@ -280,7 +281,7 @@ export default function DrinksClient({
     };
 
     const handleDelete = async (id: string) => {
-        if (confirm("Are you sure?")) {
+        if (await confirmDialog({ title: "Delete this item?", description: "It disappears from the booth ordering menu.", confirmLabel: "Delete", destructive: true })) {
             await deleteDrinkAction(id);
             router.refresh();
         }

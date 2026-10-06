@@ -57,6 +57,7 @@ import {
 } from "@/app/actions/signage";
 import type { SignageScreen, SignageMedia, SignageScheduleSlot } from "@/lib/schema";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -216,7 +217,7 @@ function ScreensTab({
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Delete this screen and all its schedule slots?")) return;
+        if (!(await confirmDialog({ title: "Delete this screen?", description: "Its schedule slots are deleted with it.", confirmLabel: "Delete", destructive: true }))) return;
         const res = await deleteScreenAction(id);
         if (res.success) {
             setScreens(screens.filter((s) => s.id !== id));
@@ -388,7 +389,7 @@ function MediaTab({
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Delete this media? It will be removed from all schedules.")) return;
+        if (!(await confirmDialog({ title: "Delete this media?", description: "It will be removed from all schedules.", confirmLabel: "Delete", destructive: true }))) return;
         const res = await deleteMediaAction(id);
         if (res.success) {
             setMedia(media.filter((m) => m.id !== id));
@@ -721,7 +722,7 @@ function ScheduleTab({
     };
 
     const handleDeleteSlot = async (id: string) => {
-        if (!confirm("Delete this timeslot?")) return;
+        if (!(await confirmDialog({ title: "Delete this timeslot?", confirmLabel: "Delete", destructive: true }))) return;
         const res = await deleteScheduleSlotAction(id);
         if (res.success) {
             setSlots(slots.filter((s) => s.id !== id));

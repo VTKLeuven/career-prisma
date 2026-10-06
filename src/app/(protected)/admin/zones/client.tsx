@@ -31,6 +31,7 @@ import type { Zone, Booth, CareerEventPage } from "@/lib/schema";
 import { useRouter } from "next/navigation";
 import { Trash2, Edit, Plus, Printer, X, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { confirmDialog } from "@/components/confirm-dialog";
 
 function getFloorplanId(page: CareerEventPage): string | null {
     const fp = page.floorplan;
@@ -133,7 +134,7 @@ export default function ZonesClient({
     };
 
     const handleDelete = async (id: string) => {
-        if (confirm("Are you sure?")) {
+        if (await confirmDialog({ title: "Delete this zone?", confirmLabel: "Delete", destructive: true })) {
             await deleteZoneAction(id);
             router.refresh();
         }

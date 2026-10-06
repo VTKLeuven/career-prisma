@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorker";
 import { Toaster } from "@/components/ui/sonner";
+import { ConfirmDialogHost } from "@/components/confirm-dialog";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -30,6 +31,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {children}
         {/* Notifications from toast() -- saves, errors -- instead of blocking alert() dialogs. */}
         <Toaster />
+        {/* Answers confirmDialog(), the in-app replacement for window.confirm(). */}
+        <ConfirmDialogHost />
       </body>
     </html>
   );
