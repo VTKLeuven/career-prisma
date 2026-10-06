@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { fetchCompaniesWithSubOptionsAction, createCompanyAction, updateCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, addSubOptionToCompanyAction, removeSubOptionFromCompanyAction, addSubOptionToCompanyOnlyAction, removeSubOptionFromCompanyOnlyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction, fetchCompanyOptionsDebugAction } from "@/app/actions/companies";
+import { fetchCompanyByIdAction, fetchCompaniesWithSubOptionsAction, createCompanyAction, updateCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, addSubOptionToCompanyAction, removeSubOptionFromCompanyAction, addSubOptionToCompanyOnlyAction, removeSubOptionFromCompanyOnlyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction, fetchCompanyOptionsDebugAction } from "@/app/actions/companies";
 import { fetchEventsAction } from "@/app/actions/events";
 import { listSubOptionsAction, listEventOptionsAction } from "@/app/actions/career-options";
 import {
@@ -17,7 +17,7 @@ import {
   VisibilityState,
 }
 from "@tanstack/react-table";
-import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, MoreHorizontal, Package, Pencil, Search, Upload, Users, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Loader2, MoreHorizontal, Package, Pencil, Search, Upload, Users, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -59,7 +59,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { IconBuilding, IconColumns, IconMail, IconPlus, IconTaxEuro } from "@tabler/icons-react";
-import type { AcademicYear, CareerEvent, Company, CompanyRep, CareerEventOption, CareerSubOption } from "@/lib/schema";
+import type { AcademicYear, CareerEvent, Company, CompanyRep, CareerEventOption, CareerSubOption, Master } from "@/lib/schema";
 import type { UserSummary as AppUser } from "@/lib/schema";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
 import { toast } from "sonner";
@@ -68,6 +68,10 @@ import type { SelectOption } from "@/components/admin/types";
 import { fetchAdminUserAction } from "@/app/actions/admin-users";
 import type { AdminUserRow } from "@/lib/repos/users";
 import { userResourceConfig } from "../users/user-config";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { SettingsCompanyProvider } from "@/app/(protected)/dashboard/settings/settings-company";
+import { CompanyInformationForm } from "@/app/(protected)/dashboard/settings/information/company-information-form";
+import { BillingForm } from "@/app/(protected)/dashboard/settings/billing/billing-form";
 
 /**
  * Notes about typing decisions:
@@ -391,11 +395,14 @@ export function CompaniesSection({
   initialData,
   salespersons,
   roleOptions,
+  masters,
 }: {
   initialData: CompaniesData;
   salespersons: AppUser[];
   /** For editing a representative with the User Management form. */
   roleOptions: SelectOption[];
+  /** For the target masters on the Company information tab. */
+  masters: Master[];
 }) {
   const [data, setData] = React.useState<CompanyRow[]>(() => toCompanyRows(initialData));
   const [loading, setLoading] = React.useState(false);
@@ -545,6 +552,7 @@ export function CompaniesSection({
           <EditCompanyDialog
             company={editingCompany}
             salespersons={salespersons}
+            masters={masters}
             onClose={() => setEditingCompany(null)}
             onSaved={refreshCompanies}
           />
@@ -3060,43 +3068,82 @@ function CompanyFormDialog({ onRefresh, salespersons }: { onRefresh?: () => void
 }
 
 /** Edit an existing company's core fields (name, VAT, status, salesperson). */
-function EditCompanyDialog({ company, salespersons, onClose, onSaved }: {
+type EditTab = "admin" | "information" | "billing";
+
+/**
+ * Edits a company as fully as its representatives can, plus what only VTK
+ * sets. The Company information and Billing tabs are the very forms reps use
+ * in their own settings, so an admin can make any change for them instead of
+ * explaining it; the Admin tab holds the status and salesperson.
+ */
+function EditCompanyDialog({ company, salespersons, masters, onClose, onSaved }: {
   company: CompanyRow | null;
   salespersons: AppUser[];
+  masters: Master[];
   onClose: () => void;
   onSaved?: () => void;
 }) {
-  const [form, setForm] = React.useState({ name: "", VAT: "", status: "draft", salesperson: "" });
+  const [tab, setTab] = React.useState<EditTab>("admin");
+  // The table row is a summary; the forms need the whole company.
+  const [full, setFull] = React.useState<Company | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [form, setForm] = React.useState({ status: "draft", salesperson: "" });
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const changed = React.useRef(false);
 
   React.useEffect(() => {
     if (!company) return;
-    // company.salesperson is the display name; the form needs the id.
-    const salespersonId = company.salesperson_id ?? "";
-    setForm({
-      name: company.name ?? "",
-      VAT: company.VAT ?? "",
-      status: company.status || "draft",
-      salesperson: salespersonId,
-    });
+    let alive = true;
+    setTab("admin");
+    setFull(null);
+    setLoadError(null);
     setError(null);
+    changed.current = false;
+    setForm({
+      status: company.status || "draft",
+      // company.salesperson is the display name; the form needs the id.
+      salesperson: company.salesperson_id ?? "",
+    });
+    fetchCompanyByIdAction(company.id)
+      .then((loaded) => {
+        if (!alive) return;
+        if (loaded) setFull(loaded);
+        else setLoadError("This company could not be loaded.");
+      })
+      .catch(() => alive && setLoadError("This company could not be loaded."));
+    return () => {
+      alive = false;
+    };
   }, [company]);
 
-  const onSubmit = async (e: React.FormEvent) => {
+  // The settings forms announce their saves with this event (for the
+  // sidebar); it also tells the table to reload when the panel closes.
+  React.useEffect(() => {
+    const onUpdated = () => {
+      changed.current = true;
+    };
+    window.addEventListener("company-updated", onUpdated);
+    return () => window.removeEventListener("company-updated", onUpdated);
+  }, []);
+
+  const close = () => {
+    if (changed.current) onSaved?.();
+    onClose();
+  };
+
+  const onSubmitAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!company) return;
     setSaving(true);
     setError(null);
     try {
       await updateCompanyAction(company.id, {
-        name: form.name,
-        VAT: form.VAT,
         status: form.status,
         ...(form.salesperson ? { salesperson: form.salesperson } : {}),
       } as Partial<Company>);
-      onSaved?.();
-      onClose();
+      changed.current = true;
+      toast.success("Saved.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update company");
     } finally {
@@ -3104,51 +3151,86 @@ function EditCompanyDialog({ company, salespersons, onClose, onSaved }: {
     }
   };
 
+  const tabs: { id: EditTab; label: string }[] = [
+    { id: "admin", label: "Admin" },
+    { id: "information", label: "Company information" },
+    { id: "billing", label: "Billing" },
+  ];
+
   return (
-    <Dialog open={!!company} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Edit Company</DialogTitle>
-          <DialogDescription>Update the company details below.</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-name">Company name*</Label>
-            <Input id="edit-name" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} required />
+    <Sheet open={!!company} onOpenChange={(o) => { if (!o) close(); }}>
+      <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-3xl sm:rounded-l-2xl">
+        <SheetHeader className="shrink-0 gap-3 border-b px-5 pt-4 pb-0">
+          <SheetTitle className="text-base">{company?.name || "Edit company"}</SheetTitle>
+          <SheetDescription className="sr-only">Edit this company</SheetDescription>
+          <div className="-mb-px flex gap-1" role="tablist">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.id}
+                onClick={() => setTab(t.id)}
+                className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+                  tab === t.id ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-vat">VAT</Label>
-            <Input id="edit-vat" value={form.VAT} onChange={(e) => setForm((p) => ({ ...p, VAT: e.target.value }))} />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-status">Status</Label>
-            <Select value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: v }))}>
-              <SelectTrigger id="edit-status"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="published">Published</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-salesperson">Salesperson</Label>
-            <Select value={form.salesperson} onValueChange={(v) => setForm((p) => ({ ...p, salesperson: v }))}>
-              <SelectTrigger id="edit-salesperson" className="w-full"><SelectValue placeholder="Select a salesperson" /></SelectTrigger>
-              <SelectContent>
-                {salespersons.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>{u.first_name} {u.last_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </SheetHeader>
+
+        <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-5 py-5">
+          {tab === "admin" ? (
+            <form onSubmit={onSubmitAdmin} className="flex max-w-md flex-col gap-4">
+              <p className="text-sm text-muted-foreground">
+                Set by VTK only. Everything the company can change itself is on the other tabs.
+              </p>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-status">Status</Label>
+                <Select value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: v }))}>
+                  <SelectTrigger id="edit-status"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="published">Published</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-salesperson">Salesperson</Label>
+                <Select value={form.salesperson} onValueChange={(v) => setForm((p) => ({ ...p, salesperson: v }))}>
+                  <SelectTrigger id="edit-salesperson" className="w-full"><SelectValue placeholder="Select a salesperson" /></SelectTrigger>
+                  <SelectContent>
+                    {salespersons.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>{u.first_name} {u.last_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {error ? <p className="text-sm text-destructive">{error}</p> : null}
+              <div>
+                <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>
+              </div>
+            </form>
+          ) : loadError ? (
+            <p className="text-sm text-destructive">{loadError}</p>
+          ) : !full ? (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading company…
+            </p>
+          ) : (
+            <SettingsCompanyProvider initialCompany={full}>
+              {tab === "information" ? (
+                <CompanyInformationForm masters={masters} showPageLink={false} />
+              ) : (
+                <BillingForm />
+              )}
+            </SettingsCompanyProvider>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 

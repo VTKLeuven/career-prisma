@@ -7,6 +7,7 @@ import { getUserFromCookies } from "@/lib/auth-server";
 import { fetchCompaniesWithSubOptionsAction } from "@/app/actions/companies";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { listRoles } from "@/lib/repos/users";
+import { loadPublicMasters } from "@/lib/masters-data";
 
 /**
  * The companies and the salespeople (for the assignee pickers) are loaded
@@ -17,10 +18,11 @@ export default async function AdminCompaniesPage() {
   const user = await getUserFromCookies();
   if (!user?.admin) return <p>NO ACCESS</p>;
 
-  const [companies, salespersons, roles] = await Promise.all([
+  const [companies, salespersons, roles, masters] = await Promise.all([
     fetchCompaniesWithSubOptionsAction(),
     fetchSalespersonsAction().catch(() => []),
     listRoles(),
+    loadPublicMasters(),
   ]);
 
   return (
@@ -40,6 +42,7 @@ export default async function AdminCompaniesPage() {
         initialData={companies}
         salespersons={salespersons ?? []}
         roleOptions={roles.map((r) => ({ value: r.id, label: r.name }))}
+        masters={masters}
       />
     </div>
   );

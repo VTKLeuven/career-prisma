@@ -53,7 +53,14 @@ function categoryIdsOf(company: Company | null): string[] {
  * The company information tab. Opens with the company the settings layout
  * loaded on the server; the masters come from the page.
  */
-export function CompanyInformationForm({ masters }: { masters: Master[] }) {
+export function CompanyInformationForm({
+  masters,
+  showPageLink = true,
+}: {
+  masters: Master[];
+  /** The View / Request Company Page button; the admin editor hides it. */
+  showPageLink?: boolean;
+}) {
   const { company: loadedCompany, setCompany: setSettingsCompany } = useSettingsCompany();
   const [company, setCompany] = useState<Company | null>(loadedCompany);
   const [selectedMasters, setSelectedMasters] = useState<string[]>(() => categoryIdsOf(loadedCompany));
@@ -399,7 +406,7 @@ export function CompanyInformationForm({ masters }: { masters: Master[] }) {
               Provide general company details. This information will be visible on your profile and used for events.
             </CardDescription>
           </div>
-          {company && (
+          {company && showPageLink && (
             <Link
               href={hasCompanyPageAccess(company)
                 ? `/company/${slugifyCompanyName(company.name)}`
