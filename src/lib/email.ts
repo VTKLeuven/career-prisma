@@ -2,6 +2,7 @@
 import "server-only";
 
 import nodemailer from "nodemailer";
+import { isDevEnvironment } from "@/lib/dev-environment";
 
 // Singleton transporter with connection pooling to avoid rate limiting
 let cachedTransporter: nodemailer.Transporter | null = null;
@@ -629,6 +630,13 @@ export async function sendEmail({
   attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>;
   replyTo?: string;
 }) {
+  // The dev site (DEV_ENVIRONMENT=true) never sends real mail: it runs with
+  // NODE_ENV=production and production's SMTP settings, and its data is
+  // copied from real people.
+  if (isDevEnvironment()) {
+    console.log(`[Email] Not sent (DEV_ENVIRONMENT): "${subject}" to ${to}`);
+    return;
+  }
   // A development server without SMTP settings logs instead of sending. The
   // unconfigured default below is Google's IP-allowlisted relay, which is what
   // production uses -- from a laptop it either delivers real mail to real
