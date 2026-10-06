@@ -51,7 +51,7 @@ export default function ShiftersClient({ initialUsers }: { initialUsers: any[] }
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                 />
-                <Button type="submit" size="icon">
+                <Button type="submit" size="icon" aria-label="Search">
                     <Search className="h-4 w-4" />
                 </Button>
             </form>
