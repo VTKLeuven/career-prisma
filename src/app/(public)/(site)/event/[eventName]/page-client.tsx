@@ -15,7 +15,7 @@ import { CareerEventPage, Company, HeaderButtonType, Speaker, TimetableType } fr
 import dynamic from "next/dynamic"
 import { MapPin, Car, ExternalLink } from 'lucide-react'
 import { useBannerPage } from '@/hooks/use-banner-page'
-import { usePageLayout } from '../../layout'
+import { usePageLayout } from '../../site-shell'
 import { groupSpeakersByTimeSlot } from '@/lib/utils/speakers'
 import { compareTimetableItems } from '@/lib/utils/timetable'
 import { toSitePath } from '@/lib/site-path'

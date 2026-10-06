@@ -17,6 +17,7 @@ import { fetchPublicEventsAction } from "@/app/actions/events"
 import type { CareerEvent } from "@/lib/schema"
 import { fetchSessionCheck } from "@/lib/session-client"
 import { eventZoneToday } from "@/lib/utils/events"
+import { useHeaderEvents, type HeaderEvent } from "@/components/site/header-events"
 
 /**
  * The public site header.
@@ -98,7 +99,9 @@ export function SiteHeader({
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false)
   const [companyRep, setCompanyRep] = React.useState<CompanyRep | null>(null)
   const [student, setStudent] = React.useState<Student | null>(null)
-  const [events, setEvents] = React.useState<CareerEvent[]>([])
+  // Loaded by the site layout; fetched here only outside it.
+  const preloadedEvents = useHeaderEvents()
+  const [events, setEvents] = React.useState<HeaderEvent[]>(preloadedEvents ?? [])
   const router = useRouter()
   const pathname = usePathname()
   const menuRef = React.useRef<HTMLElement>(null)
@@ -107,7 +110,7 @@ export function SiteHeader({
 
   // Upcoming events for the dropdown. Only fetched when something shows them.
   React.useEffect(() => {
-    if (!eventsMenuEnabled) return
+    if (!eventsMenuEnabled || preloadedEvents) return
     const ac = new AbortController()
 
     const load = async () => {
@@ -130,7 +133,7 @@ export function SiteHeader({
 
     load()
     return () => ac.abort()
-  }, [eventsMenuEnabled])
+  }, [eventsMenuEnabled, preloadedEvents])
 
   const checkAuthStatus = React.useCallback(() => {
     fetchSessionCheck()

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import { usePageLayout } from "../../../layout"
+import { usePageLayout } from "../../../site-shell"
 import { SubPageHeader } from "./sub-page-header"
 
 /** The event's company guide PDF, under the sub-page header. */

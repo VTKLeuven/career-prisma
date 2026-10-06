@@ -10,7 +10,7 @@ import { getFileUrl } from "@/components/Images"
 import { extractLogoId } from "@/lib/utils/master-degree-options"
 import { slugifyCompanyName } from "@/lib/utils/slugify"
 import { hasCompanyPageAccess } from "@/lib/utils/company-access"
-import { usePageLayout } from "../../../layout"
+import { usePageLayout } from "../../../site-shell"
 import {
   Select,
   SelectContent,

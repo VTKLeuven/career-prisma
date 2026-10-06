@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from 'react'
-import { usePageLayout } from '@/app/(public)/(site)/layout'
+import { usePageLayout } from '@/app/(public)/(site)/site-shell'
 
 /**
  * Hook to use in pages that have a banner image that goes underneath the floating header.

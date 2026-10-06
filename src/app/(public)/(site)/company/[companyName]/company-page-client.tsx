@@ -9,7 +9,7 @@ import { validateExistingPageImage } from "@/lib/utils/image-validation";
 import { Calendar } from "lucide-react";
 import { slugifyEventName } from "@/lib/utils/slugify";
 import { SiteHeader } from "@/components/site/SiteHeader";
-import { usePageLayout } from '../../layout';
+import { usePageLayout } from '../../site-shell';
 import { CompanyLikeButton } from "@/components/CompanyLikeButton";
 import { groupSpeakersByTimeSlot } from "@/lib/utils/speakers";
 import { getSpeakerSlug } from "@/lib/utils/slugify";
