@@ -178,6 +178,7 @@ export function VacanciesClient({
               <Input
                 className="pl-9 border-neutral-200 focus-visible:border-vtk-blue/40 focus-visible:ring-vtk-blue/20"
                 placeholder="Search by location..."
+                aria-label="Search vacancies by location"
                 value={filterLocation}
                 onChange={(e) => setFilterLocation(e.target.value)}
               />

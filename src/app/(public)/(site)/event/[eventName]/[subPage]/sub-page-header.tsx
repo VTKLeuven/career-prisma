@@ -178,6 +178,7 @@ export function SubPageHeader({
                     onFocus={() => setIsFocused(true)}
                     onBlur={() => setTimeout(() => setIsFocused(false), 200)}
                     placeholder="Search company..."
+                    aria-label="Search companies on the floorplan"
                     className="w-full rounded-full border border-gray-300 px-3 py-1.5 text-xs"
                   />
                   {showSearchDropdown && (
@@ -239,6 +240,7 @@ export function SubPageHeader({
                     onFocus={() => setIsFocused(true)}
                     onBlur={() => setTimeout(() => setIsFocused(false), 200)}
                     placeholder="Search company..."
+                    aria-label="Search companies on the floorplan"
                     className="w-full rounded-full border border-gray-300 px-4 py-2 text-sm"
                   />
                   {showSearchDropdown && (

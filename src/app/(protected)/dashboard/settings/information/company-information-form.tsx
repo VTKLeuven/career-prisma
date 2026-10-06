@@ -624,6 +624,7 @@ export function CompanyInformationForm({ masters }: { masters: Master[] }) {
               <div className="space-y-3">
                 <Label htmlFor="location">Location</Label>
                 <Input
+                  id="location"
                   placeholder="City, Country"
                   value={formCompany.location ?? ""}
                   onChange={(e) => updateField("location", e.target.value)}
@@ -634,6 +635,7 @@ export function CompanyInformationForm({ masters }: { masters: Master[] }) {
               <div className="space-y-3">
                 <Label htmlFor="website">Website</Label>
                 <Input
+                  id="website"
                   type="url"
                   placeholder="https://example.com"
                   value={formCompany.website ?? ""}

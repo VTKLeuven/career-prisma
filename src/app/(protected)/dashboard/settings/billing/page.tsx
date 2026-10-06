@@ -104,6 +104,7 @@ export default function BillingForm() {
               <div className="space-y-3">
                 <Label htmlFor="address-street">Street</Label>
                 <Input
+                  id="address-street"
                   placeholder="Street"
                   value={formCompany.address_street ?? ""}
                   onChange={(e) => updateField("address_street", e.target.value)}
@@ -112,6 +113,7 @@ export default function BillingForm() {
               <div className="space-y-3">
                 <Label htmlFor="address-number">Number</Label>
                 <Input
+                  id="address-number"
                   placeholder="Number"
                   value={formCompany.address_number ?? ""}
                   onChange={(e) => updateField("address_number", e.target.value)}
@@ -120,6 +122,7 @@ export default function BillingForm() {
               <div className="space-y-3">
                 <Label htmlFor="address-city">City</Label>
                 <Input
+                  id="address-city"
                   placeholder="City"
                   value={formCompany.address_city ?? ""}
                   onChange={(e) => updateField("address_city", e.target.value)}
@@ -128,6 +131,7 @@ export default function BillingForm() {
               <div className="space-y-3">
                 <Label htmlFor="address-zip">ZIP Code</Label>
                 <Input
+                  id="address-zip"
                   placeholder="ZIP Code"
                   value={formCompany.address_zip ?? ""}
                   onChange={(e) => updateField("address_zip", e.target.value)}
@@ -136,6 +140,7 @@ export default function BillingForm() {
               <div className="space-y-3">
                 <Label htmlFor="address-country">Country</Label>
                 <Input
+                  id="address-country"
                   placeholder="Country"
                   value={formCompany.address_country ?? ""}
                   onChange={(e) => updateField("address_country", e.target.value)}
@@ -144,6 +149,7 @@ export default function BillingForm() {
               <div className="space-y-3">
                 <Label htmlFor="vat">VAT Number</Label>
                 <Input
+                  id="vat"
                   placeholder="VAT Number"
                   value={formCompany.VAT ?? ""}
                   onChange={(e) => updateField("VAT", e.target.value)}
