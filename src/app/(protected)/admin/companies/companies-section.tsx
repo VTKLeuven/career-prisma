@@ -85,6 +85,8 @@ type CompanyRow = Pick<Company, "id" | "name" | "VAT" | "address" | "salesperson
   sub_options?: CareerSubOption[];
   option_history?: NonNullable<Company["option_history"]>;
   sub_option_history?: NonNullable<Company["sub_option_history"]>;
+  /** `salesperson` is the display name; this is the id the edit form saves. */
+  salesperson_id?: string | null;
 };
 
 /** Extract suboption IDs from option (option.sub_options or nested in option.events[].career_event_option_id.sub_options). Handles IDs and expanded objects with career_sub_option_id. */
@@ -283,6 +285,7 @@ function toCompanyRows({ companies: rows, allSubOptions }: CompaniesData): Compa
     VAT: r.VAT ?? "",
     address: r.address ?? formatAddress(r),
     salesperson: r.salesperson ?? "",
+    salesperson_id: (r as { salesperson_id?: string | null }).salesperson_id ?? null,
     status: r.status ?? "",
     representatives: (r.representatives ?? []).map((rep) => ({ ...rep })) as Partial<CompanyRep>[],
     sub_options: resolveCompanySubOptions(r, allSubOptions ?? []),
@@ -839,8 +842,7 @@ function getCompanyColumns(onViewUsers: (company: CompanyRow) => void, onViewOpt
       header: "Assignee",
       cell: ({ row }) => {
         const name = String(row.getValue("salesperson") ?? "");
-        // The repo reports a missing salesperson as the literal "Not set".
-        if (!name || name === "Not set") return <span className="text-muted-foreground">—</span>;
+        if (!name) return <span className="text-muted-foreground">—</span>;
         return (
           <div className="flex items-center gap-2">
             <span className="flex size-6 items-center justify-center rounded-full bg-[#ebebfe] text-[10px] font-semibold text-[#4840ac]">
@@ -3012,9 +3014,8 @@ function EditCompanyDialog({ company, salespersons, onClose, onSaved }: {
 
   React.useEffect(() => {
     if (!company) return;
-    const sp = company.salesperson as unknown;
-    const salespersonId =
-      sp && typeof sp === "object" && "id" in sp ? String((sp as { id: string }).id) : (typeof sp === "string" ? sp : "");
+    // company.salesperson is the display name; the form needs the id.
+    const salespersonId = company.salesperson_id ?? "";
     setForm({
       name: company.name ?? "",
       VAT: company.VAT ?? "",

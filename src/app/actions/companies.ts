@@ -21,7 +21,7 @@ function formatAddress(c: Company) {
     .map((p) => (typeof p === "string" ? p.trim() : ""))
     .filter((p) => p.length > 0);
 
-  return parts.length ? parts.join(", ") : "Not set";
+  return parts.join(", ");
 }
 
 export async function fetchCompaniesAction() {
@@ -32,14 +32,23 @@ export async function fetchCompaniesAction() {
     id: c.id,
     name: c.name,
     address: formatAddress(c),
-    VAT: c.VAT ?? "Not set",
+    // Raw values, empty when missing: the edit dialog saves what it is given,
+    // so placeholders like "Not set" were written back as the VAT number --
+    // and the salesperson's display name as their id, which Postgres rejects.
+    VAT: c.VAT ?? "",
     salesperson:
       typeof c.salesperson === "object" && c.salesperson
         ? `${c.salesperson.first_name ?? ""} ${c.salesperson.last_name ?? ""}`.trim() ||
         c.salesperson.id
         : typeof c.salesperson === "string" && c.salesperson
           ? c.salesperson
-          : "Not set",
+          : "",
+    salesperson_id:
+      typeof c.salesperson === "object" && c.salesperson
+        ? c.salesperson.id
+        : typeof c.salesperson === "string" && c.salesperson
+          ? c.salesperson
+          : null,
     status: c.status ?? "",
     // Include options and sub_options (company_career_sub_option junction)
     options: c.options ?? [],
