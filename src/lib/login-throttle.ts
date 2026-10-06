@@ -80,3 +80,22 @@ export function tooManyAttemptsMessage(retryAfterSeconds: number) {
   const minutes = Math.max(1, Math.ceil(retryAfterSeconds / 60));
   return `Too many sign-in attempts. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`;
 }
+
+const RESETS_PER_HOUR = 3;
+
+/**
+ * Whether another password-reset email may go to this address now -- three
+ * an hour -- counting this one. The reset endpoints answer the same either
+ * way; this only stops them being used to flood someone's inbox.
+ */
+export function allowResetEmail(email: string): boolean {
+  const now = Date.now();
+  const key = `reset:${email.trim().toLowerCase()}`;
+  const sent = (failures.get(key) ?? []).filter((at) => now - at < 60 * 60 * 1000);
+  if (sent.length >= RESETS_PER_HOUR) {
+    failures.set(key, sent);
+    return false;
+  }
+  failures.set(key, [...sent, now]);
+  return true;
+}

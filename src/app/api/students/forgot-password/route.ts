@@ -3,6 +3,7 @@ import { findStudentByEmail } from "@/lib/repos/students";
 import { sendEmail } from "@/lib/email";
 import { generatePasswordResetEmailHtml } from "@/lib/email-templates";
 import { createStudentPasswordResetToken } from "@/lib/password-reset";
+import { allowResetEmail } from "@/lib/login-throttle";
 
 const GENERIC_MESSAGE =
   "If an account with that email exists, a password reset link has been sent.";
@@ -16,6 +17,7 @@ export async function POST(request: NextRequest) {
   // Looked up and mailed after responding, so the answer comes back at once
   // and equally fast whether or not the account exists.
   after(async () => {
+    if (!allowResetEmail(email)) return;
     try {
       const student = await findStudentByEmail(email);
       if (student?.verified) {
