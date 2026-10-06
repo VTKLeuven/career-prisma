@@ -23,6 +23,7 @@ export type SessionCheck = {
     lastName: string | null;
     email: string;
     is_shifter: boolean;
+    likedCompanyIds?: string[];
   } | null;
 };
 

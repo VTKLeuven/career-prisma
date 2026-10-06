@@ -43,10 +43,9 @@ export function StudentLikedCompaniesProvider({
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([
-      fetchSessionCheck(),
-      fetch("/api/students/liked-companies", { credentials: "include" }),
-    ]).then(async ([check, likedRes]) => {
+    // The session check carries a student's liked companies; one request,
+    // shared with the header, instead of a second one for every visitor.
+    fetchSessionCheck().then(async (check) => {
       if (cancelled) return;
 
       if (!check.student?.id) {
@@ -55,14 +54,8 @@ export function StudentLikedCompaniesProvider({
       }
       setIsStudent(true);
 
-      let idsSet = new Set<string>();
-      if (likedRes.ok) {
-        const ids = (await likedRes.json()) as string[];
-        idsSet = new Set(ids.map(String));
-        setLikedIds(idsSet);
-      } else {
-        setLikedIds(idsSet);
-      }
+      const idsSet = new Set<string>((check.student.likedCompanyIds ?? []).map(String));
+      setLikedIds(idsSet);
 
       // Process pending likes from localStorage (user liked while not logged in)
       if (typeof window !== "undefined") {
