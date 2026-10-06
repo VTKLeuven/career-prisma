@@ -348,7 +348,7 @@ function Hero({
                 {/* Register button */}
                 <Button
                   variant="ghost"
-                  className="rounded-full bg-vtk-yellow text-black hover:brightness-95 cursor-pointer text-sm sm:text-base"
+                  className="rounded-full bg-vtk-yellow text-black hover:bg-vtk-yellow hover:text-black hover:brightness-95 cursor-pointer text-sm sm:text-base"
                   onClick={handleRegisterClick}
                 >
                   Student registration
@@ -359,7 +359,7 @@ function Hero({
                   <Button
                     asChild
                     variant="ghost"
-                    className="rounded-full bg-vtk-blue-dark text-white hover:brightness-95 cursor-pointer text-sm sm:text-base"
+                    className="rounded-full bg-vtk-blue-dark text-white hover:bg-vtk-blue-dark hover:text-white hover:brightness-110 cursor-pointer text-sm sm:text-base"
                   >
                     <Link href={`/event/${page.event.series_key || slugifyEventName(page.event.name)}/floorplan`}>
                       Floorplan
@@ -368,7 +368,7 @@ function Hero({
                 ) : (
                   <Button
                     variant="ghost"
-                    className="rounded-full bg-vtk-blue-dark text-white hover:brightness-95 cursor-pointer text-sm sm:text-base"
+                    className="rounded-full bg-vtk-blue-dark text-white hover:bg-vtk-blue-dark hover:text-white hover:brightness-110 cursor-pointer text-sm sm:text-base"
                     onClick={handleExploreCompanies}
                   >
                     Explore companies

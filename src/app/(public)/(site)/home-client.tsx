@@ -120,10 +120,10 @@ function Hero() {
                         Can we welcome you this year (too)?
                     </p>
                     <div className="mt-6 md:mt-10 flex flex-wrap items-center gap-3">
-                        <Button asChild variant="ghost" className="rounded-full bg-vtk-yellow text-black hover:brightness-95 text-sm sm:text-base">
+                        <Button asChild variant="ghost" className="rounded-full bg-vtk-yellow text-black hover:bg-vtk-yellow hover:text-black hover:brightness-95 text-sm sm:text-base">
                             <Link href="#events">Explore events</Link>
                         </Button>
-                        <Button asChild variant="ghost" className="rounded-full bg-vtk-blue-dark text-white hover:brightness-95 text-sm sm:text-base">
+                        <Button asChild variant="ghost" className="rounded-full bg-vtk-blue-dark text-white hover:bg-vtk-blue-dark hover:text-white hover:brightness-110 text-sm sm:text-base">
                             <Link href="#team">Meet the team</Link>
                         </Button>
                     </div>
