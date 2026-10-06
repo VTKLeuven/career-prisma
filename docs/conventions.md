@@ -32,6 +32,23 @@ Writes go through server actions in `src/app/actions/`. Add a route handler in
 `src/app/api/` only when something genuinely needs an HTTP endpoint (file
 downloads, OAuth callbacks, QR scanning, cron, external callers).
 
+**Load a page's data in its server `page.tsx`, not in a client effect.** Next
+runs a client's server actions one at a time, so a client page that fetches
+three things on mount waits for three round trips in a row behind a spinner.
+Load in parallel on the server (calling the actions or repos directly) and hand
+the result to the client component as props or initial state; the client then
+only fetches when the user changes something (another year, page or version).
+`dashboard/page.tsx`, `admin/events/page.tsx` and
+`admin/forms/[formId]/responses/page.tsx` are worked examples. The company
+settings tabs share one server-loaded company through
+`dashboard/settings/settings-company.tsx` instead of each fetching it.
+
+Every export of a `"use server"` module is a public POST endpoint whether or
+not anything calls it. Don't leave unused actions behind, don't take
+authorization-relevant data (a company object, its options) from the caller --
+load it from the session -- and keep helpers only server code uses in a
+`server-only` module instead (`lib/company-ordering.ts`).
+
 ## Access control
 
 Every admin page, action and route checks for itself — `requireAdminUser()` or
@@ -70,6 +87,14 @@ so re-apply the classes if you do.
   (`Table`'s `containerClassName`) so the toolbar stays in view.
 - **Status pills.** Use the pastel `Badge` variants (`success`, `warning`,
   `info`, `purple`, `muted`, `destructive`) rather than solid fills.
+
+## Dates and times
+
+Event dates and hours are Belgian wall-clock times, stored without a zone. The
+server runs on UTC, so never build an instant with
+`` new Date(`${date}T${hour}`) `` -- that reads it in the runtime's zone. Use
+`eventWallTimeToDate()` / `isDuringEvent()` from `src/lib/utils/events.ts`, which
+convert from Europe/Brussels (`EVENT_TIMEZONE`).
 
 ## Feature flags
 

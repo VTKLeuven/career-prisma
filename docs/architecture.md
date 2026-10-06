@@ -16,7 +16,7 @@ src/app/(protected)   sidebar layout; /admin for VTK, /dashboard for companies
 src/app/actions/      server actions — the main write path
 src/app/api/          route handlers: files, OAuth, QR scans, cron, webhooks
 src/lib/repos/        ALL database access lives here
-src/lib/              auth, email, caches, PDF/image processing, utils
+src/lib/              auth, email, caches, page loaders (*-data.ts), SVG booth extraction, utils
 src/components/ui/    shadcn primitives (generated — regenerate, don't hand-edit)
 src/components/site/  the public site chrome — SiteHeader is the only header
 prisma/schema.prisma  the source of truth for the data model
@@ -36,7 +36,7 @@ on this component:
 
 | Prop | For |
 |---|---|
-| `navItems` | Replaces the standard nav. The event page passes its Floorplan / Matching / CV Upload buttons; implies no Events dropdown and a scrolling mobile strip. |
+| `navItems` | Replaces the standard nav. The event page passes its Floorplan / Matching / CV Upload buttons; implies no Events dropdown. |
 | `extraNavItems` | Appends to the standard nav (the company page's "Discovery Stage"). |
 | `showEventsMenu` | Force the Events dropdown on or off. |
 | `dark` | Dark treatment, for pages with a dark hero. |
@@ -48,6 +48,12 @@ is signed in, on every public page or none.
 
 `FEATURED_EVENT_LINK` at the top of that file swaps the Events dropdown for a
 single campaign link ("Jobfair 2027"). One edit changes every page.
+
+The filled pill marks the link of the page being viewed. On phones the links
+sit in a strip that scrolls sideways (with the current one scrolled into view),
+so the menu button always stays on screen. The menus fade in with CSS
+(`tw-animate-css`); framer-motion is kept off this component because it would
+load on every public page.
 
 ## Routing notes
 
@@ -83,6 +89,15 @@ that reads it and the actions that clear it can be bundled separately, and a
 plain module variable would give each its own copy. The event-page, floorplan,
 company-page and our-students caches get this from `createTtlCache()` in
 `src/lib/ttl-cache.ts`; build a new cache on it rather than on a module `Map`.
+
+## Service worker
+
+`public/sw.js` handles only same-origin GETs it can answer from a cache: files
+from `/api/files` (immutable, cache first), `/api/events` (network first) and
+the precached `/` and logo (network first, cached copy offline). Everything
+else -- scripts, server actions, cross-origin calls -- goes straight to the
+network. Bump `CACHE_NAME` when a precached asset changes, or browsers keep
+serving the old copy offline.
 
 ## Background work
 
