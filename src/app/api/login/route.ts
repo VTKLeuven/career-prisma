@@ -6,6 +6,13 @@ import {
   sessionCookieOptions,
   USER_SESSION_COOKIE,
 } from "@/lib/auth-session";
+import {
+  clearLoginFailures,
+  clientIp,
+  loginRetryAfter,
+  recordLoginFailure,
+  tooManyAttemptsMessage,
+} from "@/lib/login-throttle";
 
 // Only these roles may sign in at all. Any other role -- "Student", or one
 // created later -- is rejected with the same message as a bad password, which
@@ -30,6 +37,15 @@ export async function POST(request: Request) {
       );
     }
 
+    const ip = clientIp(request);
+    const retryAfter = loginRetryAfter("user", email, ip);
+    if (retryAfter > 0) {
+      return NextResponse.json(
+        { error: tooManyAttemptsMessage(retryAfter) },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } },
+      );
+    }
+
     const user = await findUserCredentials(email);
     if (
       !user ||
@@ -39,12 +55,14 @@ export async function POST(request: Request) {
       !ALLOWED_ROLE_IDS.has(user.role_id) ||
       !(await argon2.verify(user.password, password))
     ) {
+      recordLoginFailure("user", email, ip);
       return NextResponse.json(
         { error: "Invalid credentials or insufficient access." },
         { status: 401 },
       );
     }
 
+    clearLoginFailures("user", email);
     const maxAge = rememberMe ? 90 * 24 * 60 * 60 : 14 * 24 * 60 * 60;
     const response = NextResponse.json({ message: "Successful login" });
     response.cookies.set(
