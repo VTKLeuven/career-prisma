@@ -3,7 +3,6 @@
 import * as React from "react";
 import { fetchCompaniesWithSubOptionsAction, createCompanyAction, updateCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, addSubOptionToCompanyAction, removeSubOptionFromCompanyAction, addSubOptionToCompanyOnlyAction, removeSubOptionFromCompanyOnlyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction, fetchCompanyOptionsDebugAction } from "@/app/actions/companies";
 import { fetchEventsAction } from "@/app/actions/events";
-import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { listSubOptionsAction, listEventOptionsAction } from "@/app/actions/career-options";
 import {
   ColumnDef,
@@ -274,9 +273,108 @@ function extractCompanySubOptions(opt: unknown, allSubOptions?: CareerSubOption[
 /** ------------------------------------------------------------------
  * Companies section
  * ------------------------------------------------------------------ */
-export function CompaniesSection() {
-  const [data, setData] = React.useState<CompanyRow[]>([]);
-  const [loading, setLoading] = React.useState(true);
+type CompaniesData = Awaited<ReturnType<typeof fetchCompaniesWithSubOptionsAction>>;
+
+/** The table's rows: each company with its options' events and sub-options resolved. */
+function toCompanyRows({ companies: rows, allSubOptions }: CompaniesData): CompanyRow[] {
+  return (rows ?? []).map((r: Company & { status?: string }) => ({
+    id: r.id,
+    name: r.name,
+    VAT: r.VAT ?? "",
+    address: r.address ?? formatAddress(r),
+    salesperson: r.salesperson ?? "",
+    status: r.status ?? "",
+    representatives: (r.representatives ?? []).map((rep) => ({ ...rep })) as Partial<CompanyRep>[],
+    sub_options: resolveCompanySubOptions(r, allSubOptions ?? []),
+    option_history: r.option_history ?? [],
+    sub_option_history: r.sub_option_history ?? [],
+    options: (r.options ?? []).map((opt) => {
+      // Handle both direct CareerEventOption and junction table format
+      let rawOption: CareerEventOption | null = null;
+      if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
+        const junction = opt as { career_event_option_id: CareerEventOption | null };
+        rawOption = junction.career_event_option_id;
+      } else {
+        rawOption = opt as CareerEventOption;
+      }
+      
+      // Ensure we have a valid option with an ID
+      if (!rawOption || !rawOption.id) {
+        return null;
+      }
+
+      const companySubOptions = extractCompanySubOptions(opt, allSubOptions, rawOption, r);
+
+      // Resolve option's sub_options (can be IDs from nested events path) for SubOptionsDialog
+      const optionSubOptionIds = getSubOptionIdsFromOption(rawOption);
+      const resolvedSubOptions: CareerSubOption[] = optionSubOptionIds.length > 0 && allSubOptions
+        ? optionSubOptionIds
+            .map((id) => allSubOptions.find((s) => String(s.id) === String(id)))
+            .filter((s): s is CareerSubOption => Boolean(s))
+        : (Array.isArray(rawOption.sub_options) ? rawOption.sub_options : []).filter(
+            (s): s is CareerSubOption => s && typeof s === 'object' && 'name' in s
+          );
+
+      // Create a new object to avoid mutation, preserving all fields
+      const normalizedOption: CareerEventOptionWithCompanySubOptions = {
+        id: rawOption.id,
+        name: rawOption.name,
+        description: rawOption.description,
+        price: rawOption.price,
+        sub_options: resolvedSubOptions.length > 0 ? resolvedSubOptions : rawOption.sub_options,
+        companySubOptions: companySubOptions.length > 0 ? companySubOptions : undefined,
+      };
+
+      // Normalize events: handle junction table format and direct events
+      // In Directus many-to-many, events can come in various formats
+      if (rawOption.events && Array.isArray(rawOption.events)) {
+        // Events might be in junction table format: [{ career_event_id: EventObject }] or direct EventObject[]
+        normalizedOption.events = rawOption.events
+          .map((eventOrJunction: unknown) => {
+            if (!eventOrJunction || typeof eventOrJunction !== 'object') return null;
+            
+            // Check if it's a junction table entry - try multiple possible field names
+            // Directus junction tables can have different field names
+            const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
+            for (const fieldName of possibleJunctionFields) {
+              if (fieldName in eventOrJunction) {
+                const junction = eventOrJunction as Record<string, CareerEvent | string | null>;
+                const eventRef = junction[fieldName];
+                if (eventRef && typeof eventRef === 'object') {
+                  return eventRef as CareerEvent;
+                }
+              }
+            }
+            
+            // Check if it's a direct event object
+            if ('id' in eventOrJunction && 'name' in eventOrJunction) {
+              return eventOrJunction as CareerEvent;
+            }
+            
+            return null;
+          })
+          .filter((e): e is CareerEvent => e !== null && e !== undefined);
+      } else if (rawOption.event) {
+        // Single event exists, convert to array
+        if (typeof rawOption.event === 'object' && rawOption.event !== null) {
+          normalizedOption.events = [rawOption.event as CareerEvent];
+        } else {
+          normalizedOption.events = [];
+        }
+      } else {
+        // No events, set empty array
+        normalizedOption.events = [];
+      }
+      
+      return normalizedOption;
+    }).filter((opt): opt is CareerEventOptionWithCompanySubOptions => opt !== null && opt !== undefined && opt.id !== undefined),
+  }));
+}
+
+/** The companies table; the page loads the companies and salespeople on the server. */
+export function CompaniesSection({ initialData, salespersons }: { initialData: CompaniesData; salespersons: AppUser[] }) {
+  const [data, setData] = React.useState<CompanyRow[]>(() => toCompanyRows(initialData));
+  const [loading, setLoading] = React.useState(false);
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = React.useState("");
@@ -288,120 +386,15 @@ export function CompaniesSection() {
   const [selectedCompany, setSelectedCompany] = React.useState<CompanyRow | null>(null);
   const [editingCompany, setEditingCompany] = React.useState<CompanyRow | null>(null);
   const [viewMode, setViewMode] = React.useState<"companies" | "users" | "options">("companies");
-  const [allSubOptions, setAllSubOptions] = React.useState<CareerSubOption[]>([]);
+  const [allSubOptions, setAllSubOptions] = React.useState<CareerSubOption[]>(initialData.allSubOptions ?? []);
 
   const refreshCompanies = React.useCallback(() => {
     setLoading(true);
     fetchCompaniesWithSubOptionsAction()
-      .then(({ companies: rows, allSubOptions }) => {
-        // Normalize representatives to Partial<CompanyRep>[]
-        const mapped: CompanyRow[] = (rows ?? []).map((r: Company & { status?: string }) => ({
-          id: r.id,
-          name: r.name,
-          VAT: r.VAT ?? "",
-          address: r.address ?? formatAddress(r),
-          salesperson: r.salesperson ?? "",
-          status: r.status ?? "",
-          representatives: (r.representatives ?? []).map((rep) => ({ ...rep })) as Partial<CompanyRep>[],
-          sub_options: resolveCompanySubOptions(r, allSubOptions ?? []),
-          option_history: r.option_history ?? [],
-          sub_option_history: r.sub_option_history ?? [],
-          options: (r.options ?? []).map((opt, optIndex) => {
-            // Handle both direct CareerEventOption and junction table format
-            let rawOption: CareerEventOption | null = null;
-            if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
-              const junction = opt as { career_event_option_id: CareerEventOption | null };
-              rawOption = junction.career_event_option_id;
-            } else {
-              rawOption = opt as CareerEventOption;
-            }
-            
-            // Ensure we have a valid option with an ID
-            if (!rawOption || !rawOption.id) {
-              return null;
-            }
-
-            const companySubOptions = extractCompanySubOptions(opt, allSubOptions, rawOption, r);
-
-            // Resolve option's sub_options (can be IDs from nested events path) for SubOptionsDialog
-            const optionSubOptionIds = getSubOptionIdsFromOption(rawOption);
-            const resolvedSubOptions: CareerSubOption[] = optionSubOptionIds.length > 0 && allSubOptions
-              ? optionSubOptionIds
-                  .map((id) => allSubOptions.find((s) => String(s.id) === String(id)))
-                  .filter((s): s is CareerSubOption => Boolean(s))
-              : (Array.isArray(rawOption.sub_options) ? rawOption.sub_options : []).filter(
-                  (s): s is CareerSubOption => s && typeof s === 'object' && 'name' in s
-                );
-
-            // Create a new object to avoid mutation, preserving all fields
-            const normalizedOption: CareerEventOptionWithCompanySubOptions = {
-              id: rawOption.id,
-              name: rawOption.name,
-              description: rawOption.description,
-              price: rawOption.price,
-              sub_options: resolvedSubOptions.length > 0 ? resolvedSubOptions : rawOption.sub_options,
-              companySubOptions: companySubOptions.length > 0 ? companySubOptions : undefined,
-            };
-
-            // Normalize events: handle junction table format and direct events
-            // In Directus many-to-many, events can come in various formats
-            if (rawOption.events && Array.isArray(rawOption.events)) {
-              // Events might be in junction table format: [{ career_event_id: EventObject }] or direct EventObject[]
-              normalizedOption.events = rawOption.events
-                .map((eventOrJunction: unknown) => {
-                  if (!eventOrJunction || typeof eventOrJunction !== 'object') return null;
-                  
-                  // Check if it's a junction table entry - try multiple possible field names
-                  // Directus junction tables can have different field names
-                  const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
-                  for (const fieldName of possibleJunctionFields) {
-                    if (fieldName in eventOrJunction) {
-                      const junction = eventOrJunction as Record<string, CareerEvent | string | null>;
-                      const eventRef = junction[fieldName];
-                      if (eventRef && typeof eventRef === 'object') {
-                        return eventRef as CareerEvent;
-                      }
-                    }
-                  }
-                  
-                  // Check if it's a direct event object
-                  if ('id' in eventOrJunction && 'name' in eventOrJunction) {
-                    return eventOrJunction as CareerEvent;
-                  }
-                  
-                  return null;
-                })
-                .filter((e): e is CareerEvent => e !== null && e !== undefined);
-            } else if (rawOption.event) {
-              // Single event exists, convert to array
-              if (typeof rawOption.event === 'object' && rawOption.event !== null) {
-                normalizedOption.events = [rawOption.event as CareerEvent];
-              } else {
-                normalizedOption.events = [];
-              }
-            } else {
-              // No events, set empty array
-              normalizedOption.events = [];
-            }
-            
-            // Debug: log first option's events structure
-            if (optIndex === 0 && normalizedOption.events.length === 0 && (rawOption.events || rawOption.event)) {
-              console.log("[Admin] Option events normalization - rawOption structure:", {
-                hasEvents: !!rawOption.events,
-                eventsType: Array.isArray(rawOption.events) ? 'array' : typeof rawOption.events,
-                eventsLength: Array.isArray(rawOption.events) ? rawOption.events.length : 0,
-                firstEvent: Array.isArray(rawOption.events) && rawOption.events[0] ? Object.keys(rawOption.events[0] as any) : null,
-                hasEvent: !!rawOption.event,
-                eventType: typeof rawOption.event,
-                allKeys: Object.keys(rawOption),
-              });
-            }
-            
-            return normalizedOption;
-          }).filter((opt): opt is CareerEventOptionWithCompanySubOptions => opt !== null && opt !== undefined && opt.id !== undefined),
-        }));
+      .then((result) => {
+        const mapped = toCompanyRows(result);
         setData(mapped);
-        setAllSubOptions(allSubOptions ?? []);
+        setAllSubOptions(result.allSubOptions ?? []);
         setSelectedCompany((prev) => {
           if (!prev) return prev;
           const updated = mapped.find((c) => c.id === prev.id);
@@ -410,125 +403,6 @@ export function CompaniesSection() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
-
-  React.useEffect(() => {
-    let alive = true;
-    fetchCompaniesWithSubOptionsAction()
-      .then(({ companies: rows, allSubOptions }) => {
-        if (!alive) return;
-        // Normalize representatives to Partial<CompanyRep>[]
-        const mapped: CompanyRow[] = (rows ?? []).map((r: Company & { status?: string }) => ({
-          id: r.id,
-          name: r.name,
-          VAT: r.VAT ?? "",
-          address: r.address ?? formatAddress(r),
-          salesperson: r.salesperson ?? "",
-          status: r.status ?? "",
-          representatives: (r.representatives ?? []).map((rep) => ({ ...rep })) as Partial<CompanyRep>[],
-          sub_options: resolveCompanySubOptions(r, allSubOptions ?? []),
-          option_history: r.option_history ?? [],
-          sub_option_history: r.sub_option_history ?? [],
-          options: (r.options ?? []).map((opt, optIndex) => {
-            // Handle both direct CareerEventOption and junction table format
-            let rawOption: CareerEventOption | null = null;
-            if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
-              const junction = opt as { career_event_option_id: CareerEventOption | null };
-              rawOption = junction.career_event_option_id;
-            } else {
-              rawOption = opt as CareerEventOption;
-            }
-            
-            // Ensure we have a valid option with an ID
-            if (!rawOption || !rawOption.id) {
-              return null;
-            }
-
-            const companySubOptions = extractCompanySubOptions(opt, allSubOptions, rawOption, r);
-
-            // Resolve option's sub_options (can be IDs from nested events path) for SubOptionsDialog
-            const optionSubOptionIds = getSubOptionIdsFromOption(rawOption);
-            const resolvedSubOptions: CareerSubOption[] = optionSubOptionIds.length > 0 && allSubOptions
-              ? optionSubOptionIds
-                  .map((id) => allSubOptions.find((s) => String(s.id) === String(id)))
-                  .filter((s): s is CareerSubOption => Boolean(s))
-              : (Array.isArray(rawOption.sub_options) ? rawOption.sub_options : []).filter(
-                  (s): s is CareerSubOption => s && typeof s === 'object' && 'name' in s
-                );
-
-            // Create a new object to avoid mutation, preserving all fields
-            const normalizedOption: CareerEventOptionWithCompanySubOptions = {
-              id: rawOption.id,
-              name: rawOption.name,
-              description: rawOption.description,
-              price: rawOption.price,
-              sub_options: resolvedSubOptions.length > 0 ? resolvedSubOptions : rawOption.sub_options,
-              companySubOptions: companySubOptions.length > 0 ? companySubOptions : undefined,
-            };
-
-            // Normalize events: handle junction table format and direct events
-            // In Directus many-to-many, events can come in various formats
-            if (rawOption.events && Array.isArray(rawOption.events)) {
-              // Events might be in junction table format: [{ career_event_id: EventObject }] or direct EventObject[]
-              normalizedOption.events = rawOption.events
-                .map((eventOrJunction: unknown) => {
-                  if (!eventOrJunction || typeof eventOrJunction !== 'object') return null;
-                  
-                  // Check if it's a junction table entry - try multiple possible field names
-                  // Directus junction tables can have different field names
-                  const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
-                  for (const fieldName of possibleJunctionFields) {
-                    if (fieldName in eventOrJunction) {
-                      const junction = eventOrJunction as Record<string, CareerEvent | string | null>;
-                      const eventRef = junction[fieldName];
-                      if (eventRef && typeof eventRef === 'object') {
-                        return eventRef as CareerEvent;
-                      }
-                    }
-                  }
-                  
-                  // Check if it's a direct event object
-                  if ('id' in eventOrJunction && 'name' in eventOrJunction) {
-                    return eventOrJunction as CareerEvent;
-                  }
-                  
-                  return null;
-                })
-                .filter((e): e is CareerEvent => e !== null && e !== undefined);
-            } else if (rawOption.event) {
-              // Single event exists, convert to array
-              if (typeof rawOption.event === 'object' && rawOption.event !== null) {
-                normalizedOption.events = [rawOption.event as CareerEvent];
-              } else {
-                normalizedOption.events = [];
-              }
-            } else {
-              // No events, set empty array
-              normalizedOption.events = [];
-            }
-            
-            // Debug: log first option's events structure
-            if (optIndex === 0 && normalizedOption.events.length === 0 && (rawOption.events || rawOption.event)) {
-              console.log("[Admin useEffect] Option events normalization - rawOption structure:", {
-                hasEvents: !!rawOption.events,
-                eventsType: Array.isArray(rawOption.events) ? 'array' : typeof rawOption.events,
-                eventsLength: Array.isArray(rawOption.events) ? rawOption.events.length : 0,
-                firstEvent: Array.isArray(rawOption.events) && rawOption.events[0] ? Object.keys(rawOption.events[0] as any) : null,
-                hasEvent: !!rawOption.event,
-                eventType: typeof rawOption.event,
-                allKeys: Object.keys(rawOption),
-              });
-            }
-            
-            return normalizedOption;
-          }).filter((opt): opt is CareerEventOptionWithCompanySubOptions => opt !== null && opt !== undefined && opt.id !== undefined),
-        }));
-        setData(mapped);
-        setAllSubOptions(allSubOptions ?? []);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-    return () => { alive = false; };
   }, []);
 
   const table = useReactTable<CompanyRow>({
@@ -640,6 +514,7 @@ export function CompaniesSection() {
     <div className="flex flex-col gap-3">
         <EditCompanyDialog
           company={editingCompany}
+          salespersons={salespersons}
           onClose={() => setEditingCompany(null)}
           onSaved={refreshCompanies}
         />
@@ -738,6 +613,7 @@ export function CompaniesSection() {
                 </DropdownMenu>
                 <CompanyFormDialog
                   onRefresh={refreshCompanies}
+                  salespersons={salespersons}
                 />
               </div>
             </div>
@@ -2653,7 +2529,7 @@ function OptionFormDialog({ company, onCreate }: {
 }
 
 /** Add Company Dialog (controlled) -- unchanged aside from typing */
-function CompanyFormDialog({ onRefresh }: { onRefresh?: () => void }) {
+function CompanyFormDialog({ onRefresh, salespersons }: { onRefresh?: () => void; salespersons: AppUser[] }) {
   const [open, setOpen] = React.useState(false);
   const [csvUploadOpen, setCsvUploadOpen] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
@@ -2670,17 +2546,8 @@ function CompanyFormDialog({ onRefresh }: { onRefresh?: () => void }) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   // Because shadcn Select is not a native select, keep a local state so it lands in FormData-equivalent
   const [salesperson, setSalesperson] = React.useState<string>("");
-  const [salespersons, setSalespersons] = React.useState<AppUser[]>([]);
   const [creating, setCreating] = React.useState(false);
   const [createError, setCreateError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    async function fetchSalespersons() {
-      const users = await fetchSalespersonsAction();
-      if (users) setSalespersons(users);
-    }
-    fetchSalespersons();
-  }, []);
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -3133,19 +3000,15 @@ function CompanyFormDialog({ onRefresh }: { onRefresh?: () => void }) {
 }
 
 /** Edit an existing company's core fields (name, VAT, status, salesperson). */
-function EditCompanyDialog({ company, onClose, onSaved }: {
+function EditCompanyDialog({ company, salespersons, onClose, onSaved }: {
   company: CompanyRow | null;
+  salespersons: AppUser[];
   onClose: () => void;
   onSaved?: () => void;
 }) {
-  const [salespersons, setSalespersons] = React.useState<AppUser[]>([]);
   const [form, setForm] = React.useState({ name: "", VAT: "", status: "draft", salesperson: "" });
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    fetchSalespersonsAction().then((users) => { if (users) setSalespersons(users); }).catch(() => {});
-  }, []);
 
   React.useEffect(() => {
     if (!company) return;
