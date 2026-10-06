@@ -241,8 +241,8 @@ export default function ZonesClient({
                     </p>
                 )}
                 <p className="text-sm text-muted-foreground">
-                    Zones group booths for drink delivery. The floorplan itself -- its map
-                    and which company stands at which booth -- is edited per event
+                    Zones group booths for drink delivery. The floorplan itself (its map
+                    and which company stands at which booth) is edited per event
                     {selectedEventId ? (
                         <>
                             {" "}in the{" "}

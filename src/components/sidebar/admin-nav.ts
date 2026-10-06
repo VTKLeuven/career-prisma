@@ -158,13 +158,6 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     group: "Events",
     description: "Manage speakers shown on event pages.",
   },
-  {
-    title: "Zones & Booths",
-    url: "/admin/zones",
-    icon: MapPinned,
-    group: "Events",
-    description: "Group booths into drink-delivery zones and print booth QR codes. Floorplans are edited per event under Events.",
-  },
 
   // --- Education ---
   {
@@ -233,6 +226,13 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     icon: UsersRound,
     group: "Operations",
     description: "Manage shifters and their assignments.",
+  },
+  {
+    title: "Zones & Booths",
+    url: "/admin/zones",
+    icon: MapPinned,
+    group: "Operations",
+    description: "Group booths into drink-delivery zones and print booth QR codes. Floorplans are edited per event under Events.",
   },
 
   // --- Technical ---
