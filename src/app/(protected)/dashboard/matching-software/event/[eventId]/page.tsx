@@ -1,80 +1,57 @@
-"use client";
-
-import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { CompanyMatchingForm } from "@/components/CompanyMatchingForm";
-import { getMatchingSoftwareForEventAction } from "@/app/actions/matching-software";
+import {
+  getCompanyMatchingResponseForCompanyViewAction,
+  getMatchingSoftwareForEventAction,
+} from "@/app/actions/matching-software";
+import { getStudentFormResponseDataForEventAction } from "@/app/actions/forms";
 import { fetchCompanyByIdAction } from "@/app/actions/companies";
-import { useUser } from "@/providers/UserProvider";
+import { getUserFromCookies } from "@/lib/auth-server";
 import { hasMatchingSoftwareSubOption } from "@/lib/utils/company-access";
-import type { Company } from "@/lib/schema";
+import { normalizeStudents } from "@/lib/matching-students";
 
-export default function EventMatchingSoftwarePage() {
-  const { user } = useUser();
-  const params = useParams();
-  const eventId = (Array.isArray(params?.eventId) ? params.eventId?.[0] : params?.eventId) as string | undefined;
-  const [matchingSoftware, setMatchingSoftware] = useState<{ id: string; companies_can_view_matches?: boolean } | null>(null);
-  const [eventName, setEventName] = useState<string>("");
-  const [company, setCompany] = useState<Company | null>(null);
-  const [loading, setLoading] = useState(true);
+function BackToDashboard({ message }: { message: string }) {
+  return (
+    <div className="w-full gap-4 flex flex-col">
+      <p className="text-muted-foreground">{message}</p>
+      <Button asChild variant="outline" className="w-fit">
+        <Link href="/dashboard">Back to dashboard</Link>
+      </Button>
+    </div>
+  );
+}
 
-  useEffect(() => {
-    if (!eventId || !user?.company?.id) {
-      setLoading(false);
-      return;
-    }
-    Promise.all([
-      getMatchingSoftwareForEventAction(eventId),
-      fetchCompanyByIdAction(user.company.id, false, true),
-    ])
-      .then(([ms, c]) => {
-        setMatchingSoftware(ms ? { id: ms.id, companies_can_view_matches: ms.companies_can_view_matches } : null);
-        const ev = ms?.event;
-        setEventName(typeof ev === "object" && ev && "name" in ev ? (ev as { name: string }).name : "");
-        setCompany((c as Company) ?? null);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [eventId, user?.company?.id]);
+/**
+ * A company's matching-software questions and matches for one event, loaded
+ * here on the server. The page used to fetch the matching software and the
+ * company, then the saved response, then the matched students' details --
+ * server actions one after another -- behind a "Loading..." line.
+ */
+export default async function EventMatchingSoftwarePage({ params }: { params: Promise<{ eventId: string }> }) {
+  const { eventId } = await params;
+  // The (protected) layout already turned away visitors who are not signed in.
+  const user = await getUserFromCookies();
+  const companyId = user?.company?.id;
+  if (!companyId) return <BackToDashboard message="No company associated with your account." />;
 
-  if (!eventId) {
-    return (
-      <div className="w-full gap-4 flex flex-col">
-        <p className="text-muted-foreground">Event not found.</p>
-        <Button asChild variant="outline">
-          <Link href="/dashboard">Back to dashboard</Link>
-        </Button>
-      </div>
-    );
-  }
+  const [matchingSoftware, company] = await Promise.all([
+    getMatchingSoftwareForEventAction(eventId).catch(() => null),
+    fetchCompanyByIdAction(companyId, false, true).catch(() => null),
+  ]);
+  if (!matchingSoftware) return <BackToDashboard message="Matching software is not available for this event." />;
 
-  if (!user?.company?.id) {
-    return (
-      <div className="w-full gap-4 flex flex-col">
-        <p className="text-muted-foreground">No company associated with your account.</p>
-        <Button asChild variant="outline">
-          <Link href="/dashboard">Back to dashboard</Link>
-        </Button>
-      </div>
-    );
-  }
+  const response = await getCompanyMatchingResponseForCompanyViewAction(companyId, matchingSoftware.id).catch(() => null);
+  const students = normalizeStudents((response as { students?: unknown } | null)?.students);
+  const studentFormData = students.length
+    ? await getStudentFormResponseDataForEventAction(eventId, students.map((s) => s.id), {
+        companyId,
+        matchingSoftwareId: matchingSoftware.id,
+      }).catch(() => new Map())
+    : new Map();
 
-  if (loading) {
-    return <p className="text-muted-foreground">Loading...</p>;
-  }
-
-  if (!matchingSoftware) {
-    return (
-      <div className="w-full gap-4 flex flex-col">
-        <p className="text-muted-foreground">Matching software is not available for this event.</p>
-        <Button asChild variant="outline">
-          <Link href="/dashboard">Back to dashboard</Link>
-        </Button>
-      </div>
-    );
-  }
+  const event = matchingSoftware.event;
+  const eventName = typeof event === "object" && event && "name" in event ? (event as { name: string }).name : undefined;
 
   return (
     <div className="w-full gap-4 flex flex-col">
@@ -82,14 +59,12 @@ export default function EventMatchingSoftwarePage() {
         <Link href="/dashboard">← Back to dashboard</Link>
       </Button>
       <CompanyMatchingForm
-        companyId={user.company.id}
+        companyId={companyId}
         matchingSoftwareId={matchingSoftware.id}
         eventId={eventId}
         eventName={eventName || undefined}
-        companiesCanViewMatches={
-          (matchingSoftware.companies_can_view_matches ?? false) &&
-          hasMatchingSoftwareSubOption(company)
-        }
+        companiesCanViewMatches={(matchingSoftware.companies_can_view_matches ?? false) && hasMatchingSoftwareSubOption(company)}
+        initialData={{ response, studentFormData }}
       />
     </div>
   );

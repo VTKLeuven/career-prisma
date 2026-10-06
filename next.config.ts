@@ -15,7 +15,11 @@ const nextConfig: NextConfig = {
     ],
     // Enable image optimization caching
     minimumCacheTTL: 31536000, // 1 year
-    formats: ['image/avif', 'image/webp'],
+    // WebP only. Images are resized on first request, and the optimiser cache
+    // starts empty after every deploy: encoding AVIF took 4-10 s for the
+    // homepage hero (a 12 MB photo) against 1-2 s for WebP, for files of the
+    // same size. The first visitor after a deploy was the one who waited.
+    formats: ['image/webp'],
   },
   // Enable experimental features for better caching
   experimental: {
@@ -31,12 +35,7 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '10mb',
     },
   },
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      // Allow dynamic imports for pdf-into-svg
-      config.externals = config.externals || [];
-      // Don't externalize pdf-into-svg - we want to bundle it
-    }
+  webpack: (config) => {
     // Fix Windows standalone build: node:inspector produces invalid filenames (colons) on NTFS
     config.resolve = config.resolve || {};
     config.resolve.alias = { ...config.resolve.alias, "node:inspector": "inspector" };
@@ -45,6 +44,39 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: process.cwd(),
     resolveAlias: { "node:inspector": "inspector" },
+  },
+  async headers() {
+    // Pages where a hidden frame on another site could trick a signed-in user
+    // into clicking (clickjacking): the back office and the account and login
+    // pages. Public pages stay embeddable.
+    const noFraming = [
+      { key: "X-Frame-Options", value: "SAMEORIGIN" },
+      { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+    ];
+    const protectedPaths = [
+      "/admin",
+      "/admin/:path*",
+      "/dashboard",
+      "/dashboard/:path*",
+      "/student/:path*",
+      "/login",
+      "/student-login",
+      "/register",
+      "/accept-invite",
+      "/reset-password",
+      "/student-reset-password",
+      "/verify-student",
+    ];
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        ],
+      },
+      ...protectedPaths.map((source) => ({ source, headers: noFraming })),
+    ];
   },
   // Reduce log spam: ignore polling endpoints (email-job-status, email-queue)
   logging: {

@@ -1,4 +1,4 @@
-"use server";
+import "server-only";
 
 import { randomBytes, createHash } from "crypto";
 import type { Student } from "@/lib/schema";
@@ -28,16 +28,25 @@ function shapeStudent(row: NonNullable<StudentRow>): Student {
     sso_study_years: row.sso_study_years ?? [],
     sso_locale: row.sso_locale ?? undefined,
     preferred_language: row.preferred_language ?? undefined,
-    sso_access_token: row.sso_access_token ?? undefined,
-    sso_token_expires_at: row.sso_token_expires_at?.toISOString(),
-    password: row.password ?? undefined,
     verified: row.verified ?? undefined,
-    verification_token_hash: row.verification_token_hash ?? undefined,
-    verification_token_created: row.verification_token_created?.toISOString(),
     date_created: row.date_created?.toISOString(),
     date_updated: row.date_updated?.toISOString(),
     is_shifter: row.is_shifter ?? undefined,
   };
+}
+
+/**
+ * The stored argon2 hash, for the few places that must check a password.
+ * Every other query leaves it out (SECRET_COLUMNS in lib/prisma.ts).
+ */
+export async function getStudentPasswordHash(id: string | number): Promise<string | null> {
+  const studentId = Number(id);
+  if (!Number.isSafeInteger(studentId)) return null;
+  const row = await prisma.student.findUnique({
+    where: { id: studentId },
+    select: { password: true },
+  });
+  return row?.password ?? null;
 }
 
 export async function findStudentByEmail(email: string): Promise<Student | null> {
@@ -109,14 +118,6 @@ export async function deleteStudent(id: number): Promise<void> {
     prisma.studentCompany.deleteMany({ where: { students_id: id } }),
     prisma.student.delete({ where: { id } }),
   ]);
-}
-
-/** Looks a student up by their SSO subject (the OIDC `sub`). */
-export async function findStudentBySsoSubject(
-  subject: string
-): Promise<Student | null> {
-  const row = await prisma.student.findUnique({ where: { sso_subject: subject } });
-  return row ? shapeStudent(row) : null;
 }
 
 /** What the SSO flow hands over. Mirrors `SsoProfile` in `lib/vtk-sso-claims.ts`. */
@@ -548,4 +549,34 @@ export async function createNonOAuthStudent(studentData: {
     console.error("[createNonOAuthStudent] Failed:", error);
     return null;
   }
+}
+
+/** Students for the shifter admin: matching a search, or the current shifters. */
+export async function searchStudentsForShifters(search?: string) {
+  return prisma.student.findMany({
+    where: search
+      ? {
+          OR: [
+            { first_name: { contains: search, mode: "insensitive" } },
+            { last_name: { contains: search, mode: "insensitive" } },
+            { email: { contains: search, mode: "insensitive" } },
+          ],
+        }
+      : { is_shifter: true },
+    select: {
+      id: true,
+      first_name: true,
+      last_name: true,
+      email: true,
+      is_shifter: true,
+    },
+    take: 50,
+  });
+}
+
+export async function setStudentShifter(id: string, isShifter: boolean): Promise<void> {
+  await prisma.student.update({
+    where: { id: Number(id) },
+    data: { is_shifter: isShifter, date_updated: new Date() },
+  });
 }

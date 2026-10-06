@@ -1,14 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { fetchCompaniesAction, fetchCompaniesWithSubOptionsAction, createCompanyAction, updateCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, addSubOptionToCompanyAction, removeSubOptionFromCompanyAction, addSubOptionToCompanyOnlyAction, removeSubOptionFromCompanyOnlyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction, fetchCompanyOptionsDebugAction } from "@/app/actions/companies";
-import { fetchEventsAction, findCompaniesWithEventOptions, addCompaniesToEventPageAction, createEventAction, updateEventAction, deleteEventAction } from "@/app/actions/events";
-import { uploadFileAction } from "@/app/actions/media";
-import { listMatchingSoftwareAction, createMatchingSoftwareAction } from "@/app/actions/matching-software";
-import { fetchAcademicYearsAction } from "@/app/actions/cv-book";
-import { fetchFormsAction } from "@/app/actions/forms";
-import { fetchSalespersonsAction } from "@/app/actions/salespeople";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { fetchCompanyByIdAction, fetchCompaniesWithSubOptionsAction, createCompanyAction, updateCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, addSubOptionToCompanyAction, removeSubOptionFromCompanyAction, addSubOptionToCompanyOnlyAction, removeSubOptionFromCompanyOnlyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction, fetchCompanyOptionsDebugAction } from "@/app/actions/companies";
+import { fetchEventsAction } from "@/app/actions/events";
+import { listSubOptionsAction, listEventOptionsAction } from "@/app/actions/career-options";
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -22,10 +17,9 @@ import {
   VisibilityState,
 }
 from "@tanstack/react-table";
-import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, MoreHorizontal, Package, Pencil, Search, Upload, Users, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Loader2, MoreHorizontal, Package, Pencil, Search, Upload, Users, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -64,12 +58,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { IconBuilding, IconCalendarEvent, IconColumns, IconMail, IconPlus, IconTaxEuro, IconFileCv } from "@tabler/icons-react";
-import type { AcademicYear, CareerEvent, Company, CompanyRep, CareerEventOption, CareerEventPage, Booth, HeaderButtonType, CareerSubOption } from "@/lib/schema";
-import { useUser } from "@/providers/UserProvider";
+import { IconBuilding, IconColumns, IconMail, IconPlus, IconTaxEuro } from "@tabler/icons-react";
+import type { AcademicYear, CareerEvent, Company, CompanyRep, CareerEventOption, CareerSubOption, Master } from "@/lib/schema";
 import type { UserSummary as AppUser } from "@/lib/schema";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
-import { SimpleRichTextEditor } from "@/components/admin/SimpleRichTextEditor";
+import { toast } from "sonner";
+import { ResourceEditor } from "@/components/admin/ResourceManager";
+import type { SelectOption } from "@/components/admin/types";
+import { fetchAdminUserAction } from "@/app/actions/admin-users";
+import type { AdminUserRow } from "@/lib/repos/users";
+import { userResourceConfig } from "../users/user-config";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { SettingsCompanyProvider } from "@/app/(protected)/dashboard/settings/settings-company";
+import { CompanyInformationForm } from "@/app/(protected)/dashboard/settings/information/company-information-form";
+import { BillingForm } from "@/app/(protected)/dashboard/settings/billing/billing-form";
 
 /**
  * Notes about typing decisions:
@@ -92,35 +94,9 @@ type CompanyRow = Pick<Company, "id" | "name" | "VAT" | "address" | "salesperson
   sub_options?: CareerSubOption[];
   option_history?: NonNullable<Company["option_history"]>;
   sub_option_history?: NonNullable<Company["sub_option_history"]>;
+  /** `salesperson` is the display name; this is the id the edit form saves. */
+  salesperson_id?: string | null;
 };
-
-export default function LegacyCompaniesEventsClient() {
-  const { user } = useUser();
-  if (!user?.admin) return <p>NO ACCESS</p>;
-
-  return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-6 py-6">
-      <div>
-        <h1 className="text-3xl font-bold">Companies & Events have moved</h1>
-        <p className="mt-2 text-muted-foreground">
-          These are separate workflows now. Choose what you want to manage.
-        </p>
-      </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Link href="/admin/companies" className="rounded-xl border bg-card p-6 transition-colors hover:bg-accent">
-          <IconBuilding className="mb-4 h-8 w-8" />
-          <h2 className="text-xl font-semibold">Companies</h2>
-          <p className="mt-2 text-sm text-muted-foreground">Company details, representatives, approvals and purchased options.</p>
-        </Link>
-        <Link href="/admin/events" className="rounded-xl border bg-card p-6 transition-colors hover:bg-accent">
-          <IconCalendarEvent className="mb-4 h-8 w-8" />
-          <h2 className="text-xl font-semibold">Events</h2>
-          <p className="mt-2 text-sm text-muted-foreground">Recurring event series, annual editions and their public pages.</p>
-        </Link>
-      </div>
-    </div>
-  );
-}
 
 /** Extract suboption IDs from option (option.sub_options or nested in option.events[].career_event_option_id.sub_options). Handles IDs and expanded objects with career_sub_option_id. */
 function getSubOptionIdsFromOption(option: unknown): string[] {
@@ -308,9 +284,128 @@ function extractCompanySubOptions(opt: unknown, allSubOptions?: CareerSubOption[
 /** ------------------------------------------------------------------
  * Companies section
  * ------------------------------------------------------------------ */
-export function CompaniesSection() {
-  const [data, setData] = React.useState<CompanyRow[]>([]);
-  const [loading, setLoading] = React.useState(true);
+type CompaniesData = Awaited<ReturnType<typeof fetchCompaniesWithSubOptionsAction>>;
+
+/** What a representative's Edit needs to open the User Management form. */
+const UserEditContext = React.createContext<{
+  roleOptions: SelectOption[];
+  companyOptions: SelectOption[];
+  onSaved: () => void;
+} | null>(null);
+
+/** The table's rows: each company with its options' events and sub-options resolved. */
+function toCompanyRows({ companies: rows, allSubOptions }: CompaniesData): CompanyRow[] {
+  return (rows ?? []).map((r: Company & { status?: string }) => ({
+    id: r.id,
+    name: r.name,
+    VAT: r.VAT ?? "",
+    address: r.address ?? formatAddress(r),
+    salesperson: r.salesperson ?? "",
+    salesperson_id: (r as { salesperson_id?: string | null }).salesperson_id ?? null,
+    status: r.status ?? "",
+    representatives: (r.representatives ?? []).map((rep) => ({ ...rep })) as Partial<CompanyRep>[],
+    sub_options: resolveCompanySubOptions(r, allSubOptions ?? []),
+    option_history: r.option_history ?? [],
+    sub_option_history: r.sub_option_history ?? [],
+    options: (r.options ?? []).map((opt) => {
+      // Handle both direct CareerEventOption and junction table format
+      let rawOption: CareerEventOption | null = null;
+      if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
+        const junction = opt as { career_event_option_id: CareerEventOption | null };
+        rawOption = junction.career_event_option_id;
+      } else {
+        rawOption = opt as CareerEventOption;
+      }
+      
+      // Ensure we have a valid option with an ID
+      if (!rawOption || !rawOption.id) {
+        return null;
+      }
+
+      const companySubOptions = extractCompanySubOptions(opt, allSubOptions, rawOption, r);
+
+      // Resolve option's sub_options (can be IDs from nested events path) for SubOptionsDialog
+      const optionSubOptionIds = getSubOptionIdsFromOption(rawOption);
+      const resolvedSubOptions: CareerSubOption[] = optionSubOptionIds.length > 0 && allSubOptions
+        ? optionSubOptionIds
+            .map((id) => allSubOptions.find((s) => String(s.id) === String(id)))
+            .filter((s): s is CareerSubOption => Boolean(s))
+        : (Array.isArray(rawOption.sub_options) ? rawOption.sub_options : []).filter(
+            (s): s is CareerSubOption => s && typeof s === 'object' && 'name' in s
+          );
+
+      // Create a new object to avoid mutation, preserving all fields
+      const normalizedOption: CareerEventOptionWithCompanySubOptions = {
+        id: rawOption.id,
+        name: rawOption.name,
+        description: rawOption.description,
+        price: rawOption.price,
+        sub_options: resolvedSubOptions.length > 0 ? resolvedSubOptions : rawOption.sub_options,
+        companySubOptions: companySubOptions.length > 0 ? companySubOptions : undefined,
+      };
+
+      // Normalize events: handle junction table format and direct events
+      // In Directus many-to-many, events can come in various formats
+      if (rawOption.events && Array.isArray(rawOption.events)) {
+        // Events might be in junction table format: [{ career_event_id: EventObject }] or direct EventObject[]
+        normalizedOption.events = rawOption.events
+          .map((eventOrJunction: unknown) => {
+            if (!eventOrJunction || typeof eventOrJunction !== 'object') return null;
+            
+            // Check if it's a junction table entry - try multiple possible field names
+            // Directus junction tables can have different field names
+            const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
+            for (const fieldName of possibleJunctionFields) {
+              if (fieldName in eventOrJunction) {
+                const junction = eventOrJunction as Record<string, CareerEvent | string | null>;
+                const eventRef = junction[fieldName];
+                if (eventRef && typeof eventRef === 'object') {
+                  return eventRef as CareerEvent;
+                }
+              }
+            }
+            
+            // Check if it's a direct event object
+            if ('id' in eventOrJunction && 'name' in eventOrJunction) {
+              return eventOrJunction as CareerEvent;
+            }
+            
+            return null;
+          })
+          .filter((e): e is CareerEvent => e !== null && e !== undefined);
+      } else if (rawOption.event) {
+        // Single event exists, convert to array
+        if (typeof rawOption.event === 'object' && rawOption.event !== null) {
+          normalizedOption.events = [rawOption.event as CareerEvent];
+        } else {
+          normalizedOption.events = [];
+        }
+      } else {
+        // No events, set empty array
+        normalizedOption.events = [];
+      }
+      
+      return normalizedOption;
+    }).filter((opt): opt is CareerEventOptionWithCompanySubOptions => opt !== null && opt !== undefined && opt.id !== undefined),
+  }));
+}
+
+/** The companies table; the page loads the companies and salespeople on the server. */
+export function CompaniesSection({
+  initialData,
+  salespersons,
+  roleOptions,
+  masters,
+}: {
+  initialData: CompaniesData;
+  salespersons: AppUser[];
+  /** For editing a representative with the User Management form. */
+  roleOptions: SelectOption[];
+  /** For the target masters on the Company information tab. */
+  masters: Master[];
+}) {
+  const [data, setData] = React.useState<CompanyRow[]>(() => toCompanyRows(initialData));
+  const [loading, setLoading] = React.useState(false);
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = React.useState("");
@@ -322,120 +417,15 @@ export function CompaniesSection() {
   const [selectedCompany, setSelectedCompany] = React.useState<CompanyRow | null>(null);
   const [editingCompany, setEditingCompany] = React.useState<CompanyRow | null>(null);
   const [viewMode, setViewMode] = React.useState<"companies" | "users" | "options">("companies");
-  const [allSubOptions, setAllSubOptions] = React.useState<CareerSubOption[]>([]);
+  const [allSubOptions, setAllSubOptions] = React.useState<CareerSubOption[]>(initialData.allSubOptions ?? []);
 
   const refreshCompanies = React.useCallback(() => {
     setLoading(true);
     fetchCompaniesWithSubOptionsAction()
-      .then(({ companies: rows, allSubOptions }) => {
-        // Normalize representatives to Partial<CompanyRep>[]
-        const mapped: CompanyRow[] = (rows ?? []).map((r: Company & { status?: string }) => ({
-          id: r.id,
-          name: r.name,
-          VAT: r.VAT ?? "",
-          address: r.address ?? formatAddress(r),
-          salesperson: r.salesperson ?? "",
-          status: r.status ?? "",
-          representatives: (r.representatives ?? []).map((rep) => ({ ...rep })) as Partial<CompanyRep>[],
-          sub_options: resolveCompanySubOptions(r, allSubOptions ?? []),
-          option_history: r.option_history ?? [],
-          sub_option_history: r.sub_option_history ?? [],
-          options: (r.options ?? []).map((opt, optIndex) => {
-            // Handle both direct CareerEventOption and junction table format
-            let rawOption: CareerEventOption | null = null;
-            if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
-              const junction = opt as { career_event_option_id: CareerEventOption | null };
-              rawOption = junction.career_event_option_id;
-            } else {
-              rawOption = opt as CareerEventOption;
-            }
-            
-            // Ensure we have a valid option with an ID
-            if (!rawOption || !rawOption.id) {
-              return null;
-            }
-
-            const companySubOptions = extractCompanySubOptions(opt, allSubOptions, rawOption, r);
-
-            // Resolve option's sub_options (can be IDs from nested events path) for SubOptionsDialog
-            const optionSubOptionIds = getSubOptionIdsFromOption(rawOption);
-            const resolvedSubOptions: CareerSubOption[] = optionSubOptionIds.length > 0 && allSubOptions
-              ? optionSubOptionIds
-                  .map((id) => allSubOptions.find((s) => String(s.id) === String(id)))
-                  .filter((s): s is CareerSubOption => Boolean(s))
-              : (Array.isArray(rawOption.sub_options) ? rawOption.sub_options : []).filter(
-                  (s): s is CareerSubOption => s && typeof s === 'object' && 'name' in s
-                );
-
-            // Create a new object to avoid mutation, preserving all fields
-            const normalizedOption: CareerEventOptionWithCompanySubOptions = {
-              id: rawOption.id,
-              name: rawOption.name,
-              description: rawOption.description,
-              price: rawOption.price,
-              sub_options: resolvedSubOptions.length > 0 ? resolvedSubOptions : rawOption.sub_options,
-              companySubOptions: companySubOptions.length > 0 ? companySubOptions : undefined,
-            };
-
-            // Normalize events: handle junction table format and direct events
-            // In Directus many-to-many, events can come in various formats
-            if (rawOption.events && Array.isArray(rawOption.events)) {
-              // Events might be in junction table format: [{ career_event_id: EventObject }] or direct EventObject[]
-              normalizedOption.events = rawOption.events
-                .map((eventOrJunction: unknown) => {
-                  if (!eventOrJunction || typeof eventOrJunction !== 'object') return null;
-                  
-                  // Check if it's a junction table entry - try multiple possible field names
-                  // Directus junction tables can have different field names
-                  const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
-                  for (const fieldName of possibleJunctionFields) {
-                    if (fieldName in eventOrJunction) {
-                      const junction = eventOrJunction as Record<string, CareerEvent | string | null>;
-                      const eventRef = junction[fieldName];
-                      if (eventRef && typeof eventRef === 'object') {
-                        return eventRef as CareerEvent;
-                      }
-                    }
-                  }
-                  
-                  // Check if it's a direct event object
-                  if ('id' in eventOrJunction && 'name' in eventOrJunction) {
-                    return eventOrJunction as CareerEvent;
-                  }
-                  
-                  return null;
-                })
-                .filter((e): e is CareerEvent => e !== null && e !== undefined);
-            } else if (rawOption.event) {
-              // Single event exists, convert to array
-              if (typeof rawOption.event === 'object' && rawOption.event !== null) {
-                normalizedOption.events = [rawOption.event as CareerEvent];
-              } else {
-                normalizedOption.events = [];
-              }
-            } else {
-              // No events, set empty array
-              normalizedOption.events = [];
-            }
-            
-            // Debug: log first option's events structure
-            if (optIndex === 0 && normalizedOption.events.length === 0 && (rawOption.events || rawOption.event)) {
-              console.log("[Admin] Option events normalization - rawOption structure:", {
-                hasEvents: !!rawOption.events,
-                eventsType: Array.isArray(rawOption.events) ? 'array' : typeof rawOption.events,
-                eventsLength: Array.isArray(rawOption.events) ? rawOption.events.length : 0,
-                firstEvent: Array.isArray(rawOption.events) && rawOption.events[0] ? Object.keys(rawOption.events[0] as any) : null,
-                hasEvent: !!rawOption.event,
-                eventType: typeof rawOption.event,
-                allKeys: Object.keys(rawOption),
-              });
-            }
-            
-            return normalizedOption;
-          }).filter((opt): opt is CareerEventOptionWithCompanySubOptions => opt !== null && opt !== undefined && opt.id !== undefined),
-        }));
+      .then((result) => {
+        const mapped = toCompanyRows(result);
         setData(mapped);
-        setAllSubOptions(allSubOptions ?? []);
+        setAllSubOptions(result.allSubOptions ?? []);
         setSelectedCompany((prev) => {
           if (!prev) return prev;
           const updated = mapped.find((c) => c.id === prev.id);
@@ -444,125 +434,6 @@ export function CompaniesSection() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
-
-  React.useEffect(() => {
-    let alive = true;
-    fetchCompaniesWithSubOptionsAction()
-      .then(({ companies: rows, allSubOptions }) => {
-        if (!alive) return;
-        // Normalize representatives to Partial<CompanyRep>[]
-        const mapped: CompanyRow[] = (rows ?? []).map((r: Company & { status?: string }) => ({
-          id: r.id,
-          name: r.name,
-          VAT: r.VAT ?? "",
-          address: r.address ?? formatAddress(r),
-          salesperson: r.salesperson ?? "",
-          status: r.status ?? "",
-          representatives: (r.representatives ?? []).map((rep) => ({ ...rep })) as Partial<CompanyRep>[],
-          sub_options: resolveCompanySubOptions(r, allSubOptions ?? []),
-          option_history: r.option_history ?? [],
-          sub_option_history: r.sub_option_history ?? [],
-          options: (r.options ?? []).map((opt, optIndex) => {
-            // Handle both direct CareerEventOption and junction table format
-            let rawOption: CareerEventOption | null = null;
-            if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
-              const junction = opt as { career_event_option_id: CareerEventOption | null };
-              rawOption = junction.career_event_option_id;
-            } else {
-              rawOption = opt as CareerEventOption;
-            }
-            
-            // Ensure we have a valid option with an ID
-            if (!rawOption || !rawOption.id) {
-              return null;
-            }
-
-            const companySubOptions = extractCompanySubOptions(opt, allSubOptions, rawOption, r);
-
-            // Resolve option's sub_options (can be IDs from nested events path) for SubOptionsDialog
-            const optionSubOptionIds = getSubOptionIdsFromOption(rawOption);
-            const resolvedSubOptions: CareerSubOption[] = optionSubOptionIds.length > 0 && allSubOptions
-              ? optionSubOptionIds
-                  .map((id) => allSubOptions.find((s) => String(s.id) === String(id)))
-                  .filter((s): s is CareerSubOption => Boolean(s))
-              : (Array.isArray(rawOption.sub_options) ? rawOption.sub_options : []).filter(
-                  (s): s is CareerSubOption => s && typeof s === 'object' && 'name' in s
-                );
-
-            // Create a new object to avoid mutation, preserving all fields
-            const normalizedOption: CareerEventOptionWithCompanySubOptions = {
-              id: rawOption.id,
-              name: rawOption.name,
-              description: rawOption.description,
-              price: rawOption.price,
-              sub_options: resolvedSubOptions.length > 0 ? resolvedSubOptions : rawOption.sub_options,
-              companySubOptions: companySubOptions.length > 0 ? companySubOptions : undefined,
-            };
-
-            // Normalize events: handle junction table format and direct events
-            // In Directus many-to-many, events can come in various formats
-            if (rawOption.events && Array.isArray(rawOption.events)) {
-              // Events might be in junction table format: [{ career_event_id: EventObject }] or direct EventObject[]
-              normalizedOption.events = rawOption.events
-                .map((eventOrJunction: unknown) => {
-                  if (!eventOrJunction || typeof eventOrJunction !== 'object') return null;
-                  
-                  // Check if it's a junction table entry - try multiple possible field names
-                  // Directus junction tables can have different field names
-                  const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
-                  for (const fieldName of possibleJunctionFields) {
-                    if (fieldName in eventOrJunction) {
-                      const junction = eventOrJunction as Record<string, CareerEvent | string | null>;
-                      const eventRef = junction[fieldName];
-                      if (eventRef && typeof eventRef === 'object') {
-                        return eventRef as CareerEvent;
-                      }
-                    }
-                  }
-                  
-                  // Check if it's a direct event object
-                  if ('id' in eventOrJunction && 'name' in eventOrJunction) {
-                    return eventOrJunction as CareerEvent;
-                  }
-                  
-                  return null;
-                })
-                .filter((e): e is CareerEvent => e !== null && e !== undefined);
-            } else if (rawOption.event) {
-              // Single event exists, convert to array
-              if (typeof rawOption.event === 'object' && rawOption.event !== null) {
-                normalizedOption.events = [rawOption.event as CareerEvent];
-              } else {
-                normalizedOption.events = [];
-              }
-            } else {
-              // No events, set empty array
-              normalizedOption.events = [];
-            }
-            
-            // Debug: log first option's events structure
-            if (optIndex === 0 && normalizedOption.events.length === 0 && (rawOption.events || rawOption.event)) {
-              console.log("[Admin useEffect] Option events normalization - rawOption structure:", {
-                hasEvents: !!rawOption.events,
-                eventsType: Array.isArray(rawOption.events) ? 'array' : typeof rawOption.events,
-                eventsLength: Array.isArray(rawOption.events) ? rawOption.events.length : 0,
-                firstEvent: Array.isArray(rawOption.events) && rawOption.events[0] ? Object.keys(rawOption.events[0] as any) : null,
-                hasEvent: !!rawOption.event,
-                eventType: typeof rawOption.event,
-                allKeys: Object.keys(rawOption),
-              });
-            }
-            
-            return normalizedOption;
-          }).filter((opt): opt is CareerEventOptionWithCompanySubOptions => opt !== null && opt !== undefined && opt.id !== undefined),
-        }));
-        setData(mapped);
-        setAllSubOptions(allSubOptions ?? []);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-    return () => { alive = false; };
   }, []);
 
   const table = useReactTable<CompanyRow>({
@@ -670,231 +541,241 @@ export function CompaniesSection() {
   const filteredCount = table.getFilteredRowModel().rows.length;
   const { pageIndex, pageSize } = table.getState().pagination;
 
+  const companyOptions = React.useMemo(
+    () => data.map((c) => ({ value: c.id, label: c.name || "(unnamed)" })),
+    [data]
+  );
+
   return (
-    <div className="flex flex-col gap-3">
-        <EditCompanyDialog
-          company={editingCompany}
-          onClose={() => setEditingCompany(null)}
-          onSaved={refreshCompanies}
-        />
-        {selectedCompany && (
-          <div className="flex flex-col gap-3 rounded-xl border bg-[#fafafa] p-3 sm:flex-row sm:items-center">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => { setSelectedCompany(null); setViewMode("companies"); }}
-              className="self-start sm:self-auto"
-            >
-              <ChevronLeft className="h-4 w-4" /> Companies
-            </Button>
-            <div className="flex min-w-0 items-center gap-2.5">
-              <CompanyAvatar name={selectedCompany.name} />
-              <span className="truncate text-[15px] font-semibold">{selectedCompany.name}</span>
-            </div>
-            <div className="flex items-center gap-1 rounded-[10px] border bg-background p-0.5 sm:ml-4">
-              {([
-                ["users", "Representatives", selectedCompany.representatives?.length ?? 0],
-                ["options", "Options", selectedCompany.options?.length ?? 0],
-              ] as const).map(([mode, label, count]) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setViewMode(mode)}
-                  className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
-                    viewMode === mode ? "bg-[#f0f0f2] text-foreground" : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {label}
-                  <span className="text-xs text-muted-foreground tabular">{count}</span>
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-2 sm:ml-auto">
-              <Button variant="outline" size="sm" asChild>
-                <Link href={`/company/${slugifyCompanyName(selectedCompany.name)}`}>
-                  <ExternalLink className="h-4 w-4" /> Public page
-                </Link>
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setEditingCompany(selectedCompany)}>
-                <Pencil className="h-4 w-4" /> Edit details
-              </Button>
-            </div>
-          </div>
-        )}
-        {!selectedCompany ? (
-          <>
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-              <div className="relative w-full sm:max-w-xs">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search name or VAT…"
-                  value={table.getState().globalFilter ?? ""}
-                  onChange={e => table.setGlobalFilter(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-              <Select
-                value={(table.getColumn("salesperson")?.getFilterValue() ?? "__all__") as string}
-                onValueChange={(val) => table.getColumn("salesperson")?.setFilterValue(val === "__all__" ? undefined : val)}
+    <UserEditContext.Provider value={{ roleOptions, companyOptions, onSaved: refreshCompanies }}>
+      <div className="flex flex-col gap-3">
+          <EditCompanyDialog
+            company={editingCompany}
+            salespersons={salespersons}
+            masters={masters}
+            onClose={() => setEditingCompany(null)}
+            onSaved={refreshCompanies}
+          />
+          {selectedCompany && (
+            <div className="flex flex-col gap-3 rounded-xl border bg-[#fafafa] p-3 sm:flex-row sm:items-center">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setSelectedCompany(null); setViewMode("companies"); }}
+                className="self-start sm:self-auto"
               >
-                <SelectTrigger className="w-full sm:w-[200px]">
-                  <SelectValue placeholder="Assignee" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem key="__all__" value="__all__">All assignees</SelectItem>
-                  {salespersonOptions.map(name => <SelectItem key={String(name)} value={String(name)}>{name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-
-              <span className="text-sm text-muted-foreground tabular">
-                {filteredCount === data.length ? `${data.length} companies` : `${filteredCount} of ${data.length}`}
-              </span>
-
+                <ChevronLeft className="h-4 w-4" /> Companies
+              </Button>
+              <div className="flex min-w-0 items-center gap-2.5">
+                <CompanyAvatar name={selectedCompany.name} />
+                <span className="truncate text-[15px] font-semibold">{selectedCompany.name}</span>
+              </div>
+              <div className="flex items-center gap-1 rounded-[10px] border bg-background p-0.5 sm:ml-4">
+                {([
+                  ["users", "Representatives", selectedCompany.representatives?.length ?? 0],
+                  ["options", "Options", selectedCompany.options?.length ?? 0],
+                ] as const).map(([mode, label, count]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setViewMode(mode)}
+                    className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
+                      viewMode === mode ? "bg-[#f0f0f2] text-foreground" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {label}
+                    <span className="text-xs text-muted-foreground tabular">{count}</span>
+                  </button>
+                ))}
+              </div>
               <div className="flex items-center gap-2 sm:ml-auto">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline"><IconColumns /> <span className="hidden sm:inline">Columns</span><ChevronDown className="h-4 w-4 text-muted-foreground" /></Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {table.getAllColumns()
-                      .filter(c => c.getCanHide())
-                      .map(c => (
-                        <DropdownMenuCheckboxItem
-                          key={c.id}
-                          checked={c.getIsVisible()}
-                          onCheckedChange={v => c.toggleVisibility(v)}
-                          className="capitalize"
-                        >
-                          {c.id}
-                        </DropdownMenuCheckboxItem>
-                      ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <CompanyFormDialog
-                  onRefresh={refreshCompanies}
-                />
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/company/${slugifyCompanyName(selectedCompany.name)}`}>
+                    <ExternalLink className="h-4 w-4" /> Public page
+                  </Link>
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setEditingCompany(selectedCompany)}>
+                  <Pencil className="h-4 w-4" /> Edit details
+                </Button>
               </div>
             </div>
+          )}
+          {!selectedCompany ? (
+            <>
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                <div className="relative w-full sm:max-w-xs">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="Search name or VAT…"
+                    value={table.getState().globalFilter ?? ""}
+                    onChange={e => table.setGlobalFilter(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <Select
+                  value={(table.getColumn("salesperson")?.getFilterValue() ?? "__all__") as string}
+                  onValueChange={(val) => table.getColumn("salesperson")?.setFilterValue(val === "__all__" ? undefined : val)}
+                >
+                  <SelectTrigger className="w-full sm:w-[200px]">
+                    <SelectValue placeholder="Assignee" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem key="__all__" value="__all__">All assignees</SelectItem>
+                    {salespersonOptions.map(name => <SelectItem key={String(name)} value={String(name)}>{name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
 
-            <div className="overflow-hidden rounded-xl border bg-background">
-                <Table containerClassName="max-h-[calc(100svh-17rem)]">
-                  <TableHeader className="sticky top-0 z-10 bg-background shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
-                    {table.getHeaderGroups().map(headerGroup => (
-                      <TableRow key={headerGroup.id}>
-                        {headerGroup.headers.map(header => (
-                          <TableHead key={header.id} className="whitespace-nowrap first:pl-4">
-                            {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                          </TableHead>
+                <span className="text-sm text-muted-foreground tabular">
+                  {filteredCount === data.length ? `${data.length} companies` : `${filteredCount} of ${data.length}`}
+                </span>
+
+                <div className="flex items-center gap-2 sm:ml-auto">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline"><IconColumns /> <span className="hidden sm:inline">Columns</span><ChevronDown className="h-4 w-4 text-muted-foreground" /></Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {table.getAllColumns()
+                        .filter(c => c.getCanHide())
+                        .map(c => (
+                          <DropdownMenuCheckboxItem
+                            key={c.id}
+                            checked={c.getIsVisible()}
+                            onCheckedChange={v => c.toggleVisibility(v)}
+                            className="capitalize"
+                          >
+                            {c.id}
+                          </DropdownMenuCheckboxItem>
                         ))}
-                      </TableRow>
-                    ))}
-                  </TableHeader>
-                  <TableBody>
-                    {loading && data.length === 0 ? (
-                      Array.from({ length: 8 }).map((_, i) => (
-                        <TableRow key={i} className="hover:bg-transparent">
-                          <TableCell colSpan={table.getAllColumns().length} className="pl-4">
-                            <div className="flex items-center gap-3">
-                              <div className="size-7 animate-pulse rounded-lg bg-muted" />
-                              <div className="h-3 w-48 animate-pulse rounded bg-muted" />
-                              <div className="ml-auto h-3 w-24 animate-pulse rounded bg-muted" />
-                            </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <CompanyFormDialog
+                    onRefresh={refreshCompanies}
+                    salespersons={salespersons}
+                  />
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-xl border bg-background">
+                  <Table containerClassName="max-h-[calc(100svh-17rem)]">
+                    <TableHeader className="sticky top-0 z-10 bg-background shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
+                      {table.getHeaderGroups().map(headerGroup => (
+                        <TableRow key={headerGroup.id}>
+                          {headerGroup.headers.map(header => (
+                            <TableHead key={header.id} className="whitespace-nowrap first:pl-4">
+                              {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                            </TableHead>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableHeader>
+                    <TableBody>
+                      {loading && data.length === 0 ? (
+                        Array.from({ length: 8 }).map((_, i) => (
+                          <TableRow key={i} className="hover:bg-transparent">
+                            <TableCell colSpan={table.getAllColumns().length} className="pl-4">
+                              <div className="flex items-center gap-3">
+                                <div className="size-7 animate-pulse rounded-lg bg-muted" />
+                                <div className="h-3 w-48 animate-pulse rounded bg-muted" />
+                                <div className="ml-auto h-3 w-24 animate-pulse rounded bg-muted" />
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : table.getRowModel().rows.length ? (
+                        table.getRowModel().rows.map(row => {
+                          const company = row.original as CompanyRow;
+                          return (
+                            <TableRow
+                              key={row.id}
+                              tabIndex={0}
+                              className="group/row cursor-pointer outline-none focus-visible:bg-surface-hover focus-visible:shadow-[inset_2px_0_0_#1f82d1]"
+                              onClick={(e) => {
+                                // Menus and dialogs opened from a row are portaled, but React
+                                // still bubbles their clicks here; only real row clicks count.
+                                if (!e.currentTarget.contains(e.target as Node)) return;
+                                if ((e.target as HTMLElement).closest("a, button, [role=checkbox]")) return;
+                                setEditingCompany(company);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && e.target === e.currentTarget) setEditingCompany(company);
+                              }}
+                            >
+                              {row.getVisibleCells().map(cell => (
+                                <TableCell key={cell.id} className="whitespace-nowrap first:pl-4">{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+                              ))}
+                            </TableRow>
+                          );
+                        })
+                      ) : (
+                        <TableRow className="hover:bg-transparent">
+                          <TableCell colSpan={table.getAllColumns().length} className="h-40 text-center text-muted-foreground">
+                            No companies match these filters.
                           </TableCell>
                         </TableRow>
-                      ))
-                    ) : table.getRowModel().rows.length ? (
-                      table.getRowModel().rows.map(row => {
-                        const company = row.original as CompanyRow;
-                        return (
-                          <TableRow
-                            key={row.id}
-                            tabIndex={0}
-                            className="group/row cursor-pointer outline-none focus-visible:bg-surface-hover focus-visible:shadow-[inset_2px_0_0_#1f82d1]"
-                            onClick={(e) => {
-                              // Menus and dialogs opened from a row are portaled, but React
-                              // still bubbles their clicks here; only real row clicks count.
-                              if (!e.currentTarget.contains(e.target as Node)) return;
-                              if ((e.target as HTMLElement).closest("a, button, [role=checkbox]")) return;
-                              setEditingCompany(company);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" && e.target === e.currentTarget) setEditingCompany(company);
-                            }}
-                          >
-                            {row.getVisibleCells().map(cell => (
-                              <TableCell key={cell.id} className="whitespace-nowrap first:pl-4">{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
-                            ))}
-                          </TableRow>
-                        );
-                      })
-                    ) : (
-                      <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={table.getAllColumns().length} className="h-40 text-center text-muted-foreground">
-                          No companies match these filters.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                      )}
+                    </TableBody>
+                  </Table>
 
-              {filteredCount > pageSize && (
-                <div className="flex items-center justify-between gap-2 border-t bg-[#fafafa] px-4 py-2">
-                  <p className="text-xs text-muted-foreground tabular">
-                    {pageIndex * pageSize + 1}–{Math.min((pageIndex + 1) * pageSize, filteredCount)} of {filteredCount}
-                  </p>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
-                      <ChevronLeft className="h-4 w-4" /> Previous
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
-                      Next <ChevronRight className="h-4 w-4" />
-                    </Button>
+                {filteredCount > pageSize && (
+                  <div className="flex items-center justify-between gap-2 border-t bg-[#fafafa] px-4 py-2">
+                    <p className="text-xs text-muted-foreground tabular">
+                      {pageIndex * pageSize + 1}–{Math.min((pageIndex + 1) * pageSize, filteredCount)} of {filteredCount}
+                    </p>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
+                        <ChevronLeft className="h-4 w-4" /> Previous
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+                        Next <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          </>
-        ) : viewMode === "users" ? (
-          <CompanyUsersTable
-            company={selectedCompany}
-            onAddUser={(newUser) => {
-              // locally add partial user and also update main data list
-              addUserToCompany(selectedCompany.id, newUser);
-            }}
-            onRemoveUser={(userId) => {
-              // locally remove user and also update main data list
-              removeUserFromCompany(selectedCompany.id, userId);
-            }}
-          />
-        ) : viewMode === "options" ? (
-          <div className="space-y-8">
-            <section className="space-y-3">
-              <div>
-                <h3 className="text-lg font-semibold">Current academic year</h3>
-                <p className="text-sm text-muted-foreground">
-                  These purchases are active and can be changed here.
-                </p>
+                )}
               </div>
-              <CompanySubOptionsSection
-                company={selectedCompany}
-                allSubOptions={allSubOptions}
-                onSubOptionsChange={() => refreshCompanies()}
-              />
-              <CompanyOptionsTable
-                company={selectedCompany}
-                onAddOption={(newOption) => {
-                  addOptionToCompany(selectedCompany.id, newOption);
-                }}
-                onRemoveOption={(optionId) => {
-                  removeOptionFromCompany(selectedCompany.id, optionId);
-                }}
-                onSubOptionsChange={() => refreshCompanies()}
-              />
-            </section>
-            <CompanyOptionHistory company={selectedCompany} />
-          </div>
-        ) : null}
-    </div>
+            </>
+          ) : viewMode === "users" ? (
+            <CompanyUsersTable
+              company={selectedCompany}
+              onAddUser={(newUser) => {
+                // locally add partial user and also update main data list
+                addUserToCompany(selectedCompany.id, newUser);
+              }}
+              onRemoveUser={(userId) => {
+                // locally remove user and also update main data list
+                removeUserFromCompany(selectedCompany.id, userId);
+              }}
+            />
+          ) : viewMode === "options" ? (
+            <div className="space-y-8">
+              <section className="space-y-3">
+                <div>
+                  <h3 className="text-lg font-semibold">Current academic year</h3>
+                  <p className="text-sm text-muted-foreground">
+                    These purchases are active and can be changed here.
+                  </p>
+                </div>
+                <CompanySubOptionsSection
+                  company={selectedCompany}
+                  allSubOptions={allSubOptions}
+                  onSubOptionsChange={() => refreshCompanies()}
+                />
+                <CompanyOptionsTable
+                  company={selectedCompany}
+                  onAddOption={(newOption) => {
+                    addOptionToCompany(selectedCompany.id, newOption);
+                  }}
+                  onRemoveOption={(optionId) => {
+                    removeOptionFromCompany(selectedCompany.id, optionId);
+                  }}
+                  onSubOptionsChange={() => refreshCompanies()}
+                />
+              </section>
+              <CompanyOptionHistory company={selectedCompany} />
+            </div>
+          ) : null}
+      </div>
+    </UserEditContext.Provider>
   );
 }
 
@@ -997,8 +878,7 @@ function getCompanyColumns(onViewUsers: (company: CompanyRow) => void, onViewOpt
       header: "Assignee",
       cell: ({ row }) => {
         const name = String(row.getValue("salesperson") ?? "");
-        // The repo reports a missing salesperson as the literal "Not set".
-        if (!name || name === "Not set") return <span className="text-muted-foreground">—</span>;
+        if (!name) return <span className="text-muted-foreground">—</span>;
         return (
           <div className="flex items-center gap-2">
             <span className="flex size-6 items-center justify-center rounded-full bg-[#ebebfe] text-[10px] font-semibold text-[#4840ac]">
@@ -1212,65 +1092,101 @@ function getUserColumns(onRemoveUser: (userId: string) => void, companyId: strin
     {
       id: "actions",
       enableHiding: false,
-      cell: ({ row }) => {
-        const user = row.original;
-        const [isResending, setIsResending] = React.useState(false);
-        const userStatus = user?.status;
-        const isInvited = userStatus === "invited";
-
-        const handleResendInvite = async () => {
-          if (!user?.id) return;
-          
-          setIsResending(true);
-          try {
-            const result = await resendInviteAction(user.id, companyId);
-            if (result.success) {
-              // You could add a toast notification here
-              console.log("Invitation resent successfully");
-            } else {
-              console.error("Failed to resend invitation:", result.error);
-              alert(`Failed to resend invitation: ${result.error || "Unknown error"}`);
-            }
-          } catch (error) {
-            console.error("Error resending invitation:", error);
-            alert(`Error resending invitation: ${error instanceof Error ? error.message : "Unknown error"}`);
-          } finally {
-            setIsResending(false);
-          }
-        };
-
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal /></Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => console.log("Edit user", user)}>Edit</DropdownMenuItem>
-              {user?.id && isInvited && (
-                <DropdownMenuItem 
-                  onClick={handleResendInvite}
-                  disabled={isResending}
-                >
-                  {isResending ? "Resending..." : "Resend invite"}
-                </DropdownMenuItem>
-              )}
-              {user?.id && (
-                <>
-                  <DropdownMenuSeparator />
-                  <RemoveUserDialog
-                    user={user}
-                    companyId={companyId}
-                    onRemove={() => onRemoveUser(user.id!)}
-                  />
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        );
-      },
+      cell: ({ row }) => (
+        <UserRowActions user={row.original} companyId={companyId} onRemoveUser={onRemoveUser} />
+      ),
     },
   ];
+}
+
+/** ------------------------------------------------------------------
+ * Row actions for a company user. A component of its own because it holds
+ * state: hooks cannot be called from a column's `cell` renderer.
+ * ------------------------------------------------------------------ */
+function UserRowActions({ user, companyId, onRemoveUser }: {
+  user: Partial<CompanyRep>;
+  companyId: string;
+  onRemoveUser: (userId: string) => void;
+}) {
+  const [isResending, setIsResending] = React.useState(false);
+  const isInvited = user?.status === "invited";
+  const userEdit = React.useContext(UserEditContext);
+  const [editRow, setEditRow] = React.useState<AdminUserRow | null>(null);
+  const [editorOpen, setEditorOpen] = React.useState(false);
+  const [editorKey, setEditorKey] = React.useState(0);
+
+  // The same form as User Management, loaded fresh so it shows every field.
+  const openEditor = async () => {
+    if (!user?.id) return;
+    const row = await fetchAdminUserAction(user.id).catch(() => null);
+    if (!row) {
+      toast.error("This user could not be loaded.");
+      return;
+    }
+    setEditRow(row);
+    setEditorKey((k) => k + 1);
+    setEditorOpen(true);
+  };
+
+  const handleResendInvite = async () => {
+    if (!user?.id) return;
+
+    setIsResending(true);
+    try {
+      const result = await resendInviteAction(user.id, companyId);
+      if (result.success) {
+        toast.success(`Invitation resent to ${user.email ?? "the user"}.`);
+      } else {
+        console.error("Failed to resend invitation:", result.error);
+        toast.error(`Failed to resend invitation: ${result.error || "Unknown error"}`);
+      }
+    } catch (error) {
+      console.error("Error resending invitation:", error);
+      toast.error(`Error resending invitation: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  if (!user?.id) return null;
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="h-8 w-8 p-0" aria-label="User actions"><MoreHorizontal /></Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+          {userEdit && <DropdownMenuItem onClick={openEditor}>Edit</DropdownMenuItem>}
+          {isInvited && (
+            <DropdownMenuItem
+              onClick={handleResendInvite}
+              disabled={isResending}
+            >
+              {isResending ? "Resending..." : "Resend invite"}
+            </DropdownMenuItem>
+          )}
+          {isInvited && <DropdownMenuSeparator />}
+          <RemoveUserDialog
+            user={user}
+            companyId={companyId}
+            onRemove={() => onRemoveUser(user.id!)}
+          />
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {editRow && userEdit ? (
+        <ResourceEditor
+          key={editorKey}
+          config={userResourceConfig(userEdit.roleOptions, userEdit.companyOptions)}
+          open={editorOpen}
+          onOpenChange={setEditorOpen}
+          row={editRow}
+          onSaved={userEdit.onSaved}
+        />
+      ) : null}
+    </>
+  );
 }
 
 /** ------------------------------------------------------------------
@@ -1787,8 +1703,7 @@ function SubOptionsDialog({
   React.useEffect(() => {
     if (open && availableSubOptions.length === 0) {
       setLoading(true);
-      import("@/lib/repos/option")
-        .then(({ listCareerSubOptions }) => listCareerSubOptions())
+      listSubOptionsAction()
         .then((opts) => {
           setAllSubOptions(opts ?? []);
         })
@@ -2199,9 +2114,8 @@ function OptionFormDialog({ company, onCreate }: {
     let alive = true;
     setLoading(true);
     
-    // Import the option repository function
-    import("@/lib/repos/option")
-      .then(({ listCareerEventOptions }) => listCareerEventOptions({ limit: 1000 }))
+    // Load the option catalogue through its admin action
+    listEventOptionsAction()
       .then((options) => {
         if (!alive) return;
         
@@ -2481,8 +2395,7 @@ function OptionFormDialog({ company, onCreate }: {
   // Fetch all sub-options when dialog opens
   React.useEffect(() => {
     if (open) {
-      import("@/lib/repos/option")
-        .then(({ listCareerSubOptions }) => listCareerSubOptions({ limit: 200 }))
+      listSubOptionsAction()
         .then((opts) => setAllSubOptions(opts ?? []))
         .catch((err) => {
           console.error("Error loading sub-options:", err);
@@ -2684,7 +2597,7 @@ function OptionFormDialog({ company, onCreate }: {
 }
 
 /** Add Company Dialog (controlled) -- unchanged aside from typing */
-function CompanyFormDialog({ onRefresh }: { onRefresh?: () => void }) {
+function CompanyFormDialog({ onRefresh, salespersons }: { onRefresh?: () => void; salespersons: AppUser[] }) {
   const [open, setOpen] = React.useState(false);
   const [csvUploadOpen, setCsvUploadOpen] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
@@ -2701,17 +2614,8 @@ function CompanyFormDialog({ onRefresh }: { onRefresh?: () => void }) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   // Because shadcn Select is not a native select, keep a local state so it lands in FormData-equivalent
   const [salesperson, setSalesperson] = React.useState<string>("");
-  const [salespersons, setSalespersons] = React.useState<AppUser[]>([]);
   const [creating, setCreating] = React.useState(false);
   const [createError, setCreateError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    async function fetchSalespersons() {
-      const users = await fetchSalespersonsAction();
-      if (users) setSalespersons(users);
-    }
-    fetchSalespersons();
-  }, []);
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -2727,10 +2631,6 @@ function CompanyFormDialog({ onRefresh }: { onRefresh?: () => void }) {
     const zip = String(fd.get("zip") ?? "").trim();
     const city = String(fd.get("city") ?? "").trim();
     const country = String(fd.get("country") ?? "").trim() || "BE";
-
-    const addr = [street && `${street} ${number}`.trim(), zip && `${zip} ${city}`.trim(), country]
-      .filter(Boolean)
-      .join(", ");
 
     if (!salesperson) {
       setCreateError("Please select a salesperson.");
@@ -3168,48 +3068,82 @@ function CompanyFormDialog({ onRefresh }: { onRefresh?: () => void }) {
 }
 
 /** Edit an existing company's core fields (name, VAT, status, salesperson). */
-function EditCompanyDialog({ company, onClose, onSaved }: {
+type EditTab = "admin" | "information" | "billing";
+
+/**
+ * Edits a company as fully as its representatives can, plus what only VTK
+ * sets. The Company information and Billing tabs are the very forms reps use
+ * in their own settings, so an admin can make any change for them instead of
+ * explaining it; the Admin tab holds the status and salesperson.
+ */
+function EditCompanyDialog({ company, salespersons, masters, onClose, onSaved }: {
   company: CompanyRow | null;
+  salespersons: AppUser[];
+  masters: Master[];
   onClose: () => void;
   onSaved?: () => void;
 }) {
-  const [salespersons, setSalespersons] = React.useState<AppUser[]>([]);
-  const [form, setForm] = React.useState({ name: "", VAT: "", status: "draft", salesperson: "" });
+  const [tab, setTab] = React.useState<EditTab>("admin");
+  // The table row is a summary; the forms need the whole company.
+  const [full, setFull] = React.useState<Company | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [form, setForm] = React.useState({ status: "draft", salesperson: "" });
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    fetchSalespersonsAction().then((users) => { if (users) setSalespersons(users); }).catch(() => {});
-  }, []);
+  const changed = React.useRef(false);
 
   React.useEffect(() => {
     if (!company) return;
-    const sp = company.salesperson as unknown;
-    const salespersonId =
-      sp && typeof sp === "object" && "id" in sp ? String((sp as { id: string }).id) : (typeof sp === "string" ? sp : "");
-    setForm({
-      name: company.name ?? "",
-      VAT: company.VAT ?? "",
-      status: company.status || "draft",
-      salesperson: salespersonId,
-    });
+    let alive = true;
+    setTab("admin");
+    setFull(null);
+    setLoadError(null);
     setError(null);
+    changed.current = false;
+    setForm({
+      status: company.status || "draft",
+      // company.salesperson is the display name; the form needs the id.
+      salesperson: company.salesperson_id ?? "",
+    });
+    fetchCompanyByIdAction(company.id)
+      .then((loaded) => {
+        if (!alive) return;
+        if (loaded) setFull(loaded);
+        else setLoadError("This company could not be loaded.");
+      })
+      .catch(() => alive && setLoadError("This company could not be loaded."));
+    return () => {
+      alive = false;
+    };
   }, [company]);
 
-  const onSubmit = async (e: React.FormEvent) => {
+  // The settings forms announce their saves with this event (for the
+  // sidebar); it also tells the table to reload when the panel closes.
+  React.useEffect(() => {
+    const onUpdated = () => {
+      changed.current = true;
+    };
+    window.addEventListener("company-updated", onUpdated);
+    return () => window.removeEventListener("company-updated", onUpdated);
+  }, []);
+
+  const close = () => {
+    if (changed.current) onSaved?.();
+    onClose();
+  };
+
+  const onSubmitAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!company) return;
     setSaving(true);
     setError(null);
     try {
       await updateCompanyAction(company.id, {
-        name: form.name,
-        VAT: form.VAT,
         status: form.status,
         ...(form.salesperson ? { salesperson: form.salesperson } : {}),
       } as Partial<Company>);
-      onSaved?.();
-      onClose();
+      changed.current = true;
+      toast.success("Saved.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update company");
     } finally {
@@ -3217,51 +3151,86 @@ function EditCompanyDialog({ company, onClose, onSaved }: {
     }
   };
 
+  const tabs: { id: EditTab; label: string }[] = [
+    { id: "admin", label: "Admin" },
+    { id: "information", label: "Company information" },
+    { id: "billing", label: "Billing" },
+  ];
+
   return (
-    <Dialog open={!!company} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Edit Company</DialogTitle>
-          <DialogDescription>Update the company details below.</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-name">Company name*</Label>
-            <Input id="edit-name" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} required />
+    <Sheet open={!!company} onOpenChange={(o) => { if (!o) close(); }}>
+      <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-3xl sm:rounded-l-2xl">
+        <SheetHeader className="shrink-0 gap-3 border-b px-5 pt-4 pb-0">
+          <SheetTitle className="text-base">{company?.name || "Edit company"}</SheetTitle>
+          <SheetDescription className="sr-only">Edit this company</SheetDescription>
+          <div className="-mb-px flex gap-1" role="tablist">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.id}
+                onClick={() => setTab(t.id)}
+                className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+                  tab === t.id ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-vat">VAT</Label>
-            <Input id="edit-vat" value={form.VAT} onChange={(e) => setForm((p) => ({ ...p, VAT: e.target.value }))} />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-status">Status</Label>
-            <Select value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: v }))}>
-              <SelectTrigger id="edit-status"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="published">Published</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-salesperson">Salesperson</Label>
-            <Select value={form.salesperson} onValueChange={(v) => setForm((p) => ({ ...p, salesperson: v }))}>
-              <SelectTrigger id="edit-salesperson" className="w-full"><SelectValue placeholder="Select a salesperson" /></SelectTrigger>
-              <SelectContent>
-                {salespersons.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>{u.first_name} {u.last_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </SheetHeader>
+
+        <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-5 py-5">
+          {tab === "admin" ? (
+            <form onSubmit={onSubmitAdmin} className="flex max-w-md flex-col gap-4">
+              <p className="text-sm text-muted-foreground">
+                Set by VTK only. Everything the company can change itself is on the other tabs.
+              </p>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-status">Status</Label>
+                <Select value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: v }))}>
+                  <SelectTrigger id="edit-status"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="published">Published</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-salesperson">Salesperson</Label>
+                <Select value={form.salesperson} onValueChange={(v) => setForm((p) => ({ ...p, salesperson: v }))}>
+                  <SelectTrigger id="edit-salesperson" className="w-full"><SelectValue placeholder="Select a salesperson" /></SelectTrigger>
+                  <SelectContent>
+                    {salespersons.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>{u.first_name} {u.last_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {error ? <p className="text-sm text-destructive">{error}</p> : null}
+              <div>
+                <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>
+              </div>
+            </form>
+          ) : loadError ? (
+            <p className="text-sm text-destructive">{loadError}</p>
+          ) : !full ? (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading company…
+            </p>
+          ) : (
+            <SettingsCompanyProvider initialCompany={full}>
+              {tab === "information" ? (
+                <CompanyInformationForm masters={masters} showPageLink={false} />
+              ) : (
+                <BillingForm />
+              )}
+            </SettingsCompanyProvider>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -3281,1103 +3250,3 @@ function formatAddress(r: Company) {
 /** ------------------------------------------------------------------
  * Events section
  * ------------------------------------------------------------------ */
-export function EventsSection({ academicYearId }: { academicYearId?: string }) {
-  const [events, setEvents] = React.useState<CareerEvent[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refresh = React.useCallback(() => {
-    return fetchEventsAction(academicYearId ? { academicYearId } : undefined)
-      .then(rows => { setEvents(rows ?? []); })
-      .catch(console.error);
-  }, [academicYearId]);
-
-  React.useEffect(() => {
-    let alive = true;
-    fetchEventsAction(academicYearId ? { academicYearId } : undefined)
-      .then(rows => { if (!alive) return; setEvents(rows ?? []); })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-    return () => { alive = false; };
-  }, [academicYearId]);
-
-  return (
-    <Card className="rounded-xl">
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle className="text-2xl">Annual event editions</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Dates and operational settings for the selected academic year.
-          </p>
-        </div>
-        <EventFormDialog onSaved={refresh} defaultAcademicYearId={academicYearId} />
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <div className="h-24 grid place-items-center text-sm text-muted-foreground">Loading events…</div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
-            {events.map(e => <EventCard key={e.id ?? e.name} event={e} onChanged={refresh} />)}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-/** Create/Edit dialog for a career event. Omitting `event` makes it a create form. */
-function EventFormDialog({
-  event,
-  onSaved,
-  defaultAcademicYearId,
-}: {
-  event?: CareerEvent;
-  onSaved?: () => void;
-  defaultAcademicYearId?: string;
-}) {
-  const [open, setOpen] = React.useState(false);
-  const [saving, setSaving] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
-  const isEdit = !!event;
-
-  const [form, setForm] = React.useState({
-    name: "",
-    description: "",
-    location: "",
-    date: "",
-    start_hour: "",
-    end_hour: "",
-    shout: "",
-    status: "draft",
-    num_of_companies: "",
-    num_of_students: "",
-    image: "" as string | undefined,
-    academic_year_id: "",
-  });
-  const [eventAcademicYears, setEventAcademicYears] = React.useState<Array<{ id: string; name: string; start_of_year: string; end_of_year: string }>>([]);
-
-  React.useEffect(() => {
-    if (!open) return;
-    setError(null);
-    setSelectedFile(null);
-    setForm({
-      name: event?.name ?? "",
-      description: (event?.description as string) ?? "",
-      location: (event?.location as string) ?? "",
-      date: event?.date ? String(event.date).slice(0, 10) : "",
-      start_hour: event?.start_hour ? String(event.start_hour).slice(0, 5) : "",
-      end_hour: event?.end_hour ? String(event.end_hour).slice(0, 5) : "",
-      shout: (event?.shout as string) ?? "",
-      status: (event?.status as string) ?? "draft",
-      num_of_companies: event?.num_of_companies != null ? String(event.num_of_companies) : "",
-      num_of_students: event?.num_of_students != null ? String(event.num_of_students) : "",
-      image: (event?.image as string) ?? "",
-      academic_year_id: String(event?.academic_year_id ?? event?.academic_year?.id ?? defaultAcademicYearId ?? ""),
-    });
-    fetchAcademicYearsAction().then((years) => {
-      const available = years ?? [];
-      setEventAcademicYears(available);
-      setForm((current) => {
-        if (current.academic_year_id) return current;
-        const now = Date.now();
-        const active = available.find((year) =>
-          new Date(year.start_of_year).getTime() <= now && new Date(year.end_of_year).getTime() >= now
-        ) ?? available[0];
-        return { ...current, academic_year_id: active ? String(active.id) : "" };
-      });
-    });
-  }, [open, event, defaultAcademicYearId]);
-
-  const set = (key: keyof typeof form, value: string) => setForm(prev => ({ ...prev, [key]: value }));
-
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
-      let imageId = form.image;
-      if (selectedFile) {
-        const fd = new FormData();
-        fd.append("file", selectedFile);
-        const res = await uploadFileAction(fd);
-        if (!res.success || !res.data) {
-          setError("Failed to upload image: " + (res.error ?? "unknown error"));
-          setSaving(false);
-          return;
-        }
-        imageId = res.data.id;
-      }
-
-      const payload = {
-        name: form.name,
-        description: form.description,
-        location: form.location || null,
-        date: form.date || null,
-        start_hour: form.start_hour || null,
-        end_hour: form.end_hour || null,
-        shout: form.shout || null,
-        status: form.status,
-        num_of_companies: form.num_of_companies,
-        num_of_students: form.num_of_students,
-        image: imageId || null,
-        academic_year_id: form.academic_year_id,
-      };
-
-      const result = isEdit
-        ? await updateEventAction(event!.id, payload)
-        : await createEventAction(payload);
-      if (!result.success) {
-        setError(result.error ?? "Something went wrong");
-        setSaving(false);
-        return;
-      }
-      setOpen(false);
-      onSaved?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {isEdit ? (
-          <Button variant="outline" size="sm">Edit</Button>
-        ) : (
-          <Button size="sm"><IconPlus className="mr-1 h-4 w-4" /> New event series</Button>
-        )}
-      </DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit annual event edition" : "Create a new event series"}</DialogTitle>
-          {!isEdit ? (
-            <DialogDescription>
-              Only use this for a genuinely new recurring event. To create next year’s Jobfair,
-              close this dialog and use “Create annual editions” on the Events page. A draft
-              public event page is created automatically.
-            </DialogDescription>
-          ) : null}
-        </DialogHeader>
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="ev-name">Name*</Label>
-            <Input id="ev-name" value={form.name} onChange={e => set("name", e.target.value)} required />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label>Academic year*</Label>
-            <Select value={form.academic_year_id} onValueChange={value => set("academic_year_id", value)} required disabled={isEdit}>
-              <SelectTrigger><SelectValue placeholder="Select academic year" /></SelectTrigger>
-              <SelectContent>
-                {eventAcademicYears.map((year) => (
-                  <SelectItem key={year.id} value={String(year.id)}>{year.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="ev-desc">Description</Label>
-            <SimpleRichTextEditor
-              value={form.description}
-              onChange={description => set("description", description)}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="ev-location">Location</Label>
-              <Input id="ev-location" value={form.location} onChange={e => set("location", e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="ev-date">Date</Label>
-              <Input id="ev-date" type="date" value={form.date} onChange={e => set("date", e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="ev-start">Start hour</Label>
-              <Input id="ev-start" type="time" value={form.start_hour} onChange={e => set("start_hour", e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="ev-end">End hour</Label>
-              <Input id="ev-end" type="time" value={form.end_hour} onChange={e => set("end_hour", e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="ev-companies"># Companies</Label>
-              <Input id="ev-companies" type="number" value={form.num_of_companies} onChange={e => set("num_of_companies", e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="ev-students"># Students</Label>
-              <Input id="ev-students" type="number" value={form.num_of_students} onChange={e => set("num_of_students", e.target.value)} />
-            </div>
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="ev-shout">Shout</Label>
-            <Input id="ev-shout" value={form.shout} onChange={e => set("shout", e.target.value)} placeholder="Short highlight banner text" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="ev-status">Status</Label>
-            <Select value={form.status} onValueChange={v => set("status", v)}>
-              <SelectTrigger id="ev-status"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="published">Published</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="ev-image">Image</Label>
-            <div className="flex items-center gap-3">
-              {(selectedFile || form.image) && (
-                <div className="h-16 w-16 overflow-hidden rounded border bg-muted shrink-0">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={selectedFile ? URL.createObjectURL(selectedFile) : `/api/files/${form.image}`}
-                    alt="Preview"
-                    className="h-full w-full object-cover"
-                    onError={e => ((e.target as HTMLImageElement).style.display = "none")}
-                  />
-                </div>
-              )}
-              <Input id="ev-image" type="file" accept="image/*" onChange={e => setSelectedFile(e.target.files?.[0] ?? null)} />
-            </div>
-          </div>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="submit" disabled={saving}>{saving ? "Saving..." : isEdit ? "Save changes" : "Create event series"}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function EventCard({ event, onChanged }: { event: CareerEvent; onChanged?: () => void }) {
-  const hours = [event.start_hour, event.end_hour].filter(Boolean).join(" – ");
-  const [hasFloorplan, setHasFloorplan] = React.useState<boolean | null>(null);
-  const [hasCompanyGuide, setHasCompanyGuide] = React.useState<boolean | null>(null);
-  const [hasMatchingSoftware, setHasMatchingSoftware] = React.useState<boolean | null>(null);
-  const [hasSchedules, setHasSchedules] = React.useState<boolean | null>(null);
-  const [headerButtons, setHeaderButtons] = React.useState<HeaderButtonType[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [savingHeaderButtons, setSavingHeaderButtons] = React.useState(false);
-  const [hasEventPage, setHasEventPage] = React.useState(false);
-
-  React.useEffect(() => {
-    const checkFloorplan = async () => {
-      try {
-        const { getEventPageWithFloorplan } = await import("@/lib/repos/floorplan");
-        const eventPage = await getEventPageWithFloorplan(event.id);
-        setHasEventPage(Boolean(eventPage));
-        setHasFloorplan(!!eventPage?.floorplan);
-        // Check if company_guide exists (could be string ID or object with id)
-        const companyGuide = eventPage?.company_guide;
-        if (companyGuide) {
-          const hasGuide = typeof companyGuide === 'string' 
-            ? !!companyGuide 
-            : !!(companyGuide as { id?: string })?.id;
-          setHasCompanyGuide(hasGuide);
-        } else {
-          setHasCompanyGuide(false);
-        }
-        // Load header_buttons config
-        const buttons = eventPage?.header_buttons;
-        setHeaderButtons(Array.isArray(buttons) ? buttons : []);
-        // Check if matching software exists for this event
-        const matchingList = await listMatchingSoftwareAction({ eventId: event.id });
-        setHasMatchingSoftware((matchingList?.length ?? 0) > 0);
-        const { hasSchedulesForEvent } = await import("@/lib/repos/schedule");
-        setHasSchedules(await hasSchedulesForEvent(event.id));
-      } catch (error) {
-        console.error("Error checking floorplan:", error);
-        setHasFloorplan(false);
-        setHasCompanyGuide(false);
-        setHasMatchingSoftware(false);
-        setHasSchedules(false);
-        setHasEventPage(false);
-      } finally {
-        setLoading(false);
-      }
-    };
-    checkFloorplan();
-  }, [event.id]);
-
-  const toggleHeaderButton = async (btn: HeaderButtonType) => {
-    const next = headerButtons.includes(btn)
-      ? headerButtons.filter((b) => b !== btn)
-      : [...headerButtons, btn];
-    setHeaderButtons(next);
-    setSavingHeaderButtons(true);
-    try {
-      const res = await fetch("/api/admin/event-page/header-buttons", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ eventId: event.id, headerButtons: next }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Failed to save");
-      }
-    } catch (err) {
-      console.error("Failed to update header buttons:", err);
-      setHeaderButtons(headerButtons); // Revert
-      alert(err instanceof Error ? err.message : "Failed to save header buttons.");
-    } finally {
-      setSavingHeaderButtons(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!confirm(`Delete event "${event.name}"? This cannot be undone.`)) return;
-    const res = await deleteEventAction(event.id);
-    if (!res.success) {
-      alert(res.error ?? "Failed to delete event");
-      return;
-    }
-    onChanged?.();
-  };
-
-  return (
-    <Card className="border rounded-lg shadow-sm">
-      <CardHeader className="flex flex-row items-start justify-between gap-2">
-        <div>
-          <CardTitle>{event.name}</CardTitle>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-            <span className="rounded-full bg-muted px-2 py-1">
-              {event.academic_year?.name ?? "Annual edition"}
-            </span>
-            {/* One draft flag, on the event: it gates the public page too. A
-                published edition carries no badge. */}
-            {event.status === "published" ? null : (
-              <span className="rounded-full bg-amber-100 px-2 py-1 font-medium text-amber-800">Draft</span>
-            )}
-            {!loading && !hasEventPage ? (
-              <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">Event page missing</span>
-            ) : null}
-          </div>
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <EventFormDialog event={event} onSaved={onChanged} />
-          <Button variant="ghost" size="icon" className="text-destructive" onClick={handleDelete} aria-label="Delete event">
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="grid grid-cols-2 gap-4">
-        <div className="grid grid-cols-2 gap-1 text-sm text-muted-foreground">
-          <span>Date</span>
-          <span className="font-medium text-foreground">{String(event.date ?? "TBA")}</span>
-          <span>Hours</span>
-          <span className="font-medium text-foreground">{hours || "TBA"}</span>
-          <span>Location</span>
-          <span className="font-medium text-foreground">{String(event.location ?? "TBA")}</span>
-          <span># Students</span>
-          <span className="font-medium text-foreground">{String(event.num_of_students ?? "–")}</span>
-        </div>
-        <div className="flex flex-col gap-2 items-stretch">
-          <Button variant="default" size="sm" asChild className="w-full">
-            <Link href={`/admin/event-pages?year=${event.academic_year_id ?? event.academic_year?.id ?? ""}&event=${event.id}`}>
-              {hasEventPage ? "Edit event page & timetable" : "Create event page"}
-            </Link>
-          </Button>
-          <div className="grid grid-cols-2 gap-2">
-            <Button variant="outline" size="sm" asChild>
-              <Link href={`/admin/checkins/${event.id}`}>Check-ins</Link>
-            </Button>
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/admin/speakers">Speakers</Link>
-            </Button>
-          </div>
-          {/* Header buttons: choose which buttons appear on the public event page header. When any are on, main nav (Home, Events, etc.) is hidden. */}
-          {!loading && (
-            <div className="space-y-2 rounded-md border p-3">
-              <Label className="text-xs font-medium">Header buttons</Label>
-              <p className="text-xs text-muted-foreground">Show in event page header (replaces main nav when any are on):</p>
-              <div className="flex flex-wrap gap-3">
-                {hasFloorplan && (
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={headerButtons.includes("floorplan")}
-                      onCheckedChange={() => toggleHeaderButton("floorplan")}
-                      disabled={savingHeaderButtons}
-                    />
-                    <span className="text-sm">Floorplan</span>
-                  </label>
-                )}
-                {hasCompanyGuide && (
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={headerButtons.includes("company_guide")}
-                      onCheckedChange={() => toggleHeaderButton("company_guide")}
-                      disabled={savingHeaderButtons}
-                    />
-                    <span className="text-sm">Company guide</span>
-                  </label>
-                )}
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <Checkbox
-                    checked={headerButtons.includes("cv_upload")}
-                    onCheckedChange={() => toggleHeaderButton("cv_upload")}
-                    disabled={savingHeaderButtons}
-                  />
-                  <span className="text-sm">CV Upload</span>
-                </label>
-                {hasMatchingSoftware && (
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={headerButtons.includes("matching_software")}
-                      onCheckedChange={() => toggleHeaderButton("matching_software")}
-                      disabled={savingHeaderButtons}
-                    />
-                    <span className="text-sm">Matching Software</span>
-                  </label>
-                )}
-              </div>
-            </div>
-          )}
-          <AddCompaniesDialog event={event} />
-          <AddCompanyGuideDialog event={event} hasCompanyGuide={hasCompanyGuide} />
-          {loading ? (
-            <Button variant="outline" size="sm" disabled className="w-full">
-              Loading...
-            </Button>
-          ) : hasFloorplan ? (
-            <Button variant="outline" size="sm" asChild className="w-full">
-              <Link href={`/admin/floorplan/${event.id}`}>
-                Edit floorplan
-              </Link>
-            </Button>
-          ) : (
-            <AddFloorplanDialog event={event} />
-          )}
-          {!loading && (hasMatchingSoftware ? (
-            <Button variant="outline" size="sm" asChild className="w-full">
-              <Link href={`/admin/matching-software?eventId=${event.id}`}>
-                Edit matching software
-              </Link>
-            </Button>
-          ) : (
-            <AddMatchingSoftwareDialog event={event} onCreated={() => setHasMatchingSoftware(true)} />
-          ))}
-          {!loading && (hasSchedules ? (
-            <Button variant="outline" size="sm" asChild className="w-full">
-              <Link href={`/admin/schedules?eventId=${event.id}`}>
-                Edit Schedules
-              </Link>
-            </Button>
-          ) : (
-            <Button variant="outline" size="sm" asChild className="w-full">
-              <Link href={`/admin/schedules?eventId=${event.id}`}>
-                Add Schedules
-              </Link>
-            </Button>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function AddMatchingSoftwareDialog({ event, onCreated }: { event: CareerEvent; onCreated?: () => void }) {
-  const [open, setOpen] = React.useState(false);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [academicYears, setAcademicYears] = React.useState<{ id: string; name: string; start_of_year: string; end_of_year: string }[]>([]);
-  const [forms, setForms] = React.useState<{ id: string; name: string }[]>([]);
-  const [selectedYearId, setSelectedYearId] = React.useState("");
-  const [selectedFormId, setSelectedFormId] = React.useState("");
-
-  React.useEffect(() => {
-    if (open) {
-      Promise.all([fetchAcademicYearsAction(), fetchFormsAction()]).then(([years, formsList]) => {
-        setAcademicYears(years || []);
-        setForms(formsList || []);
-      });
-    }
-  }, [open]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedYearId) {
-      setError("Please select an academic year");
-      return;
-    }
-    setError(null);
-    setLoading(true);
-    try {
-      await createMatchingSoftwareAction({
-        year: selectedYearId,
-        event: event.id,
-        prerequisite_form: selectedFormId || undefined,
-        active: true,
-      });
-      setOpen(false);
-      setSelectedYearId("");
-      setSelectedFormId("");
-      onCreated?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="w-full">
-          <IconPlus className="h-4 w-4 mr-2" />
-          Add matching software
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-md">
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <DialogHeader>
-            <DialogTitle>Add Matching Software</DialogTitle>
-            <DialogDescription>
-              Set up RIASEC matching for {event.name}. Students fill in 12 questions; optionally require a prerequisite form first.
-            </DialogDescription>
-          </DialogHeader>
-          {error && (
-            <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</div>
-          )}
-          <div className="space-y-2">
-            <Label>Academic Year *</Label>
-            <Select value={selectedYearId} onValueChange={setSelectedYearId} required>
-              <SelectTrigger>
-                <SelectValue placeholder="Select year" />
-              </SelectTrigger>
-              <SelectContent>
-                {academicYears.map((y) => (
-                  <SelectItem key={y.id} value={y.id}>
-                    {y.name} ({y.start_of_year} - {y.end_of_year})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Prerequisite Form (optional)</Label>
-            <Select value={selectedFormId || "__none__"} onValueChange={(v) => setSelectedFormId(v === "__none__" ? "" : v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="None" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">None</SelectItem>
-                {forms.map((f) => (
-                  <SelectItem key={f.id} value={f.id}>
-                    {f.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Students must complete this form before the matching software. Response is included in the result.
-            </p>
-          </div>
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button type="submit" disabled={loading} className="w-full sm:w-auto">
-              {loading ? "Creating..." : "Create"}
-            </Button>
-            <DialogClose asChild>
-              <Button variant="outline" className="w-full sm:w-auto" disabled={loading}>
-                Cancel
-              </Button>
-            </DialogClose>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function AddFloorplanDialog({ event }: { event: CareerEvent }) {
-  const [open, setOpen] = React.useState(false);
-  const [uploading, setUploading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
-
-  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setError(null);
-    
-    const fd = new FormData(e.currentTarget);
-    const name = String(fd.get("name") ?? "").trim();
-    const year = String(fd.get("year") ?? "").trim();
-    const svgFile = fd.get("svg") as File | null;
-
-    if (!name || !year || !svgFile) {
-      setError("Please fill in all fields and select an SVG file");
-      return;
-    }
-
-    if (svgFile.type !== "image/svg+xml" && !svgFile.name.toLowerCase().endsWith(".svg")) {
-      setError("Please select an SVG file");
-      return;
-    }
-
-    setUploading(true);
-
-    try {
-      const formData = new FormData();
-      formData.append("svg", svgFile);
-      formData.append("name", name);
-      formData.append("year", year);
-      formData.append("eventId", event.id);
-      
-      // Add background image if provided
-      const backgroundInput = (e.target as HTMLFormElement).elements.namedItem("background") as HTMLInputElement;
-      if (backgroundInput?.files?.[0]) {
-        formData.append("background", backgroundInput.files[0]);
-      }
-
-      const response = await fetch("/api/admin/upload-floorplan", {
-        method: "POST",
-        body: formData,
-      });
-
-      // Check if response is JSON
-      const contentType = response.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        const text = await response.text();
-        console.error("Non-JSON response:", text);
-        throw new Error(`Server error: ${response.status} ${response.statusText}`);
-      }
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to upload floorplan");
-      }
-
-      setOpen(false);
-      (e.target as HTMLFormElement).reset();
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="w-full">
-          <IconPlus className="h-4 w-4 mr-2" />
-          Add floorplan
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto">
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
-          <DialogHeader>
-            <DialogTitle>Add Floorplan</DialogTitle>
-            <DialogDescription>
-              Upload an SVG floorplan for {event.name}. The system will extract booths automatically.
-            </DialogDescription>
-          </DialogHeader>
-
-          {error && (
-            <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-              {error}
-            </div>
-          )}
-
-          <div className="w-full">
-            <Label htmlFor="name" className="text-xs">Floorplan Name*</Label>
-            <Input name="name" id="name" placeholder="Main Hall Floorplan" required />
-          </div>
-
-          <div className="w-full">
-            <Label htmlFor="year" className="text-xs">Year*</Label>
-            <Input name="year" id="year" placeholder="2025" required />
-          </div>
-
-          <div className="w-full">
-            <Label htmlFor="svg" className="text-xs">SVG File*</Label>
-            <Input
-              ref={fileInputRef}
-              name="svg"
-              id="svg"
-              type="file"
-              accept="image/svg+xml,.svg"
-              required
-              disabled={uploading}
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Upload an SVG floorplan file. The system will extract booths automatically.
-            </p>
-          </div>
-
-          <div className="w-full">
-            <Label htmlFor="background" className="text-xs">Background Image (Optional)</Label>
-            <Input
-              name="background"
-              id="background"
-              type="file"
-              accept="image/*"
-              disabled={uploading}
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Upload a background image to display behind the floorplan.
-            </p>
-          </div>
-
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button type="submit" disabled={uploading} className="w-full sm:w-auto">
-              {uploading ? "Processing..." : "Upload & Process"}
-            </Button>
-            <DialogClose asChild>
-              <Button variant="outline" className="w-full sm:w-auto" disabled={uploading}>
-                Cancel
-              </Button>
-            </DialogClose>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function AddCompaniesDialog({ event }: { event: CareerEvent }) {
-  const [open, setOpen] = React.useState(false);
-  const [companies, setCompanies] = React.useState<Company[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const [adding, setAdding] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [selectedCompanyIds, setSelectedCompanyIds] = React.useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = React.useState("");
-  const [hasExistingCompanies, setHasExistingCompanies] = React.useState(false);
-
-  // Check if event page already has companies
-  React.useEffect(() => {
-    const checkExistingCompanies = async () => {
-      try {
-        const { getEventPageWithFloorplan } = await import("@/lib/repos/floorplan");
-        const eventPage = await getEventPageWithFloorplan(event.id);
-        const companies = eventPage?.companies;
-        setHasExistingCompanies(!!companies && Array.isArray(companies) && companies.length > 0);
-      } catch (error) {
-        console.error("Error checking existing companies:", error);
-        setHasExistingCompanies(false);
-      }
-    };
-    checkExistingCompanies();
-  }, [event.id]);
-
-  // Load companies when dialog opens
-  React.useEffect(() => {
-    if (open) {
-      setLoading(true);
-      setError(null);
-      findCompaniesWithEventOptions(event.id)
-        .then((companies) => {
-          setCompanies(companies);
-          // All companies selected by default
-          setSelectedCompanyIds(new Set(companies.map((c) => c.id)));
-        })
-        .catch((err) => {
-          console.error("Error loading companies:", err);
-          setError("Failed to load companies");
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-    } else {
-      // Reset when dialog closes
-      setCompanies([]);
-      setSelectedCompanyIds(new Set());
-      setSearchQuery("");
-      setError(null);
-    }
-  }, [open, event.id]);
-
-  const toggleCompany = (companyId: string) => {
-    setSelectedCompanyIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(companyId)) {
-        next.delete(companyId);
-      } else {
-        next.add(companyId);
-      }
-      return next;
-    });
-  };
-
-  const toggleAll = () => {
-    if (selectedCompanyIds.size === filteredCompanies.length) {
-      setSelectedCompanyIds(new Set());
-    } else {
-      setSelectedCompanyIds(new Set(filteredCompanies.map((c) => c.id)));
-    }
-  };
-
-  const filteredCompanies = React.useMemo(() => {
-    if (!searchQuery.trim()) return companies;
-    const query = searchQuery.toLowerCase();
-    return companies.filter((c) => c.name.toLowerCase().includes(query));
-  }, [companies, searchQuery]);
-
-  const handleAdd = async () => {
-    if (selectedCompanyIds.size === 0) {
-      setError("Please select at least one company");
-      return;
-    }
-
-    setAdding(true);
-    setError(null);
-
-    try {
-      const result = await addCompaniesToEventPageAction(
-        event.id,
-        Array.from(selectedCompanyIds)
-      );
-
-      if (result.success) {
-        setOpen(false);
-        // Update hasExistingCompanies after successful add
-        setHasExistingCompanies(true);
-      } else {
-        setError(result.error || "Failed to add companies");
-      }
-    } catch (err) {
-      console.error("Error adding companies:", err);
-      setError(err instanceof Error ? err.message : "An error occurred");
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="w-full">
-          <IconPlus className="h-4 w-4 mr-2" />
-          {hasExistingCompanies ? "Edit companies" : "Add companies"}
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{hasExistingCompanies ? "Edit Companies" : "Add Companies"} to {event.name}</DialogTitle>
-          <DialogDescription>
-            Select companies that have registered for this event through career event options.
-            All companies are selected by default, but you can deselect any before adding.
-          </DialogDescription>
-        </DialogHeader>
-
-        {error && (
-          <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-            {error}
-          </div>
-        )}
-
-        {loading ? (
-          <div className="h-32 grid place-items-center text-sm text-muted-foreground">
-            Loading companies...
-          </div>
-        ) : companies.length === 0 ? (
-          <div className="h-32 grid place-items-center text-sm text-muted-foreground">
-            No companies found with options for this event.
-          </div>
-        ) : (
-          <>
-            <div className="w-full">
-              <Input
-                placeholder="Search companies..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full"
-              />
-            </div>
-
-            <div className="border rounded-lg">
-              <div className="p-3 border-b flex items-center justify-between bg-muted/50">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    checked={
-                      filteredCompanies.length > 0 &&
-                      filteredCompanies.every((c) => selectedCompanyIds.has(c.id))
-                    }
-                    onCheckedChange={toggleAll}
-                  />
-                  <span className="text-sm font-medium">
-                    {selectedCompanyIds.size} of {companies.length} selected
-                  </span>
-                </div>
-              </div>
-
-              <div className="max-h-96 overflow-y-auto">
-                {filteredCompanies.length === 0 ? (
-                  <div className="p-4 text-sm text-muted-foreground text-center">
-                    No companies match your search.
-                  </div>
-                ) : (
-                  <div className="divide-y">
-                    {filteredCompanies.map((company) => (
-                      <div
-                        key={company.id}
-                        className="p-3 hover:bg-muted/50 flex items-center gap-3 cursor-pointer"
-                        onClick={() => toggleCompany(company.id)}
-                      >
-                        <Checkbox
-                          checked={selectedCompanyIds.has(company.id)}
-                          onCheckedChange={() => toggleCompany(company.id)}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                        <span className="text-sm font-medium flex-1">
-                          {company.name}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </>
-        )}
-
-        <DialogFooter className="flex-col sm:flex-row gap-2">
-          <Button
-            onClick={handleAdd}
-            disabled={adding || selectedCompanyIds.size === 0}
-            className="w-full sm:w-auto"
-          >
-            {adding ? "Adding..." : `Add ${selectedCompanyIds.size} companies`}
-          </Button>
-          <DialogClose asChild>
-            <Button variant="outline" className="w-full sm:w-auto" disabled={adding}>
-              Cancel
-            </Button>
-          </DialogClose>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function AddCompanyGuideDialog({ event, hasCompanyGuide }: { event: CareerEvent; hasCompanyGuide?: boolean | null }) {
-  const [open, setOpen] = React.useState(false);
-  const [uploading, setUploading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
-
-  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setError(null);
-    
-    const fd = new FormData(e.currentTarget);
-    const pdfFile = fd.get("pdf") as File | null;
-
-    if (!pdfFile) {
-      setError("Please select a PDF file");
-      return;
-    }
-
-    if (pdfFile.type !== "application/pdf" && !pdfFile.name.toLowerCase().endsWith(".pdf")) {
-      setError("Please select a PDF file");
-      return;
-    }
-
-    setUploading(true);
-
-    try {
-      const formData = new FormData();
-      formData.append("pdf", pdfFile);
-      formData.append("eventId", event.id);
-
-      const response = await fetch("/api/admin/upload-company-guide", {
-        method: "POST",
-        body: formData,
-      });
-
-      // Always try to parse as JSON first
-      let result: { success?: boolean; error?: string; message?: string };
-      try {
-        result = await response.json();
-      } catch (jsonError) {
-        // If JSON parsing fails, the response is likely an error page
-        // Read as text for debugging, but don't try to parse again
-        const text = await response.text();
-        console.error("Non-JSON response:", text.substring(0, 500)); // Limit log size
-        throw new Error(`Server error: ${response.status} ${response.statusText}`);
-      }
-
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to upload company guide");
-      }
-
-      setOpen(false);
-      (e.target as HTMLFormElement).reset();
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-      // Reload the page to show the updated state
-      window.location.reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="w-full">
-          {hasCompanyGuide ? (
-            "Edit Company Guide"
-          ) : (
-            <>
-              <IconPlus className="h-4 w-4 mr-2" />
-              Add Company Guide
-            </>
-          )}
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto">
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
-          <DialogHeader>
-            <DialogTitle>Add Company Guide</DialogTitle>
-            <DialogDescription>
-              Upload a PDF company guide for {event.name}. Only one company guide per event page.
-            </DialogDescription>
-          </DialogHeader>
-
-          {error && (
-            <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-              {error}
-            </div>
-          )}
-
-          <div className="w-full">
-            <Label htmlFor="pdf" className="text-xs">PDF File*</Label>
-            <Input
-              ref={fileInputRef}
-              name="pdf"
-              id="pdf"
-              type="file"
-              accept="application/pdf,.pdf"
-              required
-              disabled={uploading}
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Upload a PDF file. This will replace any existing company guide for this event.
-            </p>
-          </div>
-
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button type="submit" disabled={uploading} className="w-full sm:w-auto">
-              {uploading ? "Uploading..." : "Upload"}
-            </Button>
-            <DialogClose asChild>
-              <Button variant="outline" className="w-full sm:w-auto" disabled={uploading}>
-                Cancel
-              </Button>
-            </DialogClose>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}

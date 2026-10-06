@@ -6,6 +6,7 @@ import type { PendingApprovalRequest } from "@/lib/repos/users";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useUser } from "@/providers/UserProvider";
+import { toast } from "sonner";
 
 export default function PendingApprovalsPage() {
   const { user } = useUser();
@@ -23,8 +24,6 @@ function PendingApprovalsSection() {
   const [pendingRequests, setPendingRequests] = React.useState<PendingApprovalRequest[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [processing, setProcessing] = React.useState<string | null>(null);
-  const [errorCount, setErrorCount] = React.useState(0);
-  const [lastError, setLastError] = React.useState<string | null>(null);
 
   const shouldShow = user?.admin;
   const MAX_CONSECUTIVE_ERRORS = 3;
@@ -49,8 +48,6 @@ function PendingApprovalsSection() {
         if (!alive) return;
         
         setPendingRequests(requests);
-        setErrorCount(0);
-        setLastError(null);
         consecutiveErrors = 0;
         
         // Schedule next fetch with normal polling interval
@@ -61,10 +58,6 @@ function PendingApprovalsSection() {
         if (!alive) return;
         
         consecutiveErrors++;
-        setErrorCount(consecutiveErrors);
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        setLastError(errorMessage);
-        
         console.error(`Failed to fetch pending approval requests (attempt ${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, error);
         
         // Stop polling after too many consecutive errors
@@ -108,11 +101,11 @@ function PendingApprovalsSection() {
             .catch(console.error);
         }, 1000);
       } else {
-        alert(`Failed to approve: ${result.error}`);
+        toast.error(`Failed to approve: ${result.error}`);
       }
     } catch (error) {
       console.error("Error approving request:", error);
-      alert("Failed to approve request");
+      toast.error("Failed to approve request");
     } finally {
       setProcessing(null);
     }
@@ -126,11 +119,11 @@ function PendingApprovalsSection() {
         // Remove from list
         setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
       } else {
-        alert(`Failed to reject: ${result.error}`);
+        toast.error(`Failed to reject: ${result.error}`);
       }
     } catch (error) {
       console.error("Error rejecting request:", error);
-      alert("Failed to reject request");
+      toast.error("Failed to reject request");
     } finally {
       setProcessing(null);
     }

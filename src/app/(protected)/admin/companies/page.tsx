@@ -1,15 +1,29 @@
-"use client";
-
 import Link from "next/link";
 import { UserRoundCheck } from "lucide-react";
-import { CompaniesSection } from "../companies-events/client";
+import { CompaniesSection } from "./companies-section";
 import { Button } from "@/components/ui/button";
-import { useUser } from "@/providers/UserProvider";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { getUserFromCookies } from "@/lib/auth-server";
+import { fetchCompaniesWithSubOptionsAction } from "@/app/actions/companies";
+import { fetchSalespersonsAction } from "@/app/actions/salespeople";
+import { listRoles } from "@/lib/repos/users";
+import { loadPublicMasters } from "@/lib/masters-data";
 
-export default function AdminCompaniesPage() {
-  const { user } = useUser();
+/**
+ * The companies and the salespeople (for the assignee pickers) are loaded
+ * here, in parallel. The client page used to fetch them with two server
+ * actions after hydrating, which Next runs one after the other.
+ */
+export default async function AdminCompaniesPage() {
+  const user = await getUserFromCookies();
   if (!user?.admin) return <p>NO ACCESS</p>;
+
+  const [companies, salespersons, roles, masters] = await Promise.all([
+    fetchCompaniesWithSubOptionsAction(),
+    fetchSalespersonsAction().catch(() => []),
+    listRoles(),
+    loadPublicMasters(),
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-6">
@@ -24,7 +38,12 @@ export default function AdminCompaniesPage() {
           </Button>
         }
       />
-      <CompaniesSection />
+      <CompaniesSection
+        initialData={companies}
+        salespersons={salespersons ?? []}
+        roleOptions={roles.map((r) => ({ value: r.id, label: r.name }))}
+        masters={masters}
+      />
     </div>
   );
 }

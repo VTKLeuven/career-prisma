@@ -1,58 +1,35 @@
-// app/actions/floorplan.ts
+// app/actions/features.ts
 "use server";
-import { listBooths, listMasters, listFaculties } from "@/lib/repos/features";
-import { CareerEventPage, Booth, Master } from "@/lib/schema";
-import DOMPurify from "isomorphic-dompurify"
-import { readFile } from "fs/promises";
-import { getStoredFile } from "@/lib/file-storage";
+import { listMasters, listFaculties } from "@/lib/repos/features";
+import type { Booth } from "@/lib/schema";
+import { getEventPageWithFloorplan, getBoothsForFloorplan } from "@/lib/repos/floorplan";
+import { loadFloorplanData } from "@/lib/floorplan-data";
 import { requireAdminUser } from "@/lib/auth-server";
 
-export async function fetchFloorplanAction(page: CareerEventPage) {
-  if (!page.floorplan?.svg_file || page.floorplan.svg_file.length === 0) return null;
+/**
+ * Everything the floorplan editor opens with -- event page, SVG, booths, the
+ * event's companies and its company forms -- loaded in parallel in one round
+ * trip. The editor used to make five server actions, which Next runs one at a
+ * time.
+ */
+export async function fetchFloorplanEditorAction(eventId: string) {
+  await requireAdminUser();
+  const page = await getEventPageWithFloorplan(eventId);
+  if (!page?.floorplan) return null;
+  const { getCompaniesForEvent } = await import("@/lib/repos/company");
+  const { getAllCompanyFormsForEvent } = await import("@/lib/repos/forms");
+  const [floorplan, booths, companies, forms] = await Promise.all([
+    loadFloorplanData(page),
+    page.floorplan.id ? getBoothsForFloorplan(String(page.floorplan.id)) : Promise.resolve([] as Booth[]),
+    getCompaniesForEvent(eventId),
+    getAllCompanyFormsForEvent(eventId).catch(() => []),
+  ]);
+  return { page, svg: floorplan?.svg ?? "", booths, companies, forms };
+}
 
-  const svgFileId = page.floorplan.svg_file;
-  const stored = await getStoredFile(svgFileId);
-  if (!stored) throw new Error("Floorplan SVG not found");
-  const svgText = await readFile(stored.filePath, "utf8");
-
-  // Fetch booths data
-  const data = await listBooths(page.floorplan, { limit: -1 });
-  if (!data) return { svg: svgText, booths: [] };
-
-  // Sanitize SVG
-  const sanitizedSvg = DOMPurify.sanitize(svgText, {
-    ADD_ATTR: ['target', 'rel', 'allow', 'allowfullscreen', 'frameborder'],
-  });
-
-  // Parse booths
-  const booths: Booth[] = (data as Booth[])
-    .map((booth) => {
-      if (!booth) return null;
-
-      // Parse coords if stored as JSON string
-      let coords;
-      try {
-        coords = typeof booth.coords === "string" ? JSON.parse(booth.coords) : booth.coords;
-      } catch {
-        return null;
-      }
-
-      // Unwrap company.category -> Master[]
-      if (booth.company?.category) {
-        booth.company.category = (booth.company.category as unknown as Array<{ master_id: Master }>)
-          .map((item) => item.master_id) // unwrap master_id
-          .filter((m: Master | null): m is Master => !!m); // ensure non-null
-      }
-
-      return { ...booth, coords };
-    })
-    .filter((b): b is Booth => !!b); // remove nulls
-
-  return {
-    svg: sanitizedSvg,
-    booths,
-    backgroundImage: page.floorplan.background_image || null,
-  };
+export async function fetchBoothsForFloorplanAction(floorplanId: string): Promise<Booth[]> {
+  await requireAdminUser();
+  return getBoothsForFloorplan(floorplanId);
 }
 
 export async function fetchMastersAction() {

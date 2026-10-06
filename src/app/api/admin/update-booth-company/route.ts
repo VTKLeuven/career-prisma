@@ -5,7 +5,7 @@ import { invalidateFloorplanCache } from "@/lib/floorplan-cache";
 import { getCompanyById } from "@/lib/repos/company";
 import { getCompanySubOptionAnyStatus } from "@/lib/utils/company-access";
 import { getUserFromCookies } from "@/lib/auth-server";
-import prisma from "@/lib/prisma";
+import { getBoothFloorplanId } from "@/lib/repos/booths";
 
 export async function POST(req: Request) {
   try {
@@ -27,18 +27,15 @@ export async function POST(req: Request) {
     // If assigning a company, check if it's already assigned to another booth
     if (companyId) {
       // Get the booth first to find its floorplan (use admin client for elevated permissions)
-      const currentBooth = await prisma.booth.findUnique({
-        where: { id: Number(boothId) },
-        select: { floorplan_id: true },
-      });
-      if (!currentBooth) {
+      const currentFloorplanId = await getBoothFloorplanId(boothId);
+      if (currentFloorplanId === undefined) {
         return NextResponse.json(
           { error: "Booth not found" },
           { status: 404 }
         );
       }
 
-      const floorplanId = String(currentBooth.floorplan_id);
+      const floorplanId = String(currentFloorplanId);
 
       // Get all booths for the same floorplan
       const floorplanBooths = await getBoothsForFloorplan(floorplanId);

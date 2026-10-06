@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchEventPageBySlugAction } from "@/app/actions/events";
-import { fetchFloorplanAction } from "@/app/actions/features";
-import { getCachedEventPage, setCachedEventPage } from "@/lib/event-page-cache";
-import { getCachedFloorplan, setCachedFloorplan } from "@/lib/floorplan-cache";
+import { loadPublicFloorplan } from "@/lib/floorplan-data";
+import { loadEventPage } from "@/lib/event-page-data";
 import { isDevEnvironment } from "@/lib/dev-environment";
+import { sharedCacheHeaders } from "@/lib/http-cache";
 
-const CACHE_HEADERS = {
-  "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
-  "CDN-Cache-Control": "public, s-maxage=300",
-};
+const CACHE_HEADERS = sharedCacheHeaders(300, 600);
 
+/**
+ * The public floorplan as JSON, for the floorplan app in vtk-floorplan-app/.
+ * The web page renders the same data (loadPublicFloorplan) on the server.
+ */
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ slug: string }> }
@@ -23,38 +23,24 @@ export async function GET(
   }
 
   try {
-    const params = await context.params;
-    const { slug } = params;
+    const { slug } = await context.params;
 
-    // Check floorplan cache first
-    const cachedFloorplan = getCachedFloorplan(slug);
-    if (cachedFloorplan) {
-      return NextResponse.json(cachedFloorplan, { headers: CACHE_HEADERS });
-    }
-
-    // Get event page (use event cache)
-    let page = getCachedEventPage(slug) as Awaited<ReturnType<typeof fetchEventPageBySlugAction>> | null;
-    if (!page) {
-      page = await fetchEventPageBySlugAction(slug);
-      if (page) setCachedEventPage(slug, page);
-    }
-
+    const page = await loadEventPage(slug);
     if (!page || !page.floorplan) {
       return NextResponse.json(
         { error: "Floorplan not found" },
-        { status: 404, headers: { "Cache-Control": "public, s-maxage=60" } }
+        { status: 404, headers: sharedCacheHeaders(60) }
       );
     }
 
-    const data = await fetchFloorplanAction(page);
+    const data = await loadPublicFloorplan(page, slug);
     if (!data) {
       return NextResponse.json(
         { error: "Floorplan data not available" },
-        { status: 404, headers: { "Cache-Control": "public, s-maxage=60" } }
+        { status: 404, headers: sharedCacheHeaders(60) }
       );
     }
 
-    setCachedFloorplan(slug, data);
     return NextResponse.json(data, { headers: CACHE_HEADERS });
   } catch (error) {
     console.error("[floorplan API] Error fetching floorplan:", error);

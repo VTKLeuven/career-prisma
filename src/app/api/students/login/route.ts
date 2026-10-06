@@ -1,11 +1,18 @@
 import argon2 from "argon2";
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { findStudentCredentials } from "@/lib/repos/credentials";
 import {
   createSessionToken,
   sessionCookieOptions,
   STUDENT_SESSION_COOKIE,
 } from "@/lib/auth-session";
+import {
+  clearLoginFailures,
+  clientIp,
+  loginRetryAfter,
+  recordLoginFailure,
+  tooManyAttemptsMessage,
+} from "@/lib/login-throttle";
 
 async function verifyPassword(stored: string, password: string) {
   if (!stored.startsWith("$argon2")) return false;
@@ -22,10 +29,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const student = await prisma.student.findUnique({
-      where: { email: email.trim().toLowerCase() },
-    });
+    const ip = clientIp(request);
+    const retryAfter = loginRetryAfter("student", email, ip);
+    if (retryAfter > 0) {
+      return NextResponse.json(
+        { error: tooManyAttemptsMessage(retryAfter) },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } }
+      );
+    }
+
+    const student = await findStudentCredentials(email);
     if (!student?.password || !student.verified) {
+      recordLoginFailure("student", email, ip);
       return NextResponse.json(
         { error: "Invalid email or password." },
         { status: 401 }
@@ -33,11 +48,13 @@ export async function POST(request: Request) {
     }
 
     if (!(await verifyPassword(student.password, password))) {
+      recordLoginFailure("student", email, ip);
       return NextResponse.json(
         { error: "Invalid email or password." },
         { status: 401 }
       );
     }
+    clearLoginFailures("student", email);
     const maxAge = rememberMe ? 30 * 24 * 60 * 60 : 24 * 60 * 60;
     const response = NextResponse.json({
       success: true,

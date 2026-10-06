@@ -53,7 +53,7 @@ import {
   createVacancySectionConfigAction,
   updateVacancySectionConfigAction,
   deleteVacancySectionConfigAction,
-  fetchAllVacanciesAction,
+  fetchVacancyAdminDataAction,
   updateVacancyAction,
   deleteVacancyAction,
 } from "@/app/actions/vacancies";
@@ -311,12 +311,6 @@ function ConfigTable<T extends { id: string; name: string; sort?: number; active
 // Main Admin Page
 // ---------------------------------------------------------------------------
 
-const statusColors: Record<string, string> = {
-  draft: "bg-yellow-100 text-yellow-800",
-  published: "bg-green-100 text-green-800",
-  archived: "bg-neutral-100 text-neutral-600",
-};
-
 export default function AdminVacanciesPage() {
   const [tab, setTab] = useState<Tab>("types");
   const [types, setTypes] = useState<VacancyType[]>([]);
@@ -329,12 +323,7 @@ export default function AdminVacanciesPage() {
 
   const reload = async () => {
     setLoading(true);
-    const [t, s, sc, v] = await Promise.all([
-      fetchVacancyTypesAction(false),
-      fetchVacancySectorsAction(false),
-      fetchVacancySectionConfigsAction(false),
-      fetchAllVacanciesAction({ limit: 200 }),
-    ]);
+    const { types: t, sectors: s, sectionConfigs: sc, vacancies: v } = await fetchVacancyAdminDataAction();
     setTypes(t ?? []);
     setSectors(s ?? []);
     setSectionConfigs(sc ?? []);

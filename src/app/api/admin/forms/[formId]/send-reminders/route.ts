@@ -6,7 +6,9 @@ import {
   type EmailTask,
   type EmailTaskResult,
 } from "@/lib/email-job-manager";
-import prisma from "@/lib/prisma";
+import { getFormVersionWithForm } from "@/lib/repos/forms";
+import { listCompanyNames } from "@/lib/repos/company";
+import { listUserContacts } from "@/lib/repos/users";
 
 export async function POST(
   request: NextRequest,
@@ -36,10 +38,7 @@ export async function POST(
       );
     }
 
-    const formVersion = await prisma.formVersion.findUnique({
-      where: { id: Number(formVersionId) },
-      include: { form: true },
-    });
+    const formVersion = await getFormVersionWithForm(formVersionId);
 
     if (!formVersion) {
       return NextResponse.json(
@@ -69,20 +68,14 @@ export async function POST(
     const companyIds = [
       ...new Set(recipients.map((r: any) => r.companyId)),
     ];
-    const companies = await prisma.company.findMany({
-      where: { id: { in: companyIds as string[] } },
-      select: { id: true, name: true },
-    });
+    const companies = await listCompanyNames(companyIds as string[]);
 
     const companyMap = new Map(
       companies.map((c: any) => [c.id, c.name])
     );
 
     const repIds = recipients.map((r: any) => r.repId);
-    const representatives = await prisma.user.findMany({
-      where: { id: { in: repIds } },
-      select: { id: true, first_name: true, last_name: true, email: true },
-    });
+    const representatives = await listUserContacts(repIds);
 
     const repMap = new Map(
       representatives.map((r: any) => [r.id, r])

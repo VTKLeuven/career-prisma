@@ -1,10 +1,10 @@
-import prisma from "@/lib/prisma";
+import { getBoothWithCompany } from "@/lib/repos/booths";
 import { redirect } from "next/navigation";
 import BoothClient from "@/app/(public)/booth/[id]/client";
 import { listDrinks } from "@/lib/repos/drinks";
 import { getActiveOrderForBooth } from "@/lib/repos/orders";
 import { getUserFromCookies } from "@/lib/auth-server";
-import { getCompanyOrderingTabInfo } from "@/app/actions/ordering";
+import { getCompanyOrderingTabInfo } from "@/lib/company-ordering";
 
 export default async function DashboardOrderDrinksPage() {
     // Get logged-in user
@@ -20,10 +20,7 @@ export default async function DashboardOrderDrinksPage() {
     }
 
     // Fetch booth details (same logic as public booth page)
-    const boothData = await prisma.booth.findUnique({
-        where: { id: Number(boothId) },
-        include: { company: true },
-    });
+    const boothData = await getBoothWithCompany(boothId);
     if (!boothData) redirect("/dashboard");
     const drinks = await listDrinks({ visible_only: true });
 

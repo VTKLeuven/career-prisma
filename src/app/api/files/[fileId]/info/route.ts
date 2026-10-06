@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { getFileRecord } from "@/lib/repos/files";
 
 export async function GET(
   _request: Request,
   context: { params: Promise<{ fileId: string }> }
 ) {
   const { fileId } = await context.params;
-  const file = await prisma.file.findUnique({
-    where: { id: fileId },
-    select: { type: true, filename_download: true },
-  });
+  const file = await getFileRecord(fileId);
   if (!file) {
     return NextResponse.json({ error: "File not found" }, { status: 404 });
   }

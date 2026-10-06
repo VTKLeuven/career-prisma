@@ -19,8 +19,7 @@ import {
   fetchFormVersionsAction,
   updateFormVersionAction,
 } from "@/app/actions/forms";
-import { UNIVERSITIES } from "@/lib/universities";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,9 +50,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power, ChevronUp, ChevronDown, Building2, RefreshCw, Search, Hammer, Inbox } from "lucide-react";
+import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power, Building2, RefreshCw, Search, Hammer, Inbox } from "lucide-react";
 import { useUser } from "@/providers/UserProvider";
-import type { FormSchema, FormField, Form, CareerEvent, CareerEventOption } from "@/lib/schema";
+import type { FormSchema, FormField, CareerEvent } from "@/lib/schema";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatDateBE, formatDateTimeBE, utcToLocalDateTimeLocal, localDateTimeLocalToUtc } from "@/lib/date-utils";
@@ -63,6 +62,7 @@ import { slugifyEventName } from "@/lib/utils/slugify";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { toast } from "sonner";
 
 type FormRow = {
   id: string;
@@ -74,8 +74,8 @@ type FormRow = {
     deadline?: string;
     [key: string]: unknown;
   };
-  created_at: string;
-  updated_at: string;
+  created_at: string | null;
+  updated_at: string | null;
   activeVersion: {
     id: string;
     version_number: number;
@@ -303,7 +303,7 @@ function FormTableRow({ form, onUpdate }: { form: FormRow; onUpdate: () => void 
           <span className="tabular">{form.submissionCount}</span>
         )}
       </TableCell>
-      <TableCell className="text-muted-foreground tabular">{formatDateBE(form.updated_at)}</TableCell>
+      <TableCell className="text-muted-foreground tabular">{formatDateBE(form.updated_at ?? form.created_at) || "—"}</TableCell>
       <TableCell className="pr-2">
         <div className="flex items-center justify-end gap-0.5">
           <TooltipProvider delayDuration={300}>
@@ -628,7 +628,7 @@ function CreateFormDialog() {
       router.push(`/admin/forms/${created.id}/builder`);
     } catch (error) {
       console.error("Error creating form:", error);
-      alert("Failed to create form");
+      toast.error("Failed to create form");
     } finally {
       setLoading(false);
     }
@@ -1074,8 +1074,6 @@ function EditFormDialog({
   const [deadline, setDeadline] = useState(
     form.metadata?.deadline ? utcToLocalDateTimeLocal(form.metadata.deadline as string) : ''
   );
-  const [deadlineDateDisplay, setDeadlineDateDisplay] = useState("");
-  const [deadlineTimeDisplay, setDeadlineTimeDisplay] = useState("");
   const [maxEntries, setMaxEntries] = useState(
     form.metadata?.max_entries ? String(form.metadata.max_entries) : ''
   );
@@ -1405,7 +1403,7 @@ function EditFormDialog({
       onUpdate();
     } catch (error) {
       console.error("Error updating form:", error);
-      alert("Failed to update form");
+      toast.error("Failed to update form");
     } finally {
       setLoading(false);
     }
@@ -1774,7 +1772,7 @@ function DeleteFormDialog({
       onDeleted();
     } catch (error) {
       console.error("Error deleting form:", error);
-      alert("Failed to delete form");
+      toast.error("Failed to delete form");
     } finally {
       setLoading(false);
     }
@@ -1818,7 +1816,7 @@ function ToggleFormStatusMenuItem({ form, onUpdate }: { form: FormRow; onUpdate:
       onUpdate();
     } catch (error) {
       console.error("Error toggling form status:", error);
-      alert(`Failed to update form status: ${error instanceof Error ? error.message : String(error)}`);
+      toast.error(`Failed to update form status: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setToggling(false);
     }
@@ -1954,10 +1952,10 @@ function VersionsDialog({
       await setActiveVersionAction(versionId);
       await loadVersions();
       onUpdate();
-      alert('Version activated successfully! The form list will refresh.');
+      toast.success('Version activated successfully! The form list will refresh.');
     } catch (error) {
       console.error("[VersionsDialog] Error activating version:", error);
-      alert(`Failed to activate version: ${error}`);
+      toast.error(`Failed to activate version: ${error}`);
     } finally {
       setActivating(null);
     }

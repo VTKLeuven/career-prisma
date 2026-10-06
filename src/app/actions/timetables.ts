@@ -3,18 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { requireAdminUser } from "@/lib/auth-server";
 import {
-  listTimetables,
   createTimetable,
   updateTimetable,
   deleteTimetable,
 } from "@/lib/repos/timetable";
 import type { ActionResult } from "@/components/admin/types";
 import type { TimeSlot } from "@/lib/schema";
-
-export async function listTimetablesAction(): Promise<TimeSlot[]> {
-  await requireAdminUser();
-  return listTimetables({ limit: 1000 });
-}
 
 export async function createTimetableAction(data: Record<string, unknown>): Promise<ActionResult<TimeSlot>> {
   try {

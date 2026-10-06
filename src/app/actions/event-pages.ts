@@ -3,18 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { requireAdminUser } from "@/lib/auth-server";
 import {
-  listEventPagesAdmin,
   createEventPage,
   updateEventPage,
   deleteEventPage,
   type AdminEventPageRow,
 } from "@/lib/repos/event-page";
 import type { ActionResult } from "@/components/admin/types";
-
-export async function listEventPagesAdminAction(): Promise<AdminEventPageRow[]> {
-  await requireAdminUser();
-  return listEventPagesAdmin();
-}
 
 export async function createEventPageAction(data: Record<string, unknown>): Promise<ActionResult<AdminEventPageRow>> {
   try {

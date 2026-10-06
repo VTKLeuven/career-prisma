@@ -1,18 +1,16 @@
 // app/actions/companies.ts
 "use server";
 import { listCompanies, getCompanyById, createCompany, updateCompany, getCompaniesForEvent } from "@/lib/repos/company";
-import { createRep, updateRep, waitForApproval, deleteUser, fetchPendingApprovalRequests, fetchSalespersonByID, type PendingApprovalRequest } from "@/lib/repos/users";
-import { Company, CompanyRep, CareerEventOption, type UserSummary } from "@/lib/schema";
+import { createRep, updateRep, waitForApproval, deleteUser, fetchPendingApprovalRequests, findUserByEmail, userEmailExists, setUserCompany, setUserStatusAndRole, getUserContact, getCompanyUserRequest, setCompanyUserRequestStatus, type PendingApprovalRequest } from "@/lib/repos/users";
+import { Company, CompanyRep, type UserSummary } from "@/lib/schema";
 import { sendEmail } from "@/lib/email";
 import { uploadFile } from "@/lib/file-storage";
 import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
-import { fetchMastersAction } from "@/app/actions/features";
 import { generateCompanyPageRequestEmailHtml, generateCVBookRequestEmailHtml } from "@/lib/email-templates";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
-import prisma from "@/lib/prisma";
+import { toPublicCompany, toPublicSpeaker } from "@/lib/repos/_shape";
+
 type AppUser = UserSummary;
-
-
 
 function formatAddress(c: Company) {
   const parts = [
@@ -23,85 +21,34 @@ function formatAddress(c: Company) {
     .map((p) => (typeof p === "string" ? p.trim() : ""))
     .filter((p) => p.length > 0);
 
-  return parts.length ? parts.join(", ") : "Not set";
-}
-
-/**
- * Check if company has all required information filled in for publishing
- * Required fields: name, VAT, all address fields, logo, short_description, website, location, at least one category
- * Excluded: page_image, long_description
- */
-function isCompanyInfoComplete(company: Company): boolean {
-  // Check name
-  if (!company.name || company.name.trim().length === 0) {
-    return false;
-  }
-
-  // Check VAT
-  if (!company.VAT || company.VAT.trim().length === 0) {
-    return false;
-  }
-
-  // Check all address fields
-  if (!company.address_street || company.address_street.trim().length === 0) {
-    return false;
-  }
-  if (!company.address_number || company.address_number.trim().length === 0) {
-    return false;
-  }
-  if (!company.address_zip || company.address_zip.trim().length === 0) {
-    return false;
-  }
-  if (!company.address_city || company.address_city.trim().length === 0) {
-    return false;
-  }
-  if (!company.address_country || company.address_country.trim().length === 0) {
-    return false;
-  }
-
-  // Check logo
-  if (!company.logo || (typeof company.logo === "string" && company.logo.trim().length === 0)) {
-    return false;
-  }
-
-  // Check short_description
-  if (!company.short_description || company.short_description.trim().length === 0) {
-    return false;
-  }
-
-  // Check website
-  if (!company.website || company.website.trim().length === 0) {
-    return false;
-  }
-
-  // Check location
-  if (!company.location || company.location.trim().length === 0) {
-    return false;
-  }
-
-  // Check category (at least one master category)
-  if (!company.category || !Array.isArray(company.category) || company.category.length === 0) {
-    return false;
-  }
-
-  return true;
+  return parts.join(", ");
 }
 
 export async function fetchCompaniesAction() {
+  await requireAdminUser();
   const companies = (await listCompanies({ limit: 10000, sort: "name" })) ?? [];
 
   return companies.map((c: Company) => ({
     id: c.id,
     name: c.name,
     address: formatAddress(c),
-    VAT: c.VAT ?? "Not set",
+    // Raw values, empty when missing: the edit dialog saves what it is given,
+    // so placeholders like "Not set" were written back as the VAT number --
+    // and the salesperson's display name as their id, which Postgres rejects.
+    VAT: c.VAT ?? "",
     salesperson:
       typeof c.salesperson === "object" && c.salesperson
         ? `${c.salesperson.first_name ?? ""} ${c.salesperson.last_name ?? ""}`.trim() ||
         c.salesperson.id
         : typeof c.salesperson === "string" && c.salesperson
           ? c.salesperson
-          : "Not set",
+          : "",
+    salesperson_id:
+      typeof c.salesperson === "object" && c.salesperson
+        ? c.salesperson.id
+        : typeof c.salesperson === "string" && c.salesperson
+          ? c.salesperson
+          : null,
     status: c.status ?? "",
     // Include options and sub_options (company_career_sub_option junction)
     options: c.options ?? [],
@@ -156,6 +103,7 @@ export async function fetchCompaniesWithSubOptionsAction(): Promise<{
   companies: Awaited<ReturnType<typeof fetchCompaniesAction>>;
   allSubOptions: import("@/lib/schema").CareerSubOption[];
 }> {
+  await requireAdminUser();
   const companies = (await fetchCompaniesAction()) ?? [];
   const optionIds = extractAllSubOptionIdsFromCompanies(companies);
   const { listCareerSubOptions, getCareerSubOptionsByIds } = await import("@/lib/repos/option");
@@ -174,7 +122,7 @@ export async function fetchCompaniesWithSubOptionsAction(): Promise<{
   return { companies, allSubOptions };
 }
 
-export async function fetchCompanyByIdAction(company_id: string, usePublic = false, useServerClient = false): Promise<Company | null> {
+async function loadCompanyById(company_id: string, usePublic = false, useServerClient = false): Promise<Company | null> {
   try {
     const company = (await getCompanyById(company_id, usePublic, 2, useServerClient)) as Company | null;
     return company;
@@ -185,6 +133,21 @@ export async function fetchCompanyByIdAction(company_id: string, usePublic = fal
   }
 }
 
+/**
+ * A company, for whoever is asking: the full record for admins and the
+ * company's own users, the public view (no representatives' contact details,
+ * no sales history) for anyone else. The company-form page is open to
+ * visitors who pick their company from a list, so this cannot simply require
+ * a login.
+ */
+export async function fetchCompanyByIdAction(company_id: string, usePublic = false, useServerClient = false): Promise<Company | null> {
+  const company = await loadCompanyById(company_id, usePublic, useServerClient);
+  if (!company) return null;
+  const viewer = await getUserFromCookies();
+  if (viewer?.admin || viewer?.company?.id === company.id) return company;
+  return toPublicCompany(company);
+}
+
 import { slugifyCompanyName } from "@/lib/utils/slugify";
 
 function slugifyName(name?: string | null): string {
@@ -193,7 +156,10 @@ function slugifyName(name?: string | null): string {
 
 export async function fetchCompaniesForEventAction(eventId: string, usePublic = false) {
   try {
-    return await getCompaniesForEvent(eventId, usePublic);
+    const companies = await getCompaniesForEvent(eventId, usePublic);
+    // The company-form page lists these to anonymous visitors.
+    const viewer = await getUserFromCookies();
+    return viewer?.admin ? companies : companies.map(toPublicCompany);
   } catch (error) {
     console.error("[fetchCompaniesForEventAction] Error fetching companies for event:", error);
     return [];
@@ -207,9 +173,10 @@ export async function fetchCompanyOptionsDebugAction(companyId: string): Promise
   junctionDiscovery?: Record<string, unknown>;
   error?: string;
 }> {
+  await requireAdminUser();
   try {
     const [company, allSubOptions, { getCareerSubOptionsByIds }] = await Promise.all([
-      fetchCompanyByIdAction(companyId),
+      loadCompanyById(companyId),
       import("@/lib/repos/option").then((m) => m.listCareerSubOptions({ limit: 50 })),
       import("@/lib/repos/option"),
     ]);
@@ -293,11 +260,11 @@ function extractSubOptionIdsFromCompany(company: Company | null): (string | numb
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function fetchCompanyBySlugAction(slugOrId: string): Promise<Company | null> {
+async function fetchCompanyBySlugAction(slugOrId: string): Promise<Company | null> {
   const trimmed = slugOrId.trim();
   // If param looks like a UUID or numeric ID, fetch by ID directly (more reliable for matching software links)
   if (UUID_REGEX.test(trimmed) || /^\d+$/.test(trimmed)) {
-    const company = await fetchCompanyByIdAction(trimmed, false, true);
+    const company = await loadCompanyById(trimmed, false, true);
     if (company) return company;
     return null;
   }
@@ -322,7 +289,7 @@ export async function fetchCompanyBySlugAction(slugOrId: string): Promise<Compan
   if (!match) return null;
 
   // Fetch full company details with all relations (use server client for nested options - public role may lack permission)
-  return fetchCompanyByIdAction(match.id, false, true);
+  return loadCompanyById(match.id, false, true);
 }
 
 /** Fetch company by slug + suboptions for access check (resolves IDs from options) */
@@ -344,13 +311,14 @@ export async function fetchCompanyBySlugWithSubOptionsAction(slug: string): Prom
   for (const s of allFromList ?? []) {
     if (!byIdMap.has(String(s.id))) byIdMap.set(String(s.id), s);
   }
-  return { company, allSubOptions: Array.from(byIdMap.values()) };
+  // Feeds the public company page: no representatives or sales history.
+  return { company: toPublicCompany(company), allSubOptions: Array.from(byIdMap.values()) };
 }
 
 /** Fetch speakers for a company (representatives who speak at events) */
 export async function fetchSpeakersForCompanyAction(companyId: string) {
   const { getSpeakersForCompany } = await import("@/lib/repos/event");
-  return getSpeakersForCompany(companyId);
+  return (await getSpeakersForCompany(companyId)).map(toPublicSpeaker);
 }
 
 export async function createCompanyAction(companyPayload: Partial<Company>, repPayload?: Partial<CompanyRep>) {
@@ -387,10 +355,7 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
     };
 
     const createdCompany = await createCompany(payload as Partial<Company>);
-    await prisma.user.update({
-      where: { id: repIdForCompany },
-      data: { company_id: createdCompany.id },
-    });
+    await setUserCompany(repIdForCompany, createdCompany.id);
 
     // Send invitation email to the representative
     if (repPayload.email && newRep?.id) {
@@ -463,7 +428,7 @@ export async function createCompanyRepAction(companyId: string, repPayload: Part
     company: { id: companyId } as Company,
   });
 
-  const company = await fetchCompanyByIdAction(companyId);
+  const company = await loadCompanyById(companyId);
 
   if (!company) { return; }
 
@@ -569,15 +534,13 @@ export async function requestRepAction(repPayload: Partial<CompanyRep>) {
   }
 
   // Fetch company details (needed for email and adding to representatives)
-  const company = await fetchCompanyByIdAction(repPayload.company.id);
+  const company = await loadCompanyById(repPayload.company.id);
   if (!company) {
     throw new Error("Company not found");
   }
 
   // Check if user already exists (might have been created by approveRepRequestAction)
-  const existingUser = await prisma.user.findUnique({
-    where: { email: repPayload.email.trim().toLowerCase() },
-  });
+  const existingUser = await findUserByEmail(repPayload.email);
   let userId: string | undefined = existingUser?.id;
 
   // If user doesn't exist, create it (fallback for cases where approval happened but user wasn't created)
@@ -669,6 +632,28 @@ export async function requestRepAction(repPayload: Partial<CompanyRep>) {
   return { id: userId, email: repPayload.email };
 }
 
+/**
+ * What a company's own representatives may change: its profile (information
+ * page) and billing details. Status, salesperson and the rest stay with VTK
+ * -- the action used to write whatever fields the browser sent.
+ */
+const REP_EDITABLE_COMPANY_FIELDS = [
+  "name",
+  "short_description",
+  "long_description",
+  "location",
+  "website",
+  "logo",
+  "page_image",
+  "category",
+  "VAT",
+  "address_street",
+  "address_number",
+  "address_zip",
+  "address_city",
+  "address_country",
+] as const;
+
 export async function updateCompanyAction(
   id: string,
   payload: Partial<Company>
@@ -677,49 +662,15 @@ export async function updateCompanyAction(
   if (!user?.admin && user?.company?.id !== id) {
     throw new Error("Unauthorized");
   }
-  const res = await updateCompany(id, payload);
+  const allowed: Partial<Company> = user?.admin
+    ? payload
+    : Object.fromEntries(
+        Object.entries(payload).filter(([key]) =>
+          (REP_EDITABLE_COMPANY_FIELDS as readonly string[]).includes(key)
+        )
+      );
+  const res = await updateCompany(id, allowed);
   return res as Company | null;
-}
-
-export async function setupCompanyAction(
-  companyId: string,
-  payload: Partial<Company>,
-  selectedMasters: string[]
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const user = await getUserFromCookies();
-    if (!user?.admin && user?.company?.id !== companyId) {
-      return { success: false, error: "Unauthorized" };
-    }
-    // Fetch masters to get full master objects
-    const masters = await fetchMastersAction();
-
-    // Build category payload from selected master IDs
-    const categoryPayload = masters
-      .filter((m) => selectedMasters.includes(m.id))
-      .map((m) => ({ master_id: m.id }));
-
-    // Update company with all fields and set status to published
-    const updatePayload: Partial<Company> = {
-      ...payload,
-      category: categoryPayload as unknown as Company['category'],
-      status: "published",
-    };
-
-    const updated = await updateCompanyAction(companyId, updatePayload);
-
-    if (!updated) {
-      return { success: false, error: "Failed to update company" };
-    }
-
-    return { success: true };
-  } catch (error) {
-    console.error("Error setting up company:", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
-  }
 }
 
 export async function uploadCompanyLogo(file: File) {
@@ -732,95 +683,26 @@ export async function addOptionToCompanyAction(companyId: string, optionId: stri
   await requireAdminUser();
   const { createOptionSale } = await import("@/lib/repos/option-sales");
   await createOptionSale({ companyId, optionId, subOptionIds });
-  return fetchCompanyByIdAction(companyId);
-}
-
-/** Extract sub_option IDs from a junction entry (handles various Directus formats) */
-function getSubOptionIdsFromJunction(opt: unknown): string[] {
-  if (!opt || typeof opt !== 'object' || !('sub_options' in opt)) return [];
-  const subOpts = (opt as { sub_options?: unknown[] }).sub_options;
-  if (!Array.isArray(subOpts)) return [];
-  return subOpts
-    .map((s) => {
-      if (typeof s === 'string') return s;
-      if (s && typeof s === 'object' && 'id' in s) return (s as { id: string }).id;
-      if (s && typeof s === 'object' && 'career_sub_option_id' in s) {
-        const ref = (s as { career_sub_option_id: string | { id: string } | null }).career_sub_option_id;
-        return typeof ref === 'string' ? ref : ref?.id ?? '';
-      }
-      return '';
-    })
-    .filter(Boolean);
-}
-
-/** Build option junctions preserving sub_options and junction id for Directus update */
-function buildOptionJunctions(company: Company): Array<{ id?: string | number; career_event_option_id: string; sub_options?: string[] }> {
-  if (!company.options || !Array.isArray(company.options)) return [];
-  return (company.options as unknown[]).map((opt) => {
-    let optId = '';
-    let junctionId: string | number | undefined;
-    if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
-      const junction = opt as { id?: string | number; career_event_option_id: CareerEventOption | string | null };
-      junctionId = junction.id;
-      optId = typeof junction.career_event_option_id === 'string'
-        ? junction.career_event_option_id
-        : (junction.career_event_option_id as { id?: string })?.id ?? '';
-    } else if (opt && typeof opt === 'object' && 'id' in opt) {
-      const o = opt as { id: string };
-      optId = o.id ?? '';
-    }
-    const subIds = getSubOptionIdsFromJunction(opt).map((id) => String(id));
-    const result: { id?: string | number; career_event_option_id: string; sub_options?: string[] } = { career_event_option_id: optId };
-    if (junctionId != null) result.id = junctionId;
-    if (subIds.length > 0) result.sub_options = subIds;
-    return result;
-  }).filter((j) => j.career_event_option_id);
+  return loadCompanyById(companyId);
 }
 
 /** Add sub-option via company_career_sub_option junction (company.sub_options M2M) */
 async function addSubOptionViaJunction(companyId: string, subOptionId: string): Promise<boolean> {
-  const subOption = Number(subOptionId);
-  if (!Number.isSafeInteger(subOption)) return false;
-  const { assertAcademicYearWritable, resolveAcademicYearId } = await import("@/lib/repos/academic-year");
-  const academicYearId = await assertAcademicYearWritable(await resolveAcademicYearId());
-  const definition = await prisma.careerSubOption.findUnique({ where: { id: subOption } });
-  if (!definition) return false;
-  await prisma.companyCareerSubOption.upsert({
-    where: {
-      company_id_career_sub_option_id_academic_year_id: {
-        company_id: companyId,
-        career_sub_option_id: subOption,
-        academic_year_id: academicYearId,
-      },
-    },
-    create: {
-      company_id: companyId,
-      career_sub_option_id: subOption,
-      academic_year_id: academicYearId,
-      price_at_sale: definition.price,
-      name_at_sale: definition.name,
-    },
-    update: {
-      status: "sold",
-      price_at_sale: definition.price,
-      name_at_sale: definition.name,
-      date_created: new Date(),
-    },
-  });
-  return true;
+  if (!Number.isSafeInteger(Number(subOptionId))) return false;
+  try {
+    const { createSubOptionSale } = await import("@/lib/repos/option-sales");
+    await createSubOptionSale({ companyId, subOptionId });
+    return true;
+  } catch (error) {
+    if (error instanceof Error && error.message === "Sub-option not found") return false;
+    throw error;
+  }
 }
 
 /** Remove sub-option via company_career_sub_option junction */
 async function removeSubOptionViaJunction(companyId: string, subOptionId: string): Promise<boolean> {
-  const subOption = Number(subOptionId);
-  if (!Number.isSafeInteger(subOption)) return false;
-  const { assertAcademicYearWritable, resolveAcademicYearId } = await import("@/lib/repos/academic-year");
-  const academicYearId = await assertAcademicYearWritable(await resolveAcademicYearId());
-  await prisma.companyCareerSubOption.updateMany({
-    where: { company_id: companyId, career_sub_option_id: subOption, academic_year_id: academicYearId },
-    data: { status: "cancelled" },
-  });
-  return true;
+  const { cancelCompanySubOption } = await import("@/lib/repos/option-sales");
+  return cancelCompanySubOption(companyId, subOptionId);
 }
 
 /** Add sub-option to company without requiring an option (company-level only). */
@@ -837,7 +719,7 @@ export async function removeSubOptionFromCompanyOnlyAction(companyId: string, su
 
 export async function addSubOptionToCompanyAction(companyId: string, optionId: string, subOptionId: string): Promise<Company | null> {
   await requireAdminUser();
-  const company = await fetchCompanyByIdAction(companyId);
+  const company = await loadCompanyById(companyId);
   if (!company) return null;
 
   const subIdStr = String(subOptionId);
@@ -846,7 +728,7 @@ export async function addSubOptionToCompanyAction(companyId: string, optionId: s
 
   const viaJunction = await addSubOptionViaJunction(companyId, subIdStr);
   if (viaJunction) {
-    return fetchCompanyByIdAction(companyId);
+    return loadCompanyById(companyId);
   }
 
   return null;
@@ -854,7 +736,7 @@ export async function addSubOptionToCompanyAction(companyId: string, optionId: s
 
 export async function removeSubOptionFromCompanyAction(companyId: string, optionId: string, subOptionId: string): Promise<Company | null> {
   await requireAdminUser();
-  const company = await fetchCompanyByIdAction(companyId);
+  const company = await loadCompanyById(companyId);
   if (!company) return null;
 
   const subIdStr = String(subOptionId);
@@ -863,7 +745,7 @@ export async function removeSubOptionFromCompanyAction(companyId: string, option
 
   const viaJunction = await removeSubOptionViaJunction(companyId, subIdStr);
   if (viaJunction) {
-    return fetchCompanyByIdAction(companyId);
+    return loadCompanyById(companyId);
   }
 
   return company;
@@ -871,22 +753,14 @@ export async function removeSubOptionFromCompanyAction(companyId: string, option
 
 export async function removeOptionFromCompanyAction(companyId: string, optionId: string) {
   await requireAdminUser();
-  const { assertAcademicYearWritable, resolveAcademicYearId } = await import("@/lib/repos/academic-year");
-  const academicYearId = await assertAcademicYearWritable(await resolveAcademicYearId());
-  await prisma.companyCareerEventOption.updateMany({
-    where: {
-      company_id: companyId,
-      career_event_option_id: optionId,
-      academic_year_id: academicYearId,
-    },
-    data: { status: "cancelled" },
-  });
-  return fetchCompanyByIdAction(companyId);
+  const { cancelCompanyOption } = await import("@/lib/repos/option-sales");
+  await cancelCompanyOption(companyId, optionId);
+  return loadCompanyById(companyId);
 }
 
 export async function removeUserFromCompanyAction(companyId: string, userId: string) {
   await requireAdminUser();
-  const company = await fetchCompanyByIdAction(companyId);
+  const company = await loadCompanyById(companyId);
 
   if (!company) return { success: false, error: "Company not found" };
 
@@ -932,7 +806,7 @@ export async function resendInviteAction(userId: string, companyId: string): Pro
   try {
     await requireAdminUser();
     // Verify user exists and is in "invited" status
-    const company = await fetchCompanyByIdAction(companyId);
+    const company = await loadCompanyById(companyId);
     if (!company) {
       return { success: false, error: "Company not found" };
     }
@@ -1048,7 +922,7 @@ async function createUserFromApprovedRequest(request: any): Promise<void> {
     }
 
     // Fetch company details
-    const company = await fetchCompanyByIdAction(request.company.id);
+    const company = await loadCompanyById(request.company.id);
     if (!company) {
       console.error("[createUserFromApprovedRequest] Company not found:", request.company.id);
       return;
@@ -1059,12 +933,9 @@ async function createUserFromApprovedRequest(request: any): Promise<void> {
     const userRole = request.role || DEFAULT_COMPANY_REP_ROLE;
 
     // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email: request.email.trim().toLowerCase() },
-    });
+    const existingUser = await findUserByEmail(request.email);
 
     let userId: string | undefined;
-    let isNewUser = false;
 
     if (existingUser) {
         // User already exists - use existing user ID
@@ -1074,26 +945,15 @@ async function createUserFromApprovedRequest(request: any): Promise<void> {
         // Update user status to "invited" if it's not already set
         // Also update role if needed
         try {
-          const updatePayload: any = {};
-          if (existingUser.status !== "invited") {
-            updatePayload.status = "invited";
-          }
-          if (existingUser.role_id !== userRole) {
-            updatePayload.role_id = userRole;
-          }
-
-          if (Object.keys(updatePayload).length > 0) {
-            await prisma.user.update({
-              where: { id: userId },
-              data: updatePayload,
-            });
-          }
+          await setUserStatusAndRole(userId, {
+            ...(existingUser.status !== "invited" && { status: "invited" }),
+            ...(existingUser.role_id !== userRole && { role_id: userRole }),
+          });
         } catch (err) {
           console.warn(`[createUserFromApprovedRequest] Error updating existing user:`, err);
         }
     } else {
         // User doesn't exist, create it
-        isNewUser = true;
         console.log(`[createUserFromApprovedRequest] Creating new user for ${request.email}`);
 
         const repPayload: Partial<CompanyRep> = {
@@ -1199,10 +1059,7 @@ export async function approveRepRequestAction(
     if (!Number.isSafeInteger(id)) {
       return { success: false, error: "Invalid request ID" };
     }
-    const request = await prisma.companyUserRequest.findUnique({
-      where: { id },
-      include: { company: true },
-    });
+    const request = await getCompanyUserRequest(id);
     if (!request) {
       return { success: false, error: "Request not found" };
     }
@@ -1215,25 +1072,15 @@ export async function approveRepRequestAction(
 
     const status = action === "approve" ? "approved" : "rejected";
     if (action === "approve" && request.email) {
-      const duplicate = await prisma.user.findUnique({
-        where: { email: request.email.trim().toLowerCase() },
-        select: { id: true },
-      });
-      if (duplicate) {
-        await prisma.companyUserRequest.update({
-          where: { id },
-          data: { status: "rejected" },
-        });
+      if (await userEmailExists(request.email)) {
+        await setCompanyUserRequestStatus(id, "rejected");
         return {
           success: false,
           error: "A user with this email already exists",
         };
       }
     }
-    await prisma.companyUserRequest.update({
-      where: { id },
-      data: { status },
-    });
+    await setCompanyUserRequestStatus(id, status);
 
     if (action === "approve") {
       await createUserFromApprovedRequest({
@@ -1261,7 +1108,7 @@ export async function requestCompanyPageAction(): Promise<{ success: boolean; er
       return { success: false, error: "User not authenticated or no company associated" };
     }
 
-    const company = await fetchCompanyByIdAction(user.company.id);
+    const company = await loadCompanyById(user.company.id);
     if (!company) {
       return { success: false, error: "Company not found" };
     }
@@ -1283,10 +1130,7 @@ export async function requestCompanyPageAction(): Promise<{ success: boolean; er
       const salespersonId = typeof company.salesperson === "string"
         ? company.salesperson
         : company.salesperson.id;
-      const salesperson = await prisma.user.findUnique({
-        where: { id: salespersonId },
-        select: { email: true, first_name: true, last_name: true },
-      });
+      const salesperson = await getUserContact(salespersonId);
       if (salesperson) {
         salespersonEmail = salesperson.email;
         salespersonName =
@@ -1329,6 +1173,15 @@ export async function requestCompanyPageAction(): Promise<{ success: boolean; er
   }
 }
 
+/** The CV Book's price, shown to a company rep before requesting access. */
+export async function fetchCVBookPriceAction(): Promise<string | null> {
+  const user = await getUserFromCookies();
+  if (!user) return null;
+  const { getCVBookSubOption } = await import("@/lib/repos/option");
+  const cvBookSubOption = await getCVBookSubOption();
+  return cvBookSubOption?.price != null ? String(cvBookSubOption.price) : null;
+}
+
 export async function requestCVBookAccessAction(): Promise<{ success: boolean; error?: string }> {
   try {
     const user = await getUserFromCookies();
@@ -1336,7 +1189,7 @@ export async function requestCVBookAccessAction(): Promise<{ success: boolean; e
       return { success: false, error: "User not authenticated or no company associated" };
     }
 
-    const company = await fetchCompanyByIdAction(user.company.id);
+    const company = await loadCompanyById(user.company.id);
     if (!company) {
       return { success: false, error: "Company not found" };
     }
@@ -1355,10 +1208,7 @@ export async function requestCVBookAccessAction(): Promise<{ success: boolean; e
       const salespersonId = typeof company.salesperson === "string"
         ? company.salesperson
         : company.salesperson.id;
-      const salesperson = await prisma.user.findUnique({
-        where: { id: salespersonId },
-        select: { email: true, first_name: true, last_name: true },
-      });
+      const salesperson = await getUserContact(salespersonId);
       if (salesperson) {
         salespersonEmail = salesperson.email;
         salespersonName =

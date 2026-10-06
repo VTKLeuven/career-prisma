@@ -1,77 +1,45 @@
-'use client'
-
-import { useEffect, useState } from "react"
+import Image from "next/image"
 import type { Master } from "@/lib/schema"
 import { getFileUrl } from "@/components/Images"
 import DOMPurify from "isomorphic-dompurify"
+import { loadPublicMasters } from "@/lib/masters-data"
 
-export default function OurStudentsPage() {
-  const [masters, setMasters] = useState<Master[]>([])
-  const [loading, setLoading] = useState(true)
+export const metadata = { title: "Our students" }
 
-  useEffect(() => {
-    async function loadMasters() {
-      try {
-        const res = await fetch("/api/masters")
-        if (!res.ok) throw new Error("Failed to fetch")
-        const data = (await res.json()) as Master[]
-        // Show all masters, but prioritize those with student data
-        // Sort by: has students (desc), then by name
-        const sorted = data.sort((a, b) => {
-          const aHasStudents = (a.students && a.students > 0) ? 1 : 0
-          const bHasStudents = (b.students && b.students > 0) ? 1 : 0
-          if (aHasStudents !== bHasStudents) {
-            return bHasStudents - aHasStudents
-          }
-          return a.name.localeCompare(b.name)
-        })
-        setMasters(sorted)
-      } catch (error) {
-        console.error("Error loading masters:", error)
-      } finally {
-        setLoading(false)
-      }
+// Per request from the in-process masters cache, which master edits drop.
+export const dynamic = "force-dynamic"
+
+/**
+ * /our-students: every master with its student numbers and modules. A server
+ * component -- it used to render a spinner and fetch /api/masters from the
+ * browser, and shipped DOMPurify to the browser to clean the modules.
+ */
+export default async function OurStudentsPage() {
+  // Show all masters, but prioritize those with student data
+  // Sort by: has students (desc), then by name
+  const masters: Master[] = [...(await loadPublicMasters())].sort((a, b) => {
+    const aHasStudents = (a.students && a.students > 0) ? 1 : 0
+    const bHasStudents = (b.students && b.students > 0) ? 1 : 0
+    if (aHasStudents !== bHasStudents) {
+      return bHasStudents - aHasStudents
     }
-    loadMasters()
-  }, [])
-
-  // Calculate statistics
-  const totalMasters = masters.length
-  const totalStudents = masters.reduce((sum, m) => sum + (m.students || 0), 0)
-
-  if (loading) {
-    return (
-      <div className="min-h-screen relative">
-        {/* Fixed Background Image */}
-        <div 
-          className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat"
-          style={{
-            backgroundImage: 'url(/api/files/b2d5f309-d041-4c57-a4a9-ab5cd60f0b60)',
-            backgroundAttachment: 'fixed',
-          }}
-        >
-          <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px]"></div>
-        </div>
-        <div className="relative z-10 min-h-screen flex items-center justify-center">
-          <div className="text-center bg-white/90 backdrop-blur-sm rounded-2xl p-8 shadow-lg">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-vtk-blue mx-auto"></div>
-            <p className="mt-4 text-neutral-600 font-medium">Loading student profiles...</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
+    return a.name.localeCompare(b.name)
+  })
 
   return (
     <div className="min-h-screen relative">
-      {/* Fixed Background Image */}
-      <div 
-        className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat"
-        style={{
-          backgroundImage: 'url(/api/files/b2d5f309-d041-4c57-a4a9-ab5cd60f0b60)',
-          backgroundAttachment: 'fixed',
-        }}
-      >
+      {/* Fixed background image. Through next/image, so it is resized and
+          served as WebP -- as a CSS background it downloaded the original
+          4.8 MB, 4239x6358 photo. */}
+      <div className="fixed inset-0 z-0">
+        <Image
+          src="/api/files/b2d5f309-d041-4c57-a4a9-ab5cd60f0b60"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover"
+        />
         {/* Overlay for better text readability */}
         <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px]"></div>
       </div>
@@ -148,9 +116,11 @@ export default function OurStudentsPage() {
                         <div className="flex items-center gap-4 mb-4 md:mb-0">
                           {logoUrl && (
                             <div className="w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center bg-neutral-50 rounded-lg p-2">
-                              <img
+                              <Image
                                 src={logoUrl}
                                 alt={`${master.name} logo`}
+                                width={64}
+                                height={64}
                                 className="max-w-full max-h-full object-contain"
                               />
                             </div>

@@ -6,6 +6,17 @@
   function instead. Repos return the legacy Directus-shaped objects the UI
   expects; `src/lib/repos/_shape.ts` is the only place that knows about that
   translation.
+- Repos start with `import "server-only"`, **never `"use server"`**. A
+  `"use server"` module turns every export into a server action — a public
+  POST endpoint with no auth check — the moment any client component imports
+  it. Client components reach data through `src/app/actions/`, which check
+  `requireAdminUser()` / the session first; `server-only` makes the build fail
+  if a client imports a repo directly.
+- Password hashes and token columns (reset, invite, verification, SSO) are
+  left out of every query by the client-wide `omit` in `src/lib/prisma.ts`.
+  `repos/credentials.ts` is the one module that opts them back in; the session
+  lookups behind `getUserFromCookies()` / `getStudentFromCookies()` live in
+  `repos/sessions.ts`.
 - Schema changes go through `npx prisma migrate dev`. Do not hand-write SQL
   against the running database.
 - Do not edit `prisma/migrations/00000000000000_init` — it is the captured
@@ -20,6 +31,23 @@ state, effects, or browser APIs. Server-only modules start with
 Writes go through server actions in `src/app/actions/`. Add a route handler in
 `src/app/api/` only when something genuinely needs an HTTP endpoint (file
 downloads, OAuth callbacks, QR scanning, cron, external callers).
+
+**Load a page's data in its server `page.tsx`, not in a client effect.** Next
+runs a client's server actions one at a time, so a client page that fetches
+three things on mount waits for three round trips in a row behind a spinner.
+Load in parallel on the server (calling the actions or repos directly) and hand
+the result to the client component as props or initial state; the client then
+only fetches when the user changes something (another year, page or version).
+`dashboard/page.tsx`, `admin/events/page.tsx` and
+`admin/forms/[formId]/responses/page.tsx` are worked examples. The company
+settings tabs share one server-loaded company through
+`dashboard/settings/settings-company.tsx` instead of each fetching it.
+
+Every export of a `"use server"` module is a public POST endpoint whether or
+not anything calls it. Don't leave unused actions behind, don't take
+authorization-relevant data (a company object, its options) from the caller --
+load it from the session -- and keep helpers only server code uses in a
+`server-only` module instead (`lib/company-ordering.ts`).
 
 ## Access control
 
@@ -59,6 +87,14 @@ so re-apply the classes if you do.
   (`Table`'s `containerClassName`) so the toolbar stays in view.
 - **Status pills.** Use the pastel `Badge` variants (`success`, `warning`,
   `info`, `purple`, `muted`, `destructive`) rather than solid fills.
+
+## Dates and times
+
+Event dates and hours are Belgian wall-clock times, stored without a zone. The
+server runs on UTC, so never build an instant with
+`` new Date(`${date}T${hour}`) `` -- that reads it in the runtime's zone. Use
+`eventWallTimeToDate()` / `isDuringEvent()` from `src/lib/utils/events.ts`, which
+convert from Europe/Brussels (`EVENT_TIMEZONE`).
 
 ## Feature flags
 

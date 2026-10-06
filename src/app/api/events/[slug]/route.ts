@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchEventPageBySlugAction } from "@/app/actions/events";
 import { getCachedEventPage, setCachedEventPage } from "@/lib/event-page-cache";
+import { sharedCacheHeaders } from "@/lib/http-cache";
 
 export async function GET(
   request: NextRequest,
@@ -14,10 +15,7 @@ export async function GET(
     const cached = getCachedEventPage(slug);
     if (cached) {
       return NextResponse.json(cached, {
-        headers: {
-          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600', // 5 min CDN, 10 min stale
-          'CDN-Cache-Control': 'public, s-maxage=300',
-        },
+        headers: sharedCacheHeaders(300, 600),
       });
     }
 
@@ -27,7 +25,7 @@ export async function GET(
     if (!page) {
       return NextResponse.json(
         { error: 'Event not found' },
-        { status: 404, headers: { 'Cache-Control': 'public, s-maxage=60' } }
+        { status: 404, headers: sharedCacheHeaders(60) }
       );
     }
 
@@ -35,10 +33,7 @@ export async function GET(
     setCachedEventPage(slug, page);
 
     return NextResponse.json(page, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
-        'CDN-Cache-Control': 'public, s-maxage=300',
-      },
+      headers: sharedCacheHeaders(300, 600),
     });
   } catch (error) {
     console.error('[events API] Error fetching event:', error);

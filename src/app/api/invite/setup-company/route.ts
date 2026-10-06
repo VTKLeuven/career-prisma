@@ -1,9 +1,11 @@
-import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import sharp from "sharp";
-import prisma from "@/lib/prisma";
+import type { Company } from "@/lib/schema";
+import { validateInviteToken } from "@/lib/invite-token";
+import { updateCompany } from "@/lib/repos/company";
 import { uploadFile } from "@/lib/file-storage";
 import { validatePageImageDimensionsFromSize } from "@/lib/utils/image-validation";
+import { sanitizeRichText } from "@/lib/sanitize-html";
 
 export async function POST(request: Request) {
   try {
@@ -17,29 +19,17 @@ export async function POST(request: Request) {
       );
     }
 
-    const decoded = Buffer.from(token, "base64url").toString("utf8");
-    const [userId, randomToken] = decoded.split(":");
-    if (!userId || !randomToken) {
-      return NextResponse.json({ error: "Invalid invite token" }, { status: 400 });
-    }
-
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    const tokenHash = createHash("sha256").update(randomToken).digest("hex");
-    if (
-      !user ||
-      user.status !== "invited" ||
-      user.company_id !== companyId ||
-      user.invite_token_hash !== tokenHash ||
-      !user.invite_token_created ||
-      Date.now() - user.invite_token_created.getTime() > 7 * 24 * 60 * 60 * 1000
-    ) {
+    // The invited representative may set up their own company only.
+    const invited = await validateInviteToken(token);
+    if (!invited || invited.company_id !== companyId) {
       return NextResponse.json(
         { error: "This invitation is invalid or has expired" },
         { status: 400 }
       );
     }
+    const userId = invited.id;
 
-    const company = await prisma.company.findUnique({ where: { id: companyId } });
+    const company = invited.company;
     if (!company) {
       return NextResponse.json({ error: "Company not found" }, { status: 404 });
     }
@@ -80,8 +70,9 @@ export async function POST(request: Request) {
       name: String(formData.get("name") || "").trim(),
       website: String(formData.get("website") || "").trim(),
       location: String(formData.get("location") || "").trim(),
-      short_description: String(formData.get("short_description") || "").trim(),
-      long_description: String(formData.get("long_description") || "").trim(),
+      // Rendered as HTML on the public company page.
+      short_description: sanitizeRichText(String(formData.get("short_description") || "").trim()),
+      long_description: sanitizeRichText(String(formData.get("long_description") || "").trim()),
       VAT: String(formData.get("VAT") || "") || null,
       address_street: String(formData.get("address_street") || "") || null,
       address_number: String(formData.get("address_number") || "") || null,
@@ -103,24 +94,15 @@ export async function POST(request: Request) {
       );
     }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.company.update({
-        where: { id: companyId },
-        data: {
-          ...data,
-          logo_id: logoId,
-          page_image: pageImageId,
-          status: "published",
-        },
-      });
-      await tx.companyMaster.deleteMany({ where: { company_id: companyId } });
-      await tx.companyMaster.createMany({
-        data: masterIds.map((masterId) => ({
-          company_id: companyId,
-          master_id: masterId,
-        })),
-      });
-    });
+    // One transaction: the company's fields, its masters (category) and
+    // publishing it.
+    await updateCompany(companyId, {
+      ...data,
+      logo: logoId,
+      page_image: pageImageId,
+      status: "published",
+      category: masterIds.map((master_id) => ({ master_id })),
+    } as unknown as Partial<Company>);
 
     return NextResponse.json({ success: true });
   } catch (error) {

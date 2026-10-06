@@ -1,7 +1,24 @@
 // lib/utils/svg-booth-extractor.ts
-"use server";
+// Not "use server": that would make extractBoothsFromSVG a public action. Only
+// the upload-floorplan route calls it.
+import "server-only";
 
-import { BoothExtraction } from "./pdf-processor";
+export interface BoothExtraction {
+  booth_number: number;
+  coords: {
+    type: "rect";
+    x_pct: number;
+    y_pct: number;
+    width_pct: number;
+    height_pct: number;
+    x_px: number;
+    y_px: number;
+    w_px: number;
+    h_px: number;
+    match: "sibling" | "contains" | "nearest" | "no_rects_found";
+    rotation_deg?: number; // For rotated booths
+  };
+}
 
 /**
  * Extract booths from SVG file
@@ -55,12 +72,6 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
       }
     }
     buildParentMap(root);
-
-    // Helper: strip units from values
-    function stripUnit(value: string | null): string {
-      if (!value) return "0";
-      return value.replace(/[a-zA-Z%]+$/, "").trim();
-    }
 
     // Parse transform attribute - returns full matrix info for path transforms
     function parseTransform(transformStr: string | null): { 
@@ -150,7 +161,6 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
       const commands = pathData.match(/[MmLlHhVvZz][^MmLlHhVvZz]*/g);
       if (!commands || commands.length < 4) return null;
 
-      const coords: number[] = [];
       let lastX = 0;
       let lastY = 0;
       let minX = Infinity;
@@ -224,23 +234,6 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
       }
 
       return null;
-    }
-
-    // Accumulate transforms up the ancestor chain
-    function accumulateTranslation(elem: Element): { tx: number; ty: number } {
-      let tx = 0;
-      let ty = 0;
-      let cur: Element | null = elem;
-
-      while (cur) {
-        const transform = cur.getAttribute("transform") || "";
-        const { tx: dtx, ty: dty } = parseTransform(transform);
-        tx += dtx;
-        ty += dty;
-        cur = parentMap.get(cur) || null;
-      }
-
-      return { tx, ty };
     }
 
     // Get full transform (including rotation from parent groups) for an element
@@ -745,6 +738,7 @@ export async function extractBoothsFromSVG(svgContent: string): Promise<BoothExt
   }
 }
 
+// Strip a unit suffix: "12.5px" -> "12.5".
 function stripUnit(value: string | null): string {
   if (!value) return "0";
   return value.replace(/[a-zA-Z%]+$/, "").trim();

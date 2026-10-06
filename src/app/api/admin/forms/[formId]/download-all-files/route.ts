@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserFromCookies } from "@/lib/auth-server";
 import archiver from "archiver";
 import type { FormVersion, FormResponse } from "@/lib/schema";
-import prisma from "@/lib/prisma";
+import { getFormSlug, listFormVersionSchemas, listLiveResponsesForVersions } from "@/lib/repos/forms";
 import { getStoredFile } from "@/lib/file-storage";
 import { readFile } from "fs/promises";
 
@@ -145,11 +145,7 @@ export async function GET(
       );
     }
 
-    const versionRows = await prisma.formVersion.findMany({
-      where: { form_id: Number(formId) },
-      select: { id: true, schema: true },
-      orderBy: { version_number: "desc" },
-    });
+    const versionRows = await listFormVersionSchemas(formId);
     const versions = versionRows.map((version) => ({
       ...version,
       id: String(version.id),
@@ -165,13 +161,7 @@ export async function GET(
     const versionIds = versions.map((v) => v.id);
 
     // Fetch all responses for all versions (exclude archived)
-    const responseRows = await prisma.formResponse.findMany({
-      where: {
-        form_version_id: { in: versionIds.map(Number) },
-        archived: { not: true },
-      },
-      select: { id: true, data: true, form_version_id: true },
-    });
+    const responseRows = await listLiveResponsesForVersions(versionIds);
     const responses = responseRows.map((response) => ({
       ...response,
       id: String(response.id),
@@ -223,11 +213,7 @@ export async function GET(
     const zipBuffer = Buffer.concat(chunks);
 
     // Get form slug for download filename
-    const form = await prisma.form.findUnique({
-      where: { id: Number(formId) },
-      select: { slug: true },
-    });
-    const slug = form?.slug ?? formId;
+    const slug = (await getFormSlug(formId)) ?? formId;
 
     return new NextResponse(zipBuffer, {
       status: 200,

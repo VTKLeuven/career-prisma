@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useState } from "react";
-import { useRouter } from "next/navigation"
 import NextImage from "next/image";
 import Link from "next/link";
 import { getFileUrl } from "@/components/Images";
@@ -27,7 +26,6 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState<string>("");
-  const router = useRouter()
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { uploadFile } from "@/lib/file-storage";
 import { getOrCreateEventPage } from "@/lib/repos/floorplan";
 import { getUserFromCookies } from "@/lib/auth-server";
-import prisma from "@/lib/prisma";
+import { setEventPageCompanyGuide } from "@/lib/repos/event-page";
 
 // Allow larger file uploads (up to 50MB)
 export const maxDuration = 60;
@@ -53,10 +53,7 @@ export async function POST(req: Request) {
     }
 
     // Step 3: Update event page with company guide
-    await prisma.careerEventPage.update({
-      where: { id: Number(eventPage.id) },
-      data: { company_guide: pdfFileId },
-    });
+    await setEventPageCompanyGuide(Number(eventPage.id), pdfFileId);
 
     return NextResponse.json({
       success: true,

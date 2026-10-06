@@ -2,7 +2,7 @@
  * Build master-degree options for forms and floorplan.
  * Shared logic for server-side option building.
  */
-import type { Master, Faculty } from "@/lib/schema";
+import type { Master } from "@/lib/schema";
 
 type MasterOption = { value: string; label: string; logo?: string };
 
@@ -24,66 +24,6 @@ export function normalizeFaculties(faculties: unknown[] | null): FacultyItem[] |
       Array.isArray(f.faculty_masters) ? f.faculty_masters : [];
     return { ...f, masters } as FacultyItem;
   });
-}
-
-export function buildMasterDegreeOptions(
-  masters: Master[],
-  faculties: FacultyItem[] | null,
-  includeFaculties: boolean
-): MasterOption[] {
-  if (!includeFaculties || !faculties || faculties.length === 0) {
-    return masters.map((m) => ({ value: m.id, label: m.name, logo: m.logo }));
-  }
-  const isOtherFaculty = (name: string) => /^others?$/i.test((name ?? "").trim());
-  const sortedFaculties = [...faculties].sort((a, b) => {
-    const aName = (a.name ?? "").toLowerCase();
-    const bName = (b.name ?? "").toLowerCase();
-    const aIsOther = isOtherFaculty(a.name ?? "");
-    const bIsOther = isOtherFaculty(b.name ?? "");
-    if (aIsOther && !bIsOther) return 1;
-    if (!aIsOther && bIsOther) return -1;
-    if (aIsOther && bIsOther) return 0;
-    const aHasMasters = (a.masters ?? []).length > 0;
-    const bHasMasters = (b.masters ?? []).length > 0;
-    if (aHasMasters && !bHasMasters) return -1;
-    if (!aHasMasters && bHasMasters) return 1;
-    return 0;
-  });
-  const options: MasterOption[] = [];
-  const canonicalOther = "Other";
-  for (const faculty of sortedFaculties) {
-    const facultyName = faculty.name ?? "";
-    const isOther = isOtherFaculty(facultyName);
-    const mastersList = faculty.masters ?? [];
-    const resolvedMasters: Master[] = mastersList
-      .map((item) => {
-        if (item && typeof item === "object" && "master_id" in item) {
-          const mid = (item as { master_id: Master | string | null }).master_id;
-          if (mid && typeof mid === "object" && "id" in mid) return mid as Master;
-          if (mid && typeof mid === "string") return masters.find((x) => x.id === mid) ?? null;
-          return null;
-        }
-        return item as Master;
-      })
-      .filter((m): m is Master => m != null && typeof m === "object" && "id" in m && "name" in m);
-
-    if (resolvedMasters.length === 0) {
-      options.push({
-        value: `fac:${faculty.id}`,
-        label: isOther ? canonicalOther : `Fac. ${facultyName}`,
-        logo: faculty.logo,
-      });
-    } else {
-      for (const m of resolvedMasters) {
-        options.push({
-          value: `fac:${faculty.id}:${m.id}`,
-          label: m.name, // Show master name only
-          logo: m.logo,
-        });
-      }
-    }
-  }
-  return options;
 }
 
 /** Normalize for matching: trim, collapse spaces, lowercase, strip brackets. Treat "others" same as "other". */

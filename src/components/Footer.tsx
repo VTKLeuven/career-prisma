@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { Separator } from '@/components/ui/separator'
-import { usePageLayout } from '@/app/(public)/(site)/layout'
+import { usePageLayout } from '@/app/(public)/(site)/site-shell'
 
 export function Footer() {
     const { darkHeaderFooter } = usePageLayout()

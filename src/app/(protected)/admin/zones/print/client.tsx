@@ -3,9 +3,10 @@
 import Link from "next/link";
 import type { Booth } from "@/lib/schema";
 import { Button } from "@/components/ui/button";
-import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
+import { toast } from "sonner";
 
 export default function PrintClient({
     booths,
@@ -152,7 +153,7 @@ export default function PrintClient({
 
     } catch (error) {
       console.error("PDF Generation failed:", error);
-      alert("Failed to generate PDF. Check console for details.");
+      toast.error("Failed to generate PDF. Check console for details.");
     } finally {
       setIsGenerating(false);
     }

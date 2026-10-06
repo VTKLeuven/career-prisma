@@ -1,11 +1,10 @@
 'use client'
 
-import { useEffect, useState, useRef, useMemo } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
-import { fetchFloorplanAction, updateFloorplanCategoryFormFieldsAction, updateFloorplanCompanyNameFormFieldsAction } from "@/app/actions/features"
-import { fetchCompaniesForEventAction } from "@/app/actions/companies"
-import { fetchAllCompanyFormsForEventAction, fetchCompanyIdsMatchingFormFieldOptionAction, fetchCompanyFormFieldValuesAction } from "@/app/actions/forms"
+import { fetchFloorplanEditorAction, fetchBoothsForFloorplanAction, updateFloorplanCategoryFormFieldsAction, updateFloorplanCompanyNameFormFieldsAction } from "@/app/actions/features"
+import { fetchCompanyIdsMatchingFormFieldOptionAction, fetchCompanyFormFieldValuesAction } from "@/app/actions/forms"
 import type { CareerEventPage, Booth, Company } from '@/lib/schema'
 import type { FormField } from '@/lib/schema'
 import { Button } from "@/components/ui/button"
@@ -29,6 +28,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { toast } from "sonner";
 
 export default function AdminFloorplanPage() {
   const params = useParams()
@@ -75,20 +75,20 @@ export default function AdminFloorplanPage() {
   const [companyNameFormFields, setCompanyNameFormFields] = useState<CompanyNameFormFieldEntry[]>([])
   const [companyNameFormFieldsSaving, setCompanyNameFormFieldsSaving] = useState(false)
 
+  // Everything the editor opens with, in one round trip.
   useEffect(() => {
-    const loadData = async () => {
-      if (!eventId) return
-      
-      try {
-        const { getEventPageWithFloorplan, getBoothsForFloorplan } = await import("@/lib/repos/floorplan")
-        
-        // Fetch event page with floorplan
-        const eventPage = await getEventPageWithFloorplan(eventId)
-        if (!eventPage || !eventPage.floorplan) {
+    if (!eventId) return
+    let cancelled = false
+    setFormsLoading(true)
+    fetchFloorplanEditorAction(eventId)
+      .then((data) => {
+        if (cancelled) return
+        if (!data) {
           console.error("No floorplan found for this event")
           return
         }
-        
+        const { page: eventPage, svg, booths: boothsData, companies: companiesData, forms } = data
+
         setPage(eventPage)
         const floorplan = eventPage.floorplan as {
           floorplan_category_form_fields?: Array<{ formId: string; formVersionId: string; fieldName: string }>;
@@ -98,46 +98,20 @@ export default function AdminFloorplanPage() {
         const raw = floorplan?.floorplan_company_name_form_field
         const nameFields = Array.isArray(raw) ? raw : raw && typeof raw === "object" && raw.formId ? [raw] : []
         setCompanyNameFormFields(nameFields)
-        
-        // Fetch SVG content and booths first (need booths for viewBox calculation)
-        const data = await fetchFloorplanAction(eventPage)
-        const boothsData = eventPage.floorplan.id
-          ? await getBoothsForFloorplan(eventPage.floorplan.id)
-          : []
-        
-        if (data) {
-          setSvgContent(data.svg || "")
-          
-          const parser = new DOMParser()
-          const rawSvg = data.svg || ""
-          const svgDoc = parser.parseFromString(rawSvg, "image/svg+xml")
-          const svgRoot = svgDoc.documentElement
-          const originalVb = svgRoot?.getAttribute("viewBox") || "0 0 1000 600"
-          setOriginalViewBox(originalVb)
-          setViewBox(originalVb)
-        }
-        
+
+        setSvgContent(svg)
+        const svgRoot = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement
+        const originalVb = svgRoot?.getAttribute("viewBox") || "0 0 1000 600"
+        setOriginalViewBox(originalVb)
+        setViewBox(originalVb)
+
         setBooths(boothsData)
-        
-        // Fetch all companies for event (no cap - uses company options, limit: -1)
-        const companiesData = await fetchCompaniesForEventAction(eventId, false)
         setCompanies(companiesData ?? [])
-      } catch (error) {
-        console.error("Error loading floorplan data:", error)
-      }
-    }
-
-    loadData()
-  }, [eventId])
-
-  // Load company forms for this event
-  useEffect(() => {
-    if (!eventId) return
-    setFormsLoading(true)
-    fetchAllCompanyFormsForEventAction(eventId)
-      .then(setEventForms)
-      .catch(console.error)
-      .finally(() => setFormsLoading(false))
+        setEventForms(forms as EventForm[])
+      })
+      .catch((error) => console.error("Error loading floorplan data:", error))
+      .finally(() => { if (!cancelled) setFormsLoading(false) })
+    return () => { cancelled = true }
   }, [eventId])
 
   // Load matched company IDs when filters change (union of all complete filters)
@@ -222,9 +196,9 @@ export default function AdminFloorplanPage() {
         eventId,
         categoryFormFields.filter(e => e.formVersionId && e.fieldName)
       )
-      if (!result.success) alert(result.error ?? "Failed to save")
+      if (!result.success) toast.error(result.error ?? "Failed to save")
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to save")
+      toast.error(e instanceof Error ? e.message : "Failed to save")
     } finally {
       setCategoryFormFieldsSaving(false)
     }
@@ -251,9 +225,9 @@ export default function AdminFloorplanPage() {
         eventId,
         companyNameFormFields.filter(e => e.formVersionId && e.fieldName)
       )
-      if (!result.success) alert(result.error ?? "Failed to save")
+      if (!result.success) toast.error(result.error ?? "Failed to save")
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to save")
+      toast.error(e instanceof Error ? e.message : "Failed to save")
     } finally {
       setCompanyNameFormFieldsSaving(false)
     }
@@ -329,8 +303,7 @@ export default function AdminFloorplanPage() {
 
       // Refresh booths
       if (page?.floorplan?.id) {
-        const { getBoothsForFloorplan } = await import("@/lib/repos/floorplan")
-        const updatedBooths = await getBoothsForFloorplan(page.floorplan.id)
+        const updatedBooths = await fetchBoothsForFloorplanAction(page.floorplan.id)
         setBooths(updatedBooths)
         
         // Update selected booth
@@ -341,7 +314,7 @@ export default function AdminFloorplanPage() {
       }
     } catch (error) {
       console.error("Error assigning company:", error)
-      alert(error instanceof Error ? error.message : "Failed to assign company")
+      toast.error(error instanceof Error ? error.message : "Failed to assign company")
     } finally {
       setUpdating(false)
     }
@@ -369,7 +342,7 @@ export default function AdminFloorplanPage() {
       router.push("/admin")
     } catch (error) {
       console.error("Error deleting floorplan:", error)
-      alert(error instanceof Error ? error.message : "Failed to delete floorplan")
+      toast.error(error instanceof Error ? error.message : "Failed to delete floorplan")
       setDeleting(false)
     }
   }
@@ -527,8 +500,7 @@ export default function AdminFloorplanPage() {
         }
       }
 
-      const { getBoothsForFloorplan } = await import("@/lib/repos/floorplan")
-      const updatedBooths = await getBoothsForFloorplan(page.floorplan.id)
+      const updatedBooths = await fetchBoothsForFloorplanAction(page.floorplan.id)
       setBooths(updatedBooths)
       setLoadCsvError(null)
     } catch (err) {

@@ -3,9 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { requestCVBookAccessAction } from "@/app/actions/companies";
+import { requestCVBookAccessAction, fetchCVBookPriceAction } from "@/app/actions/companies";
 import { IconFileCv } from "@tabler/icons-react";
-import { getCVBookSubOption } from "@/lib/repos/option";
 
 export default function RequestCVBookAccessPage() {
   const [loading, setLoading] = useState(false);
@@ -17,9 +16,9 @@ export default function RequestCVBookAccessPage() {
     async function loadPrice() {
       try {
         // Resolve CV Book access from the company's configured sub-options.
-        const cvBookSubOption = await getCVBookSubOption();
-        if (cvBookSubOption?.price) {
-          setPrice(cvBookSubOption.price);
+        const cvBookPrice = await fetchCVBookPriceAction();
+        if (cvBookPrice) {
+          setPrice(cvBookPrice);
         }
       } catch (err) {
         console.error("Error loading CV Book price:", err);

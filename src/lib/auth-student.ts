@@ -1,14 +1,18 @@
 import "server-only";
 
+import { cache } from "react";
 import { cookies } from "next/headers";
 import type { Student } from "@/lib/schema";
 import {
   STUDENT_SESSION_COOKIE,
   verifySessionToken,
 } from "@/lib/auth-session";
-import prisma from "@/lib/prisma";
+import { getStudentForSession } from "@/lib/repos/sessions";
 
-function shapeStudent(student: NonNullable<Awaited<ReturnType<typeof prisma.student.findUnique>>>): Student {
+type StudentRowWithPassword = NonNullable<Awaited<ReturnType<typeof getStudentForSession>>>;
+
+function shapeStudent(row: StudentRowWithPassword): Student {
+  const { password: _password, ...student } = row;
   return {
     ...student,
     id: String(student.id),
@@ -29,20 +33,16 @@ function shapeStudent(student: NonNullable<Awaited<ReturnType<typeof prisma.stud
     sso_study_years: student.sso_study_years ?? [],
     sso_locale: student.sso_locale ?? undefined,
     preferred_language: student.preferred_language ?? undefined,
-    sso_access_token: student.sso_access_token ?? undefined,
-    sso_token_expires_at: student.sso_token_expires_at?.toISOString(),
-    password: student.password ?? undefined,
+    has_password: Boolean(row.password),
     verified: student.verified ?? undefined,
-    verification_token_hash: student.verification_token_hash ?? undefined,
-    verification_token_created:
-      student.verification_token_created?.toISOString(),
     date_created: student.date_created?.toISOString(),
     date_updated: student.date_updated?.toISOString(),
     is_shifter: student.is_shifter ?? undefined,
   };
 }
 
-export async function getStudentFromCookies(): Promise<Student | null> {
+/** The signed-in student. Memoised per request, like getUserFromCookies. */
+export const getStudentFromCookies = cache(async (): Promise<Student | null> => {
   const cookieStore = await cookies();
   const session = verifySessionToken(
     cookieStore.get(STUDENT_SESSION_COOKIE)?.value,
@@ -52,9 +52,10 @@ export async function getStudentFromCookies(): Promise<Student | null> {
 
   const id = Number(session.sub);
   if (!Number.isSafeInteger(id)) return null;
-  const student = await prisma.student.findUnique({ where: { id } });
+  // The hash is loaded only to set `has_password`; the shape never carries it.
+  const student = await getStudentForSession(id);
   return student ? shapeStudent(student) : null;
-}
+});
 
 export async function clearStudentSession(): Promise<void> {
   const cookieStore = await cookies();

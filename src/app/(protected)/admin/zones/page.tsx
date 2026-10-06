@@ -5,14 +5,11 @@ import ZonesClient from "./client";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { fetchEventPagesAction } from "@/app/actions/events";
 import type { CareerEventPage } from "@/lib/schema";
-import prisma from "@/lib/prisma";
+import { listAllBooths } from "@/lib/repos/booths";
 import { PageHeader } from "@/components/admin/PageHeader";
 
 async function getBooths() {
-    const rows = await prisma.booth.findMany({
-        include: { floorplan: true, company: true },
-        orderBy: { booth_number: "asc" },
-    });
+    const rows = await listAllBooths();
     return rows.map(({ floorplan, floorplan_id, company_id, ...row }) => ({
         ...row,
         id: String(row.id),

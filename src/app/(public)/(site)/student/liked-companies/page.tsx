@@ -11,6 +11,7 @@ import { slugifyCompanyName } from "@/lib/utils/slugify";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
 import { fetchLikedCompaniesAction } from "@/app/actions/student-liked-companies";
 import { Star } from "lucide-react";
+import { fetchSessionCheck } from "@/lib/session-client"
 
 export default function LikedCompaniesPage() {
   const [companies, setCompanies] = useState<Array<{ id: string; name?: string; logo?: string; status?: string }>>([]);
@@ -22,14 +23,13 @@ export default function LikedCompaniesPage() {
 
     async function load() {
       try {
-        const [checkRes, companiesData] = await Promise.all([
-          fetch("/api/user/check", { cache: "no-store", credentials: "include" }),
+        const [check, companiesData] = await Promise.all([
+          fetchSessionCheck(),
           fetchLikedCompaniesAction(),
         ]);
 
         if (cancelled) return;
 
-        const check = (await checkRes.json()) as { student?: { id: string } };
         if (!check.student?.id) {
           setStudent(null);
           setCompanies([]);

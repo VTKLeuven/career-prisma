@@ -1,13 +1,11 @@
 // lib/repos/matching-software.ts
-"use server";
+import "server-only";
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { COMPANY_INCLUDE, shapeCompany } from "@/lib/repos/_shape";
 import type { MatchingSoftware, StudentMatchingResponse, CompanyMatchingResponse, RIASECType, OCIAType } from "@/lib/schema";
 import { countGeneralInfoOverlap, type GeneralInfoAnswers } from "@/lib/matching-general-info";
-
-const RIASEC_TYPES: RIASECType[] = ["R", "I", "A", "S", "E", "C"];
 
 /** RIASEC → OCIA mapping: Clan=S+A, Adhocracy=A+E, Market=R+E, Hierarchy=C+I. 6/4 scales 6 RIASEC dims to 4 OCIA dims. */
 function riasecToOcia(riasec: Record<RIASECType, number>): Record<OCIAType, number> {
@@ -297,16 +295,6 @@ export async function listMatchingSoftware(opts?: {
   }
 }
 
-export async function getMatchingSoftwareByEventAndYear(eventId: string, yearId: string): Promise<MatchingSoftware | null> {
-  try {
-    const items = await listMatchingSoftware({ eventId, yearId, active: true });
-    return items.length > 0 ? items[0] : null;
-  } catch (error) {
-    console.error("[getMatchingSoftwareByEventAndYear] Error:", error);
-    return null;
-  }
-}
-
 /** Get matching software by ID (for config like category_form_fields). */
 export async function getMatchingSoftwareById(id: string): Promise<MatchingSoftware | null> {
   try {
@@ -334,21 +322,6 @@ export async function getActiveMatchingSoftwareForEvent(eventId: string): Promis
     return shapeMatchingSoftware(row);
   } catch (error) {
     console.error("[getActiveMatchingSoftwareForEvent] Error:", error);
-    return null;
-  }
-}
-
-/** Get first active matching software (for company dashboard - no event context). */
-export async function getFirstActiveMatchingSoftware(): Promise<MatchingSoftware | null> {
-  try {
-    const row = await prisma.matchingSoftware.findFirst({
-      where: { active: true },
-      include: MS_INCLUDE,
-      orderBy: { id: "desc" },
-    });
-    return shapeMatchingSoftware(row);
-  } catch (error) {
-    console.error("[getFirstActiveMatchingSoftware] Error:", error);
     return null;
   }
 }
@@ -685,77 +658,6 @@ export async function syncAllCompanyMatchedStudents(
   }
   log?.(`Company sync done: ${synced} synced, ${errors.length} errors`);
   return { synced, errors };
-}
-
-/** Recompute matches for ALL students, then sync company matches. Full update. Returns logs for admin display. */
-export async function fullUpdateAllMatches(
-  matchingSoftwareId: string
-): Promise<{ studentsUpdated: number; companiesSynced: number; errors: string[]; logs: string[] }> {
-  const logs: string[] = [];
-  const log = (msg: string) => {
-    logs.push(`[${new Date().toISOString().slice(11, 19)}] ${msg}`);
-    console.log("[Matching]", msg);
-  };
-
-  log("Starting full update: 1) Recompute all student matches, 2) Sync company matches");
-
-  const msId = toInt(matchingSoftwareId);
-  const studentResponses = msId == null
-    ? []
-    : await prisma.studentMatchingResponse.findMany({
-        where: { matching_software: msId },
-        select: {
-          id: true,
-          riasec: true,
-          prerequisite_form_response: true,
-          general_info_answers: true,
-        },
-      });
-
-  log(`Found ${studentResponses.length} student responses to recompute`);
-
-  let studentsUpdated = 0;
-  const errors: string[] = [];
-
-  for (let i = 0; i < studentResponses.length; i++) {
-    const resp = studentResponses[i];
-    const respId = String(resp.id);
-    const riasec = (resp.riasec as Record<RIASECType, number>) ?? { R: 0, I: 0, A: 0, S: 0, E: 0, C: 0 };
-    try {
-      await computeAndStoreCompanyMatches(
-        respId,
-        matchingSoftwareId,
-        riasec,
-        (resp.prerequisite_form_response as Record<string, unknown>) ?? undefined,
-        (resp.general_info_answers as GeneralInfoAnswers) ?? undefined
-      );
-      studentsUpdated++;
-      if ((i + 1) % 50 === 0 || i === studentResponses.length - 1) {
-        log(`Student matches: ${i + 1}/${studentResponses.length} recomputed`);
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      errors.push(`Student ${respId}: ${msg}`);
-      log(`Error student ${respId}: ${msg}`);
-    }
-  }
-
-  log(`Student recompute done: ${studentsUpdated}/${studentResponses.length} updated, ${errors.length} errors`);
-
-  const { synced } = await syncAllCompanyMatchedStudents(matchingSoftwareId, log);
-
-  log(`Full update complete. Students: ${studentsUpdated}, Companies: ${synced}`);
-
-  // Truncate to avoid exceeding server action response size limit (~1MB)
-  const maxLogs = 800;
-  const truncatedLogs = logs.length > maxLogs
-    ? [...logs.slice(0, 50), `... (${logs.length - maxLogs} lines omitted) ...`, ...logs.slice(-maxLogs + 50)]
-    : logs;
-  const truncatedErrors = errors.length > 100
-    ? [...errors.slice(0, 100), `... and ${errors.length - 100} more errors`]
-    : errors;
-
-  return { studentsUpdated, companiesSynced: synced, errors: truncatedErrors, logs: truncatedLogs };
 }
 
 /**

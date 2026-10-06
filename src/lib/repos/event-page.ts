@@ -1,5 +1,5 @@
 // lib/repos/event-page.ts
-"use server";
+import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { createTimetable, updateTimetable } from "@/lib/repos/timetable";
@@ -376,4 +376,94 @@ export async function deleteEventPage(id: number): Promise<void> {
 async function getRow(id: number): Promise<AdminEventPageRow | null> {
   const row = await prisma.careerEventPage.findUnique({ where: { id }, include: ADMIN_INCLUDE });
   return row ? toRow(row) : null;
+}
+
+/** What the admin event cards show about an event's setup. */
+export type EventSetupStatus = {
+  hasEventPage: boolean;
+  hasFloorplan: boolean;
+  hasCompanyGuide: boolean;
+  /** The event page's header_buttons, or [] when unset. */
+  headerButtons: string[];
+  hasCompanies: boolean;
+  hasMatchingSoftware: boolean;
+  hasSchedules: boolean;
+};
+
+/**
+ * Setup status for several events in three queries. The admin event cards
+ * used to ask per card -- event page, matching software, schedules, and the
+ * event page again for its companies -- four server actions each, which Next
+ * runs one at a time.
+ */
+export async function getEventSetupStatuses(eventIds: string[]): Promise<Record<string, EventSetupStatus>> {
+  const ids = [...new Set(eventIds.filter(Boolean))];
+  if (ids.length === 0) return {};
+
+  const [pages, matching, schedules] = await Promise.all([
+    prisma.careerEventPage.findMany({
+      where: { event_id: { in: ids } },
+      select: {
+        event_id: true,
+        floorplan_id: true,
+        company_guide: true,
+        header_buttons: true,
+        _count: { select: { careerEventPageCompanies: true } },
+      },
+      orderBy: { id: "asc" },
+    }),
+    prisma.matchingSoftware.findMany({
+      where: { event_id: { in: ids } },
+      select: { event_id: true },
+    }),
+    prisma.schedule.findMany({
+      where: { event_id: { in: ids } },
+      select: { event_id: true },
+      distinct: ["event_id"],
+    }),
+  ]);
+
+  const withMatching = new Set(matching.map((m) => m.event_id));
+  const withSchedules = new Set(schedules.map((s) => s.event_id));
+  const result: Record<string, EventSetupStatus> = {};
+  for (const id of ids) {
+    // The first page of the event, as getEventPageWithFloorplan reads it.
+    const page = pages.find((p) => p.event_id === id);
+    result[id] = {
+      hasEventPage: !!page,
+      hasFloorplan: page?.floorplan_id != null,
+      hasCompanyGuide: !!page?.company_guide,
+      headerButtons: Array.isArray(page?.header_buttons) ? (page.header_buttons as string[]) : [],
+      hasCompanies: (page?._count.careerEventPageCompanies ?? 0) > 0,
+      hasMatchingSoftware: withMatching.has(id),
+      hasSchedules: withSchedules.has(id),
+    };
+  }
+  return result;
+}
+
+/** Lists companies on an event page (those not on it yet); returns how many were added. */
+export async function addCompaniesToEventPage(eventPageId: number, companyIds: string[]): Promise<number> {
+  const current = await prisma.careerEventPageCompany.findMany({
+    where: { career_event_page_id: eventPageId },
+    select: { company_id: true },
+  });
+  const existing = new Set(current.map((item) => item.company_id).filter(Boolean) as string[]);
+  const toAdd = [...new Set(companyIds)].filter((id) => !existing.has(id));
+  if (toAdd.length === 0) return 0;
+  await prisma.careerEventPageCompany.createMany({
+    data: toAdd.map((companyId) => ({ career_event_page_id: eventPageId, company_id: companyId })),
+  });
+  // The public event page lists them.
+  invalidateEventPageCache();
+  return toAdd.length;
+}
+
+/** Sets an event page's company guide (a file id) and drops the public cache. */
+export async function setEventPageCompanyGuide(eventPageId: number, fileId: string): Promise<void> {
+  await prisma.careerEventPage.update({
+    where: { id: eventPageId },
+    data: { company_guide: fileId },
+  });
+  invalidateEventPageCache();
 }

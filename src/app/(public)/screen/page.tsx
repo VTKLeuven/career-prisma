@@ -1,13 +1,10 @@
 import Link from "next/link";
-import prisma from "@/lib/prisma";
+import { listScreens } from "@/lib/repos/signage";
 
 export const runtime = "nodejs";
 
 export default async function SignageScreenIndexPage() {
-    const screens = await prisma.signageScreen.findMany({
-        where: { status: "published" },
-        orderBy: { name: "asc" },
-    });
+    const screens = await listScreens({ publishedOnly: true });
 
     return (
         <div className="min-h-dvh bg-zinc-950 text-zinc-100 flex flex-col">

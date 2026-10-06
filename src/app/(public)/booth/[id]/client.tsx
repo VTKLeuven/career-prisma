@@ -8,6 +8,8 @@ import { placeOrderAction, checkOrderStatusAction, cancelOrderAction } from "@/a
 import type { Drink, Order } from "@/lib/schema";
 import { useRouter } from "next/navigation";
 import { getFileUrl } from "@/components/Images";
+import Image from "next/image";
+import { toast } from "sonner";
 
 export default function BoothClient({
     boothId,
@@ -82,7 +84,7 @@ export default function BoothClient({
             setCart({});
             router.refresh();
         } else {
-            alert(res.error || "Failed");
+            toast.error(res.error || "Failed");
         }
         setSubmitting(false);
     };
@@ -95,7 +97,7 @@ export default function BoothClient({
             setActiveOrder(null);
             router.refresh();
         } else {
-            alert(res.error || "Failed to cancel order");
+            toast.error(res.error || "Failed to cancel order");
         }
         setCancelling(false);
     };
@@ -168,10 +170,14 @@ export default function BoothClient({
                     {/* Image */}
                     {item.image && (
                         <div className="relative flex-shrink-0 rounded-md overflow-hidden bg-white" style={{ width: '80px', height: '80px' }}>
-                            <img
-                                src={getFileUrl(item.image)}
+                            {/* Resized for the 80 px slot: this page is opened on phones
+                                on the event Wi-Fi, and the raw uploads are full photos. */}
+                            <Image
+                                src={getFileUrl(item.image)!}
                                 alt={item.name}
-                                className="absolute inset-0 h-full w-full object-contain p-1"
+                                fill
+                                sizes="80px"
+                                className="object-contain p-1"
                             />
                         </div>
                     )}

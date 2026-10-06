@@ -15,6 +15,8 @@
 // consumer is eventually updated to read Prisma's shape directly, delete the
 // corresponding mapper rather than adding a second variant.
 
+import { sanitizeRichText } from "@/lib/sanitize-html";
+
 type Nullable<T> = T | null | undefined;
 
 /** PostgreSQL `date`/`time` values are Date objects in Prisma, while the
@@ -48,6 +50,8 @@ function junction<Row, Key extends string>(
 
 /** The Prisma `include` that produces everything the legacy Company shape needs. */
 export const COMPANY_INCLUDE = {
+  // Representatives. Their password hash and token columns are left out by the
+  // client-wide omit in lib/prisma.ts.
   users: true,
   salesperson: { select: { id: true, first_name: true, last_name: true } },
   companyMasters: { include: { master: true } },
@@ -334,4 +338,67 @@ export function shapeSchedule(row: Nullable<CompanyRow>): any {
     pdf: pdf_id ?? null,
     master: master ? shapeMaster(master) : (master_id ?? null),
   };
+}
+
+/* ------------------------------------------------------------------ *
+ * Public payloads
+ *
+ * The shapes above are what the back office works with. Public pages and
+ * endpoints (event pages, company pages, the floorplan) get trimmed copies:
+ * no company staff contact details and no sales history. These run at the
+ * public boundary rather than in the shapes, because the admin screens do
+ * need the full objects.
+ * ------------------------------------------------------------------ */
+
+/** User columns that identify or reach a person and that no public page shows. */
+const PRIVATE_PERSON_FIELDS = ["email", "tel", "status", "role_id", "last_access", "company_id"] as const;
+
+/** A user (speaker, representative) as public pages may see them: name, title, photo, company. */
+export function toPublicPerson<T>(person: T): T {
+  if (!person || typeof person !== "object") return person;
+  const copy: Record<string, unknown> = { ...(person as Record<string, unknown>) };
+  for (const field of PRIVATE_PERSON_FIELDS) delete copy[field];
+  return copy as T;
+}
+
+/**
+ * A shaped company without its sales (prices paid) history, with its
+ * representatives reduced to `toPublicPerson` -- the floorplan app shows stand
+ * representatives by name, but nothing public needs their email or phone --
+ * and with its descriptions sanitised: representatives write them and public
+ * pages render them as HTML.
+ */
+export function toPublicCompany<T>(company: T): T {
+  if (!company || typeof company !== "object") return company;
+  const {
+    representatives,
+    option_history: _optionHistory,
+    sub_option_history: _subOptionHistory,
+    short_description,
+    long_description,
+    ...rest
+  } = company as Record<string, unknown>;
+  return {
+    ...rest,
+    short_description: typeof short_description === "string" ? sanitizeRichText(short_description) : short_description,
+    long_description: typeof long_description === "string" ? sanitizeRichText(long_description) : long_description,
+    representatives: Array.isArray(representatives) ? representatives.map(toPublicPerson) : [],
+  } as T;
+}
+
+/**
+ * A speaker whose representative is reduced to `toPublicPerson`, and whose
+ * representative's company (a raw row) to `toPublicCompany`.
+ */
+export function toPublicSpeaker<T>(speaker: T): T {
+  if (!speaker || typeof speaker !== "object") return speaker;
+  const s = speaker as Record<string, unknown>;
+  if (!s.representative || typeof s.representative !== "object") return speaker;
+  const representative = toPublicPerson(s.representative) as Record<string, unknown>;
+  return {
+    ...s,
+    representative: representative.company
+      ? { ...representative, company: toPublicCompany(representative.company) }
+      : representative,
+  } as T;
 }

@@ -1,131 +1,28 @@
-"use client";
-
-import * as React from "react";
-import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { FileText, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { FileText, ChevronDown, Loader2 } from "lucide-react";
-import { useUser } from "@/providers/UserProvider";
-import { fetchCompanyByIdAction } from "@/app/actions/companies";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { fetchSchedulesForEventAction } from "@/app/actions/schedules";
-import { fetchEventsAction } from "@/app/actions/events";
-import { getCompanySubOptionAnyStatus } from "@/lib/utils/company-access";
-import { isDuringEvent } from "@/lib/utils/events";
-import type { Company, CareerEvent } from "@/lib/schema";
 
-export default function DashboardSchedulesPage() {
-  const { user } = useUser();
-  const params = useParams();
-  const eventId = (Array.isArray(params?.eventId) ? params.eventId?.[0] : params?.eventId) as string | undefined;
+function BackToDashboard() {
+  return (
+    <Button asChild variant="outline" className="w-fit">
+      <Link href="/dashboard">← Back to dashboard</Link>
+    </Button>
+  );
+}
 
-  const [company, setCompany] = useState<Company | null>(null);
-  const [schedules, setSchedules] = useState<Array<{ id: string; master?: { name?: string }; pdf?: { id?: string } }>>([]);
-  const [eventName, setEventName] = useState<string>("");
-  const [loading, setLoading] = useState(true);
-  const [accessState, setAccessState] = useState<"loading" | "no_access" | "not_during_event" | "ok">("loading");
+/**
+ * The student schedules for one event, decided and loaded on the server. The
+ * page used to fetch the company and every event, check access and the event
+ * hours in the browser, then fetch the schedules -- behind a spinner.
+ */
+export default async function DashboardSchedulesPage({ params }: { params: Promise<{ eventId: string }> }) {
+  const { eventId } = await params;
+  const result = await fetchSchedulesForEventAction(eventId);
 
-  useEffect(() => {
-    if (!eventId || !user?.company?.id) {
-      setLoading(false);
-      setAccessState("no_access");
-      return;
-    }
-
-    const companyId = user.company.id;
-    const evId = eventId;
-    let cancelled = false;
-
-    async function load() {
-      setLoading(true);
-      setAccessState("loading");
-      try {
-        const [fetchedCompany, events] = await Promise.all([
-          fetchCompanyByIdAction(companyId, false, true),
-          fetchEventsAction(),
-        ]);
-
-        if (cancelled) return;
-
-        if (!fetchedCompany) {
-          setAccessState("no_access");
-          return;
-        }
-
-        setCompany(fetchedCompany as Company);
-        const hasAccess = getCompanySubOptionAnyStatus(fetchedCompany as Company, "Student Schedules") !== null;
-
-        if (!hasAccess) {
-          setAccessState("no_access");
-          return;
-        }
-
-        const event = (events ?? []).find((e) => e.id === evId) as CareerEvent | undefined;
-        if (event) setEventName(event.name ?? "");
-
-        if (!event || !isDuringEvent(event)) {
-          setAccessState("not_during_event");
-          return;
-        }
-
-        setAccessState("ok");
-
-        const list = await fetchSchedulesForEventAction(evId, fetchedCompany as Company);
-        if (!cancelled) setSchedules(list);
-      } catch (err) {
-        console.error("[DashboardSchedulesPage]", err);
-        if (!cancelled) setAccessState("no_access");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [eventId, user?.company?.id]);
-
-  if (!eventId) {
-    return (
-      <div className="w-full gap-4 flex flex-col">
-        <p className="text-muted-foreground">Event not found.</p>
-        <Button asChild variant="outline">
-          <Link href="/dashboard">Back to dashboard</Link>
-        </Button>
-      </div>
-    );
-  }
-
-  if (!user?.company?.id) {
-    return (
-      <div className="w-full gap-4 flex flex-col">
-        <p className="text-muted-foreground">No company associated with your account.</p>
-        <Button asChild variant="outline">
-          <Link href="/dashboard">Back to dashboard</Link>
-        </Button>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="w-full gap-4 flex flex-col">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          <span>Loading...</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (accessState === "no_access") {
+  if (result.status === "no_access") {
     return (
       <div className="w-full gap-4 flex flex-col">
         <Card>
@@ -139,14 +36,12 @@ export default function DashboardSchedulesPage() {
             </Button>
           </CardContent>
         </Card>
-        <Button asChild variant="outline" className="w-fit">
-          <Link href="/dashboard">← Back to dashboard</Link>
-        </Button>
+        <BackToDashboard />
       </div>
     );
   }
 
-  if (accessState === "not_during_event") {
+  if (result.status === "not_during_event") {
     return (
       <div className="w-full gap-4 flex flex-col">
         <Card>
@@ -157,18 +52,15 @@ export default function DashboardSchedulesPage() {
             </p>
           </CardContent>
         </Card>
-        <Button asChild variant="outline" className="w-fit">
-          <Link href="/dashboard">← Back to dashboard</Link>
-        </Button>
+        <BackToDashboard />
       </div>
     );
   }
 
+  const { eventName, schedules } = result;
   return (
     <div className="w-full gap-4 flex flex-col">
-      <Button asChild variant="outline" className="w-fit">
-        <Link href="/dashboard">← Back to dashboard</Link>
-      </Button>
+      <BackToDashboard />
 
       <Card>
         <CardHeader>

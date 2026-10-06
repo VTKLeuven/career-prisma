@@ -1,7 +1,8 @@
-"use server";
+import "server-only";
 
 import { createHash, randomBytes } from "crypto";
 import type { CompanyRep } from "@/lib/schema";
+import type { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { sendEmail } from "@/lib/email";
@@ -92,16 +93,18 @@ export type AdminUserRow = {
 };
 
 /** Full platform-user list for the admin users table. */
-export async function listUsers(): Promise<AdminUserRow[]> {
-  await requireUser();
-  const rows = await prisma.user.findMany({
-    include: {
-      role: { select: { id: true, name: true } },
-      company: { select: { id: true, name: true } },
-    },
-    orderBy: [{ status: "asc" }, { first_name: "asc" }],
-  });
-  return rows.map((u) => ({
+const ADMIN_USER_INCLUDE = {
+  role: { select: { id: true, name: true } },
+  company: { select: { id: true, name: true } },
+} as const;
+
+type AdminUserSource = Pick<
+  Prisma.UserGetPayload<object>,
+  "id" | "avatar" | "first_name" | "last_name" | "email" | "title" | "tel" | "status" | "role_id" | "company_id" | "profile_link"
+> & { role: { name: string } | null; company: { name: string | null } | null };
+
+function toAdminUserRow(u: AdminUserSource): AdminUserRow {
+  return {
     id: u.id,
     avatar: u.avatar,
     first_name: u.first_name,
@@ -115,7 +118,23 @@ export async function listUsers(): Promise<AdminUserRow[]> {
     company_id: u.company_id,
     company_name: u.company?.name ?? null,
     profile_link: u.profile_link,
-  }));
+  };
+}
+
+export async function listUsers(): Promise<AdminUserRow[]> {
+  await requireUser();
+  const rows = await prisma.user.findMany({
+    include: ADMIN_USER_INCLUDE,
+    orderBy: [{ status: "asc" }, { first_name: "asc" }],
+  });
+  return rows.map(toAdminUserRow);
+}
+
+/** One user as the User Management form edits them. */
+export async function getAdminUser(id: string): Promise<AdminUserRow | null> {
+  await requireUser();
+  const row = await prisma.user.findUnique({ where: { id }, include: ADMIN_USER_INCLUDE });
+  return row ? toAdminUserRow(row) : null;
 }
 
 /** Roles for the user-form dropdown. */
@@ -355,25 +374,6 @@ export async function listSalespersons(opts?: {
   });
 }
 
-export async function fetchSalespersonByID(salespersonId: string) {
-  return prisma.user.findFirst({
-    where: {
-      id: salespersonId,
-      role_id: SALESPERSON_ROLE_ID,
-      status: "active",
-    },
-    select: {
-      id: true,
-      first_name: true,
-      last_name: true,
-      email: true,
-      avatar: true,
-      title: true,
-      profile_link: true,
-    },
-  });
-}
-
 export type PendingApprovalRequest = {
   id: string;
   email: string;
@@ -435,4 +435,59 @@ export async function fetchPendingApprovalRequests(
     tel: request.tel,
     title: request.title,
   }));
+}
+
+/** A user by (case-insensitive) email, or null. */
+export async function findUserByEmail(email: string) {
+  return prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+}
+
+/** Whether an account already uses this email. */
+export async function userEmailExists(email: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { email: email.trim().toLowerCase() },
+    select: { id: true },
+  });
+  return !!user;
+}
+
+export async function setUserCompany(userId: string, companyId: string): Promise<void> {
+  await prisma.user.update({ where: { id: userId }, data: { company_id: companyId } });
+}
+
+export async function setUserStatusAndRole(
+  userId: string,
+  data: { status?: string; role_id?: string }
+): Promise<void> {
+  if (data.status === undefined && data.role_id === undefined) return;
+  await prisma.user.update({ where: { id: userId }, data });
+}
+
+/** Name and email, for addressing a user (e.g. a company's salesperson) in mail. */
+export async function getUserContact(id: string) {
+  return prisma.user.findUnique({
+    where: { id },
+    select: { email: true, first_name: true, last_name: true },
+  });
+}
+
+/** A rep's request to join a company, with the company. */
+export async function getCompanyUserRequest(id: number) {
+  return prisma.companyUserRequest.findUnique({
+    where: { id },
+    include: { company: true },
+  });
+}
+
+export async function setCompanyUserRequestStatus(id: number, status: string): Promise<void> {
+  await prisma.companyUserRequest.update({ where: { id }, data: { status } });
+}
+
+/** Names and emails of the given users. */
+export async function listUserContacts(ids: string[]) {
+  if (ids.length === 0) return [];
+  return prisma.user.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, first_name: true, last_name: true, email: true },
+  });
 }

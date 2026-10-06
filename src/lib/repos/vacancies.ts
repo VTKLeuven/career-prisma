@@ -1,4 +1,4 @@
-"use server";
+import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { shapeMaster } from "@/lib/repos/_shape";

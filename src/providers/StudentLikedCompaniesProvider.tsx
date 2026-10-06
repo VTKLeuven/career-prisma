@@ -10,6 +10,7 @@ import {
 } from "react";
 import { toggleLikedCompanyAction } from "@/app/actions/student-liked-companies";
 import { PENDING_LIKED_KEY } from "@/components/CompanyLikeButton";
+import { fetchSessionCheck } from "@/lib/session-client"
 
 type ContextValue = {
   isStudent: boolean | null;
@@ -42,30 +43,19 @@ export function StudentLikedCompaniesProvider({
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([
-      fetch(`/api/user/check?t=${Date.now()}`, {
-        cache: "no-store",
-        credentials: "include",
-      }),
-      fetch("/api/students/liked-companies", { credentials: "include" }),
-    ]).then(async ([checkRes, likedRes]) => {
+    // The session check carries a student's liked companies; one request,
+    // shared with the header, instead of a second one for every visitor.
+    fetchSessionCheck().then(async (check) => {
       if (cancelled) return;
 
-      const check = (await checkRes.json()) as { student?: { id: string } };
       if (!check.student?.id) {
         setIsStudent(false);
         return;
       }
       setIsStudent(true);
 
-      let idsSet = new Set<string>();
-      if (likedRes.ok) {
-        const ids = (await likedRes.json()) as string[];
-        idsSet = new Set(ids.map(String));
-        setLikedIds(idsSet);
-      } else {
-        setLikedIds(idsSet);
-      }
+      const idsSet = new Set<string>((check.student.likedCompanyIds ?? []).map(String));
+      setLikedIds(idsSet);
 
       // Process pending likes from localStorage (user liked while not logged in)
       if (typeof window !== "undefined") {

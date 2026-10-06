@@ -1,5 +1,5 @@
 // lib/repos/option.ts
-"use server"
+import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { shapeCareerEventOption } from "@/lib/repos/_shape";

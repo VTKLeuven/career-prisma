@@ -11,26 +11,18 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, Loader2, Download } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 import type { FormField, FormSchema, FormResponse } from "@/lib/schema";
-import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
+import { formatDateTimeBE } from "@/lib/date-utils";
 import { getFileUrl } from "@/components/Images";
 import NextImage from "next/image";
 import { FormFieldRenderer } from "@/components/FormFieldRenderer";
 import { fieldDisplayLabel } from "@/lib/form-fields";
 import { userFacingFormSubmitErrorMessage } from "@/lib/form-submit-errors";
 import type { Company, CareerEvent } from "@/lib/schema";
+import { fetchSessionCheck } from "@/lib/session-client"
+import { toast } from "sonner";
 
 function countWords(text: string): number {
   return text.trim().split(/\s+/).filter((word) => word.length > 0).length;
@@ -91,20 +83,10 @@ export default function CompanyFormPage() {
 
   // Load authenticated company/user info from /api/user/check (public side doesn't use UserProvider)
   useEffect(() => {
-    const ts = Date.now();
-    fetch(`/api/user/check?t=${ts}`, {
-      method: "GET",
-      cache: "no-store",
-      credentials: "include",
-      headers: {
-        "Cache-Control": "no-cache",
-        Pragma: "no-cache",
-      },
-    })
-      .then((res) => (res.ok ? res.json() : null))
+    fetchSessionCheck()
       .then((data) => {
-        const rep = data?.companyRep as any;
-        if (rep?.authenticated && rep.company && typeof rep.company === "object" && rep.company.id) {
+        const rep = data.companyRep;
+        if (rep?.authenticated && rep.company?.id) {
           setAuthCompanyId(rep.company.id as string);
           setAuthUserName(rep.name ?? null);
           if (rep.email) {
@@ -502,7 +484,7 @@ export default function CompanyFormPage() {
       const deadline = new Date(form.metadata.deadline);
       const now = new Date();
       if (now > deadline) {
-        alert(`This form's deadline has passed. The deadline was ${formatDateTimeBE(deadline)}.`);
+        toast.error(`This form's deadline has passed. The deadline was ${formatDateTimeBE(deadline)}.`);
         return;
       }
     }

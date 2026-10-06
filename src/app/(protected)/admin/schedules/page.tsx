@@ -34,6 +34,7 @@ import { useUser } from "@/providers/UserProvider";
 import { getFileUrl } from "@/components/Images";
 import type { Master } from "@/lib/schema";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { toast } from "sonner";
 
 export default function AdminSchedulesPage() {
   const { user } = useUser();
@@ -90,7 +91,7 @@ function SchedulesTable({ eventId, onChanged }: { eventId?: string; onChanged: (
     const result = await deleteScheduleAction(id);
     setDeletingId(null);
     if (result.success) onChanged();
-    else alert(result.error);
+    else toast.error(result.error);
   };
 
   const eventName = events.find((e) => e.id === selectedEventId)?.name ?? "Select event";

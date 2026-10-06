@@ -2,13 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdminUser } from "@/lib/auth-server";
-import { listMasters, createMaster, updateMaster, deleteMaster } from "@/lib/repos/features";
+import { invalidateOurStudentsCache } from "@/lib/our-students-cache";
+import { invalidateCompanyPageCache } from "@/lib/company-page-cache";
+import { createMaster, updateMaster, deleteMaster } from "@/lib/repos/features";
 import type { ActionResult } from "@/components/admin/types";
 import type { Master } from "@/lib/schema";
 
-export async function listMastersAction(): Promise<Master[]> {
-  await requireAdminUser();
-  return (await listMasters({ limit: 500, sort: "name" })) ?? [];
+// Masters are listed on /our-students and as company categories on company
+// pages; both are cached in process.
+function invalidatePublicMasterPages() {
+  invalidateOurStudentsCache();
+  invalidateCompanyPageCache();
 }
 
 export async function createMasterAction(data: Record<string, unknown>): Promise<ActionResult<Master>> {
@@ -17,6 +21,7 @@ export async function createMasterAction(data: Record<string, unknown>): Promise
     const master = await createMaster(data);
     revalidatePath("/admin/masters");
     revalidatePath("/admin/faculties");
+    invalidatePublicMasterPages();
     return { success: true, data: master };
   } catch (error) {
     console.error("[createMasterAction]", error);
@@ -30,6 +35,7 @@ export async function updateMasterAction(id: string, data: Record<string, unknow
     const master = await updateMaster(Number(id), data);
     revalidatePath("/admin/masters");
     revalidatePath("/admin/faculties");
+    invalidatePublicMasterPages();
     return { success: true, data: master };
   } catch (error) {
     console.error("[updateMasterAction]", error);
@@ -43,6 +49,7 @@ export async function deleteMasterAction(id: string): Promise<ActionResult> {
     await deleteMaster(Number(id));
     revalidatePath("/admin/masters");
     revalidatePath("/admin/faculties");
+    invalidatePublicMasterPages();
     return { success: true };
   } catch (error) {
     console.error("[deleteMasterAction]", error);

@@ -10,13 +10,14 @@ import type { ActionResult } from "@/components/admin/types";
 import { slugifyEventName } from "@/lib/utils/slugify";
 import { getActiveMatchingSoftwareForEvent } from "@/lib/repos/matching-software";
 import DOMPurify from 'isomorphic-dompurify';
-import type { Company, CareerEvent, CareerEventOption, Speaker, TimeSlot, TimetableType } from "@/lib/schema";
+import type { Company, CareerEvent, Speaker, TimeSlot, TimetableType } from "@/lib/schema";
 import { listCareerEventOptions } from "@/lib/repos/option";
-import { listCompanies } from "@/lib/repos/company";
+import { getCompaniesForEvent } from "@/lib/repos/company";
 import { getOrCreateEventPage } from "@/lib/repos/floorplan";
 import { getUserFromCookies } from "@/lib/auth-server";
-import prisma from "@/lib/prisma";
+import { addCompaniesToEventPage } from "@/lib/repos/event-page";
 import { compareTimetableItems } from "@/lib/utils/timetable";
+import { toPublicCompany, toPublicSpeaker } from "@/lib/repos/_shape";
 
 export async function fetchEventsAction(opts?: {
   academicYearId?: string;
@@ -24,12 +25,15 @@ export async function fetchEventsAction(opts?: {
   /** Public callers only -- see fetchPublicEventsAction. */
   publishedOnly?: boolean;
 }) {
+    // Drafts are for the back office (admins, company reps). As a server action
+    // this is a public endpoint, so anyone else gets published editions only.
+    const publishedOnly = opts?.publishedOnly || !(await getUserFromCookies());
     const events = await listEvents({
       limit: 200,
       sort: "date",
       academicYearId: opts?.academicYearId,
       includeHistory: opts?.includeHistory,
-      publishedOnly: opts?.publishedOnly,
+      publishedOnly,
     }) ?? [];
     events.map(el => {
         el.href = `/event/${slugifyEventName(el.name)}`;
@@ -60,6 +64,7 @@ export async function fetchPublicEventsAction() {
 }
 
 export async function fetchOptionsForEventAction(eventId: string) {
+  await requireAdminUser();
   try {
     const allOptions = await listCareerEventOptions({ limit: 1000 }) ?? [];
 
@@ -132,7 +137,9 @@ export async function fetchOptionsForEventAction(eventId: string) {
   }
 }
 
+/** Every event page, drafts included -- for the admin screens. */
 export async function fetchEventPagesAction(lim = 50) {
+  await requireAdminUser();
   const pages = await listEventPages({ limit: lim, sort: "event.date" }) ?? [];
 
   pages.map(page => {
@@ -200,14 +207,14 @@ export async function fetchEventPageBySlugAction(slug: string) {
       ? slot.type.filter((t): t is TimetableType => validTypes.includes(t as TimetableType))
       : undefined;
     const speaker = slot.speaker ?? slot.speaker_id ?? undefined;
-    return { ...slot, type, speaker };
+    return { ...slot, type, speaker: toPublicSpeaker(speaker) };
   }) ?? []).sort(compareTimetableItems) as TimeSlot[];
 
-  page.companies = (page.companies as unknown as Array<{ company_id: Company }>)?.map((item) => {
-    const company = item.company_id;
-
-    return company;
-  }) ?? [];
+  // This feeds the public event page and /api/events/<slug>: companies lose
+  // their representatives and sales history, speakers their contact details.
+  page.companies = (page.companies as unknown as Array<{ company_id: Company }>)?.map((item) =>
+    toPublicCompany(item.company_id)
+  ) ?? [];
 
   // ✅ Flatten speakers (M2M: speakers.speaker_id or speakers direct)
   page.speakers = (page.speakers as unknown as Array<{ speaker_id?: Speaker; id?: string; representative?: Speaker["representative"]; time?: Speaker["time"] }>)?.map((item) => {
@@ -217,13 +224,13 @@ export async function fetchEventPageBySlugAction(slug: string) {
     const time = speaker.time;
     const startTime = time?.start_time ? time.start_time.slice(0, -3) : undefined;
     const endTime = time?.end_time ? time.end_time.slice(0, -3) : undefined;
-    return {
+    return toPublicSpeaker({
       id: (speaker as { id?: string }).id ?? "",
       personal_information: (speaker as Speaker).personal_information ?? null,
       content: (speaker as Speaker).content ?? null,
       representative: rep ?? null,
       time: time ? { ...time, start_time: startTime ?? time.start_time, end_time: endTime ?? time.end_time } : null,
-    } as Speaker;
+    } as Speaker);
   }).filter((s): s is Speaker => !!s) ?? [];
 
   // ✅ Clean up event times
@@ -251,80 +258,19 @@ export async function fetchEventPageBySlugAction(slug: string) {
 /**
  * Find companies that have options registered for a specific event
  */
+/** The admin event cards' setup status for several events, in one call. */
+export async function fetchEventSetupStatusesAction(eventIds: string[]) {
+  await requireAdminUser();
+  const { getEventSetupStatuses } = await import("@/lib/repos/event-page");
+  return getEventSetupStatuses(eventIds);
+}
+
 export async function findCompaniesWithEventOptions(eventId: string): Promise<Company[]> {
+  await requireAdminUser();
   try {
-    // Fetch all companies with their options - use -1 for unlimited
-    const allCompanies = await listCompanies({ limit: -1 }) ?? [];
-
-    // Filter companies that have options with this event
-    const companiesWithEvent: Company[] = [];
-
-    for (const company of allCompanies) {
-      if (!company.options || company.options.length === 0) continue;
-
-      // Check if any option has this event
-      for (const opt of company.options) {
-        let rawOption: CareerEventOption | null = null;
-
-        // Handle junction table format
-        if (opt && typeof opt === 'object' && 'career_event_option_id' in opt) {
-          const junction = opt as { career_event_option_id: CareerEventOption | null };
-          rawOption = junction.career_event_option_id;
-        } else {
-          rawOption = opt as CareerEventOption;
-        }
-
-        if (!rawOption) continue;
-
-        // Check if option has events array
-        if (rawOption.events && Array.isArray(rawOption.events)) {
-          const hasEvent = rawOption.events.some((eventOrJunction: unknown) => {
-            if (!eventOrJunction || typeof eventOrJunction !== 'object') return false;
-
-            // Check if it's a junction table entry
-            const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
-            for (const fieldName of possibleJunctionFields) {
-              if (fieldName in eventOrJunction) {
-                const junction = eventOrJunction as Record<string, CareerEvent | string | null>;
-                const eventRef = junction[fieldName];
-                if (eventRef && typeof eventRef === 'object' && 'id' in eventRef) {
-                  return (eventRef as CareerEvent).id === eventId;
-                }
-                if (typeof eventRef === 'string') {
-                  return eventRef === eventId;
-                }
-              }
-            }
-
-            // Check if it's a direct event object
-            if ('id' in eventOrJunction) {
-              return (eventOrJunction as CareerEvent).id === eventId;
-            }
-
-            return false;
-          });
-
-          if (hasEvent) {
-            companiesWithEvent.push(company);
-            break; // Found a matching option, no need to check others
-          }
-        } else if (rawOption.event) {
-          // Fallback for backward compatibility
-          const eventRef = rawOption.event;
-          if (typeof eventRef === 'object' && eventRef !== null && 'id' in eventRef) {
-            if ((eventRef as CareerEvent).id === eventId) {
-              companiesWithEvent.push(company);
-              break;
-            }
-          } else if (typeof eventRef === 'string' && eventRef === eventId) {
-            companiesWithEvent.push(company);
-            break;
-          }
-        }
-      }
-    }
-
-    return companiesWithEvent;
+    // One join in the database. This used to load every company with its
+    // full include and walk five shapes of option/event junction in JS.
+    return await getCompaniesForEvent(eventId);
   } catch (error) {
     console.error("Error finding companies with event options:", error);
     return [];
@@ -354,28 +300,7 @@ export async function addCompaniesToEventPageAction(
       return { success: false, error: "Failed to get or create event page" };
     }
 
-    // Get current companies on the event page
-    const currentLinks = await prisma.careerEventPageCompany.findMany({
-      where: { career_event_page_id: Number(eventPage.id) },
-      select: { company_id: true },
-    });
-    const existingCompanyIds = new Set(
-      currentLinks.map((item) => item.company_id).filter(Boolean) as string[]
-    );
-
-    // Filter out companies that are already on the page
-    const newCompanyIds = companyIds.filter((id) => !existingCompanyIds.has(id));
-
-    if (newCompanyIds.length === 0) {
-      return { success: true }; // All companies already added
-    }
-
-    await prisma.careerEventPageCompany.createMany({
-      data: newCompanyIds.map((companyId) => ({
-        career_event_page_id: Number(eventPage.id),
-        company_id: companyId,
-      })),
-    });
+    await addCompaniesToEventPage(Number(eventPage.id), companyIds);
 
     return { success: true };
   } catch (error) {

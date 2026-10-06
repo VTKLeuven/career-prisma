@@ -1,5 +1,5 @@
 // lib/repos/cv-book.ts
-"use server";
+import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import type { CVBook, AcademicYear, FormResponse } from "@/lib/schema";
@@ -42,17 +42,6 @@ export async function listAcademicYears(opts?: {
     })) as unknown as AcademicYear[];
   } catch (error) {
     console.error("[listAcademicYears] Error listing academic years:", error);
-    throw error;
-  }
-}
-
-export async function getAcademicYearById(id: string) {
-  try {
-    return (await prisma.academicYear.findUnique({
-      where: { id: num(id) },
-    })) as unknown as AcademicYear;
-  } catch (error) {
-    console.error("[getAcademicYearById] Error getting academic year:", error);
     throw error;
   }
 }

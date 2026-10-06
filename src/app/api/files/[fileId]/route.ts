@@ -1,10 +1,25 @@
 import { createReadStream } from "fs";
 import { stat } from "fs/promises";
 import { Readable } from "stream";
+import { createGzip } from "zlib";
 import { NextResponse } from "next/server";
 import { getStoredFile } from "@/lib/file-storage";
 
 export const runtime = "nodejs";
+
+// Uploads are served from this site's own origin, so a script-capable file
+// opened directly -- an SVG or HTML upload -- would run as career.vtk.be. Those
+// types get a CSP that sandboxes them and blocks scripts; embedding them as
+// images (<img>, the floorplan's <image>) is unaffected. PDFs are deliberately
+// not sandboxed: browsers refuse to render a PDF in a sandboxed document, and
+// the CV and company-guide viewers frame them.
+const SCRIPTABLE_TYPE = /^\s*(image\/svg\+xml|text\/html|application\/xhtml\+xml|text\/xml|application\/xml)\b/i;
+const SANDBOX_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox";
+
+// Text formats shrink several-fold when gzipped -- the jobfair floorplan SVG
+// from 610 KB to 114 KB -- and Next does not compress a streamed route
+// response. Images, PDFs and video are already compressed.
+const COMPRESSIBLE_TYPE = /^\s*(image\/svg\+xml|text\/|application\/(json|xml|javascript))/i;
 
 export async function GET(
   request: Request,
@@ -53,16 +68,28 @@ export async function GET(
       end = Math.min(end, fileStat.size - 1);
       status = 206;
     }
-    const stream = Readable.toWeb(
-      createReadStream(stored.filePath, { start, end })
-    );
     const contentLength = end - start + 1;
+    const contentType = stored.metadata.type || "application/octet-stream";
+    // Whole-file requests only: a byte range refers to the uncompressed file.
+    const gzip =
+      status === 200 &&
+      COMPRESSIBLE_TYPE.test(contentType) &&
+      /\bgzip\b/i.test(request.headers.get("accept-encoding") ?? "");
+    const fileStream = createReadStream(stored.filePath, { start, end });
+    const stream = Readable.toWeb(gzip ? fileStream.pipe(createGzip()) : fileStream);
     return new NextResponse(stream as BodyInit, {
       status,
       headers: {
-        "Content-Type":
-          stored.metadata.type || "application/octet-stream",
-        "Content-Length": String(contentLength),
+        "Content-Type": contentType,
+        // The stored type is whatever the uploader's browser declared; never
+        // let a browser second-guess it into something executable.
+        "X-Content-Type-Options": "nosniff",
+        ...(SCRIPTABLE_TYPE.test(contentType) && {
+          "Content-Security-Policy": SANDBOX_CSP,
+        }),
+        ...(gzip ? { "Content-Encoding": "gzip" } : { "Content-Length": String(contentLength) }),
+        // So a shared cache keeps the gzipped and plain copies apart.
+        ...(COMPRESSIBLE_TYPE.test(contentType) && { Vary: "Accept-Encoding" }),
         "Content-Disposition": `inline; filename="${filename}"`,
         "Cache-Control": "public, max-age=31536000, immutable",
         "Accept-Ranges": "bytes",

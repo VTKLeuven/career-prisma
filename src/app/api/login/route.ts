@@ -1,11 +1,18 @@
 import argon2 from "argon2";
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { findUserCredentials, recordUserLogin } from "@/lib/repos/credentials";
 import {
   createSessionToken,
   sessionCookieOptions,
   USER_SESSION_COOKIE,
 } from "@/lib/auth-session";
+import {
+  clearLoginFailures,
+  clientIp,
+  loginRetryAfter,
+  recordLoginFailure,
+  tooManyAttemptsMessage,
+} from "@/lib/login-throttle";
 
 // Only these roles may sign in at all. Any other role -- "Student", or one
 // created later -- is rejected with the same message as a bad password, which
@@ -30,9 +37,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: email.trim().toLowerCase() },
-    });
+    const ip = clientIp(request);
+    const retryAfter = loginRetryAfter("user", email, ip);
+    if (retryAfter > 0) {
+      return NextResponse.json(
+        { error: tooManyAttemptsMessage(retryAfter) },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } },
+      );
+    }
+
+    const user = await findUserCredentials(email);
     if (
       !user ||
       user.status !== "active" ||
@@ -41,12 +55,14 @@ export async function POST(request: Request) {
       !ALLOWED_ROLE_IDS.has(user.role_id) ||
       !(await argon2.verify(user.password, password))
     ) {
+      recordLoginFailure("user", email, ip);
       return NextResponse.json(
         { error: "Invalid credentials or insufficient access." },
         { status: 401 },
       );
     }
 
+    clearLoginFailures("user", email);
     const maxAge = rememberMe ? 90 * 24 * 60 * 60 : 14 * 24 * 60 * 60;
     const response = NextResponse.json({ message: "Successful login" });
     response.cookies.set(
@@ -54,10 +70,7 @@ export async function POST(request: Request) {
       createSessionToken(user.id, "user", maxAge),
       sessionCookieOptions(request, maxAge),
     );
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { last_access: new Date() },
-    });
+    await recordUserLogin(user.id);
     return response;
   } catch (error) {
     console.error("Login error:", error);

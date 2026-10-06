@@ -1,4 +1,4 @@
-"use server";
+import "server-only";
 
 import { prisma } from "@/lib/prisma";
 
@@ -85,4 +85,31 @@ export async function getBoothIdForCompany(
     } catch {
         return null;
     }
+}
+
+/** A booth with its company (and floorplan), or null. */
+export async function getBoothWithCompany(id: string) {
+  const boothId = Number(id);
+  if (!Number.isSafeInteger(boothId)) return null;
+  return prisma.booth.findUnique({
+    where: { id: boothId },
+    include: { company: true, floorplan: true },
+  });
+}
+
+/** The floorplan a booth is on; undefined when the booth does not exist. */
+export async function getBoothFloorplanId(id: string): Promise<number | null | undefined> {
+  const booth = await prisma.booth.findUnique({
+    where: { id: Number(id) },
+    select: { floorplan_id: true },
+  });
+  return booth ? booth.floorplan_id : undefined;
+}
+
+/** Every booth with its floorplan and company, by booth number (zones admin). */
+export async function listAllBooths() {
+  return prisma.booth.findMany({
+    include: { floorplan: true, company: true },
+    orderBy: { booth_number: "asc" },
+  });
 }

@@ -1,5 +1,5 @@
 // lib/repos/cv-book-favourites.ts
-"use server";
+import "server-only";
 
 import { prisma } from "@/lib/prisma";
 

@@ -13,8 +13,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { toggleShifterStatusAction, listAllUsersAction } from "@/app/actions/shifters";
 import { useRouter } from "next/navigation";
-import { Check, X, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 
 export default function ShiftersClient({ initialUsers }: { initialUsers: any[] }) {
     const [users, setUsers] = useState(initialUsers);
@@ -30,7 +31,7 @@ export default function ShiftersClient({ initialUsers }: { initialUsers: any[] }
         if (!res.success) {
             // Revert if failed
             setUsers(prev => prev.map(u => u.id === user.id ? { ...u, is_shifter: !newStatus } : u));
-            alert("Failed to update status");
+            toast.error("Failed to update status");
         } else {
             router.refresh();
         }
@@ -50,7 +51,7 @@ export default function ShiftersClient({ initialUsers }: { initialUsers: any[] }
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                 />
-                <Button type="submit" size="icon">
+                <Button type="submit" size="icon" aria-label="Search">
                     <Search className="h-4 w-4" />
                 </Button>
             </form>

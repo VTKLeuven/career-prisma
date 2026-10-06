@@ -8,7 +8,6 @@ import {
   updateCVBook,
   deleteCVBook,
   listAcademicYears,
-  getAcademicYearById,
   getActiveCVBooks,
   getCVBookByYear,
   getCVBookByYearForScreening,
@@ -19,10 +18,8 @@ import {
   rejectCV,
   updateStudyOverride,
   markCVBookScreeningComplete,
-  getScreeningMap,
 } from "@/lib/repos/cv-book-screening";
 import {
-  listFavourites,
   addFavourite,
   removeFavourite,
 } from "@/lib/repos/cv-book-favourites";
@@ -30,6 +27,13 @@ import { listForms } from "@/lib/repos/forms";
 import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
 import { listFormVersions } from "@/lib/repos/forms";
 import type { CVBook, AcademicYear, Form, FormField } from "@/lib/schema";
+
+/** Admins and company users: CV book configuration is not public. */
+async function requireSignedInUser() {
+  const user = await getUserFromCookies();
+  if (!user) throw new Error("Unauthorized");
+  return user;
+}
 
 export async function fetchCVBooksAction(): Promise<CVBook[]> {
   try {
@@ -43,6 +47,7 @@ export async function fetchCVBooksAction(): Promise<CVBook[]> {
 
 export async function fetchCVBookByIdAction(id: string): Promise<CVBook | null> {
   try {
+    await requireSignedInUser();
     return await getCVBookById(id);
   } catch (error) {
     console.error("[fetchCVBookByIdAction] Error:", error);
@@ -112,6 +117,7 @@ export async function deleteCVBookAction(id: string): Promise<{ success: boolean
 
 export async function fetchActiveCVBooksAction(): Promise<CVBook[]> {
   try {
+    await requireSignedInUser();
     return await getActiveCVBooks();
   } catch (error) {
     console.error("[fetchActiveCVBooksAction] Error:", error);
@@ -135,6 +141,7 @@ export async function toggleCVBookActiveAction(id: string, active: boolean): Pro
 
 export async function fetchCVBookByYearAction(yearId: string): Promise<CVBook | null> {
   try {
+    await requireSignedInUser();
     return await getCVBookByYear(yearId);
   } catch (error) {
     console.error("[fetchCVBookByYearAction] Error:", error);
@@ -144,6 +151,7 @@ export async function fetchCVBookByYearAction(yearId: string): Promise<CVBook | 
 
 export async function fetchCVBookByYearForScreeningAction(yearId: string): Promise<CVBook | null> {
   try {
+    await requireAdminUser();
     return await getCVBookByYearForScreening(yearId);
   } catch (error) {
     console.error("[fetchCVBookByYearForScreeningAction] Error:", error);
@@ -173,30 +181,6 @@ export async function fetchCVBookStudentDataForScreeningAction(cvBook: CVBook): 
     return await getCVBookStudentData(cvBook, { forScreening: true });
   } catch (error) {
     console.error("[fetchCVBookStudentDataForScreeningAction] Error:", error);
-    return [];
-  }
-}
-
-// ===================== CV BOOK FAVOURITES =====================
-
-export async function fetchCVBookFavouritesAction(
-  cvBookId: string,
-  clientCompanyId?: string
-): Promise<string[]> {
-  try {
-    const user = await getUserFromCookies();
-    if (!user?.id) return [];
-
-    let companyId: string | undefined =
-      (user.company && (typeof user.company === "string" ? user.company : user.company.id)) ?? undefined;
-    if (!companyId && user.admin && clientCompanyId) {
-      companyId = clientCompanyId;
-    }
-    if (!companyId) return [];
-
-    return await listFavourites(companyId, cvBookId);
-  } catch (error) {
-    console.error("[fetchCVBookFavouritesAction] Error:", error);
     return [];
   }
 }
@@ -277,6 +261,7 @@ export async function markCVBookScreeningCompleteAction(
 /** Get study options from the form's study field (for screening dropdown) */
 export async function fetchStudyOptionsForCVBookAction(cvBook: CVBook): Promise<string[]> {
   try {
+    await requireAdminUser();
     const formId = typeof cvBook.form === "string" ? cvBook.form : cvBook.form.id;
     const formFields = await getFormFieldsAcrossAllVersions(formId);
     const studyFieldName = cvBook.student_study_field;
@@ -300,16 +285,6 @@ export async function fetchStudyOptionsForCVBookAction(cvBook: CVBook): Promise<
   }
 }
 
-export async function fetchScreeningMapAction(cvBookId: string) {
-  try {
-    const map = await getScreeningMap(cvBookId);
-    return Object.fromEntries(map);
-  } catch (error) {
-    console.error("[fetchScreeningMapAction] Error:", error);
-    return {};
-  }
-}
-
 export async function fetchAcademicYearsAction(): Promise<AcademicYear[]> {
   try {
     return await listAcademicYears();
@@ -319,17 +294,9 @@ export async function fetchAcademicYearsAction(): Promise<AcademicYear[]> {
   }
 }
 
-export async function fetchAcademicYearByIdAction(id: string): Promise<AcademicYear | null> {
-  try {
-    return await getAcademicYearById(id);
-  } catch (error) {
-    console.error("[fetchAcademicYearByIdAction] Error:", error);
-    return null;
-  }
-}
-
 export async function fetchFormsAction(): Promise<Form[]> {
   try {
+    await requireAdminUser();
     return await listForms();
   } catch (error) {
     console.error("[fetchFormsAction] Error:", error);
@@ -342,6 +309,7 @@ export async function fetchFormsAction(): Promise<Form[]> {
  * This ensures field mappings work across all form versions.
  */
 export async function getFormFieldsAcrossAllVersions(formId: string): Promise<FormField[]> {
+  await requireAdminUser();
   if (!formId) {
     return [];
   }

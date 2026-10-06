@@ -1,5 +1,5 @@
 // lib/repos/schedule.ts
-"use server";
+import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { shapeSchedule } from "@/lib/repos/_shape";

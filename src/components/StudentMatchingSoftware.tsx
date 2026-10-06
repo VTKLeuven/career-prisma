@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { slugifyCompanyName, slugifyEventName } from "@/lib/utils/slugify";
@@ -21,16 +21,14 @@ import {
   type GeneralInfoAnswers,
 } from "@/lib/matching-general-info";
 import {
+  fetchStudentMatchingStateAction,
+  fetchStudentMatchResultsAction,
   getMatchingSoftwareForEventAction,
   getStudentMatchingResponseForCurrentUserAction,
   submitStudentMatchingAction,
-  checkStudentPrerequisiteAction,
-  recomputeCompanyMatchesForCurrentUserAction,
-  fetchMatchedCompaniesForResponseAction,
-  fetchCompanyGeneralInfoAction,
-  fetchMatchScoresAction,
 } from "@/app/actions/matching-software";
 import type { RIASECType } from "@/lib/schema";
+import { toast } from "sonner";
 
 const RIASEC_DESCRIPTIONS: Record<RIASECType, { title: string; description: string }> = {
   R: {
@@ -98,72 +96,45 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
   const [overlapByCompanyId, setOverlapByCompanyId] = useState<Record<string, string[]>>({});
   const [scoreByCompanyId, setScoreByCompanyId] = useState<Record<string, number>>({});
 
+  /** Show a response and its results: answers, matched companies, overlaps and scores. */
+  const applyResults = useCallback((
+    resp: NonNullable<Awaited<ReturnType<typeof fetchStudentMatchResultsAction>>>["response"],
+    results: NonNullable<Awaited<ReturnType<typeof fetchStudentMatchResultsAction>>>["results"] | null
+  ) => {
+    const studentGi = (resp as { general_info_answers?: GeneralInfoAnswers }).general_info_answers ?? {
+      work_preference: [],
+      company_preference: [],
+      options_preference: [],
+    };
+    setAnswers(resp.riasec_answers || {});
+    setGeneralInfo(studentGi);
+    const companies = results?.companies ?? [];
+    setMatchedCompanies(companies);
+    const overlaps: Record<string, string[]> = {};
+    for (const c of companies) {
+      const companyGi = results?.companyGeneralInfo[c.id];
+      overlaps[c.id] = companyGi ? getGeneralInfoOverlapLabels(studentGi, companyGi) : [];
+    }
+    setOverlapByCompanyId(overlaps);
+    setScoreByCompanyId(results?.scores ?? {});
+  }, []);
+
+  // Everything in one round trip (fetchStudentMatchingStateAction).
   useEffect(() => {
     async function load() {
       setLoading(true);
       setError(null);
       try {
-        const ms = await getMatchingSoftwareForEventAction(eventId);
-        setMatchingSoftware(ms);
-        if (!ms) {
-          setLoading(false);
+        const state = await fetchStudentMatchingStateAction(eventId);
+        setMatchingSoftware(state?.matchingSoftware ?? null);
+        if (!state?.matchingSoftware) return;
+        setExistingResponse(state.response);
+        if (state.prerequisiteMissing) {
+          setError("prerequisite");
           return;
         }
-
-        let resp = await getStudentMatchingResponseForCurrentUserAction(ms.id);
-        if (resp) {
-          try {
-            const refreshed = await recomputeCompanyMatchesForCurrentUserAction(ms.id);
-            if (refreshed) resp = refreshed;
-          } catch {
-            // Non-fatal: continue with existing response
-          }
-        }
-        setExistingResponse(resp);
-
-        if (ms.prerequisite_form) {
-          const formId = typeof ms.prerequisite_form === "string" ? ms.prerequisite_form : (ms.prerequisite_form as { id: string }).id;
-          const prereq = await checkStudentPrerequisiteAction(studentId, formId);
-          if (!prereq) {
-            setError("prerequisite");
-            setLoading(false);
-            return;
-          }
-          setPrerequisiteResponse(prereq.data);
-        }
-
-        if (resp) {
-          const studentGi = (resp as { general_info_answers?: GeneralInfoAnswers }).general_info_answers ?? {
-            work_preference: [],
-            company_preference: [],
-            options_preference: [],
-          };
-          setAnswers(resp.riasec_answers || {});
-          setGeneralInfo(studentGi);
-          const companies = await fetchMatchedCompaniesForResponseAction(resp.id);
-          setMatchedCompanies(companies);
-          if (companies.length > 0) {
-            const [companyGeneralInfo, scores] = await Promise.all([
-              fetchCompanyGeneralInfoAction(ms.id, companies.map((c) => c.id)),
-              fetchMatchScoresAction(
-                resp.riasec as Record<RIASECType, number>,
-                studentGi,
-                ms.id,
-                companies.map((c) => c.id)
-              ),
-            ]);
-            const overlaps: Record<string, string[]> = {};
-            for (const c of companies) {
-              const companyGi = companyGeneralInfo[c.id];
-              overlaps[c.id] = companyGi ? getGeneralInfoOverlapLabels(studentGi, companyGi) : [];
-            }
-            setOverlapByCompanyId(overlaps);
-            setScoreByCompanyId(scores);
-          } else {
-            setOverlapByCompanyId({});
-            setScoreByCompanyId({});
-          }
-        }
+        if (state.prerequisite) setPrerequisiteResponse(state.prerequisite);
+        if (state.response) applyResults(state.response, state.results);
       } catch (e) {
         console.error(e);
         setError("load");
@@ -172,7 +143,7 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
       }
     }
     load();
-  }, [eventId, studentId]);
+  }, [eventId, studentId, applyResults]);
 
   if (loading) {
     return (
@@ -342,43 +313,15 @@ export function StudentMatchingSoftware({ eventId, eventName, studentId }: Props
     if (!allAnswered || !matchingSoftware) return;
     setSubmitting(true);
     try {
-      const resp = await submitStudentMatchingAction(matchingSoftware.id, answers, prerequisiteResponse || undefined, generalInfo);
-      const finalResp = resp ?? (await getStudentMatchingResponseForCurrentUserAction(matchingSoftware.id));
-      if (finalResp) {
-        setExistingResponse(finalResp);
-        const studentGi = (finalResp as { general_info_answers?: GeneralInfoAnswers }).general_info_answers ?? {
-          work_preference: [],
-          company_preference: [],
-          options_preference: [],
-        };
-        setGeneralInfo(studentGi);
-        const companies = await fetchMatchedCompaniesForResponseAction(finalResp.id);
-        setMatchedCompanies(companies);
-        if (companies.length > 0) {
-          const [companyGeneralInfo, scores] = await Promise.all([
-            fetchCompanyGeneralInfoAction(matchingSoftware.id, companies.map((c) => c.id)),
-            fetchMatchScoresAction(
-              finalResp.riasec as Record<RIASECType, number>,
-              studentGi,
-              matchingSoftware.id,
-              companies.map((c) => c.id)
-            ),
-          ]);
-          const overlaps: Record<string, string[]> = {};
-          for (const c of companies) {
-            const companyGi = companyGeneralInfo[c.id];
-            overlaps[c.id] = companyGi ? getGeneralInfoOverlapLabels(studentGi, companyGi) : [];
-          }
-          setOverlapByCompanyId(overlaps);
-          setScoreByCompanyId(scores);
-        } else {
-          setOverlapByCompanyId({});
-          setScoreByCompanyId({});
-        }
+      await submitStudentMatchingAction(matchingSoftware.id, answers, prerequisiteResponse || undefined, generalInfo);
+      const saved = await fetchStudentMatchResultsAction(matchingSoftware.id);
+      if (saved) {
+        setExistingResponse(saved.response);
+        applyResults(saved.response, saved.results);
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to submit. Please try again.");
+      toast.error("Failed to submit. Please try again.");
     } finally {
       setSubmitting(false);
     }

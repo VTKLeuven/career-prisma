@@ -44,6 +44,8 @@ import { uploadFileAction } from "@/app/actions/media";
 import { SimpleRichTextEditor } from "@/components/admin/SimpleRichTextEditor";
 import type { FieldConfig, ResourceConfig, SelectOption } from "@/components/admin/types";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 
 type FormValues = Record<string, unknown>;
 
@@ -99,73 +101,28 @@ export function ResourceManager<T extends Record<string, unknown>>({
 
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<T | null>(null);
-  const [values, setValues] = React.useState<FormValues>({});
-  const [files, setFiles] = React.useState<Record<string, File>>({});
-  const [saving, setSaving] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [prefill, setPrefill] = React.useState<FormValues | undefined>(undefined);
+  // Remounts the editor for every open, so its form starts from the row.
+  const [editorKey, setEditorKey] = React.useState(0);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
-
-  // Async relation options, keyed by field name.
-  const [asyncOptions, setAsyncOptions] = React.useState<Record<string, SelectOption[]>>({});
 
   React.useEffect(() => {
     setRows(initialRows);
   }, [initialRows]);
 
-  // Load async option lists once.
-  React.useEffect(() => {
-    let alive = true;
-    const loaders = config.fields.filter((f) => f.loadOptions);
-    Promise.all(
-      loaders.map(async (f) => {
-        try {
-          const opts = await f.loadOptions!();
-          return [f.name, opts] as const;
-        } catch {
-          return [f.name, []] as const;
-        }
-      })
-    ).then((entries) => {
-      if (!alive) return;
-      setAsyncOptions(Object.fromEntries(entries));
-    });
-    return () => {
-      alive = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const optionsFor = (field: FieldConfig<any>): SelectOption[] =>
-    field.options ?? asyncOptions[field.name] ?? [];
-
-  // Recomputed on every value change so a conditional field appears the moment
-  // the field it depends on (typically the role) is switched.
-  const visibleFields = config.fields.filter(
-    (field) => !field.visible || field.visible(values)
-  );
-
-  const openCreate = (prefill?: FormValues) => {
+  const openCreate = (values?: FormValues) => {
     setEditing(null);
-    setError(null);
-    setFiles({});
-    setValues({
-      ...Object.fromEntries(config.fields.map((f) => [f.name, emptyValue(f)])),
-      ...prefill,
-    });
+    setPrefill(values);
+    setEditorKey((k) => k + 1);
     setOpen(true);
   };
 
   const openEdit = (row: T) => {
     setEditing(row);
-    setError(null);
-    setFiles({});
-    setValues(Object.fromEntries(config.fields.map((f) => [f.name, editValue(f, row)])));
+    setPrefill(undefined);
+    setEditorKey((k) => k + 1);
     setOpen(true);
   };
-
-  const setValue = (name: string, value: unknown) =>
-    setValues((prev) => ({ ...prev, [name]: value }));
 
   // A deep link lands on the list but means one specific row, so the dialog is
   // opened for it straight away -- once, so closing it does not reopen.
@@ -188,81 +145,16 @@ export function ResourceManager<T extends Record<string, unknown>>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOpenRowId, autoOpenCreateValues, rows]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    setError(null);
-
-    try {
-      const payload: FormValues = { ...values };
-
-      // A field the form is currently hiding no longer applies to this row, so
-      // send its empty value rather than whatever was typed before the switch.
-      for (const field of config.fields) {
-        if (field.visible && !field.visible(values)) {
-          payload[field.name] = emptyValue(field);
-        }
-      }
-
-      // Upload any freshly picked files, replacing the value with the file id.
-      for (const field of config.fields) {
-        if (field.type !== "image" && field.type !== "file") continue;
-        const file = files[field.name];
-        if (!file) continue;
-        const fd = new FormData();
-        fd.append("file", file);
-        const res = await uploadFileAction(fd);
-        if (!res.success || !res.data) {
-          setError(`Failed to upload ${field.label}: ${res.error ?? "unknown error"}`);
-          setSaving(false);
-          return;
-        }
-        payload[field.name] = res.data.id;
-      }
-
-      // Normalise number fields ("" -> null, else Number).
-      for (const field of config.fields) {
-        if (field.type !== "number") continue;
-        const v = payload[field.name];
-        payload[field.name] = v === "" || v == null ? null : Number(v);
-      }
-
-      if (!editing && !config.actions.create) {
-        setError("Creating is not supported here.");
-        setSaving(false);
-        return;
-      }
-
-      const result = editing
-        ? await config.actions.update(config.getId(editing), payload)
-        : await config.actions.create!(payload);
-
-      if (!result.success) {
-        setError(result.error ?? "Something went wrong");
-        setSaving(false);
-        return;
-      }
-
-      setOpen(false);
-      setEditing(null);
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   /** Resolves to true once the row is gone, so callers can close the panel. */
   const handleDelete = async (row: T): Promise<boolean> => {
     const label = config.getLabel?.(row) ?? config.singular;
-    if (!confirm(`Delete ${label}? This cannot be undone.`)) return false;
+    if (!(await confirmDialog({ title: `Delete ${label}?`, description: "This cannot be undone.", confirmLabel: "Delete", destructive: true }))) return false;
     const id = config.getId(row);
     setDeletingId(id);
     try {
       const result = await config.actions.remove(id);
       if (!result.success) {
-        alert(result.error ?? `Failed to delete ${config.singular.toLowerCase()}`);
+        toast.error(result.error ?? `Failed to delete ${config.singular.toLowerCase()}`);
         return false;
       }
       setRows((prev) => prev.filter((r) => config.getId(r) !== id));
@@ -506,14 +398,173 @@ export function ResourceManager<T extends Record<string, unknown>>({
         ) : null}
       </div>
 
-      {/* Editing happens in a panel that slides in from the right (Dopl's
-          "peek"), so the list stays in view behind it. */}
-      <Sheet
+      <ResourceEditor
+        key={editorKey}
+        config={config}
         open={open}
         onOpenChange={(o) => {
           setOpen(o);
           if (!o) setEditing(null);
         }}
+        row={editing}
+        prefill={prefill}
+        deleting={editing ? deletingId === config.getId(editing) : false}
+        onDelete={editing ? () => handleDelete(editing) : undefined}
+      />
+    </div>
+  );
+}
+
+/**
+ * The side panel that creates or edits one row of a ResourceConfig -- what
+ * ResourceManager opens on a row click, usable on its own elsewhere (the
+ * company page edits a representative with the User Management config).
+ * Mount it with a new key per open: the form starts from `row` or `prefill`.
+ */
+export function ResourceEditor<T extends Record<string, unknown>>({
+  config,
+  open,
+  onOpenChange,
+  row,
+  prefill,
+  onSaved,
+  onDelete,
+  deleting = false,
+}: {
+  config: ResourceConfig<T>;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** The row to edit; null creates a new one. */
+  row: T | null;
+  prefill?: FormValues;
+  onSaved?: () => void;
+  /** Shows a Delete button; resolves to true once the row is gone. */
+  onDelete?: () => Promise<boolean>;
+  deleting?: boolean;
+}) {
+  const router = useRouter();
+  const editing = row;
+  const [values, setValues] = React.useState<FormValues>(() =>
+    row
+      ? Object.fromEntries(config.fields.map((f) => [f.name, editValue(f, row)]))
+      : { ...Object.fromEntries(config.fields.map((f) => [f.name, emptyValue(f)])), ...prefill }
+  );
+  const [files, setFiles] = React.useState<Record<string, File>>({});
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const noun = config.singular.toLowerCase();
+
+  // Async relation options, keyed by field name.
+  const [asyncOptions, setAsyncOptions] = React.useState<Record<string, SelectOption[]>>({});
+
+  // Load async option lists once.
+  React.useEffect(() => {
+    let alive = true;
+    const loaders = config.fields.filter((f) => f.loadOptions);
+    Promise.all(
+      loaders.map(async (f) => {
+        try {
+          const opts = await f.loadOptions!();
+          return [f.name, opts] as const;
+        } catch {
+          return [f.name, []] as const;
+        }
+      })
+    ).then((entries) => {
+      if (!alive) return;
+      setAsyncOptions(Object.fromEntries(entries));
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const optionsFor = (field: FieldConfig<any>): SelectOption[] =>
+    field.options ?? asyncOptions[field.name] ?? [];
+
+  // Recomputed on every value change so a conditional field appears the moment
+  // the field it depends on (typically the role) is switched.
+  const visibleFields = config.fields.filter(
+    (field) => !field.visible || field.visible(values)
+  );
+
+  const setValue = (name: string, value: unknown) =>
+    setValues((prev) => ({ ...prev, [name]: value }));
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+
+    try {
+      const payload: FormValues = { ...values };
+
+      // A field the form is currently hiding no longer applies to this row, so
+      // send its empty value rather than whatever was typed before the switch.
+      for (const field of config.fields) {
+        if (field.visible && !field.visible(values)) {
+          payload[field.name] = emptyValue(field);
+        }
+      }
+
+      // Upload any freshly picked files, replacing the value with the file id.
+      for (const field of config.fields) {
+        if (field.type !== "image" && field.type !== "file") continue;
+        const file = files[field.name];
+        if (!file) continue;
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await uploadFileAction(fd);
+        if (!res.success || !res.data) {
+          setError(`Failed to upload ${field.label}: ${res.error ?? "unknown error"}`);
+          setSaving(false);
+          return;
+        }
+        payload[field.name] = res.data.id;
+      }
+
+      // Normalise number fields ("" -> null, else Number).
+      for (const field of config.fields) {
+        if (field.type !== "number") continue;
+        const v = payload[field.name];
+        payload[field.name] = v === "" || v == null ? null : Number(v);
+      }
+
+      if (!editing && !config.actions.create) {
+        setError("Creating is not supported here.");
+        setSaving(false);
+        return;
+      }
+
+      const result = editing
+        ? await config.actions.update(config.getId(editing), payload)
+        : await config.actions.create!(payload);
+
+      if (!result.success) {
+        setError(result.error ?? "Something went wrong");
+        setSaving(false);
+        return;
+      }
+
+      onOpenChange(false);
+      onSaved?.();
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      {/* Editing happens in a panel that slides in from the right (Dopl's
+          "peek"), so the list stays in view behind it. */}
+      <Sheet
+        open={open}
+        onOpenChange={onOpenChange}
       >
         <SheetContent
           side="right"
@@ -562,24 +613,21 @@ export function ResourceManager<T extends Record<string, unknown>>({
             ) : null}
 
             <div className="flex shrink-0 items-center gap-2 border-t bg-[#fafafa] px-5 py-3">
-              {editing ? (
+              {editing && onDelete ? (
                 <Button
                   type="button"
                   variant="ghost"
                   className="text-[#b91c1c] hover:bg-[#fef2f2] hover:text-[#b91c1c]"
-                  disabled={deletingId === config.getId(editing)}
+                  disabled={deleting}
                   onClick={async () => {
-                    if (await handleDelete(editing)) {
-                      setOpen(false);
-                      setEditing(null);
-                    }
+                    if (await onDelete?.()) onOpenChange(false);
                   }}
                 >
                   <Trash2 className="h-4 w-4" /> Delete
                 </Button>
               ) : null}
               <div className="ml-auto flex items-center gap-2">
-                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={saving}>
@@ -598,7 +646,7 @@ export function ResourceManager<T extends Record<string, unknown>>({
           </form>
         </SheetContent>
       </Sheet>
-    </div>
+    </>
   );
 }
 

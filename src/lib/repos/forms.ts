@@ -1,5 +1,5 @@
 // lib/repos/forms.ts
-"use server";
+import "server-only";
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -109,16 +109,6 @@ export async function getFormById(id: string) {
     return shapeForm(row) as Form;
   } catch (error) {
     console.error("Error getting form by id:", error);
-    throw error;
-  }
-}
-
-export async function getFormBySlug(slug: string) {
-  try {
-    const row = await prisma.form.findUnique({ where: { slug }, include: FORM_INCLUDE });
-    return shapeForm(row);
-  } catch (error) {
-    console.error("[getFormBySlug] Error getting form by slug:", error);
     throw error;
   }
 }
@@ -348,108 +338,7 @@ export async function updateFormVersion(id: string, data: Partial<FormVersion>) 
   }
 }
 
-export async function deleteFormVersion(id: string) {
-  try {
-    const versionId = num(id);
-    if (versionId == null) return true;
-
-    await prisma.$transaction(async (tx) => {
-      const responses = await tx.formResponse.findMany({
-        where: { form_version_id: versionId },
-        select: { id: true },
-      });
-      const responseIds = responses.map((r) => r.id);
-      if (responseIds.length > 0) {
-        await tx.attendantScan.deleteMany({ where: { form_response_id: { in: responseIds } } });
-        await tx.cvBookFavourite.deleteMany({ where: { form_response: { in: responseIds } } });
-        await tx.cvBookScreening.deleteMany({ where: { form_response: { in: responseIds } } });
-        await tx.formResponse.deleteMany({ where: { id: { in: responseIds } } });
-      }
-      await tx.formVersion.delete({ where: { id: versionId } });
-    });
-
-    return true;
-  } catch (error) {
-    console.error("Error deleting form version:", error);
-    throw error;
-  }
-}
-
-export async function getActiveFormVersion(formId: string) {
-  try {
-    const id = num(formId);
-    if (id == null) return null;
-    return (await prisma.formVersion.findFirst({
-      where: { form_id: id, is_active: true },
-    })) as unknown as FormVersion | null;
-  } catch (error) {
-    console.error("Error getting active form version:", error);
-    throw error;
-  }
-}
-
-/** Same query as getActiveFormVersion; kept because callers import it by name. */
-export async function getActiveFormVersionForServer(formId: string): Promise<FormVersion | null> {
-  try {
-    const id = num(formId);
-    if (id == null) return null;
-    return (await prisma.formVersion.findFirst({
-      where: { form_id: id, is_active: true },
-    })) as unknown as FormVersion | null;
-  } catch (error) {
-    console.error("[getActiveFormVersionForServer] Error:", error);
-    return null;
-  }
-}
-
 // ===================== FORM RESPONSES =====================
-
-/**
- * Archive this student's previous responses to a form.
- *
- * Previously this fetched every response across all versions of the form and
- * compared `data._student_id` in JavaScript, then issued one PATCH per match.
- * With jsonb the match happens in the database and the archive is one UPDATE.
- */
-export async function archivePreviousStudentResponsesForForm(
-  studentId: string,
-  formId: string
-): Promise<void> {
-  try {
-    const id = num(formId);
-    if (id == null) return;
-
-    await prisma.formResponse.updateMany({
-      where: {
-        formVersion: { form_id: id },
-        ...studentIdMatch(studentId),
-      },
-      data: { archived: true },
-    });
-  } catch (error) {
-    console.error("[archivePreviousStudentResponsesForForm] Error:", error);
-    // Non-fatal: continue with submission
-  }
-}
-
-/** Archive all previous form responses from this company for the given form. */
-export async function archivePreviousCompanyResponsesForForm(
-  companyId: string,
-  formId: string
-): Promise<void> {
-  try {
-    const id = num(formId);
-    if (id == null) return;
-
-    await prisma.formResponse.updateMany({
-      where: { formVersion: { form_id: id }, company_id: companyId },
-      data: { archived: true },
-    });
-  } catch (error) {
-    console.error("[archivePreviousCompanyResponsesForForm] Error:", error);
-    // Non-fatal: continue with submission
-  }
-}
 
 /** Archive duplicate student/company responses for a form, keeping only the most recent per student or company. */
 export async function archiveDuplicateResponsesForForm(formId: string): Promise<{ archived: number }> {
@@ -573,39 +462,6 @@ export async function getLatestFormResponse(formVersionId: string) {
   } catch (error) {
     console.error("Error getting latest form response:", error);
     return null;
-  }
-}
-
-/** Batch: get latest form response data for multiple students. Returns Map<studentId, data>. */
-export async function getStudentFormResponsesBatchForForm(
-  formId: string,
-  studentIds: string[]
-): Promise<Map<string, Record<string, unknown>>> {
-  if (studentIds.length === 0) return new Map();
-  const idSet = new Set(studentIds.map(String));
-  try {
-    const id = num(formId);
-    if (id == null) return new Map();
-
-    const responses = await prisma.formResponse.findMany({
-      where: { formVersion: { form_id: id }, ...NOT_ARCHIVED },
-      select: { id: true, form_version_id: true, data: true },
-      orderBy: { submitted_at: "desc" },
-    });
-
-    const byStudent = new Map<string, Record<string, unknown>>();
-    for (const r of responses) {
-      const data = r.data as Record<string, unknown> | null;
-      const fromData = data?._student_id ?? data?.student_id;
-      const sid = fromData != null ? String(fromData) : null;
-      if (sid != null && idSet.has(sid) && !byStudent.has(sid)) {
-        byStudent.set(sid, data ?? {});
-      }
-    }
-    return byStudent;
-  } catch (error) {
-    console.error("[getStudentFormResponsesBatchForForm] Error:", error);
-    return new Map();
   }
 }
 
@@ -779,20 +635,6 @@ export async function getLatestFormResponseForAllVersions(formId: string) {
   }
 }
 
-export async function getFormResponseById(id: string) {
-  try {
-    const responseId = num(id);
-    if (responseId == null) return null as unknown as FormResponse;
-    return (await prisma.formResponse.findUnique({
-      where: { id: responseId },
-      include: { formVersion: true, company: true },
-    })) as unknown as FormResponse;
-  } catch (error) {
-    console.error("Error getting form response:", error);
-    throw error;
-  }
-}
-
 export async function createFormResponse(data: {
   form_version_id: string;
   user_id?: string;
@@ -861,77 +703,6 @@ export async function deleteFormResponse(id: string) {
     return true;
   } catch (error) {
     console.error("Error deleting form response:", error);
-    throw error;
-  }
-}
-
-/** Migrate master-degrees fields in form responses from label format to canonical (fac:facId:masterId). */
-export async function migrateFormResponsesMasterDegrees(formId: string): Promise<{ updated: number; total: number }> {
-  try {
-    const { listMasters, listFaculties } = await import("@/lib/repos/features");
-    const { buildMasterDegreeOptionsForForm, normalizeMasterDegreesValues, normalizeFaculties } = await import("@/lib/utils/master-degree-options");
-
-    const id = num(formId);
-    if (id == null) return { updated: 0, total: 0 };
-
-    const form = await getFormById(formId);
-    if (!form?.form_versions?.length) return { updated: 0, total: 0 };
-
-    const masters = (await listMasters({ limit: 300, sort: "name" })) ?? [];
-    const rawFaculties = (await listFaculties({ limit: 100, sort: "name" })) ?? [];
-    const faculties = normalizeFaculties(rawFaculties);
-
-    const sortedVersions = [...form.form_versions].sort((a, b) => (b.version_number ?? 0) - (a.version_number ?? 0));
-    const masterDegreeFieldsByKey = new Map<string, FormField>();
-    for (const version of sortedVersions) {
-      const fields = (version as FormVersion & { schema?: { fields?: FormField[] } })?.schema?.fields ?? [];
-      for (const f of fields) {
-        if (f.type === "master-degrees" && !masterDegreeFieldsByKey.has(f.name)) {
-          masterDegreeFieldsByKey.set(f.name, f);
-        }
-      }
-    }
-    const masterDegreeFields = Array.from(masterDegreeFieldsByKey.values());
-    if (masterDegreeFields.length === 0) return { updated: 0, total: 0 };
-
-    const responses = await prisma.formResponse.findMany({
-      where: { formVersion: { form_id: id } },
-      select: { id: true, form_version_id: true, data: true },
-    });
-
-    let updated = 0;
-    for (const response of responses) {
-      const data = { ...((response.data as Record<string, unknown>) ?? {}) };
-      let changed = false;
-      for (const field of masterDegreeFields) {
-        const fieldValue = data[field.name];
-        if (fieldValue == null) continue;
-        const includeFaculties = field.masterDegreesIncludeFaculties ?? false;
-        const isMultiple = field.masterDegreesMultiple ?? false;
-        const options = buildMasterDegreeOptionsForForm(masters, faculties, includeFaculties);
-        const normalized = normalizeMasterDegreesValues(fieldValue, options, isMultiple, { masters, faculties });
-        const current = Array.isArray(fieldValue) ? fieldValue : [fieldValue];
-        const currentStr = current
-          .map((v) => (v != null && typeof v === "object" && ("id" in v || "value" in v || "label" in v)
-            ? String((v as Record<string, unknown>).id ?? (v as Record<string, unknown>).value ?? (v as Record<string, unknown>).label ?? v)
-            : String(v)))
-          .filter(Boolean);
-        if (JSON.stringify([...normalized].sort()) !== JSON.stringify([...currentStr].sort())) {
-          data[field.name] = isMultiple ? normalized : normalized[0] ?? null;
-          changed = true;
-        }
-      }
-      if (changed) {
-        await prisma.formResponse.update({
-          where: { id: response.id },
-          data: { data: data as Prisma.InputJsonValue },
-        });
-        updated++;
-      }
-    }
-    return { updated, total: responses.length };
-  } catch (error) {
-    console.error("[migrateFormResponsesMasterDegrees] Error:", error);
     throw error;
   }
 }
@@ -1332,22 +1103,6 @@ export async function getCompanyFormFieldValuesFromForm(
   }
 }
 
-/** Get dedupe key for an option - same master/faculty = same key, so we don't show duplicates. */
-function getOptionDedupeKey(opt: { value: string; label: string }, masters: { id: string; name: string }[]): string {
-  const v = opt.value.trim();
-  const norm = (s: string) => (s ?? "").replace(/\s+/g, " ").trim().toLowerCase();
-  if (norm(v) === "other" || norm(v) === "others") return "other";
-  const facMaster = v.match(/^fac:[^:]+:([^:]+)$/);
-  if (facMaster) return `master:${facMaster[1]}`;
-  if (/^[0-9a-f-]{36}$/i.test(v)) return `master:${v}`;
-  const facOnly = v.match(/^fac:([^:]+)$/);
-  if (facOnly) return `fac:${facOnly[1]}`;
-  const afterDash = v.split(" - ").pop()?.trim();
-  const match = masters.find((m) => norm(m.name) === norm(afterDash ?? v));
-  if (match) return `master:${match.id}`;
-  return v;
-}
-
 export type FloorplanCategoryOption = { value: string; label: string; logo?: string };
 export type FloorplanCategoryOptionGroup = { groupLabel: string; options: FloorplanCategoryOption[] };
 
@@ -1383,13 +1138,18 @@ export async function getFloorplanCategoryOptions(
   }
 }
 
-/** Get company IDs that have ALL selected values (in any of the configured form fields).
- * Uses same logic as getCompanyMasterDegreesFromForm: all form versions, normalize label->value. */
-export async function getCompanyIdsMatchingFloorplanCategory(
-  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>,
-  selectedValues: string[]
-): Promise<string[]> {
-  if (selectedValues.length === 0) return [];
+/**
+ * Every company's canonical floorplan-category values, from the latest response
+ * per company in each configured form field. Uses the same logic as
+ * getCompanyMasterDegreesFromFormBatch: all form versions, normalize label->value.
+ *
+ * The public floorplan sends this map to the browser once and filters there,
+ * instead of asking the server again on every category click.
+ */
+export async function getCompanyFloorplanCategoryValues(
+  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>
+): Promise<Map<string, Set<string>>> {
+  const companyCanonicalValues = new Map<string, Set<string>>();
   try {
     const { listMasters, listFaculties } = await import("@/lib/repos/features");
     const { normalizeMasterDegreesValues, normalizeFaculties } = await import("@/lib/utils/master-degree-options");
@@ -1410,7 +1170,6 @@ export async function getCompanyIdsMatchingFloorplanCategory(
       return null;
     };
 
-    const companyCanonicalValues = new Map<string, Set<string>>();
     for (const { formId, formVersionId, fieldName } of categoryFields) {
       const form = await getFormById(formId);
       const version = form?.form_versions?.find((v) => v.id === formVersionId) as FormVersion & { schema?: { fields?: FormField[] } };
@@ -1448,23 +1207,10 @@ export async function getCompanyIdsMatchingFloorplanCategory(
         companyCanonicalValues.set(companyId, set);
       }
     }
-
-    const selectedSet = new Set(selectedValues.map((v) => v.trim()).filter(Boolean));
-    const result: string[] = [];
-    for (const [companyId, canonValues] of companyCanonicalValues) {
-      const hasAll = [...selectedSet].every((sel) => canonValues.has(sel));
-      if (hasAll) result.push(companyId);
-    }
-    console.log("[floorplan-category] getCompanyIdsMatchingFloorplanCategory", {
-      selectedValues: selectedValues.length,
-      categoryFieldsCount: categoryFields.length,
-      matchingCompanyCount: result.length,
-    });
-    return result;
   } catch (error) {
-    console.error("[getCompanyIdsMatchingFloorplanCategory] Error:", error);
-    return [];
+    console.error("[getCompanyFloorplanCategoryValues] Error:", error);
   }
+  return companyCanonicalValues;
 }
 
 /** Get company categories (interested study fields) from form responses. Returns Map<companyId, string[]> of display labels for matching. */
@@ -1492,7 +1238,7 @@ export async function getCompanyCategoriesFromFormResponses(
       return null;
     };
 
-    for (const { formId, formVersionId, fieldName } of categoryFields) {
+    for (const { formId, fieldName } of categoryFields) {
       const versions = await listFormVersionsForServer(formId);
       const versionIds = versions.map((v) => v.id);
       if (versionIds.length === 0) continue;
@@ -1530,149 +1276,6 @@ export async function getCompanyCategoriesFromFormResponses(
   } catch (error) {
     console.error("[getCompanyCategoriesFromFormResponses] Error:", error);
     return result;
-  }
-}
-
-/** Get company's master/faculty logos from master-degrees form responses. Returns unique logo IDs only. */
-export async function getCompanyMasterDegreesFromForm(
-  categoryFields: Array<{ formId: string; formVersionId: string; fieldName: string }>,
-  companyId: string
-): Promise<string[]> {
-  try {
-    const { listMasters, listFaculties } = await import("@/lib/repos/features");
-    const { resolveLogosForValue, extractLogoId, normalizeFaculties } = await import("@/lib/utils/master-degree-options");
-
-    const { groups } = await getFloorplanCategoryOptions(categoryFields);
-    const opts = groups.flatMap((g) => g.options);
-    const masters = (await listMasters({ limit: 300, sort: "name" })) ?? [];
-    const rawFaculties = (await listFaculties({ limit: 100, sort: "name" })) ?? [];
-    const faculties = normalizeFaculties(rawFaculties);
-
-
-    const valuesSeen = new Set<string>();
-    const orderedValues: string[] = [];
-    for (const { formId, fieldName } of categoryFields) {
-      const versions = await listFormVersionsForServer(formId);
-      const versionIds = versions.map((v) => v.id);
-      if (versionIds.length === 0) continue;
-      const responses = await prisma.formResponse.findMany({
-        where: {
-          form_version_id: { in: nums(versionIds) },
-          company_id: companyId,
-          ...NOT_ARCHIVED,
-        },
-        select: { id: true, company_id: true, data: true },
-        orderBy: { submitted_at: "desc" },
-        take: 1,
-      }) as unknown as Array<{ data: Record<string, unknown> }>;
-      const data = responses?.[0]?.data ?? {};
-      const fieldValue = data[fieldName];
-      const extractVal = (v: unknown): string | null => {
-        if (v == null) return null;
-        if (typeof v === "string" && v.trim()) return v.trim();
-        if (typeof v === "object" && v !== null) {
-          const o = v as Record<string, unknown>;
-          const id = o.id ?? o.value ?? o.name ?? o.label;
-          if (id != null && String(id).trim()) return String(id).trim();
-        }
-        return null;
-      };
-      if (Array.isArray(fieldValue)) {
-        for (const v of fieldValue) {
-          const s = extractVal(v);
-          if (s && !valuesSeen.has(s)) {
-            valuesSeen.add(s);
-            orderedValues.push(s);
-          }
-        }
-      } else {
-        const s = extractVal(fieldValue);
-        if (s && !valuesSeen.has(s)) {
-          valuesSeen.add(s);
-          orderedValues.push(s);
-        }
-      }
-    }
-
-    type LogoSource = "master" | "faculty" | "other";
-    const logoSourceOrder: Record<LogoSource, number> = { master: 0, faculty: 1, other: 2 };
-    const getSourceFromValue = (v: string): LogoSource => {
-      const facMaster = v.match(/^fac:([^:]+):([^:]+)$/);
-      if (facMaster) return "master";
-      const facOnly = v.match(/^fac:([^:]+)$/);
-      if (facOnly) {
-        const f = faculties?.find((x) => x.id === facOnly[1]);
-        if (!f) return "faculty";
-        if (/^others?$/i.test((f.name ?? "").trim())) return "other";
-        const hasMasters = (f.masters ?? []).length > 0;
-        return hasMasters ? "master" : "faculty";
-      }
-      return "master";
-    };
-    const getSourceFromOptValue = (optValue: string): LogoSource => {
-      if (optValue.match(/^fac:[^:]+:[^:]+$/)) return "master";
-      const facOnly = optValue.match(/^fac:([^:]+)$/);
-      if (facOnly) {
-        const f = faculties?.find((x) => x.id === facOnly[1]);
-        if (f && /^others?$/i.test((f.name ?? "").trim())) return "other";
-        return "faculty";
-      }
-      return "master";
-    };
-
-    // Phase 1: Load all logos (with source) from values
-    const logoEntries: Array<{ logoId: string; source: LogoSource }> = [];
-    const seen = new Set<string>();
-    for (const val of orderedValues) {
-      const masterNameFromLabel = val.includes(" - ") ? val.split(" - ").pop()?.trim() : null;
-      const matchingOpts = opts.filter((o) =>
-        o.value === val || o.label === val ||
-        (masterNameFromLabel && (o.label === masterNameFromLabel || normalizeForMatch(o.label) === normalizeForMatch(masterNameFromLabel))) ||
-        normalizeForMatch(o.value) === normalizeForMatch(val) ||
-        normalizeForMatch(o.label) === normalizeForMatch(val) ||
-        valueMatchesOption(val, o.value) ||
-        (o.value.match(/^fac:[^:]+:([^:]+)$/)?.[1] === val.trim())
-      );
-      if (matchingOpts.length > 0) {
-        for (const opt of matchingOpts) {
-          const facOnly = opt.value.match(/^fac:([^:]+)$/);
-          if (facOnly) {
-            const f = faculties?.find((x) => x.id === facOnly[1]);
-            if (f && (f.masters ?? []).length > 0) continue;
-          }
-          let logo = extractLogoId(opt.logo);
-          if (!logo && opt.value.match(/^fac:[^:]+:([^:]+)$/)) {
-            const masterId = opt.value.split(":")[2];
-            const m = masters.find((x) => x.id === masterId);
-            logo = extractLogoId(m?.logo);
-          }
-          if (!logo && /^[0-9a-f-]{36}$/i.test(opt.value)) {
-            const m = masters.find((x) => x.id === opt.value);
-            logo = extractLogoId(m?.logo);
-          }
-          if (logo && !seen.has(logo)) {
-            seen.add(logo);
-            logoEntries.push({ logoId: logo, source: getSourceFromOptValue(opt.value) });
-          }
-        }
-      } else {
-        const resolved = resolveLogosForValue(val, masters, faculties);
-        const source = getSourceFromValue(val);
-        for (const logo of resolved) {
-          if (logo && !seen.has(logo)) {
-            seen.add(logo);
-            logoEntries.push({ logoId: logo, source });
-          }
-        }
-      }
-    }
-
-    // Phase 2: Sort by source (masters → faculties → other, left to right)
-    logoEntries.sort((a, b) => logoSourceOrder[a.source] - logoSourceOrder[b.source]);
-    return logoEntries.map((e) => e.logoId);
-  } catch (error) {
-    console.error("[getCompanyMasterDegreesFromForm] Error:", error);
-    return [];
   }
 }
 
@@ -1882,28 +1485,6 @@ export async function getCompanyFormBySlugAndEvent(eventId: string, slug: string
   }
 }
 
-export async function checkCompanyFormCompletion(companyId: string, formVersionIds: string[]) {
-  try {
-    // Use server client to ensure we have permissions to read company_id field
-
-    if (formVersionIds.length === 0) return new Set<string>();
-
-    const responses = await prisma.formResponse.findMany({
-      where: {
-        company_id: companyId,
-        form_version_id: { in: nums(formVersionIds) },
-      },
-      select: { form_version_id: true, company_id: true },
-    }) as unknown as Array<{ form_version_id: string; company_id: string }>;
-
-    // Return set of completed form version IDs
-    return new Set(responses.map((r) => r.form_version_id));
-  } catch (error) {
-    console.error("[checkCompanyFormCompletion] Error checking form completion:", error);
-    return new Set<string>();
-  }
-}
-
 /** Batch check form completion for multiple companies. Returns Map<companyId, Set<formVersionId>> */
 export async function checkCompanyFormCompletionBatch(
   companyIds: string[],
@@ -1928,50 +1509,6 @@ export async function checkCompanyFormCompletionBatch(
   } catch (error) {
     console.error("[checkCompanyFormCompletionBatch] Error:", error);
     return result;
-  }
-}
-
-export async function checkCompanyFormCompletionByFormIds(companyId: string, formIds: string[]) {
-  try {
-    // Use server client to ensure we have permissions to read company_id field
-
-    if (formIds.length === 0) return new Set<string>();
-
-
-    // First, get all form version IDs for these forms
-    const formVersions = await prisma.formVersion.findMany({
-      where: { form_id: { in: nums(formIds) } },
-      select: { id: true, form_id: true },
-    }) as unknown as Array<{ id: string; form_id: string }>;
-
-    if (formVersions.length === 0) return new Set<string>();
-
-    const formVersionIds = formVersions.map((fv) => fv.id);
-
-    // Check for responses across all versions of these forms
-    const responses = await prisma.formResponse.findMany({
-      where: {
-        company_id: companyId,
-        form_version_id: { in: nums(formVersionIds) },
-      },
-      select: { form_version_id: true, company_id: true },
-    }) as unknown as Array<{ form_version_id: string; company_id: string }>;
-
-    // Map form version IDs back to form IDs
-    const formVersionToFormId = new Map(formVersions.map((fv) => [fv.id, fv.form_id]));
-    const completedFormIds = new Set<string>();
-
-    responses.forEach((r) => {
-      const formId = formVersionToFormId.get(r.form_version_id);
-      if (formId) {
-        completedFormIds.add(formId);
-      }
-    });
-
-    return completedFormIds;
-  } catch (error) {
-    console.error("[checkCompanyFormCompletionByFormIds] Error checking form completion:", error);
-    return new Set<string>();
   }
 }
 
@@ -2105,3 +1642,71 @@ export async function getLatestCompanyFormResponseForForm(formId: string, compan
 
 
 
+
+/* ------------------------------------------------------------------ *
+ * Admin form mailings and exports (send QR emails, reminders, ZIP)
+ * ------------------------------------------------------------------ */
+
+/** A form version with its form, or null. */
+export async function getFormVersionWithForm(formVersionId: string) {
+  const id = Number(formVersionId);
+  if (!Number.isSafeInteger(id)) return null;
+  return prisma.formVersion.findUnique({ where: { id }, include: { form: true } });
+}
+
+/** A version's live responses that have an attendant QR code. */
+export async function listAttendantResponses(formVersionId: string) {
+  return prisma.formResponse.findMany({
+    where: {
+      form_version_id: Number(formVersionId),
+      archived: { not: true },
+      attendant_uuid: { not: null },
+    },
+    select: { id: true, data: true, attendant_uuid: true },
+  });
+}
+
+/**
+ * Stamps `_qr_email_sent_at` into a response's data. Re-reads the data first so
+ * an edit made while the mailing ran is not overwritten.
+ */
+export async function markQrEmailSent(responseId: number, fallbackData: Record<string, unknown>): Promise<void> {
+  const fresh = await prisma.formResponse.findUnique({
+    where: { id: responseId },
+    select: { data: true },
+  });
+  await prisma.formResponse.update({
+    where: { id: responseId },
+    data: {
+      data: {
+        ...((fresh?.data || fallbackData) as Record<string, unknown>),
+        _qr_email_sent_at: new Date().toISOString(),
+      } as Prisma.InputJsonValue,
+    },
+  });
+}
+
+/** Every version's schema, newest first. */
+export async function listFormVersionSchemas(formId: string) {
+  return prisma.formVersion.findMany({
+    where: { form_id: Number(formId) },
+    select: { id: true, schema: true },
+    orderBy: { version_number: "desc" },
+  });
+}
+
+/** Live responses across the given versions (data only). */
+export async function listLiveResponsesForVersions(versionIds: Array<string | number>) {
+  return prisma.formResponse.findMany({
+    where: {
+      form_version_id: { in: versionIds.map(Number) },
+      archived: { not: true },
+    },
+    select: { id: true, data: true, form_version_id: true },
+  });
+}
+
+export async function getFormSlug(formId: string): Promise<string | null> {
+  const form = await prisma.form.findUnique({ where: { id: Number(formId) }, select: { slug: true } });
+  return form?.slug ?? null;
+}

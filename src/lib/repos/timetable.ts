@@ -1,5 +1,5 @@
 // lib/repos/timetable.ts
-"use server";
+import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { SPEAKER_INCLUDE, shapeTimetable } from "@/lib/repos/_shape";

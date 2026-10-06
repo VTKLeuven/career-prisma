@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { getAttendantRegistration } from "@/lib/repos/scans";
 
 export async function GET(
   _request: Request,
   context: { params: Promise<{ uuid: string }> }
 ) {
   const { uuid } = await context.params;
-  const response = await prisma.formResponse.findFirst({
-    where: { attendant_uuid: uuid, archived: { not: true } },
-    include: { formVersion: { include: { form: true } } },
-  });
+  const response = await getAttendantRegistration(uuid);
   if (!response) {
     return NextResponse.json({ error: "Attendant not found" }, { status: 404 });
   }

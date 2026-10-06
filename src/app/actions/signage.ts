@@ -2,7 +2,19 @@
 
 import { revalidatePath } from "next/cache";
 import { getUserFromCookies } from "@/lib/auth-server";
-import prisma from "@/lib/prisma";
+import {
+  listScreens,
+  createScreen,
+  updateScreen,
+  deleteScreen,
+  getPublishedScreenBySlug,
+  listMedia,
+  deleteMedia,
+  listScheduleSlots,
+  createScheduleSlot,
+  updateScheduleSlot,
+  deleteScheduleSlot,
+} from "@/lib/repos/signage";
 import type {
   SignageMedia,
   SignageScheduleSlot,
@@ -14,61 +26,24 @@ async function requireAdmin() {
   if (!user?.admin) throw new Error("Unauthorized");
 }
 
-function timeValue(value: string): Date {
-  const normalized = /^\d{2}:\d{2}$/.test(value) ? `${value}:00` : value;
-  return new Date(`1970-01-01T${normalized}Z`);
-}
-
-function formatTime(value: Date | null): string {
-  return value?.toISOString().slice(11, 16) || "";
-}
-
-function shapeMedia(row: any): SignageMedia {
-  return {
-    id: String(row.id),
-    name: row.name || "",
-    type: row.type || "image",
-    file: row.file
-      ? {
-          id: row.file.id,
-          filename_download: row.file.filename_download,
-          type: row.file.type,
-        }
-      : row.file_id,
-  } as SignageMedia;
-}
-
-function shapeSlot(row: any): SignageScheduleSlot {
-  return {
-    id: String(row.id),
-    screen: row.screen
-      ? {
-          ...row.screen,
-          id: String(row.screen.id),
-        }
-      : String(row.screen_id),
-    file: row.file ? shapeMedia(row.file) : null,
-    start_time: formatTime(row.start_time),
-    end_time: formatTime(row.end_time),
-  };
+function failure(error: unknown, fallback: string) {
+  return { success: false as const, error: error instanceof Error ? error.message : fallback };
 }
 
 export async function fetchScreensAction(): Promise<SignageScreen[]> {
-  const rows = await prisma.signageScreen.findMany({ orderBy: { name: "asc" } });
-  return rows.map((row) => ({ ...row, id: String(row.id) })) as SignageScreen[];
+  await requireAdmin();
+  return listScreens();
 }
 
 export async function createScreenAction(data: { name: string; slug: string }) {
   try {
     await requireAdmin();
-    const created = await prisma.signageScreen.create({
-      data: { name: data.name, slug: data.slug.trim(), status: "published" },
-    });
+    const created = await createScreen(data);
     revalidatePath("/admin/signage");
     revalidatePath("/screen");
-    return { success: true, data: { ...created, id: String(created.id) } };
+    return { success: true, data: created };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : "Failed to create screen" };
+    return failure(error, "Failed to create screen");
   }
 }
 
@@ -78,86 +53,48 @@ export async function updateScreenAction(
 ) {
   try {
     await requireAdmin();
-    await prisma.signageScreen.update({
-      where: { id: Number(id) },
-      data: {
-        ...(data.name !== undefined && { name: data.name }),
-        ...(data.slug !== undefined && { slug: data.slug.trim() }),
-        ...(data.status !== undefined && { status: data.status }),
-      },
-    });
+    await updateScreen(id, data);
     revalidatePath("/admin/signage");
     revalidatePath("/screen");
     return { success: true };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : "Failed to update screen" };
+    return failure(error, "Failed to update screen");
   }
 }
 
 export async function deleteScreenAction(id: string) {
   try {
     await requireAdmin();
-    await prisma.$transaction([
-      prisma.signageScheduleSlot.deleteMany({ where: { screen_id: Number(id) } }),
-      prisma.signageScreen.delete({ where: { id: Number(id) } }),
-    ]);
+    await deleteScreen(id);
     revalidatePath("/admin/signage");
     revalidatePath("/screen");
     return { success: true };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : "Failed to delete screen" };
+    return failure(error, "Failed to delete screen");
   }
 }
 
 export async function fetchMediaAction(): Promise<SignageMedia[]> {
-  const rows = await prisma.signageMedia.findMany({
-    include: { file: true },
-    orderBy: { id: "desc" },
-  });
-  return rows.map(shapeMedia);
-}
-
-export async function createMediaAction(data: {
-  name: string;
-  type: "pdf" | "video" | "image";
-  file: string;
-}) {
-  try {
-    await requireAdmin();
-    const created = await prisma.signageMedia.create({
-      data: { name: data.name, type: data.type, file_id: data.file },
-      include: { file: true },
-    });
-    revalidatePath("/admin/signage");
-    return { success: true, data: shapeMedia(created) };
-  } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : "Failed to create media" };
-  }
+  await requireAdmin();
+  return listMedia();
 }
 
 export async function deleteMediaAction(id: string) {
   try {
     await requireAdmin();
-    await prisma.$transaction([
-      prisma.signageScheduleSlot.deleteMany({ where: { file_id: Number(id) } }),
-      prisma.signageMedia.delete({ where: { id: Number(id) } }),
-    ]);
+    await deleteMedia(id);
     revalidatePath("/admin/signage");
     return { success: true };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : "Failed to delete media" };
+    return failure(error, "Failed to delete media");
   }
 }
 
 export async function fetchScheduleSlotsAction(
   screenId: string
 ): Promise<SignageScheduleSlot[]> {
-  const rows = await prisma.signageScheduleSlot.findMany({
-    where: { screen_id: Number(screenId) },
-    include: { screen: true, file: { include: { file: true } } },
-    orderBy: { start_time: "asc" },
-  });
-  return rows.map(shapeSlot);
+  await requireAdmin();
+  return listScheduleSlots(screenId);
 }
 
 export async function createScheduleSlotAction(data: {
@@ -168,19 +105,11 @@ export async function createScheduleSlotAction(data: {
 }) {
   try {
     await requireAdmin();
-    const created = await prisma.signageScheduleSlot.create({
-      data: {
-        screen_id: Number(data.screen),
-        file_id: Number(data.media),
-        start_time: timeValue(data.start_time),
-        end_time: timeValue(data.end_time),
-      },
-      include: { screen: true, file: { include: { file: true } } },
-    });
+    const created = await createScheduleSlot(data);
     revalidatePath("/admin/signage");
-    return { success: true, data: shapeSlot(created) };
+    return { success: true, data: created };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : "Failed to create slot" };
+    return failure(error, "Failed to create slot");
   }
 }
 
@@ -190,44 +119,25 @@ export async function updateScheduleSlotAction(
 ) {
   try {
     await requireAdmin();
-    await prisma.signageScheduleSlot.update({
-      where: { id: Number(id) },
-      data: {
-        ...(data.media !== undefined && { file_id: Number(data.media) }),
-        ...(data.start_time !== undefined && { start_time: timeValue(data.start_time) }),
-        ...(data.end_time !== undefined && { end_time: timeValue(data.end_time) }),
-      },
-    });
+    await updateScheduleSlot(id, data);
     revalidatePath("/admin/signage");
     return { success: true };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : "Failed to update slot" };
+    return failure(error, "Failed to update slot");
   }
 }
 
 export async function deleteScheduleSlotAction(id: string) {
   try {
     await requireAdmin();
-    await prisma.signageScheduleSlot.delete({ where: { id: Number(id) } });
+    await deleteScheduleSlot(id);
     revalidatePath("/admin/signage");
     return { success: true };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : "Failed to delete slot" };
+    return failure(error, "Failed to delete slot");
   }
 }
 
 export async function fetchScreenBySlugAction(slug: string) {
-  const screen = await prisma.signageScreen.findFirst({
-    where: { slug: slug.trim(), status: "published" },
-  });
-  if (!screen) return null;
-  const slots = await prisma.signageScheduleSlot.findMany({
-    where: { screen_id: screen.id },
-    include: { screen: true, file: { include: { file: true } } },
-    orderBy: { start_time: "asc" },
-  });
-  return {
-    screen: { ...screen, id: String(screen.id) } as SignageScreen,
-    slots: slots.map(shapeSlot),
-  };
+  return getPublishedScreenBySlug(slug);
 }

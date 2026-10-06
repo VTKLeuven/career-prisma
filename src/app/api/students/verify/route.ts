@@ -1,7 +1,7 @@
 import argon2 from "argon2";
 import { createHash, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { findStudentForVerification, verifyStudent } from "@/lib/repos/credentials";
 import {
   createSessionToken,
   sessionCookieOptions,
@@ -19,7 +19,7 @@ async function studentForToken(token: string) {
     const id = Number(idValue);
     if (!Number.isSafeInteger(id) || !rawToken) return null;
 
-    const student = await prisma.student.findUnique({ where: { id } });
+    const student = await findStudentForVerification(id);
     if (
       !student ||
       student.verified ||
@@ -91,16 +91,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  await prisma.student.update({
-    where: { id: student.id },
-    data: {
-      password: await argon2.hash(password, { type: argon2.argon2id }),
-      verified: true,
-      verification_token_hash: null,
-      verification_token_created: null,
-      date_updated: new Date(),
-    },
-  });
+  await verifyStudent(student.id, await argon2.hash(password, { type: argon2.argon2id }));
 
   const response = NextResponse.json({
     success: true,

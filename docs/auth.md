@@ -25,6 +25,15 @@ PostgreSQL on every request.
 Invitations (`src/lib/invite-token.ts`, `/accept-invite`) and password resets
 (`src/lib/password-reset.ts`) both use hashed, timestamped single-use tokens.
 
+Both password logins are throttled by `src/lib/login-throttle.ts`: after 10
+failures for one account, or 50 from one client address, within 15 minutes,
+they answer 429 with `Retry-After` until the oldest failure ages out; a
+successful login clears the account's count. The reset-request endpoints send
+at most three mails an hour to one address, and answer the same generic message
+either way -- they look the account up and mail it after responding, so the
+answer takes as long whether or not the account exists. The counters live in
+the process (one container) and reset on deploy.
+
 ## The VTK SSO
 
 The new `vtk.be` runs better-auth's SSO provider — an ordinary OIDC

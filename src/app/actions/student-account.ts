@@ -14,6 +14,7 @@ import { SSO_HINT_COOKIE, flowCookieDomain } from "@/lib/vtk-sso";
 import {
   changeStudentEmail,
   deleteStudent,
+  getStudentPasswordHash,
   setStudentPasswordHash,
   updateOwnStudentDetails,
 } from "@/lib/repos/students";
@@ -24,7 +25,7 @@ type Result = { ok: true } | { ok: false; error: string };
 const SSO_OWNED = "This comes from your VTK account. Change it on vtk.be.";
 const MIN_PASSWORD_LENGTH = 8; // Same as reset-password and verify.
 
-async function checkPassword(stored: string | undefined, candidate: string) {
+async function checkPassword(stored: string | null | undefined, candidate: string) {
   if (!stored?.startsWith("$argon2")) return false;
   return argon2.verify(stored, candidate).catch(() => false);
 }
@@ -73,7 +74,7 @@ export async function changeEmailAction(input: {
     return { ok: false, error: "That is not a valid email address." };
   }
   if (email === student.email) return { ok: true };
-  if (!(await checkPassword(student.password, input.currentPassword ?? ""))) {
+  if (!(await checkPassword(await getStudentPasswordHash(student.id), input.currentPassword ?? ""))) {
     return { ok: false, error: "Your current password is not correct." };
   }
 
@@ -99,14 +100,14 @@ export async function changePasswordAction(input: {
 }): Promise<Result> {
   const student = await getStudentFromCookies();
   if (!student) return { ok: false, error: "You are not signed in." };
-  if (student.sso_subject || !student.password) {
+  if (student.sso_subject || !student.has_password) {
     return { ok: false, error: "You sign in with your VTK account, so there is no password here." };
   }
 
   if (typeof input.newPassword !== "string" || input.newPassword.length < MIN_PASSWORD_LENGTH) {
     return { ok: false, error: `Your new password needs at least ${MIN_PASSWORD_LENGTH} characters.` };
   }
-  if (!(await checkPassword(student.password, input.currentPassword ?? ""))) {
+  if (!(await checkPassword(await getStudentPasswordHash(student.id), input.currentPassword ?? ""))) {
     return { ok: false, error: "Your current password is not correct." };
   }
 

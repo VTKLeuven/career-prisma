@@ -1,6 +1,6 @@
 import argon2 from "argon2";
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { resetUserPassword } from "@/lib/repos/credentials";
 import { findUserForPasswordReset } from "@/lib/password-reset";
 
 export async function POST(request: NextRequest) {
@@ -28,14 +28,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      password: await argon2.hash(password, { type: argon2.argon2id }),
-      password_reset_token: null,
-      password_reset_token_created: null,
-      status: "active",
-    },
-  });
+  await resetUserPassword(user.id, await argon2.hash(password, { type: argon2.argon2id }));
   return NextResponse.json({ success: true });
 }

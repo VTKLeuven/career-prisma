@@ -3,7 +3,10 @@
 import { getSchedulesForEvent, hasSchedulesForEvent, createSchedule, deleteSchedule } from "@/lib/repos/schedule";
 import { getCompanySubOptionAnyStatus } from "@/lib/utils/company-access";
 import { uploadFile } from "@/lib/file-storage";
-import type { Company, Schedule, Master } from "@/lib/schema";
+import { getEventName, getEventTimes } from "@/lib/repos/event";
+import { isDuringEvent } from "@/lib/utils/events";
+import { fetchCompanyByIdAction } from "@/app/actions/companies";
+import type { CareerEvent, Company, Schedule, Master } from "@/lib/schema";
 import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
 
 /** Extract master IDs from company.category (handles junction { master_id } or { category_id } and direct Master[]). */
@@ -28,26 +31,44 @@ function getCompanyMasterIds(company: Company | null | undefined): string[] {
     .filter((id): id is string => id != null && id !== "");
 }
 
-export async function fetchSchedulesForEventAction(
-  eventId: string,
-  company?: Company | null
-): Promise<Array<Schedule & { master?: Master; pdf?: { id?: string } }>> {
+export type CompanySchedules =
+  | { status: "no_access"; eventName: string }
+  | { status: "not_during_event"; eventName: string }
+  | { status: "ok"; eventName: string; schedules: Array<Schedule & { master?: Master; pdf?: { id?: string } }> };
+
+/**
+ * The student schedules the signed-in rep's company may open for an event.
+ * Everything is decided here: the company and its "Student Schedules" option
+ * are loaded from the session, and the event's hours are checked in Brussels
+ * time. It used to take the company object from the caller -- whose options a
+ * rep could fake -- and leave the hours check to the browser.
+ */
+export async function fetchSchedulesForEventAction(eventId: string): Promise<CompanySchedules> {
+  let eventName = "";
   try {
     const user = await getUserFromCookies();
-    if (!user?.company || user.company.id !== company?.id) return [];
-    // Companies with "Student Schedules" sub-option get schedules (filtered by category when set)
-    const hasStudentSchedules = company ? getCompanySubOptionAnyStatus(company, "Student Schedules") !== null : false;
+    const companyId = user?.company?.id;
+    const [company, times, name] = await Promise.all([
+      companyId ? fetchCompanyByIdAction(companyId, false, true) : Promise.resolve(null),
+      getEventTimes(eventId),
+      getEventName(eventId),
+    ]);
+    eventName = name ?? "";
 
-    if (!hasStudentSchedules || !company) {
-      return [];
+    if (!company || getCompanySubOptionAnyStatus(company, "Student Schedules") === null) {
+      return { status: "no_access", eventName };
+    }
+    if (!times || !isDuringEvent(times as CareerEvent)) {
+      return { status: "not_during_event", eventName };
     }
 
     const masterIds = getCompanyMasterIds(company);
     // When company has category: filter schedules by those masters. When empty: show all schedules for the event.
-    return getSchedulesForEvent(eventId, masterIds.length > 0 ? masterIds : undefined);
+    const schedules = await getSchedulesForEvent(eventId, masterIds.length > 0 ? masterIds : undefined);
+    return { status: "ok", eventName, schedules };
   } catch (error) {
     console.error("[fetchSchedulesForEventAction]", error);
-    return [];
+    return { status: "no_access", eventName };
   }
 }
 

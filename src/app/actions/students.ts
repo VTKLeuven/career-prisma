@@ -2,14 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdminUser } from "@/lib/auth-server";
-import { listStudents, updateStudent, deleteStudent } from "@/lib/repos/students";
+import { updateStudent, deleteStudent } from "@/lib/repos/students";
 import type { ActionResult } from "@/components/admin/types";
 import type { Student } from "@/lib/schema";
-
-export async function listStudentsAction(): Promise<Student[]> {
-  await requireAdminUser();
-  return listStudents({ limit: 5000 });
-}
 
 export async function updateStudentAction(id: string, data: Record<string, unknown>): Promise<ActionResult<Student>> {
   try {

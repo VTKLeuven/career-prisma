@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { uploadFile } from "@/lib/file-storage";
-import prisma from "@/lib/prisma";
+import { createMedia } from "@/lib/repos/signage";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -25,15 +25,13 @@ export async function POST(request: Request) {
         ? "video"
         : "image";
     const fileId = await uploadFile(file, user.id);
-    const media = await prisma.signageMedia.create({
-      data: {
-        name:
-          typeof name === "string" && name.trim()
-            ? name.trim()
-            : file.name.replace(/\.[^.]+$/, ""),
-        type,
-        file_id: fileId,
-      },
+    const media = await createMedia({
+      name:
+        typeof name === "string" && name.trim()
+          ? name.trim()
+          : file.name.replace(/\.[^.]+$/, ""),
+      type,
+      file: fileId,
     });
     return NextResponse.json({ id: media.id, fileId, type });
   } catch (error) {

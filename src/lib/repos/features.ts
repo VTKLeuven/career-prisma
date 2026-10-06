@@ -1,4 +1,5 @@
 // lib/repos/features.ts
+import "server-only";
 import { prisma } from "@/lib/prisma"
 import {
   COMPANY_INCLUDE,

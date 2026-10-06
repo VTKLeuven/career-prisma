@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { fetchOrdersAction, finishOrderAction, pickUpOrderAction, fetchCompletedOrdersAction, deleteOrderAction } from "@/app/actions/orders";
-import type { Order, Zone, OrderItem } from "@/lib/schema";
+import type { Order, Zone } from "@/lib/schema";
 import { Check, Clock, History, Loader2, Play, Trash2 } from "lucide-react";
 
 type ExtendedOrder = Order & {
@@ -713,7 +713,7 @@ export default function ShifterDashboardClient({ initialZones, currentUserId }: 
                                             </Badge>
                                             <AlertDialog>
                                                 <AlertDialogTrigger asChild>
-                                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive">
+                                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" aria-label="Delete order">
                                                         <Trash2 className="h-4 w-4" />
                                                     </Button>
                                                 </AlertDialogTrigger>

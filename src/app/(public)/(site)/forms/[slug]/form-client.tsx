@@ -1,0 +1,439 @@
+"use client";
+
+import * as React from "react";
+import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { submitFormResponseAction } from "@/app/actions/forms";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { CheckCircle2, Loader2 } from "lucide-react";
+import type { FormField, FormSchema } from "@/lib/schema";
+import { formatDateTimeBE } from "@/lib/date-utils";
+import { getFileUrl } from "@/components/Images";
+import NextImage from "next/image";
+import { FormFieldRenderer } from "@/components/FormFieldRenderer";
+import { userFacingFormSubmitErrorMessage } from "@/lib/form-submit-errors";
+import { fieldDisplayLabel } from "@/lib/form-fields";
+import { toast } from "sonner";
+
+export type PublicForm = {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  metadata?: {
+    deadline?: string;
+    max_entries?: number;
+    [key: string]: unknown;
+  };
+  activeVersion: {
+    id: string;
+    version_number: number;
+    schema: FormSchema;
+  };
+  isFull?: boolean;
+  requiresLogin?: boolean;
+  isAuthenticated?: boolean;
+  studentEmail?: string;
+  /** Starting answers for study fields, keyed by field name (computed server-side for signed-in students) */
+  studyPrefill?: Record<string, string | string[]>;
+  /** Student's latest response (any version) - for version-upgrade or editing */
+  existingResponse?: { id: string; form_version_id: string; data: Record<string, unknown>; attendant_uuid?: string } | null;
+};
+
+/**
+ * The answers a form starts with: the student's existing response when it is
+ * for the current version (editing), then their account email and study
+ * fields for whatever is still empty -- an earlier answer always wins.
+ */
+function initialAnswers(form: PublicForm | null): { formData: Record<string, unknown>; isEditing: boolean } {
+  if (!form) return { formData: {}, isEditing: false };
+  const fields = form.activeVersion?.schema?.fields ?? [];
+  let formData: Record<string, unknown> = {};
+  let isEditing = false;
+
+  const isSameVersion = form.existingResponse && form.existingResponse.form_version_id === form.activeVersion.id;
+  if (isSameVersion) {
+    // Same version: prefill all fields from existing response (editing mode)
+    const oldData = form.existingResponse?.data ?? {};
+    for (const field of fields) {
+      const val = oldData[field.name];
+      const hasOld = val !== undefined && val !== null && val !== "" && (!Array.isArray(val) || val.length > 0);
+      formData[field.name] = hasOld ? val : undefined;
+    }
+    isEditing = true;
+  }
+
+  // Pre-fill email from student account if not already set
+  const emailField = form.studentEmail ? fields.find(f => f.name === 'email' && f.type === 'email') : undefined;
+  if (emailField && formData[emailField.name] == null) {
+    formData = { ...formData, [emailField.name]: form.studentEmail };
+  }
+
+  // Pre-fill study fields (master degrees, study year) from the student's account.
+  for (const [name, value] of Object.entries(form.studyPrefill ?? {})) {
+    if (formData[name] == null) formData[name] = value;
+  }
+
+  return { formData, isEditing };
+}
+
+/** A public form; ./page.tsx loads it (and the student's prefill) on the server. */
+export function PublicFormClient({ initialForm }: { initialForm: PublicForm | null }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirectTo");
+
+  const form = initialForm;
+  const [initial] = useState(() => initialAnswers(initialForm));
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [formData, setFormData] = useState<Record<string, unknown>>(initial.formData);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  /** Inline message after a failed submit (form values stay in state). */
+  const [submitNotice, setSubmitNotice] = useState<string | null>(null);
+  /** True when the student is editing an existing response (same version) */
+  const isEditing = initial.isEditing;
+
+  // Helper function to count words
+  const countWords = (text: string): number => {
+    return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+  };
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+    
+    if (!form) return false;
+
+    form.activeVersion.schema.fields.forEach((field) => {
+      if (field.required) {
+        const value = formData[field.name];
+        if (!value || (Array.isArray(value) && value.length === 0)) {
+          newErrors[field.name] = `${fieldDisplayLabel(field)} is required`;
+        }
+      }
+      
+      // Validate word limit for textarea fields
+      if (field.type === "textarea" && field.validation?.wordLimit) {
+        const value = formData[field.name] as string;
+        if (value) {
+          const wordCount = countWords(value);
+          if (wordCount > field.validation.wordLimit) {
+            newErrors[field.name] = `${fieldDisplayLabel(field)} exceeds the word limit of ${field.validation.wordLimit} words (${wordCount} words entered)`;
+          }
+        }
+      }
+
+      // Validate LinkedIn profile URL format
+      if (field.type === "linkedin") {
+        const value = formData[field.name] as string;
+        if (value && !/^https?:\/\/(www\.)?linkedin\.com\/in\/[\w-]+\/?(\?.*)?$/i.test(value.trim())) {
+          newErrors[field.name] = `${fieldDisplayLabel(field)} must be a valid LinkedIn profile URL (e.g. https://linkedin.com/in/username)`;
+        }
+      }
+    });
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!form || !validateForm()) {
+      return;
+    }
+
+    // Check deadline (with time)
+    if (form.metadata?.deadline) {
+      const deadline = new Date(form.metadata.deadline);
+      const now = new Date();
+      if (now > deadline) {
+        toast.error(`This form's deadline has passed. The deadline was ${formatDateTimeBE(deadline)}.`);
+        return;
+      }
+    }
+
+    // Note: Max entries check is handled server-side in submitFormResponseAction
+    // Client-side check removed since we can't count responses with public permissions
+
+    setSubmitNotice(null);
+    setSubmitting(true);
+    try {
+      await submitFormResponseAction({
+        form_version_id: form.activeVersion.id,
+        data: formData,
+      });
+
+      setSubmitted(true);
+    } catch (error) {
+      console.error("Error submitting form:", error);
+      setSubmitNotice(userFacingFormSubmitErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const isDeadlinePassed = React.useMemo(() => {
+    if (!form?.metadata?.deadline) {
+      return false;
+    }
+    try {
+      const deadline = new Date(form.metadata.deadline);
+      const now = new Date();
+      const passed = now > deadline;
+      console.log('[PublicFormPage] Deadline check:', {
+        deadline: form.metadata.deadline,
+        deadlineDate: deadline.toISOString(),
+        now: now.toISOString(),
+        passed
+      });
+      return passed;
+    } catch (error) {
+      console.error('[PublicFormPage] Error parsing deadline:', error);
+      return false;
+    }
+  }, [form?.metadata?.deadline]);
+
+  const isFormFull = React.useMemo(() => {
+    return form?.isFull === true;
+  }, [form?.isFull]);
+
+  const handleFieldChange = (fieldName: string, value: unknown) => {
+    setSubmitNotice(null);
+    setFormData((prev) => ({ ...prev, [fieldName]: value }));
+    // Clear error for this field
+    if (errors[fieldName]) {
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[fieldName];
+        return newErrors;
+      });
+    }
+  };
+
+  if (!form) {
+    return (
+      <div className="container mx-auto p-8">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center py-12">
+              <h2 className="text-2xl font-bold mb-2">Form Not Found</h2>
+              <p className="text-muted-foreground mb-4">
+                The form you&apos;re looking for doesn&apos;t exist or is not currently available.
+              </p>
+              <Button onClick={() => router.push("/")}>Go Home</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isFormFull && form.metadata?.max_entries) {
+    return (
+      <div className="container mx-auto p-8">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center py-12">
+              <h2 className="text-2xl font-bold mb-2">Form Full</h2>
+              <p className="text-muted-foreground mb-4">
+                This form has reached its maximum capacity and is no longer accepting new entries.
+              </p>
+              <Button onClick={() => router.push("/")}>Go Home</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (submitted) {
+    return (
+      <div className="container mx-auto p-8">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center py-12">
+              <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
+              <h2 className="text-2xl font-bold mb-2">Thank You!</h2>
+              <p className="text-muted-foreground mb-4">
+                {isEditing
+                  ? "Your response has been updated successfully."
+                  : "Your response has been submitted successfully."}
+              </p>
+              {redirectTo ? (
+                <Button onClick={() => router.push(redirectTo)}>Continue</Button>
+              ) : (
+                <Button onClick={() => router.push("/")}>Go Home</Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto p-8 max-w-3xl">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-2xl">{form.name}</CardTitle>
+              {form.description && (
+                <CardDescription className="mt-2">{form.description}</CardDescription>
+              )}
+              {form.metadata?.deadline && (
+                <div className="mt-2">
+                  <Badge variant="secondary">
+                    Deadline: {formatDateTimeBE(form.metadata.deadline)}
+                    {isDeadlinePassed && " (Passed)"}
+                  </Badge>
+                </div>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isDeadlinePassed && form.metadata?.deadline && (
+            <div className="mb-4 p-4 bg-muted border border-border rounded-md">
+              <p className="text-muted-foreground">
+                This form&apos;s deadline has passed. Submissions are no longer accepted. The deadline was {formatDateTimeBE(form.metadata.deadline)}.
+              </p>
+            </div>
+          )}
+          {isFormFull && form.metadata?.max_entries && (
+            <div className="mb-4 p-4 bg-muted border border-border rounded-md">
+              <p className="text-muted-foreground">
+                This form has reached its maximum capacity and is no longer accepting new entries.
+              </p>
+            </div>
+          )}
+          {submitNotice && (
+            <div
+              role="alert"
+              className="mb-4 p-4 rounded-md border border-amber-200 bg-amber-50 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"
+            >
+              {submitNotice}
+            </div>
+          )}
+          {/* {isEditing && (
+            <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md">
+              <p className="text-sm text-amber-800 dark:text-amber-200">
+                You have already submitted a response. You can update your answers below.
+              </p>
+            </div>
+          )} */}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {(() => {
+              // Group fields by layout rows
+              const rows: FormField[][] = [];
+              let currentRow: FormField[] = [];
+              let currentRowWidth = 0;
+
+              form.activeVersion.schema.fields.forEach((field) => {
+                const layout = field.layout || 'full';
+                const width = layout === 'half' ? 0.5 : layout === 'third' ? 1/3 : layout === 'two-thirds' ? 2/3 : 1;
+
+                // If adding this field would exceed 1, start a new row
+                if (currentRowWidth + width > 1 && currentRow.length > 0) {
+                  rows.push(currentRow);
+                  currentRow = [];
+                  currentRowWidth = 0;
+                }
+
+                currentRow.push(field);
+                currentRowWidth += width;
+
+                // If the row is full or field is full width, finalize the row
+                if (currentRowWidth >= 1 || layout === 'full') {
+                  rows.push(currentRow);
+                  currentRow = [];
+                  currentRowWidth = 0;
+                }
+              });
+
+              // Add any remaining fields
+              if (currentRow.length > 0) {
+                rows.push(currentRow);
+              }
+
+              const getColSpanClass = (layout: string) => {
+                switch (layout) {
+                  case 'half': return 'md:col-span-6';
+                  case 'third': return 'md:col-span-4';
+                  case 'two-thirds': return 'md:col-span-8';
+                  default: return 'md:col-span-12';
+                }
+              };
+
+              return rows.map((row, rowIndex) => (
+                // A row of untitled inputs continues the titled field above it
+                // ("Representative names" → one input per name), so pull it closer.
+                <div key={`row-${rowIndex}`} className={`grid grid-cols-1 md:grid-cols-12 gap-4 ${rowIndex > 0 && row.every((f) => !f.label) ? "-mt-4" : ""}`}>
+                  {row.map((field) => {
+                    const layout = field.layout || 'full';
+                    const imageUrl = field.image ? getFileUrl(field.image) : null;
+                    
+                    return (
+                      <div key={field.id} className={`space-y-2 ${getColSpanClass(layout)}`}>
+                        {field.label && (
+                          <Label htmlFor={field.id}>
+                            {field.label}
+                            {field.required && <span className="text-destructive ml-1">*</span>}
+                          </Label>
+                        )}
+                        {field.description && (
+                          <p className="text-sm text-muted-foreground">{field.description}</p>
+                        )}
+                        {imageUrl && (
+                          <div className="relative w-full h-48 bg-muted rounded-md overflow-hidden border">
+                            <NextImage
+                              src={imageUrl}
+                              alt={field.label || "Field image"}
+                              fill
+                              className="object-contain"
+                            />
+                          </div>
+                        )}
+                        <FormFieldRenderer
+                          field={field}
+                          value={formData[field.name]}
+                          onChange={(value) => handleFieldChange(field.name, value)}
+                          error={errors[field.name]}
+                          disabled={isDeadlinePassed || isFormFull}
+                        />
+                        {errors[field.name] && (
+                          <p className="text-sm text-destructive">{errors[field.name]}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ));
+            })()}
+
+            <div className="flex justify-end gap-4 pt-4">
+              <Button type="button" variant="outline" onClick={() => router.push("/")}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={submitting || isDeadlinePassed || isFormFull}>
+                {submitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {isEditing ? "Updating..." : "Submitting..."}
+                  </>
+                ) : (
+                  isEditing ? "Update Response" : "Submit"
+                )}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
