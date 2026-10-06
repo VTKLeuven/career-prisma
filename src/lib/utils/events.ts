@@ -20,6 +20,16 @@ function zoneOffsetMs(at: Date, timeZone: string): number {
   return wall - Math.floor(at.getTime() / 1000) * 1000;
 }
 
+/** Today's date in the event time zone, as YYYY-MM-DD. */
+export function eventZoneToday(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: EVENT_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
 /**
  * The instant a wall-clock date and time ("2027-03-11", "09:45") happen in
  * the event time zone. `new Date("2027-03-11T09:45")` would read it in the
@@ -95,29 +105,22 @@ export function getUpcomingEventsWithFallback(
   events: CareerEvent[],
   targetCount: number = 3
 ): EventWithStatus[] {
+  // Compared as YYYY-MM-DD strings against today in Belgium, so the server
+  // (UTC) and every browser agree -- through new Date() an event flipped to
+  // "past" an hour or two late on the server, and a day early west of UTC.
   const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const today = eventZoneToday(now);
 
-  // Separate upcoming and past events
+  // Separate upcoming and past events (an event without a date counts as past)
   const upcoming: EventWithStatus[] = [];
   const past: EventWithStatus[] = [];
 
   events.forEach((event) => {
-    try {
-      const eventDate = new Date(event.date);
-      const eventDay = new Date(
-        eventDate.getFullYear(),
-        eventDate.getMonth(),
-        eventDate.getDate()
-      );
-
-      if (eventDay >= today) {
-        upcoming.push({ ...event, isPast: false });
-      } else {
-        past.push({ ...event, isPast: true });
-      }
-    } catch {
-      // Skip invalid dates
+    const day = typeof event.date === "string" ? event.date.slice(0, 10) : "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(day) && day >= today) {
+      upcoming.push({ ...event, isPast: false });
+    } else {
+      past.push({ ...event, isPast: true });
     }
   });
 
