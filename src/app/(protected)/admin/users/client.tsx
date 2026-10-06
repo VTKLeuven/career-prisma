@@ -1,26 +1,9 @@
 "use client";
 
 import { ResourceManager } from "@/components/admin/ResourceManager";
-import type { ResourceConfig, SelectOption } from "@/components/admin/types";
-import {
-  createUserAction,
-  updateUserAction,
-  deleteUserAction,
-} from "@/app/actions/admin-users";
+import type { SelectOption } from "@/components/admin/types";
 import type { AdminUserRow } from "@/lib/repos/users";
-import { INTERNAL_ROLE_IDS } from "@/lib/roles";
-import { UserRound } from "lucide-react";
-import Image from "next/image";
-
-const STATUS_OPTIONS: SelectOption[] = [
-  { value: "active", label: "Active" },
-  { value: "invited", label: "Invited" },
-  { value: "archived", label: "Archived" },
-];
-
-function fullName(u: AdminUserRow): string {
-  return [u.first_name, u.last_name].filter(Boolean).join(" ") || u.email || u.id;
-}
+import { userResourceConfig } from "./user-config";
 
 export default function UsersClient({
   initialUsers,
@@ -31,100 +14,5 @@ export default function UsersClient({
   roleOptions: SelectOption[];
   companyOptions: SelectOption[];
 }) {
-  const config: ResourceConfig<AdminUserRow> = {
-    singular: "User",
-    getId: (u) => u.id,
-    getLabel: (u) => fullName(u),
-    searchKeys: ["first_name", "last_name", "email"],
-    columns: [
-      {
-        key: "avatar",
-        label: "Photo",
-        render: (u) =>
-          u.avatar ? (
-            <Image
-              src={`/api/files/${u.avatar}`}
-              alt={fullName(u)}
-              width={40}
-              height={40}
-              className="h-10 w-10 rounded-full border object-cover"
-            />
-          ) : (
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-              <UserRound className="h-5 w-5 text-muted-foreground" />
-            </span>
-          ),
-      },
-      { key: "name", label: "Name", render: (u) => fullName(u) },
-      { key: "email", label: "Email", render: (u) => u.email || "—" },
-      { key: "role_name", label: "Role", render: (u) => u.role_name || "—" },
-      {
-        key: "status",
-        label: "Status",
-        render: (u) => (
-          <span
-            className={
-              u.status === "archived"
-                ? "text-muted-foreground"
-                : u.status === "invited"
-                  ? "text-amber-600"
-                  : "text-emerald-600"
-            }
-          >
-            {u.status}
-          </span>
-        ),
-      },
-      { key: "company_name", label: "Company", render: (u) => u.company_name || "—" },
-    ],
-    fields: [
-      { name: "avatar", label: "Photo", type: "image" },
-      { name: "first_name", label: "First name", type: "text" },
-      { name: "last_name", label: "Last name", type: "text" },
-      { name: "email", label: "Email", type: "text", required: true },
-      { name: "title", label: "Job title", type: "text" },
-      { name: "tel", label: "Phone", type: "text" },
-      {
-        name: "role_id",
-        label: "Role",
-        type: "select",
-        options: roleOptions,
-        getEditValue: (u) => u.role_id ?? "",
-      },
-      {
-        name: "status",
-        label: "Status",
-        type: "select",
-        options: STATUS_OPTIONS,
-        defaultValue: "invited",
-        getEditValue: (u) => u.status ?? "",
-      },
-      {
-        // Only the internal roles get a card in the homepage team section, so
-        // this is the only place the link can do anything. Switching the role
-        // away hides the field and clears the stored value.
-        name: "profile_link",
-        label: "Homepage card link",
-        type: "text",
-        placeholder: "https://www.linkedin.com/in/...",
-        help: "Opened in a new tab when a visitor clicks this person's card on the homepage. Leave empty for no link.",
-        visible: (values) => INTERNAL_ROLE_IDS.includes(String(values.role_id ?? "")),
-        getEditValue: (u) => u.profile_link ?? "",
-      },
-      {
-        name: "company_id",
-        label: "Company",
-        type: "select",
-        options: companyOptions,
-        getEditValue: (u) => u.company_id ?? "",
-      },
-    ],
-    actions: {
-      create: createUserAction,
-      update: updateUserAction,
-      remove: deleteUserAction,
-    },
-  };
-
-  return <ResourceManager config={config} initialRows={initialUsers} />;
+  return <ResourceManager config={userResourceConfig(roleOptions, companyOptions)} initialRows={initialUsers} />;
 }

@@ -63,6 +63,11 @@ import type { AcademicYear, CareerEvent, Company, CompanyRep, CareerEventOption,
 import type { UserSummary as AppUser } from "@/lib/schema";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
 import { toast } from "sonner";
+import { ResourceEditor } from "@/components/admin/ResourceManager";
+import type { SelectOption } from "@/components/admin/types";
+import { fetchAdminUserAction } from "@/app/actions/admin-users";
+import type { AdminUserRow } from "@/lib/repos/users";
+import { userResourceConfig } from "../users/user-config";
 
 /**
  * Notes about typing decisions:
@@ -277,6 +282,13 @@ function extractCompanySubOptions(opt: unknown, allSubOptions?: CareerSubOption[
  * ------------------------------------------------------------------ */
 type CompaniesData = Awaited<ReturnType<typeof fetchCompaniesWithSubOptionsAction>>;
 
+/** What a representative's Edit needs to open the User Management form. */
+const UserEditContext = React.createContext<{
+  roleOptions: SelectOption[];
+  companyOptions: SelectOption[];
+  onSaved: () => void;
+} | null>(null);
+
 /** The table's rows: each company with its options' events and sub-options resolved. */
 function toCompanyRows({ companies: rows, allSubOptions }: CompaniesData): CompanyRow[] {
   return (rows ?? []).map((r: Company & { status?: string }) => ({
@@ -375,7 +387,16 @@ function toCompanyRows({ companies: rows, allSubOptions }: CompaniesData): Compa
 }
 
 /** The companies table; the page loads the companies and salespeople on the server. */
-export function CompaniesSection({ initialData, salespersons }: { initialData: CompaniesData; salespersons: AppUser[] }) {
+export function CompaniesSection({
+  initialData,
+  salespersons,
+  roleOptions,
+}: {
+  initialData: CompaniesData;
+  salespersons: AppUser[];
+  /** For editing a representative with the User Management form. */
+  roleOptions: SelectOption[];
+}) {
   const [data, setData] = React.useState<CompanyRow[]>(() => toCompanyRows(initialData));
   const [loading, setLoading] = React.useState(false);
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -513,233 +534,240 @@ export function CompaniesSection({ initialData, salespersons }: { initialData: C
   const filteredCount = table.getFilteredRowModel().rows.length;
   const { pageIndex, pageSize } = table.getState().pagination;
 
+  const companyOptions = React.useMemo(
+    () => data.map((c) => ({ value: c.id, label: c.name || "(unnamed)" })),
+    [data]
+  );
+
   return (
-    <div className="flex flex-col gap-3">
-        <EditCompanyDialog
-          company={editingCompany}
-          salespersons={salespersons}
-          onClose={() => setEditingCompany(null)}
-          onSaved={refreshCompanies}
-        />
-        {selectedCompany && (
-          <div className="flex flex-col gap-3 rounded-xl border bg-[#fafafa] p-3 sm:flex-row sm:items-center">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => { setSelectedCompany(null); setViewMode("companies"); }}
-              className="self-start sm:self-auto"
-            >
-              <ChevronLeft className="h-4 w-4" /> Companies
-            </Button>
-            <div className="flex min-w-0 items-center gap-2.5">
-              <CompanyAvatar name={selectedCompany.name} />
-              <span className="truncate text-[15px] font-semibold">{selectedCompany.name}</span>
-            </div>
-            <div className="flex items-center gap-1 rounded-[10px] border bg-background p-0.5 sm:ml-4">
-              {([
-                ["users", "Representatives", selectedCompany.representatives?.length ?? 0],
-                ["options", "Options", selectedCompany.options?.length ?? 0],
-              ] as const).map(([mode, label, count]) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setViewMode(mode)}
-                  className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
-                    viewMode === mode ? "bg-[#f0f0f2] text-foreground" : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {label}
-                  <span className="text-xs text-muted-foreground tabular">{count}</span>
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-2 sm:ml-auto">
-              <Button variant="outline" size="sm" asChild>
-                <Link href={`/company/${slugifyCompanyName(selectedCompany.name)}`}>
-                  <ExternalLink className="h-4 w-4" /> Public page
-                </Link>
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setEditingCompany(selectedCompany)}>
-                <Pencil className="h-4 w-4" /> Edit details
-              </Button>
-            </div>
-          </div>
-        )}
-        {!selectedCompany ? (
-          <>
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-              <div className="relative w-full sm:max-w-xs">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search name or VAT…"
-                  value={table.getState().globalFilter ?? ""}
-                  onChange={e => table.setGlobalFilter(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-              <Select
-                value={(table.getColumn("salesperson")?.getFilterValue() ?? "__all__") as string}
-                onValueChange={(val) => table.getColumn("salesperson")?.setFilterValue(val === "__all__" ? undefined : val)}
+    <UserEditContext.Provider value={{ roleOptions, companyOptions, onSaved: refreshCompanies }}>
+      <div className="flex flex-col gap-3">
+          <EditCompanyDialog
+            company={editingCompany}
+            salespersons={salespersons}
+            onClose={() => setEditingCompany(null)}
+            onSaved={refreshCompanies}
+          />
+          {selectedCompany && (
+            <div className="flex flex-col gap-3 rounded-xl border bg-[#fafafa] p-3 sm:flex-row sm:items-center">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setSelectedCompany(null); setViewMode("companies"); }}
+                className="self-start sm:self-auto"
               >
-                <SelectTrigger className="w-full sm:w-[200px]">
-                  <SelectValue placeholder="Assignee" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem key="__all__" value="__all__">All assignees</SelectItem>
-                  {salespersonOptions.map(name => <SelectItem key={String(name)} value={String(name)}>{name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-
-              <span className="text-sm text-muted-foreground tabular">
-                {filteredCount === data.length ? `${data.length} companies` : `${filteredCount} of ${data.length}`}
-              </span>
-
+                <ChevronLeft className="h-4 w-4" /> Companies
+              </Button>
+              <div className="flex min-w-0 items-center gap-2.5">
+                <CompanyAvatar name={selectedCompany.name} />
+                <span className="truncate text-[15px] font-semibold">{selectedCompany.name}</span>
+              </div>
+              <div className="flex items-center gap-1 rounded-[10px] border bg-background p-0.5 sm:ml-4">
+                {([
+                  ["users", "Representatives", selectedCompany.representatives?.length ?? 0],
+                  ["options", "Options", selectedCompany.options?.length ?? 0],
+                ] as const).map(([mode, label, count]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setViewMode(mode)}
+                    className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
+                      viewMode === mode ? "bg-[#f0f0f2] text-foreground" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {label}
+                    <span className="text-xs text-muted-foreground tabular">{count}</span>
+                  </button>
+                ))}
+              </div>
               <div className="flex items-center gap-2 sm:ml-auto">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline"><IconColumns /> <span className="hidden sm:inline">Columns</span><ChevronDown className="h-4 w-4 text-muted-foreground" /></Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {table.getAllColumns()
-                      .filter(c => c.getCanHide())
-                      .map(c => (
-                        <DropdownMenuCheckboxItem
-                          key={c.id}
-                          checked={c.getIsVisible()}
-                          onCheckedChange={v => c.toggleVisibility(v)}
-                          className="capitalize"
-                        >
-                          {c.id}
-                        </DropdownMenuCheckboxItem>
-                      ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <CompanyFormDialog
-                  onRefresh={refreshCompanies}
-                  salespersons={salespersons}
-                />
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/company/${slugifyCompanyName(selectedCompany.name)}`}>
+                    <ExternalLink className="h-4 w-4" /> Public page
+                  </Link>
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setEditingCompany(selectedCompany)}>
+                  <Pencil className="h-4 w-4" /> Edit details
+                </Button>
               </div>
             </div>
+          )}
+          {!selectedCompany ? (
+            <>
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                <div className="relative w-full sm:max-w-xs">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="Search name or VAT…"
+                    value={table.getState().globalFilter ?? ""}
+                    onChange={e => table.setGlobalFilter(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <Select
+                  value={(table.getColumn("salesperson")?.getFilterValue() ?? "__all__") as string}
+                  onValueChange={(val) => table.getColumn("salesperson")?.setFilterValue(val === "__all__" ? undefined : val)}
+                >
+                  <SelectTrigger className="w-full sm:w-[200px]">
+                    <SelectValue placeholder="Assignee" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem key="__all__" value="__all__">All assignees</SelectItem>
+                    {salespersonOptions.map(name => <SelectItem key={String(name)} value={String(name)}>{name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
 
-            <div className="overflow-hidden rounded-xl border bg-background">
-                <Table containerClassName="max-h-[calc(100svh-17rem)]">
-                  <TableHeader className="sticky top-0 z-10 bg-background shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
-                    {table.getHeaderGroups().map(headerGroup => (
-                      <TableRow key={headerGroup.id}>
-                        {headerGroup.headers.map(header => (
-                          <TableHead key={header.id} className="whitespace-nowrap first:pl-4">
-                            {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                          </TableHead>
+                <span className="text-sm text-muted-foreground tabular">
+                  {filteredCount === data.length ? `${data.length} companies` : `${filteredCount} of ${data.length}`}
+                </span>
+
+                <div className="flex items-center gap-2 sm:ml-auto">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline"><IconColumns /> <span className="hidden sm:inline">Columns</span><ChevronDown className="h-4 w-4 text-muted-foreground" /></Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {table.getAllColumns()
+                        .filter(c => c.getCanHide())
+                        .map(c => (
+                          <DropdownMenuCheckboxItem
+                            key={c.id}
+                            checked={c.getIsVisible()}
+                            onCheckedChange={v => c.toggleVisibility(v)}
+                            className="capitalize"
+                          >
+                            {c.id}
+                          </DropdownMenuCheckboxItem>
                         ))}
-                      </TableRow>
-                    ))}
-                  </TableHeader>
-                  <TableBody>
-                    {loading && data.length === 0 ? (
-                      Array.from({ length: 8 }).map((_, i) => (
-                        <TableRow key={i} className="hover:bg-transparent">
-                          <TableCell colSpan={table.getAllColumns().length} className="pl-4">
-                            <div className="flex items-center gap-3">
-                              <div className="size-7 animate-pulse rounded-lg bg-muted" />
-                              <div className="h-3 w-48 animate-pulse rounded bg-muted" />
-                              <div className="ml-auto h-3 w-24 animate-pulse rounded bg-muted" />
-                            </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <CompanyFormDialog
+                    onRefresh={refreshCompanies}
+                    salespersons={salespersons}
+                  />
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-xl border bg-background">
+                  <Table containerClassName="max-h-[calc(100svh-17rem)]">
+                    <TableHeader className="sticky top-0 z-10 bg-background shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
+                      {table.getHeaderGroups().map(headerGroup => (
+                        <TableRow key={headerGroup.id}>
+                          {headerGroup.headers.map(header => (
+                            <TableHead key={header.id} className="whitespace-nowrap first:pl-4">
+                              {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                            </TableHead>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableHeader>
+                    <TableBody>
+                      {loading && data.length === 0 ? (
+                        Array.from({ length: 8 }).map((_, i) => (
+                          <TableRow key={i} className="hover:bg-transparent">
+                            <TableCell colSpan={table.getAllColumns().length} className="pl-4">
+                              <div className="flex items-center gap-3">
+                                <div className="size-7 animate-pulse rounded-lg bg-muted" />
+                                <div className="h-3 w-48 animate-pulse rounded bg-muted" />
+                                <div className="ml-auto h-3 w-24 animate-pulse rounded bg-muted" />
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : table.getRowModel().rows.length ? (
+                        table.getRowModel().rows.map(row => {
+                          const company = row.original as CompanyRow;
+                          return (
+                            <TableRow
+                              key={row.id}
+                              tabIndex={0}
+                              className="group/row cursor-pointer outline-none focus-visible:bg-surface-hover focus-visible:shadow-[inset_2px_0_0_#1f82d1]"
+                              onClick={(e) => {
+                                // Menus and dialogs opened from a row are portaled, but React
+                                // still bubbles their clicks here; only real row clicks count.
+                                if (!e.currentTarget.contains(e.target as Node)) return;
+                                if ((e.target as HTMLElement).closest("a, button, [role=checkbox]")) return;
+                                setEditingCompany(company);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && e.target === e.currentTarget) setEditingCompany(company);
+                              }}
+                            >
+                              {row.getVisibleCells().map(cell => (
+                                <TableCell key={cell.id} className="whitespace-nowrap first:pl-4">{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+                              ))}
+                            </TableRow>
+                          );
+                        })
+                      ) : (
+                        <TableRow className="hover:bg-transparent">
+                          <TableCell colSpan={table.getAllColumns().length} className="h-40 text-center text-muted-foreground">
+                            No companies match these filters.
                           </TableCell>
                         </TableRow>
-                      ))
-                    ) : table.getRowModel().rows.length ? (
-                      table.getRowModel().rows.map(row => {
-                        const company = row.original as CompanyRow;
-                        return (
-                          <TableRow
-                            key={row.id}
-                            tabIndex={0}
-                            className="group/row cursor-pointer outline-none focus-visible:bg-surface-hover focus-visible:shadow-[inset_2px_0_0_#1f82d1]"
-                            onClick={(e) => {
-                              // Menus and dialogs opened from a row are portaled, but React
-                              // still bubbles their clicks here; only real row clicks count.
-                              if (!e.currentTarget.contains(e.target as Node)) return;
-                              if ((e.target as HTMLElement).closest("a, button, [role=checkbox]")) return;
-                              setEditingCompany(company);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" && e.target === e.currentTarget) setEditingCompany(company);
-                            }}
-                          >
-                            {row.getVisibleCells().map(cell => (
-                              <TableCell key={cell.id} className="whitespace-nowrap first:pl-4">{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
-                            ))}
-                          </TableRow>
-                        );
-                      })
-                    ) : (
-                      <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={table.getAllColumns().length} className="h-40 text-center text-muted-foreground">
-                          No companies match these filters.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                      )}
+                    </TableBody>
+                  </Table>
 
-              {filteredCount > pageSize && (
-                <div className="flex items-center justify-between gap-2 border-t bg-[#fafafa] px-4 py-2">
-                  <p className="text-xs text-muted-foreground tabular">
-                    {pageIndex * pageSize + 1}–{Math.min((pageIndex + 1) * pageSize, filteredCount)} of {filteredCount}
-                  </p>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
-                      <ChevronLeft className="h-4 w-4" /> Previous
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
-                      Next <ChevronRight className="h-4 w-4" />
-                    </Button>
+                {filteredCount > pageSize && (
+                  <div className="flex items-center justify-between gap-2 border-t bg-[#fafafa] px-4 py-2">
+                    <p className="text-xs text-muted-foreground tabular">
+                      {pageIndex * pageSize + 1}–{Math.min((pageIndex + 1) * pageSize, filteredCount)} of {filteredCount}
+                    </p>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
+                        <ChevronLeft className="h-4 w-4" /> Previous
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+                        Next <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          </>
-        ) : viewMode === "users" ? (
-          <CompanyUsersTable
-            company={selectedCompany}
-            onAddUser={(newUser) => {
-              // locally add partial user and also update main data list
-              addUserToCompany(selectedCompany.id, newUser);
-            }}
-            onRemoveUser={(userId) => {
-              // locally remove user and also update main data list
-              removeUserFromCompany(selectedCompany.id, userId);
-            }}
-          />
-        ) : viewMode === "options" ? (
-          <div className="space-y-8">
-            <section className="space-y-3">
-              <div>
-                <h3 className="text-lg font-semibold">Current academic year</h3>
-                <p className="text-sm text-muted-foreground">
-                  These purchases are active and can be changed here.
-                </p>
+                )}
               </div>
-              <CompanySubOptionsSection
-                company={selectedCompany}
-                allSubOptions={allSubOptions}
-                onSubOptionsChange={() => refreshCompanies()}
-              />
-              <CompanyOptionsTable
-                company={selectedCompany}
-                onAddOption={(newOption) => {
-                  addOptionToCompany(selectedCompany.id, newOption);
-                }}
-                onRemoveOption={(optionId) => {
-                  removeOptionFromCompany(selectedCompany.id, optionId);
-                }}
-                onSubOptionsChange={() => refreshCompanies()}
-              />
-            </section>
-            <CompanyOptionHistory company={selectedCompany} />
-          </div>
-        ) : null}
-    </div>
+            </>
+          ) : viewMode === "users" ? (
+            <CompanyUsersTable
+              company={selectedCompany}
+              onAddUser={(newUser) => {
+                // locally add partial user and also update main data list
+                addUserToCompany(selectedCompany.id, newUser);
+              }}
+              onRemoveUser={(userId) => {
+                // locally remove user and also update main data list
+                removeUserFromCompany(selectedCompany.id, userId);
+              }}
+            />
+          ) : viewMode === "options" ? (
+            <div className="space-y-8">
+              <section className="space-y-3">
+                <div>
+                  <h3 className="text-lg font-semibold">Current academic year</h3>
+                  <p className="text-sm text-muted-foreground">
+                    These purchases are active and can be changed here.
+                  </p>
+                </div>
+                <CompanySubOptionsSection
+                  company={selectedCompany}
+                  allSubOptions={allSubOptions}
+                  onSubOptionsChange={() => refreshCompanies()}
+                />
+                <CompanyOptionsTable
+                  company={selectedCompany}
+                  onAddOption={(newOption) => {
+                    addOptionToCompany(selectedCompany.id, newOption);
+                  }}
+                  onRemoveOption={(optionId) => {
+                    removeOptionFromCompany(selectedCompany.id, optionId);
+                  }}
+                  onSubOptionsChange={() => refreshCompanies()}
+                />
+              </section>
+              <CompanyOptionHistory company={selectedCompany} />
+            </div>
+          ) : null}
+      </div>
+    </UserEditContext.Provider>
   );
 }
 
@@ -1074,6 +1102,23 @@ function UserRowActions({ user, companyId, onRemoveUser }: {
 }) {
   const [isResending, setIsResending] = React.useState(false);
   const isInvited = user?.status === "invited";
+  const userEdit = React.useContext(UserEditContext);
+  const [editRow, setEditRow] = React.useState<AdminUserRow | null>(null);
+  const [editorOpen, setEditorOpen] = React.useState(false);
+  const [editorKey, setEditorKey] = React.useState(0);
+
+  // The same form as User Management, loaded fresh so it shows every field.
+  const openEditor = async () => {
+    if (!user?.id) return;
+    const row = await fetchAdminUserAction(user.id).catch(() => null);
+    if (!row) {
+      toast.error("This user could not be loaded.");
+      return;
+    }
+    setEditRow(row);
+    setEditorKey((k) => k + 1);
+    setEditorOpen(true);
+  };
 
   const handleResendInvite = async () => {
     if (!user?.id) return;
@@ -1098,28 +1143,41 @@ function UserRowActions({ user, companyId, onRemoveUser }: {
   if (!user?.id) return null;
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="h-8 w-8 p-0" aria-label="User actions"><MoreHorizontal /></Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-        {isInvited && (
-          <DropdownMenuItem
-            onClick={handleResendInvite}
-            disabled={isResending}
-          >
-            {isResending ? "Resending..." : "Resend invite"}
-          </DropdownMenuItem>
-        )}
-        {isInvited && <DropdownMenuSeparator />}
-        <RemoveUserDialog
-          user={user}
-          companyId={companyId}
-          onRemove={() => onRemoveUser(user.id!)}
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="h-8 w-8 p-0" aria-label="User actions"><MoreHorizontal /></Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+          {userEdit && <DropdownMenuItem onClick={openEditor}>Edit</DropdownMenuItem>}
+          {isInvited && (
+            <DropdownMenuItem
+              onClick={handleResendInvite}
+              disabled={isResending}
+            >
+              {isResending ? "Resending..." : "Resend invite"}
+            </DropdownMenuItem>
+          )}
+          {isInvited && <DropdownMenuSeparator />}
+          <RemoveUserDialog
+            user={user}
+            companyId={companyId}
+            onRemove={() => onRemoveUser(user.id!)}
+          />
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {editRow && userEdit ? (
+        <ResourceEditor
+          key={editorKey}
+          config={userResourceConfig(userEdit.roleOptions, userEdit.companyOptions)}
+          open={editorOpen}
+          onOpenChange={setEditorOpen}
+          row={editRow}
+          onSaved={userEdit.onSaved}
         />
-      </DropdownMenuContent>
-    </DropdownMenu>
+      ) : null}
+    </>
   );
 }
 

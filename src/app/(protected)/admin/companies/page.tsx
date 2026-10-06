@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/admin/PageHeader";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { fetchCompaniesWithSubOptionsAction } from "@/app/actions/companies";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
+import { listRoles } from "@/lib/repos/users";
 
 /**
  * The companies and the salespeople (for the assignee pickers) are loaded
@@ -16,9 +17,10 @@ export default async function AdminCompaniesPage() {
   const user = await getUserFromCookies();
   if (!user?.admin) return <p>NO ACCESS</p>;
 
-  const [companies, salespersons] = await Promise.all([
+  const [companies, salespersons, roles] = await Promise.all([
     fetchCompaniesWithSubOptionsAction(),
     fetchSalespersonsAction().catch(() => []),
+    listRoles(),
   ]);
 
   return (
@@ -34,7 +36,11 @@ export default async function AdminCompaniesPage() {
           </Button>
         }
       />
-      <CompaniesSection initialData={companies} salespersons={salespersons ?? []} />
+      <CompaniesSection
+        initialData={companies}
+        salespersons={salespersons ?? []}
+        roleOptions={roles.map((r) => ({ value: r.id, label: r.name }))}
+      />
     </div>
   );
 }

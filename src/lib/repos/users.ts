@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash, randomBytes } from "crypto";
 import type { CompanyRep } from "@/lib/schema";
+import type { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { sendEmail } from "@/lib/email";
@@ -92,16 +93,18 @@ export type AdminUserRow = {
 };
 
 /** Full platform-user list for the admin users table. */
-export async function listUsers(): Promise<AdminUserRow[]> {
-  await requireUser();
-  const rows = await prisma.user.findMany({
-    include: {
-      role: { select: { id: true, name: true } },
-      company: { select: { id: true, name: true } },
-    },
-    orderBy: [{ status: "asc" }, { first_name: "asc" }],
-  });
-  return rows.map((u) => ({
+const ADMIN_USER_INCLUDE = {
+  role: { select: { id: true, name: true } },
+  company: { select: { id: true, name: true } },
+} as const;
+
+type AdminUserSource = Pick<
+  Prisma.UserGetPayload<object>,
+  "id" | "avatar" | "first_name" | "last_name" | "email" | "title" | "tel" | "status" | "role_id" | "company_id" | "profile_link"
+> & { role: { name: string } | null; company: { name: string | null } | null };
+
+function toAdminUserRow(u: AdminUserSource): AdminUserRow {
+  return {
     id: u.id,
     avatar: u.avatar,
     first_name: u.first_name,
@@ -115,7 +118,23 @@ export async function listUsers(): Promise<AdminUserRow[]> {
     company_id: u.company_id,
     company_name: u.company?.name ?? null,
     profile_link: u.profile_link,
-  }));
+  };
+}
+
+export async function listUsers(): Promise<AdminUserRow[]> {
+  await requireUser();
+  const rows = await prisma.user.findMany({
+    include: ADMIN_USER_INCLUDE,
+    orderBy: [{ status: "asc" }, { first_name: "asc" }],
+  });
+  return rows.map(toAdminUserRow);
+}
+
+/** One user as the User Management form edits them. */
+export async function getAdminUser(id: string): Promise<AdminUserRow | null> {
+  await requireUser();
+  const row = await prisma.user.findUnique({ where: { id }, include: ADMIN_USER_INCLUDE });
+  return row ? toAdminUserRow(row) : null;
 }
 
 /** Roles for the user-form dropdown. */

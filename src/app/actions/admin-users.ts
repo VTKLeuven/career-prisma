@@ -6,6 +6,7 @@ import {
   createUser,
   updateUser,
   deleteUser,
+  getAdminUser,
   type AdminUserRow,
 } from "@/lib/repos/users";
 // Every write below can change the homepage team section -- a new salesperson,
@@ -14,6 +15,12 @@ import {
 // the change stays invisible for up to the cache TTL and reads as a failed save.
 import { invalidateHomepageCache } from "@/lib/homepage-cache";
 import type { ActionResult } from "@/components/admin/types";
+
+/** One user for the User Management form (the company page edits reps with it). */
+export async function fetchAdminUserAction(id: string): Promise<AdminUserRow | null> {
+  await requireAdminUser();
+  return getAdminUser(id);
+}
 
 export async function createUserAction(data: Record<string, unknown>): Promise<ActionResult<AdminUserRow>> {
   try {
