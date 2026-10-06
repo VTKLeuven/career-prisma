@@ -25,12 +25,15 @@ export async function fetchEventsAction(opts?: {
   /** Public callers only -- see fetchPublicEventsAction. */
   publishedOnly?: boolean;
 }) {
+    // Drafts are for the back office (admins, company reps). As a server action
+    // this is a public endpoint, so anyone else gets published editions only.
+    const publishedOnly = opts?.publishedOnly || !(await getUserFromCookies());
     const events = await listEvents({
       limit: 200,
       sort: "date",
       academicYearId: opts?.academicYearId,
       includeHistory: opts?.includeHistory,
-      publishedOnly: opts?.publishedOnly,
+      publishedOnly,
     }) ?? [];
     events.map(el => {
         el.href = `/event/${slugifyEventName(el.name)}`;
@@ -134,7 +137,9 @@ export async function fetchOptionsForEventAction(eventId: string) {
   }
 }
 
+/** Every event page, drafts included -- for the admin screens. */
 export async function fetchEventPagesAction(lim = 50) {
+  await requireAdminUser();
   const pages = await listEventPages({ limit: lim, sort: "event.date" }) ?? [];
 
   pages.map(page => {
