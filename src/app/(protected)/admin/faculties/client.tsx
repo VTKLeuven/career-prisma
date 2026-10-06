@@ -8,6 +8,7 @@ import {
   deleteFacultyAction,
 } from "@/app/actions/faculties";
 import type { Faculty, Master } from "@/lib/schema";
+import Image from "next/image";
 
 /** Pulls master ids out of the junction-wrapped `faculty.masters` array. */
 function masterIdsOf(faculty: Faculty): string[] {
@@ -53,10 +54,11 @@ export default function FacultiesClient({
         label: "Logo",
         render: (f) =>
           f.logo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <Image
               src={`/api/files/${f.logo}`}
               alt={f.name}
+              width={32}
+              height={32}
               className="h-8 w-8 rounded object-contain"
             />
           ) : (

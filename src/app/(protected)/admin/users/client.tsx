@@ -10,6 +10,7 @@ import {
 import type { AdminUserRow } from "@/lib/repos/users";
 import { INTERNAL_ROLE_IDS } from "@/lib/roles";
 import { UserRound } from "lucide-react";
+import Image from "next/image";
 
 const STATUS_OPTIONS: SelectOption[] = [
   { value: "active", label: "Active" },
@@ -41,10 +42,11 @@ export default function UsersClient({
         label: "Photo",
         render: (u) =>
           u.avatar ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <Image
               src={`/api/files/${u.avatar}`}
               alt={fullName(u)}
+              width={40}
+              height={40}
               className="h-10 w-10 rounded-full border object-cover"
             />
           ) : (

@@ -9,6 +9,7 @@ import {
 } from "@/app/actions/masters";
 import type { Master } from "@/lib/schema";
 import { STUDY_PROGRAMMES, labelForProgramme } from "@/lib/study-options";
+import Image from "next/image";
 
 // "other" is not an SSO value (see study-options.ts), so there is nothing to link it to.
 const PROGRAMME_OPTIONS = STUDY_PROGRAMMES.filter((p) => p.value !== "other").map((p) => ({
@@ -28,10 +29,11 @@ export default function MastersClient({ initialMasters }: { initialMasters: Mast
         label: "Logo",
         render: (m) =>
           m.logo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <Image
               src={`/api/files/${m.logo}`}
               alt={m.name}
+              width={32}
+              height={32}
               className="h-8 w-8 rounded object-contain"
             />
           ) : (
