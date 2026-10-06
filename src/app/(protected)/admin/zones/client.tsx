@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,6 +59,11 @@ export default function ZonesClient({
 
     const selectedEventPage = careerEventPages.find((p) => p.id === selectedEventPageId) ?? null;
     const floorplanId = selectedEventPage ? getFloorplanId(selectedEventPage) : null;
+    const selectedEventId = selectedEventPage?.event
+        ? typeof selectedEventPage.event === "object"
+            ? (selectedEventPage.event as { id?: string }).id ?? null
+            : String(selectedEventPage.event)
+        : null;
 
     const { filteredBooths2, filteredZones } = useMemo(() => {
         if (!floorplanId) {
@@ -233,6 +240,20 @@ export default function ZonesClient({
                         Create an event page and assign a floorplan to it first.
                     </p>
                 )}
+                <p className="text-sm text-muted-foreground">
+                    Zones group booths for drink delivery. The floorplan itself -- its map
+                    and which company stands at which booth -- is edited per event
+                    {selectedEventId ? (
+                        <>
+                            {" "}in the{" "}
+                            <Link href={`/admin/floorplan/${selectedEventId}`} className="font-medium text-foreground underline underline-offset-4">
+                                floorplan editor
+                            </Link>.
+                        </>
+                    ) : (
+                        <> under Events, with <span className="font-medium text-foreground">Edit floorplan</span> on the event&apos;s card.</>
+                    )}
+                </p>
             </div>
 
             {!selectedEventPage && (

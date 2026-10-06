@@ -163,7 +163,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     url: "/admin/zones",
     icon: MapPinned,
     group: "Events",
-    description: "Configure zones, booths and floor plans for event editions.",
+    description: "Group booths into drink-delivery zones and print booth QR codes. Floorplans are edited per event under Events.",
   },
 
   // --- Education ---
