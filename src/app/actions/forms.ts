@@ -26,6 +26,7 @@ import {
   isSessionTokenExpiredError,
 } from "@/lib/form-submit-errors";
 import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
+import { after } from "next/server";
 import { listMasters, listFaculties } from "@/lib/repos/features";
 import { studyPrefillForFields, type PrefillFaculty } from "@/lib/form-fields";
 import { setEventRegistrationLink } from "@/lib/repos/event-page";
@@ -649,47 +650,54 @@ export async function submitFormResponseAction(data: {
         }
       }
 
-      try {
-        await sendEventConfirmationEmail({
-          to: emailValue,
-          firstname: (cleanFormData.firstname as string) || '',
-          lastname: (cleanFormData.lastname as string) || '',
-          formName: formName,
-          subject: (versionMetadata?.event_email_subject as string | undefined) || `${formName} - Registration Confirmation`,
-          content: (versionMetadata?.event_email_content as string | undefined) || 'Thank you for registering!',
-          eventDate: versionMetadata?.event_date as string | undefined,
-          eventEndDate: versionMetadata?.event_end_date as string | undefined,
-          eventLocation: versionMetadata?.event_location as string | undefined,
-          attendantUuid,
-        });
-        if (response?.id) {
-          try {
-            const existingData = (response as any).data || {};
-            await updateFormResponse(String(response.id), {
-              data: { ...existingData, _qr_email_sent_at: new Date().toISOString() },
-            });
-          } catch {
-            // Non-critical: tracking update shouldn't affect anything
+      // Sent after responding: sendEmail waits its turn in the in-process mail
+      // queue (behind any bulk mailing) and retries -- the student should not.
+      after(async () => {
+        try {
+          await sendEventConfirmationEmail({
+            to: emailValue,
+            firstname: (cleanFormData.firstname as string) || '',
+            lastname: (cleanFormData.lastname as string) || '',
+            formName: formName,
+            subject: (versionMetadata?.event_email_subject as string | undefined) || `${formName} - Registration Confirmation`,
+            content: (versionMetadata?.event_email_content as string | undefined) || 'Thank you for registering!',
+            eventDate: versionMetadata?.event_date as string | undefined,
+            eventEndDate: versionMetadata?.event_end_date as string | undefined,
+            eventLocation: versionMetadata?.event_location as string | undefined,
+            attendantUuid,
+          });
+          if (response?.id) {
+            try {
+              const existingData = (response as any).data || {};
+              await updateFormResponse(String(response.id), {
+                data: { ...existingData, _qr_email_sent_at: new Date().toISOString() },
+              });
+            } catch {
+              // Non-critical: tracking update shouldn't affect anything
+            }
           }
+        } catch (emailError) {
+          console.error("Error sending event confirmation email:", emailError);
+          // Don't throw - email failure shouldn't prevent form submission
         }
-      } catch (emailError) {
-        console.error("Error sending event confirmation email:", emailError);
-        // Don't throw - email failure shouldn't prevent form submission
-      }
+      });
     }
 
     // EventSight integration (only for new registrations, fail silently like emails)
     if (response && isEventRegistration && !isUpdate) {
-      try {
-        const { sendEventSightSubscription } = await import("@/lib/eventsight");
-        await sendEventSightSubscription(versionMetadata?.event_id as string | undefined, {
-          formData: cleanFormData,
-          attendantUuid,
-          student,
-        });
-      } catch (eventsightError) {
-        console.error("Error sending EventSight subscription:", eventsightError);
-      }
+      // An outside HTTP call; made after responding so it can't slow the form.
+      after(async () => {
+        try {
+          const { sendEventSightSubscription } = await import("@/lib/eventsight");
+          await sendEventSightSubscription(versionMetadata?.event_id as string | undefined, {
+            formData: cleanFormData,
+            attendantUuid,
+            student,
+          });
+        } catch (eventsightError) {
+          console.error("Error sending EventSight subscription:", eventsightError);
+        }
+      });
     }
 
     // If this is a company form, send confirmation email (if enabled, only for new submissions)
@@ -722,24 +730,27 @@ export async function submitFormResponseAction(data: {
         }
       }
 
-      try {
-        // Get user info if available
-        const { getUserFromCookies } = await import("@/lib/auth-server");
-        const user = await getUserFromCookies();
+      // Get user info if available
+      const { getUserFromCookies } = await import("@/lib/auth-server");
+      const user = await getUserFromCookies();
 
-        await sendCompanyFormConfirmationEmail({
-          to: emailValue,
-          submitterFirstName: (data.submitter_first_name || _submitter_first_name || (user?.name ? user.name.split(/\s+/)[0] : '')) as string,
-          submitterLastName: (data.submitter_last_name || _submitter_last_name || (user?.name ? user.name.split(/\s+/).slice(1).join(' ') : '')) as string,
-          formName: formName,
-          subject: (versionMetadata?.company_form_email_subject as string | undefined) || `${formName} - Submission Confirmation`,
-          content: (versionMetadata?.company_form_email_content as string | undefined) || 'Thank you for your submission!',
-          companyName,
-        });
-      } catch (emailError) {
-        console.error("Error sending company form confirmation email:", emailError);
-        // Don't throw - email failure shouldn't prevent form submission
-      }
+      // Sent after responding, like the event confirmation above.
+      after(async () => {
+        try {
+          await sendCompanyFormConfirmationEmail({
+            to: emailValue,
+            submitterFirstName: (data.submitter_first_name || _submitter_first_name || (user?.name ? user.name.split(/\s+/)[0] : '')) as string,
+            submitterLastName: (data.submitter_last_name || _submitter_last_name || (user?.name ? user.name.split(/\s+/).slice(1).join(' ') : '')) as string,
+            formName: formName,
+            subject: (versionMetadata?.company_form_email_subject as string | undefined) || `${formName} - Submission Confirmation`,
+            content: (versionMetadata?.company_form_email_content as string | undefined) || 'Thank you for your submission!',
+            companyName,
+          });
+        } catch (emailError) {
+          console.error("Error sending company form confirmation email:", emailError);
+          // Don't throw - email failure shouldn't prevent form submission
+        }
+      });
     }
 
     return response;

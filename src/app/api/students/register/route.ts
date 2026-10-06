@@ -1,5 +1,5 @@
 // app/api/students/register/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { findStudentByEmail, createNonOAuthStudent, generateStudentVerificationToken } from "@/lib/repos/students";
 import { sendEmail } from "@/lib/email";
 import { generateStudentVerificationEmailHtml } from "@/lib/email-templates";
@@ -68,25 +68,29 @@ export async function POST(request: NextRequest) {
       
       const verificationUrl = `${frontendBaseUrl}/verify-student?token=${encodeURIComponent(tokenData.token)}`;
       
-      // Send verification email
-      try {
-        const emailHtml = generateStudentVerificationEmailHtml({
-          firstName: first_name,
-          lastName: last_name,
-          verificationUrl,
-        });
+      // Send verification email after responding: sendEmail waits its turn in
+      // the in-process mail queue (behind any bulk mailing) and retries, and
+      // the student should not wait for that.
+      after(async () => {
+        try {
+          const emailHtml = generateStudentVerificationEmailHtml({
+            firstName: first_name,
+            lastName: last_name,
+            verificationUrl,
+          });
 
-        await sendEmail({
-          to: email,
-          subject: "Verify Your Email - VTK Career Platform",
-          html: emailHtml,
-        });
+          await sendEmail({
+            to: email,
+            subject: "Verify Your Email - VTK Career Platform",
+            html: emailHtml,
+          });
 
-        console.log(`[students/register] Verification email sent to ${email}`);
-      } catch (emailError) {
-        console.error(`[students/register] Error sending verification email:`, emailError);
-        // Don't fail registration if email fails - user can request resend
-      }
+          console.log(`[students/register] Verification email sent to ${email}`);
+        } catch (emailError) {
+          console.error(`[students/register] Error sending verification email:`, emailError);
+          // Don't fail registration if email fails - user can request resend
+        }
+      });
     } else {
       console.error(`[students/register] Failed to generate verification token for student ${student.id}`);
     }
