@@ -16,6 +16,7 @@ import {
 import { fetchPublicEventsAction } from "@/app/actions/events"
 import type { CareerEvent } from "@/lib/schema"
 import { fetchSessionCheck } from "@/lib/session-client"
+import { eventZoneToday } from "@/lib/utils/events"
 
 /**
  * The public site header.
@@ -250,20 +251,12 @@ export function SiteHeader({
     }
   }
 
+  const today = eventZoneToday()
   const upcoming = events
-    .filter((e) => {
-      try {
-        const eventDate = new Date(e.date)
-        const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate())
-        const now = new Date()
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-        // Drafts are already gone: this list comes from the public events
-        // endpoint / action. Today and future events only.
-        return eventDay >= today
-      } catch {
-        return false
-      }
-    })
+    // Drafts are already gone: this list comes from the public events
+    // endpoint / action. Today and future events only, by the date in Belgium
+    // (as the homepage decides it).
+    .filter((e) => typeof e.date === "string" && e.date.slice(0, 10) >= today)
     .sort((a, b) => {
       try {
         return new Date(a.date).getTime() - new Date(b.date).getTime()
