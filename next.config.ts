@@ -45,6 +45,39 @@ const nextConfig: NextConfig = {
     root: process.cwd(),
     resolveAlias: { "node:inspector": "inspector" },
   },
+  async headers() {
+    // Pages where a hidden frame on another site could trick a signed-in user
+    // into clicking (clickjacking): the back office and the account and login
+    // pages. Public pages stay embeddable.
+    const noFraming = [
+      { key: "X-Frame-Options", value: "SAMEORIGIN" },
+      { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+    ];
+    const protectedPaths = [
+      "/admin",
+      "/admin/:path*",
+      "/dashboard",
+      "/dashboard/:path*",
+      "/student/:path*",
+      "/login",
+      "/student-login",
+      "/register",
+      "/accept-invite",
+      "/reset-password",
+      "/student-reset-password",
+      "/verify-student",
+    ];
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        ],
+      },
+      ...protectedPaths.map((source) => ({ source, headers: noFraming })),
+    ];
+  },
   // Reduce log spam: ignore polling endpoints (email-job-status, email-queue)
   logging: {
     incomingRequests: {
