@@ -46,6 +46,14 @@ the student menu — is deliberately **not** customisable, because divergence
 there is what caused the drift. The Admin button shows whenever a staff account
 is signed in, on every public page or none.
 
+Who is signed in is resolved on the server by the `(site)` layout and handed
+to the header through `header-session.tsx`, so the first paint already shows
+the right buttons (it used to show the signed-out ones until `/api/user/check`
+answered after hydration). That makes every public page dynamic -- there is no
+CDN in front of the site, and most of them already were. The header still
+re-checks `/api/user/check` on navigation and window focus, because a
+client-side navigation does not re-render the layout.
+
 `FEATURED_EVENT_LINK` at the top of that file swaps the Events dropdown for a
 single campaign link ("Jobfair 2027"). One edit changes every page.
 

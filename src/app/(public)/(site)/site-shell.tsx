@@ -6,6 +6,7 @@ import { Footer } from '@/components/Footer'
 import { SiteHeader } from '@/components/site/SiteHeader'
 import { StudentLikedCompaniesProvider } from '@/providers/StudentLikedCompaniesProvider';
 import { HeaderEventsProvider, type HeaderEvent } from '@/components/site/header-events';
+import { HeaderSessionProvider, type HeaderSession } from '@/components/site/header-session';
 
 // Context to allow pages to opt-out of header padding if they have a banner
 // and to hide the layout header if they render their own
@@ -39,7 +40,15 @@ const OWN_HEADER_PATHS = [
 ]
 
 /** The public site's chrome: header, footer and the layout context pages use. */
-export function SiteShell({ headerEvents, children }: { headerEvents: HeaderEvent[]; children: React.ReactNode }) {
+export function SiteShell({
+  headerEvents,
+  headerSession,
+  children,
+}: {
+  headerEvents: HeaderEvent[]
+  headerSession: HeaderSession
+  children: React.ReactNode
+}) {
   const [hasBanner, setHasBanner] = useState(false)
   const [hideLayoutHeader, setHideLayoutHeader] = useState(false)
   const [darkHeaderFooter, setDarkHeaderFooter] = useState(false)
@@ -50,18 +59,20 @@ export function SiteShell({ headerEvents, children }: { headerEvents: HeaderEven
   return (
     <PageLayoutContext.Provider value={{ hasBanner, setHasBanner, hideLayoutHeader, setHideLayoutHeader, darkHeaderFooter, setDarkHeaderFooter }}>
       <HeaderEventsProvider events={headerEvents}>
-        <StudentLikedCompaniesProvider>
-          <main
-            className={`min-h-svh text-neutral-900 ${hasBanner || hideHeader ? '' : 'pt-28 md:pt-32'} ${darkHeaderFooter ? 'text-neutral-100' : 'bg-vtk-bg'}`}
-            style={darkHeaderFooter ? { background: 'linear-gradient(135deg, var(--color-vtk-blue) 0%, var(--color-vtk-blue-dark) 50%, var(--color-vtk-blue-darker) 100%)' } : undefined}
-          >
-            {!hideHeader && <SiteHeader dark={darkHeaderFooter} />}
-            <div className={darkHeaderFooter ? 'relative z-10' : undefined}>
-              {children}
-              <Footer />
-            </div>
-          </main>
-        </StudentLikedCompaniesProvider>
+        <HeaderSessionProvider session={headerSession}>
+          <StudentLikedCompaniesProvider>
+            <main
+              className={`min-h-svh text-neutral-900 ${hasBanner || hideHeader ? '' : 'pt-28 md:pt-32'} ${darkHeaderFooter ? 'text-neutral-100' : 'bg-vtk-bg'}`}
+              style={darkHeaderFooter ? { background: 'linear-gradient(135deg, var(--color-vtk-blue) 0%, var(--color-vtk-blue-dark) 50%, var(--color-vtk-blue-darker) 100%)' } : undefined}
+            >
+              {!hideHeader && <SiteHeader dark={darkHeaderFooter} />}
+              <div className={darkHeaderFooter ? 'relative z-10' : undefined}>
+                {children}
+                <Footer />
+              </div>
+            </main>
+          </StudentLikedCompaniesProvider>
+        </HeaderSessionProvider>
       </HeaderEventsProvider>
     </PageLayoutContext.Provider>
   )

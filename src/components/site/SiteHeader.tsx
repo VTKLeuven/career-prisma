@@ -18,6 +18,11 @@ import type { CareerEvent } from "@/lib/schema"
 import { fetchSessionCheck } from "@/lib/session-client"
 import { eventZoneToday } from "@/lib/utils/events"
 import { useHeaderEvents, type HeaderEvent } from "@/components/site/header-events"
+import {
+  useHeaderSession,
+  type HeaderCompanyRep as CompanyRep,
+  type HeaderStudent as Student,
+} from "@/components/site/header-session"
 
 /**
  * The public site header.
@@ -77,9 +82,6 @@ export type SiteHeaderProps = {
   dark?: boolean
 }
 
-type CompanyRep = { authenticated: boolean; name: string; is_shifter?: boolean; admin?: boolean }
-type Student = { authenticated: boolean; firstName: string | null; lastName: string | null; is_shifter?: boolean }
-
 const DEFAULT_NAV: SiteHeaderNavItem[] = [
   { key: "our-students", label: "Our students", href: "/our-students" },
   { key: "vacancies", label: "Vacancies", href: "/vacancies" },
@@ -97,8 +99,11 @@ export function SiteHeader({
   const [openMenu, setOpenMenu] = React.useState<null | "events">(null)
   const [menuOpenedViaClick, setMenuOpenedViaClick] = React.useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false)
-  const [companyRep, setCompanyRep] = React.useState<CompanyRep | null>(null)
-  const [student, setStudent] = React.useState<Student | null>(null)
+  // Resolved by the site layout on the server, so the first paint already
+  // shows the right buttons; the checks below only keep it current.
+  const initialSession = useHeaderSession()
+  const [companyRep, setCompanyRep] = React.useState<CompanyRep | null>(initialSession?.companyRep ?? null)
+  const [student, setStudent] = React.useState<Student | null>(initialSession?.student ?? null)
   // Loaded by the site layout; fetched here only outside it.
   const preloadedEvents = useHeaderEvents()
   const [events, setEvents] = React.useState<HeaderEvent[]>(preloadedEvents ?? [])
@@ -148,6 +153,8 @@ export function SiteHeader({
       })
   }, [])
 
+  // Still checked on every navigation: the layout is not re-rendered on a
+  // client-side one, so a sign-in or sign-out since would go unnoticed.
   React.useEffect(() => {
     checkAuthStatus()
   }, [pathname, checkAuthStatus])

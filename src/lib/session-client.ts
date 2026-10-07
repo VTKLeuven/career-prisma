@@ -1,6 +1,7 @@
 /**
- * The visitor's session as /api/user/check reports it, for public pages (the
- * public site has no server-side user, so its pages stay cacheable).
+ * The visitor's session as /api/user/check reports it, for public pages. The
+ * site layout also resolves it on the server for the header's first paint
+ * (`header-session.tsx`); this keeps client components current after that.
  *
  * Several components ask at the same moment -- the site header, the
  * liked-companies provider, the page itself -- so concurrent calls share one
