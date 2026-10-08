@@ -2,14 +2,6 @@
 
 import * as React from "react";
 import { useState, useEffect } from "react";
-import dynamic from "next/dynamic";
-import { useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-
-const EditorContent = dynamic(
-  () => import("@tiptap/react").then((mod) => mod.EditorContent),
-  { ssr: false }
-);
 import {
   fetchFormsAction,
   createFormAction,
@@ -62,6 +54,7 @@ import { slugifyEventName } from "@/lib/utils/slugify";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { SimpleRichTextEditor } from "@/components/admin/SimpleRichTextEditor";
 import { toast } from "sonner";
 
 type FormRow = {
@@ -335,6 +328,109 @@ function FormTableRow({ form, onUpdate }: { form: FormRow; onUpdate: () => void 
   );
 }
 
+// Confirmation-email fields shared by the create and edit dialogs, so the two
+// cannot drift apart again.
+function ConfirmationEmailFields({
+  idPrefix,
+  subject,
+  onSubjectChange,
+  subjectPlaceholder,
+  content,
+  onContentChange,
+  contentPlaceholder,
+  hint,
+}: {
+  idPrefix: string;
+  subject: string;
+  onSubjectChange: (value: string) => void;
+  subjectPlaceholder: string;
+  content: string;
+  onContentChange: (html: string) => void;
+  contentPlaceholder: string;
+  hint: React.ReactNode;
+}) {
+  return (
+    <>
+      <div className="space-y-2">
+        <Label htmlFor={`${idPrefix}-subject`}>Email Subject</Label>
+        <Input
+          id={`${idPrefix}-subject`}
+          value={subject}
+          onChange={(e) => onSubjectChange(e.target.value)}
+          placeholder={subjectPlaceholder}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Email Content</Label>
+        <SimpleRichTextEditor
+          value={content}
+          onChange={onContentChange}
+          placeholder={contentPlaceholder}
+          ariaLabel="Email content"
+        />
+        <p className="text-xs text-muted-foreground">{hint}</p>
+      </div>
+    </>
+  );
+}
+
+type EmailFieldsProps = {
+  idPrefix: string;
+  subject: string;
+  onSubjectChange: (value: string) => void;
+  content: string;
+  onContentChange: (html: string) => void;
+};
+
+function EventEmailFields(props: EmailFieldsProps) {
+  return (
+    <ConfirmationEmailFields
+      {...props}
+      subjectPlaceholder="Event Registration Confirmation"
+      contentPlaceholder="Thank you for registering! We look forward to seeing you at the event."
+      hint={<>This content will be sent in the confirmation email. Use {`{firstname}`} and {`{lastname}`} to personalize. You can format text with bold, italic, lists, etc.</>}
+    />
+  );
+}
+
+function CompanyFormEmailFields(props: EmailFieldsProps) {
+  return (
+    <ConfirmationEmailFields
+      {...props}
+      subjectPlaceholder="[Form Name] Submission Confirmation"
+      contentPlaceholder="Thank you for submitting the [form name] form!"
+      hint={<>This content will be sent in the confirmation email. Use {`{submitter_name}`} and {`{form_name}`} to personalize. You can format text with bold, italic, lists, etc.</>}
+    />
+  );
+}
+
+// Fills in a name-based subject and body for a company form's confirmation
+// email, but only while they are still empty or the generic default.
+// Functional updates, so it never overwrites what the admin typed.
+function fillCompanyFormEmailDefaults(
+  name: string,
+  setSubject: React.Dispatch<React.SetStateAction<string>>,
+  setContent: React.Dispatch<React.SetStateAction<string>>,
+) {
+  if (!name.trim()) return;
+  const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
+
+  setSubject((current) =>
+    !current.trim() || current === "Form Submission Confirmation"
+      ? `${capitalizedName} Submission Confirmation`
+      : current
+  );
+  setContent((current) =>
+    !current.trim() || current === "Thank you for your submission!"
+      ? `<p>Dear,</p>
+<p>Thank you for submitting the ${capitalizedName} form!</p>
+<p>If you have any questions, please don't hesitate to contact us.</p>
+<p>Best regards,</p>
+<p>The VTK Career Team</p>`
+      : current
+  );
+}
+
 function CreateFormDialog() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -362,63 +458,6 @@ function CreateFormDialog() {
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // TipTap editor for email content - only create when dialog is open and on client
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
-  const emailEditor = useEditor({
-    extensions: [StarterKit],
-    content: eventEmailContent,
-    onUpdate({ editor }) {
-      setEventEmailContent(editor.getHTML());
-    },
-    editorProps: {
-      attributes: {
-        class: "border rounded-md p-3 bg-background text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-ring [&>p:last-child]:mb-0 [&>ul:last-child]:mb-0 [&>ol:last-child]:mb-0",
-      },
-    },
-    immediatelyRender: false,
-    editable: open && isClient && isEventRegistration, // Only editable when dialog is open and on client
-  });
-
-  const companyFormEmailEditor = useEditor({
-    extensions: [StarterKit],
-    content: companyFormEmailContent,
-    onUpdate({ editor }) {
-      setCompanyFormEmailContent(editor.getHTML());
-    },
-    editorProps: {
-      attributes: {
-        class: "border rounded-md p-3 bg-background text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-ring [&>p:last-child]:mb-0 [&>ul:last-child]:mb-0 [&>ol:last-child]:mb-0",
-      },
-    },
-    immediatelyRender: false,
-    editable: open && isClient && isCompanyForm, // Only editable when dialog is open and on client
-  });
-
-  // Update editor content when dialog opens
-  useEffect(() => {
-    if (open && isClient && emailEditor && isEventRegistration) {
-      emailEditor.commands.setContent(eventEmailContent);
-      emailEditor.setEditable(true);
-    } else if (!open && emailEditor) {
-      emailEditor.setEditable(false);
-    }
-  }, [open, isClient, emailEditor, isEventRegistration, eventEmailContent]);
-
-  // Update company form email editor content when dialog opens
-  useEffect(() => {
-    if (open && isClient && companyFormEmailEditor && isCompanyForm) {
-      companyFormEmailEditor.commands.setContent(companyFormEmailContent);
-      companyFormEmailEditor.setEditable(true);
-    } else if (!open && companyFormEmailEditor) {
-      companyFormEmailEditor.setEditable(false);
-    }
-  }, [open, isClient, companyFormEmailEditor, isCompanyForm, companyFormEmailContent]);
-
   // Update email subject when form name changes and event registration is enabled
   useEffect(() => {
     if (isEventRegistration && name.trim()) {
@@ -431,32 +470,9 @@ function CreateFormDialog() {
     }
   }, [name, isEventRegistration]);
 
-  // Update company form email content and subject when form name changes and company form is enabled
   useEffect(() => {
-    if (isCompanyForm && name.trim()) {
-      const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
-      
-      // Update subject if it's still the default or empty
-      if (!companyFormEmailSubject || companyFormEmailSubject === "Form Submission Confirmation" || companyFormEmailSubject.trim() === "") {
-        setCompanyFormEmailSubject(`${capitalizedName} Submission Confirmation`);
-      }
-      
-      // Update content if it's still the default or empty
-      const currentContent = companyFormEmailContent || '';
-      if (!currentContent || currentContent === "Thank you for your submission!" || currentContent.trim() === "") {
-        const defaultContent = `<p>Dear,</p>
-<p>Thank you for submitting the ${capitalizedName} form!</p>
-<p>If you have any questions, please don't hesitate to contact us.</p>
-<p>Best regards,</p>
-<p>The VTK Career Team</p>`;
-        setCompanyFormEmailContent(defaultContent);
-        // Also update editor if it exists
-        if (companyFormEmailEditor && isClient) {
-          companyFormEmailEditor.commands.setContent(defaultContent);
-        }
-      }
-    }
-  }, [name, isCompanyForm, companyFormEmailEditor, isClient, companyFormEmailContent, companyFormEmailSubject]);
+    if (isCompanyForm) fillCompanyFormEmailDefaults(name, setCompanyFormEmailSubject, setCompanyFormEmailContent);
+  }, [name, isCompanyForm]);
 
   // Load events when dialog opens and event registration or company form is enabled
   useEffect(() => {
@@ -764,40 +780,13 @@ function CreateFormDialog() {
                     Link this registration form to an event so attending companies can see scans for this specific event.
                   </p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="event-email-subject">Email Subject</Label>
-                  <Input
-                    id="event-email-subject"
-                    value={eventEmailSubject}
-                  onChange={(e) => setEventEmailSubject(e.target.value)}
-                  placeholder="Event Registration Confirmation"
+                <EventEmailFields
+                  idPrefix="event-email"
+                  subject={eventEmailSubject}
+                  onSubjectChange={setEventEmailSubject}
+                  content={eventEmailContent}
+                  onContentChange={setEventEmailContent}
                 />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="event-email-content">Email Content</Label>
-                  {open && isClient && emailEditor && isEventRegistration ? (
-                  <div className="[&_.ProseMirror]:mb-0 [&_.ProseMirror]:pb-0">
-                    <EditorContent editor={emailEditor} />
-                  </div>
-                ) : (
-                  <Textarea
-                    id="event-email-content"
-                    value={eventEmailContent}
-                    onChange={(e) => {
-                      setEventEmailContent(e.target.value);
-                      // Also update editor if it exists
-                      if (emailEditor && isClient) {
-                        emailEditor.commands.setContent(e.target.value);
-                      }
-                    }}
-                    placeholder="Thank you for registering! We look forward to seeing you at the event."
-                    rows={6}
-                    />
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    This content will be sent in the confirmation email. Use {`{firstname}`} and {`{lastname}`} to personalize. You can format text with bold, italic, lists, etc.
-                </p>
-              </div>
               <div className="space-y-2">
                 <Label htmlFor="event-date">Event Start Date & Time</Label>
                 <Input
@@ -911,42 +900,13 @@ function CreateFormDialog() {
                 </div>
 
                 {sendCompanyFormEmail && (
-                  <>
-                    <div className="space-y-2">
-                      <Label htmlFor="company-form-email-subject">Email Subject</Label>
-                      <Input
-                        id="company-form-email-subject"
-                        value={companyFormEmailSubject}
-                        onChange={(e) => setCompanyFormEmailSubject(e.target.value)}
-                        placeholder="[Form Name] Submission Confirmation"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="company-form-email-content">Email Content</Label>
-                      {open && isClient && companyFormEmailEditor && isCompanyForm ? (
-                        <div className="[&_.ProseMirror]:mb-0 [&_.ProseMirror]:pb-0">
-                          <EditorContent editor={companyFormEmailEditor} />
-                        </div>
-                      ) : (
-                        <Textarea
-                          id="company-form-email-content"
-                          value={companyFormEmailContent}
-                          onChange={(e) => {
-                            setCompanyFormEmailContent(e.target.value);
-                            // Also update editor if it exists
-                            if (companyFormEmailEditor && isClient) {
-                              companyFormEmailEditor.commands.setContent(e.target.value);
-                            }
-                          }}
-                          placeholder="Dear,&#10;&#10;Thank you for submitting the [form name] form!&#10;&#10;If you have any questions, please don't hesitate to contact us.&#10;&#10;Best regards,&#10;The VTK Career Team"
-                          rows={6}
-                        />
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        This content will be sent in the confirmation email. Use {`{submitter_name}`} and {`{form_name}`} to personalize. You can format text with bold, italic, lists, etc.
-                      </p>
-                    </div>
-                  </>
+                  <CompanyFormEmailFields
+                    idPrefix="company-form-email"
+                    subject={companyFormEmailSubject}
+                    onSubjectChange={setCompanyFormEmailSubject}
+                    content={companyFormEmailContent}
+                    onContentChange={setCompanyFormEmailContent}
+                  />
                 )}
               </div>
             )}
@@ -1123,13 +1083,6 @@ function EditFormDialog({
   const [options, setOptions] = useState<Array<{ id: string; name: string; description?: string }>>([]);
   const [optionsLoading, setOptionsLoading] = useState(false);
 
-  // TipTap editor for email content - only create when dialog is open and on client
-  const [isClient, setIsClient] = useState(false);
-  
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
   // Load events when dialog opens and event registration or company form is enabled
   useEffect(() => {
     if (open && (isEventRegistration || isCompanyForm) && events.length === 0 && !eventsLoading) {
@@ -1177,87 +1130,6 @@ function EditFormDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCompanyForm, selectedCompanyFormEventId]);
 
-  const emailEditor = useEditor({
-    extensions: [StarterKit],
-    content: eventEmailContent,
-    onUpdate({ editor }) {
-      setEventEmailContent(editor.getHTML());
-    },
-    editorProps: {
-      attributes: {
-        class: "border rounded-md p-3 bg-background text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-ring [&>p:last-child]:mb-0 [&>ul:last-child]:mb-0 [&>ol:last-child]:mb-0",
-      },
-    },
-    immediatelyRender: false,
-    editable: open && isClient && isEventRegistration, // Only editable when dialog is open and on client
-  });
-
-  const companyFormEmailEditor = useEditor({
-    extensions: [StarterKit],
-    content: companyFormEmailContent,
-    onUpdate({ editor }) {
-      setCompanyFormEmailContent(editor.getHTML());
-    },
-    editorProps: {
-      attributes: {
-        class: "border rounded-md p-3 bg-background text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-ring [&>p:last-child]:mb-0 [&>ul:last-child]:mb-0 [&>ol:last-child]:mb-0",
-      },
-    },
-    immediatelyRender: false,
-    editable: open && isClient && isCompanyForm, // Only editable when dialog is open and on client
-  });
-
-  // Update editor content when form changes or dialog opens
-  useEffect(() => {
-    if (open && isClient && emailEditor && isEventRegistration) {
-      const content = (form.metadata?.event_email_content as string) || '';
-      emailEditor.commands.setContent(content);
-      setEventEmailContent(content);
-      emailEditor.setEditable(true);
-    } else if (!open && emailEditor) {
-      emailEditor.setEditable(false);
-    }
-  }, [open, isClient, form, emailEditor, isEventRegistration]);
-
-  // Update company form email editor content when form changes or dialog opens
-  useEffect(() => {
-    if (open && isClient && companyFormEmailEditor && isCompanyForm) {
-      const content = (form.metadata?.company_form_email_content as string) || '';
-      companyFormEmailEditor.commands.setContent(content);
-      setCompanyFormEmailContent(content);
-      companyFormEmailEditor.setEditable(true);
-    } else if (!open && companyFormEmailEditor) {
-      companyFormEmailEditor.setEditable(false);
-    }
-  }, [open, isClient, form, companyFormEmailEditor, isCompanyForm]);
-
-  // Update company form email content and subject when form name changes and company form is enabled
-  useEffect(() => {
-    if (isCompanyForm && name.trim() && open) {
-      const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
-      
-      // Update subject if it's still the default or empty
-      if (!companyFormEmailSubject || companyFormEmailSubject === "Form Submission Confirmation" || companyFormEmailSubject.trim() === "") {
-        setCompanyFormEmailSubject(`${capitalizedName} Submission Confirmation`);
-      }
-      
-      // Update content if it's still the default or empty
-      const currentContent = companyFormEmailContent || '';
-      if (!currentContent || currentContent === "Thank you for your submission!" || currentContent.trim() === "") {
-        const defaultContent = `<p>Dear,</p>
-<p>Thank you for submitting the ${capitalizedName} form!</p>
-<p>If you have any questions, please don't hesitate to contact us.</p>
-<p>Best regards,</p>
-<p>The VTK Career Team</p>`;
-        setCompanyFormEmailContent(defaultContent);
-        // Also update editor if it exists
-        if (companyFormEmailEditor && isClient) {
-          companyFormEmailEditor.commands.setContent(defaultContent);
-        }
-      }
-    }
-  }, [name, isCompanyForm, open, companyFormEmailEditor, isClient, companyFormEmailContent, companyFormEmailSubject]);
-
   useEffect(() => {
     if (open) {
       setName(form.name);
@@ -1281,6 +1153,11 @@ function EditFormDialog({
       setEventLocation((form.metadata?.event_location as string) || '');
     }
   }, [open, form]);
+
+  // Declared after the reset above so it sees the values that reset just set.
+  useEffect(() => {
+    if (open && isCompanyForm) fillCompanyFormEmailDefaults(name, setCompanyFormEmailSubject, setCompanyFormEmailContent);
+  }, [name, isCompanyForm, open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1535,40 +1412,13 @@ function EditFormDialog({
                     Link this registration form to an event so attending companies can see scans for this specific event.
                   </p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-event-email-subject">Email Subject</Label>
-                  <Input
-                    id="edit-event-email-subject"
-                    value={eventEmailSubject}
-                    onChange={(e) => setEventEmailSubject(e.target.value)}
-                    placeholder="Event Registration Confirmation"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-event-email-content">Email Content</Label>
-                  {open && isClient && emailEditor && isEventRegistration ? (
-                    <div className="[&_.ProseMirror]:mb-0 [&_.ProseMirror]:pb-0">
-                      <EditorContent editor={emailEditor} />
-                    </div>
-                  ) : (
-                    <Textarea
-                      id="edit-event-email-content"
-                      value={eventEmailContent}
-                      onChange={(e) => {
-                        setEventEmailContent(e.target.value);
-                        // Also update editor if it exists
-                        if (emailEditor && isClient) {
-                          emailEditor.commands.setContent(e.target.value);
-                        }
-                      }}
-                      placeholder="Thank you for registering! We look forward to seeing you at the event."
-                      rows={6}
-                    />
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    This content will be sent in the confirmation email. Use {`{firstname}`} and {`{lastname}`} to personalize. You can format text with bold, italic, lists, etc.
-                  </p>
-                </div>
+                <EventEmailFields
+                  idPrefix="edit-event-email"
+                  subject={eventEmailSubject}
+                  onSubjectChange={setEventEmailSubject}
+                  content={eventEmailContent}
+                  onContentChange={setEventEmailContent}
+                />
                 <div className="space-y-2">
                   <Label htmlFor="edit-event-date">Event Start Date & Time</Label>
                   <Input
@@ -1696,47 +1546,18 @@ function EditFormDialog({
                 </div>
 
                 {sendCompanyFormEmail && (
-                  <>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-company-form-email-subject">Email Subject</Label>
-                      <Input
-                        id="edit-company-form-email-subject"
-                        value={companyFormEmailSubject}
-                        onChange={(e) => setCompanyFormEmailSubject(e.target.value)}
-                        placeholder="[Form Name] Submission Confirmation"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-company-form-email-content">Email Content</Label>
-                      {open && isClient && companyFormEmailEditor && isCompanyForm ? (
-                        <div className="[&_.ProseMirror]:mb-0 [&_.ProseMirror]:pb-0">
-                          <EditorContent editor={companyFormEmailEditor} />
-                        </div>
-                      ) : (
-                        <Textarea
-                          id="edit-company-form-email-content"
-                          value={companyFormEmailContent}
-                          onChange={(e) => {
-                            setCompanyFormEmailContent(e.target.value);
-                            // Also update editor if it exists
-                            if (companyFormEmailEditor && isClient) {
-                              companyFormEmailEditor.commands.setContent(e.target.value);
-                            }
-                          }}
-                          placeholder="Dear,&#10;&#10;Thank you for submitting the [form name] form!&#10;&#10;If you have any questions, please don't hesitate to contact us.&#10;&#10;Best regards,&#10;The VTK Career Team"
-                          rows={6}
-                        />
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        This content will be sent in the confirmation email. Use {`{submitter_name}`} and {`{form_name}`} to personalize. You can format text with bold, italic, lists, etc.
-                      </p>
-                    </div>
-                  </>
+                  <CompanyFormEmailFields
+                    idPrefix="edit-company-form-email"
+                    subject={companyFormEmailSubject}
+                    onSubjectChange={setCompanyFormEmailSubject}
+                    content={companyFormEmailContent}
+                    onContentChange={setCompanyFormEmailContent}
+                  />
                 )}
               </div>
             )}
           </div>
-          
+
           <DialogFooter className="mt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel

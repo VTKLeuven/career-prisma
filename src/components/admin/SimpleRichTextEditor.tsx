@@ -56,10 +56,12 @@ export function SimpleRichTextEditor({
   value,
   onChange,
   placeholder = "Write a description...",
+  ariaLabel = "Description",
 }: {
   value: string;
   onChange: (html: string) => void;
   placeholder?: string;
+  ariaLabel?: string;
 }) {
   const editor = useEditor({
     extensions: [
@@ -78,7 +80,7 @@ export function SimpleRichTextEditor({
       attributes: {
         class:
           "min-h-28 px-3 py-2 text-sm outline-none [&_p]:my-1 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5",
-        "aria-label": "Description",
+        "aria-label": ariaLabel,
         "data-placeholder": placeholder,
       },
     },
