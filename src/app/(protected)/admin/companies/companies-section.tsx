@@ -2493,8 +2493,9 @@ function OptionFormDialog({ company, onCreate }: {
                 {showDropdown && (filteredOptions.length > 0 || !searchQuery) && (
                   <div
                     ref={dropdownRef}
-                    className="absolute z-50 w-full mt-1 max-h-[300px] overflow-y-auto rounded-md border bg-popover shadow-md"
-                    style={{ maxWidth: '100%' }}
+                    // In normal flow, not absolute: the dialog scrolls (overflow-y-auto),
+                    // which clipped an absolute list after one or two suggestions.
+                    className="w-full mt-1 max-h-[300px] overflow-y-auto rounded-md border bg-popover shadow-md"
                   >
                     {filteredOptions.length > 0 ? (
                       filteredOptions.map((option) => {
@@ -2544,7 +2545,7 @@ function OptionFormDialog({ company, onCreate }: {
                   </div>
                 )}
                 {showDropdown && searchQuery && filteredOptions.length === 0 && (
-                  <div className="absolute z-50 w-full mt-1 rounded-md border bg-popover shadow-md p-3 text-sm text-muted-foreground">
+                  <div className="w-full mt-1 rounded-md border bg-popover shadow-md p-3 text-sm text-muted-foreground">
                     No options found matching &quot;{searchQuery}&quot;
                   </div>
                 )}
