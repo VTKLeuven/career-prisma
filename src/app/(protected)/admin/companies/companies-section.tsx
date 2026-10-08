@@ -2630,7 +2630,7 @@ function CompanyFormDialog({ onRefresh, salespersons }: { onRefresh?: () => void
     const number = String(fd.get("number") ?? "").trim();
     const zip = String(fd.get("zip") ?? "").trim();
     const city = String(fd.get("city") ?? "").trim();
-    const country = String(fd.get("country") ?? "").trim() || "BE";
+    const country = String(fd.get("country") ?? "").trim();
 
     if (!salesperson) {
       setCreateError("Please select a salesperson.");
@@ -2860,18 +2860,7 @@ function CompanyFormDialog({ onRefresh, salespersons }: { onRefresh?: () => void
                 <Label htmlFor="country" className="text-xs">
                   Country
                 </Label>
-                <Select name="country" defaultValue="BE">
-                  <SelectTrigger id="country">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="BE">Belgium</SelectItem>
-                    <SelectItem value="NL">Netherlands</SelectItem>
-                    <SelectItem value="DE">Germany</SelectItem>
-                    <SelectItem value="LU">Luxembourg</SelectItem>
-                    <SelectItem value="FR">France</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Input name="country" id="country" placeholder="Belgium" />
               </div>
             </div>
           </div>
