@@ -414,7 +414,7 @@ export type FormField = {
     max?: number;
     pattern?: string;
     maxFileSize?: number; // Max file size in bytes (for file fields)
-    allowedFileTypes?: string[]; // Allowed MIME types (for file fields)
+    allowedFileTypes?: string[]; // Allowed extensions (".pdf") or MIME types ("image/*") for file fields
     wordLimit?: number; // Maximum number of words (for textarea fields)
   };
   layout?: 'full' | 'half' | 'third' | 'two-thirds'; // Field width layout

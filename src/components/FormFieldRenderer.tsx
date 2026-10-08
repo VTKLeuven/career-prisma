@@ -16,6 +16,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Download, FileIcon } from "lucide-react";
 import type { FormField } from "@/lib/schema";
 import { studyFieldOptions } from "@/lib/form-fields";
+import { fileMatchesAllowedTypes } from "@/lib/utils/file-types";
 import { toast } from "sonner";
 
 type MasterOption = { value: string; label: string };
@@ -697,6 +698,7 @@ export function FormFieldRenderer({
       const maxFileSize = field.validation?.maxFileSize || 50 * 1024 * 1024;
       const maxFileSizeMB = Math.round(maxFileSize / (1024 * 1024));
       const isMultiple = field.multiple || false;
+      const allowedFileTypes = field.validation?.allowedFileTypes ?? [];
       const hasFiles =
         value != null &&
         value !== "" &&
@@ -710,6 +712,7 @@ export function FormFieldRenderer({
               name={field.name}
               type="file"
               multiple={isMultiple}
+              accept={allowedFileTypes.length > 0 ? allowedFileTypes.join(",") : undefined}
               disabled={disabled}
               required={field.required && !value}
               onChange={async (e) => {
@@ -723,16 +726,11 @@ export function FormFieldRenderer({
                   return;
                 }
 
-                if (field.validation?.allowedFileTypes && field.validation.allowedFileTypes.length > 0) {
-                  const invalidFiles = files.filter(
-                    (file) =>
-                      !field.validation!.allowedFileTypes!.some(
-                        (type) => file.type === type || file.name.toLowerCase().endsWith(type.replace("*", ""))
-                      )
-                  );
+                if (allowedFileTypes.length > 0) {
+                  const invalidFiles = files.filter((file) => !fileMatchesAllowedTypes(file, allowedFileTypes));
                   if (invalidFiles.length > 0) {
                     toast.error(
-                      `Some files have invalid types. Allowed types: ${field.validation.allowedFileTypes.join(", ")}`
+                      `File type not allowed: ${invalidFiles.map((file) => file.name).join(", ")}. Allowed: ${allowedFileTypes.join(", ")}`
                     );
                     e.target.value = "";
                     return;
@@ -763,6 +761,7 @@ export function FormFieldRenderer({
               className={inputClassName}
             />
             <p className="text-xs text-muted-foreground">
+              {allowedFileTypes.length > 0 ? `${allowedFileTypes.join(", ")} only · ` : ""}
               Max {maxFileSizeMB}MB{isMultiple ? " (multiple allowed)" : ""}
             </p>
             {hasFiles ? (

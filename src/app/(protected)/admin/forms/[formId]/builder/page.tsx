@@ -56,6 +56,7 @@ import {
   CopyPlus,
 } from "lucide-react";
 import type { Form, FormVersion, FormField, FormSchema } from "@/lib/schema";
+import { parseAllowedFileTypes } from "@/lib/utils/file-types";
 import { studyFieldOptions } from "@/lib/form-fields";
 import Link from "next/link";
 import { getFileUrl } from "@/components/Images";
@@ -498,6 +499,11 @@ function FieldEditor({
     setOptionsText((field.options ?? []).join("\n"));
   }, [field.options]);
 
+  const [fileTypesText, setFileTypesText] = useState((field.validation?.allowedFileTypes ?? []).join(", "));
+  useEffect(() => {
+    setFileTypesText((field.validation?.allowedFileTypes ?? []).join(", "));
+  }, [field.validation?.allowedFileTypes]);
+
   // Load image preview when field.image changes
   useEffect(() => {
     if (field.image) {
@@ -858,6 +864,28 @@ function FieldEditor({
                     Maximum file size in megabytes (default: 50MB)
                   </p>
                 </div>
+                <div className="space-y-1">
+                  <Label htmlFor={`field-${index}-allowedFileTypes`}>Allowed File Types</Label>
+                  <Input
+                    id={`field-${index}-allowedFileTypes`}
+                    value={fileTypesText}
+                    onChange={(e) => setFileTypesText(e.target.value)}
+                    onBlur={() => {
+                      const allowedFileTypes = parseAllowedFileTypes(fileTypesText);
+                      setFileTypesText(allowedFileTypes.join(", "));
+                      onUpdate({
+                        validation: {
+                          ...field.validation,
+                          allowedFileTypes: allowedFileTypes.length > 0 ? allowedFileTypes : undefined,
+                        },
+                      });
+                    }}
+                    placeholder="Any file type"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Comma-separated extensions, e.g. <code>.pdf</code> or <code>.png, .svg</code>. Leave empty to allow any file.
+                  </p>
+                </div>
               </>
             )}
 
@@ -1012,6 +1040,9 @@ function FormFieldPreview({ field }: { field: FormField }) {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <FieldIcon className="h-4 w-4" />
             <span>File Upload</span>
+            {field.validation?.allowedFileTypes?.length ? (
+              <span className="text-xs">({field.validation.allowedFileTypes.join(", ")} only)</span>
+            ) : null}
           </div>
           <Input type="file" disabled />
         </div>
