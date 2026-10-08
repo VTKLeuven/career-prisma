@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompaniesForEvent } from "@/lib/repos/company";
+import { areEventCompaniesPublic } from "@/lib/repos/event-page";
 import { toPublicCompany } from "@/lib/repos/_shape";
 import { sharedCacheHeaders } from "@/lib/http-cache";
 
@@ -9,6 +10,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ companies: [] });
   }
   try {
+    // Hidden until an admin switches on "Attending companies" for the event;
+    // hiding only the button would leave the list one fetch away.
+    if (!(await areEventCompaniesPublic(eventId))) {
+      return NextResponse.json({ companies: [] }, { headers: sharedCacheHeaders(60) });
+    }
     const companies = (await getCompaniesForEvent(eventId, true)).map(toPublicCompany);
     return NextResponse.json(
       { companies },

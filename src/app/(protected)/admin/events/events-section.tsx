@@ -470,6 +470,15 @@ function EventCard({ event, status, onChanged }: { event: CareerEvent; status?: 
                   </label>
                 )}
               </div>
+              {/* Not a header button: the hero's "Explore companies", and the switch that makes the list public at all. */}
+              <label className="flex items-center gap-2 cursor-pointer border-t pt-2">
+                <Checkbox
+                  checked={headerButtons.includes("companies")}
+                  onCheckedChange={() => toggleHeaderButton("companies")}
+                  disabled={savingHeaderButtons}
+                />
+                <span className="text-sm">Show attending companies</span>
+              </label>
             </div>
           )}
           <AddCompaniesDialog event={event} hasCompanies={status?.hasCompanies ?? false} />

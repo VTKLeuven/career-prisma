@@ -212,9 +212,14 @@ export async function fetchEventPageBySlugAction(slug: string) {
 
   // This feeds the public event page and /api/events/<slug>: companies lose
   // their representatives and sales history, speakers their contact details.
-  page.companies = (page.companies as unknown as Array<{ company_id: Company }>)?.map((item) =>
-    toPublicCompany(item.company_id)
-  ) ?? [];
+  // Until an admin switches on "Attending companies", the list is left out
+  // entirely, not just hidden in the UI.
+  const companiesPublic = Array.isArray(page.header_buttons) && page.header_buttons.includes("companies");
+  page.companies = companiesPublic
+    ? (page.companies as unknown as Array<{ company_id: Company }>)?.map((item) =>
+        toPublicCompany(item.company_id)
+      ) ?? []
+    : [];
 
   // ✅ Flatten speakers (M2M: speakers.speaker_id or speakers direct)
   page.speakers = (page.speakers as unknown as Array<{ speaker_id?: Speaker; id?: string; representative?: Speaker["representative"]; time?: Speaker["time"] }>)?.map((item) => {

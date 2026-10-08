@@ -40,6 +40,7 @@ const HEADER_BUTTON_OPTIONS: SelectOption[] = [
   { value: "company_guide", label: "Company guide" },
   { value: "cv_upload", label: "CV upload" },
   { value: "matching_software", label: "Matching software" },
+  { value: "companies", label: "Attending companies (hero)" },
 ];
 
 const STATUS_OPTIONS: SelectOption[] = [

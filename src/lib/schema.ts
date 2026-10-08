@@ -169,7 +169,10 @@ export type CareerEventOption = {
 }
 
 /** Header button types that can be shown on the event page header */
-export type HeaderButtonType = 'floorplan' | 'company_guide' | 'cv_upload' | 'matching_software';
+// "companies" is not a header button: it shows the "Explore companies" button in
+// the event hero, and is the switch that makes the attending-companies list
+// public at all. It lives in header_buttons so it reuses the same admin toggle.
+export type HeaderButtonType = 'floorplan' | 'company_guide' | 'cv_upload' | 'matching_software' | 'companies';
 
 /** Schedule for an event - PDF per master (student timetables). Companies with "Student Schedules" sub-option see schedules for masters in their company.category. */
 export type Schedule = {

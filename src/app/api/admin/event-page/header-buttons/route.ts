@@ -5,7 +5,7 @@ import { getUserFromCookies } from "@/lib/auth-server";
 import { invalidateEventPageCache } from "@/lib/event-page-cache";
 import type { HeaderButtonType } from "@/lib/schema";
 
-const VALID_BUTTONS: HeaderButtonType[] = ["floorplan", "company_guide", "cv_upload", "matching_software"];
+const VALID_BUTTONS: HeaderButtonType[] = ["floorplan", "company_guide", "cv_upload", "matching_software", "companies"];
 
 export async function PATCH(req: Request) {
   try {

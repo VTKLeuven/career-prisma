@@ -17,7 +17,12 @@ Nearly every business question is scoped by academic year.
 public exactly when `CareerEvent.status` is `"published"`. Both rows used to
 carry a draft flag and only the page's one gated anything, so the two could
 disagree; the event's flag is now the single gate, and the admin page form
-writes it through to the event. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
+writes it through to the event. Its `header_buttons` JSON array picks the
+header buttons, plus one entry that is not a header button: `"companies"`
+makes the list of attending companies public (the hero's "Explore companies",
+`/api/events/companies` and the page payload all check it). It is off by
+default and not carried into a new edition, so the list stays hidden until VTK
+announces it. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
 `Speaker`, `Timetable`, `Schedule`, `Drink`/`Order`/`OrderingSettings`,
 `EventCheckin` and `AttendantScan` (QR badge scanning at booths).
 

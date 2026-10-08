@@ -91,7 +91,11 @@ export async function copyAnnualCatalog(sourceYearId: number, targetYearId: numb
               floorplan_id: sourcePage.floorplan_id,
               image_id: sourcePage.image_id,
               company_guide: sourcePage.company_guide,
-              header_buttons: sourcePage.header_buttons ?? undefined,
+              // A new edition must not publish its company list before VTK
+              // switches it on, so the "companies" switch is not carried over.
+              header_buttons: Array.isArray(sourcePage.header_buttons)
+                ? sourcePage.header_buttons.filter((b) => b !== "companies")
+                : sourcePage.header_buttons ?? undefined,
               latitude: sourcePage.latitude,
               longitude: sourcePage.longitude,
             },

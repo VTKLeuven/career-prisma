@@ -442,6 +442,20 @@ export async function getEventSetupStatuses(eventIds: string[]): Promise<Record<
   return result;
 }
 
+/**
+ * Whether the public may see which companies attend an event: admins switch
+ * it on with the "companies" entry in the event page's header_buttons. Reads
+ * the event's first page, as getEventPageWithFloorplan does.
+ */
+export async function areEventCompaniesPublic(eventId: string): Promise<boolean> {
+  const page = await prisma.careerEventPage.findFirst({
+    where: { event_id: eventId },
+    select: { header_buttons: true },
+    orderBy: { id: "asc" },
+  });
+  return Array.isArray(page?.header_buttons) && page.header_buttons.includes("companies");
+}
+
 /** Lists companies on an event page (those not on it yet); returns how many were added. */
 export async function addCompaniesToEventPage(eventPageId: number, companyIds: string[]): Promise<number> {
   const current = await prisma.careerEventPageCompany.findMany({

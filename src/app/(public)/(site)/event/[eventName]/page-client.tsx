@@ -67,10 +67,11 @@ export default function EventPageClient({
   // Use header_buttons to determine which header to show.
   // When header_buttons is undefined (legacy): use floorplan-based behavior.
   // When header_buttons exists: show event header only when at least one button is enabled.
+  // "companies" is a hero button, so it does not count towards the header.
   const headerButtons = page?.header_buttons
   const useEventHeader = headerButtons === undefined
     ? !!page?.floorplan
-    : Array.isArray(headerButtons) && headerButtons.length > 0
+    : Array.isArray(headerButtons) && headerButtons.some((b) => b !== "companies")
 
   return (
     <>
@@ -354,7 +355,7 @@ function Hero({
                   Student registration
                 </Button>
 
-                {/* Floorplan button only when floorplan is in header_buttons (admin panel), otherwise Explore companies */}
+                {/* Floorplan button only when floorplan is in header_buttons (admin panel), otherwise Explore companies when admins made the list public */}
                 {shouldShowHeaderButton(page, "floorplan", floorplanEnabled) ? (
                   <Button
                     asChild
@@ -365,7 +366,7 @@ function Hero({
                       Floorplan
                     </Link>
                   </Button>
-                ) : (
+                ) : page.header_buttons?.includes("companies") ? (
                   <Button
                     variant="ghost"
                     className="rounded-full bg-vtk-blue-dark text-white hover:bg-vtk-blue-dark hover:text-white hover:brightness-110 cursor-pointer text-sm sm:text-base"
@@ -373,7 +374,7 @@ function Hero({
                   >
                     Explore companies
                   </Button>
-                )}
+                ) : null}
               </div>
             </div>
           ) : (
