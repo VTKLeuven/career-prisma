@@ -9,6 +9,13 @@ import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
 import { generateCompanyPageRequestEmailHtml, generateCVBookRequestEmailHtml } from "@/lib/email-templates";
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { toPublicCompany, toPublicSpeaker } from "@/lib/repos/_shape";
+import { setUserPassword } from "@/lib/repos/credentials";
+import argon2 from "argon2";
+
+// Same minimum as accept-invite and the reset flows.
+const MIN_PASSWORD_LENGTH = 8;
+// Structure only: an admin-set password means the address is never mailed.
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type AppUser = UserSummary;
 
@@ -411,14 +418,35 @@ export async function createCompanyAction(companyPayload: Partial<Company>, repP
   return await createCompany(companyPayload);
 }
 
-export async function createCompanyRepAction(companyId: string, repPayload: Partial<CompanyRep>) {
+/**
+ * Adds a representative to a company. By default they get an invite mail and
+ * choose their own password. With `options.password` the admin sets it instead:
+ * the account is active straight away and no mail is sent, so the address only
+ * has to be well-formed -- it need not reach a real inbox.
+ */
+export async function createCompanyRepAction(
+  companyId: string,
+  repPayload: Partial<CompanyRep>,
+  options?: { password?: string }
+) {
   await requireAdminUser();
   if (!repPayload) return null;
+  const password = options?.password;
+  if (password !== undefined) {
+    if (!repPayload.email || !EMAIL_SHAPE.test(repPayload.email.trim())) {
+      throw new Error("Enter a valid email address");
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      throw new Error(`The password needs at least ${MIN_PASSWORD_LENGTH} characters`);
+    }
+  }
   let newRep: any;
   try {
     newRep = await createRep(repPayload);
   } catch (err) {
     console.error("[createCompanyRepAction] Failed to create representative:", repPayload.email, err);
+    // The password dialog waits for the result and shows why, e.g. a taken address.
+    if (password !== undefined) throw err instanceof Error ? err : new Error("Failed to create representative");
     return null;
   }
 
@@ -448,6 +476,11 @@ export async function createCompanyRepAction(companyId: string, repPayload: Part
   console.log(representativeIds)
 
   const result = await updateCompanyAction(companyId, { representatives: representativeIds as unknown as CompanyRep[] });
+
+  if (password !== undefined) {
+    await setUserPassword(newRep.id, await argon2.hash(password, { type: argon2.argon2id }));
+    return result;
+  }
 
   // Send invitation email to the representative
   if (repPayload.email && newRep?.id) {

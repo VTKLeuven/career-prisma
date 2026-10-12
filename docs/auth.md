@@ -25,6 +25,14 @@ PostgreSQL on every request.
 Invitations (`src/lib/invite-token.ts`, `/accept-invite`) and password resets
 (`src/lib/password-reset.ts`) both use hashed, timestamped single-use tokens.
 
+An admin adding a representative on a company page can skip the invite and set
+the password themselves (`createCompanyRepAction(..., { password })` →
+`setUserPassword()`). The account is `active` at once and nothing is mailed, so
+the address only has to be well-formed, not a real inbox — meant for shared or
+placeholder accounts. Password resets still mail that address, so a forgotten
+password on a fake address cannot be recovered — there is no admin "change
+password" screen yet.
+
 Both password logins are throttled by `src/lib/login-throttle.ts`: after 10
 failures for one account, or 50 from one client address, within 15 minutes,
 they answer 429 with `Retry-After` until the oldest failure ages out; a

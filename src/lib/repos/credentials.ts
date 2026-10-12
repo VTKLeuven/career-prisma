@@ -83,6 +83,19 @@ export async function acceptUserInvite(userId: string, passwordHash: string): Pr
   });
 }
 
+/** An admin sets the password directly: activates the account, no invite needed. */
+export async function setUserPassword(userId: string, passwordHash: string): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      password: passwordHash,
+      status: "active",
+      invite_token_hash: null,
+      invite_token_created: null,
+    },
+  });
+}
+
 /* -------------------------------- students -------------------------------- */
 
 /** A student with their password hash, for the login check. */

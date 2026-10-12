@@ -58,6 +58,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { IconBuilding, IconColumns, IconMail, IconPlus, IconTaxEuro } from "@tabler/icons-react";
 import type { AcademicYear, CareerEvent, Company, CompanyRep, CareerEventOption, CareerSubOption, Master } from "@/lib/schema";
 import type { UserSummary as AppUser } from "@/lib/schema";
@@ -1197,10 +1198,24 @@ function UserFormDialog({ company, onCreate }: {
   onCreate: (newUser: Partial<CompanyRep>) => void;
 }) {
   const [open, setOpen] = React.useState(false);
+  // "invite" mails a link so the rep picks a password; "password" lets the
+  // admin set one, for accounts whose address is not a real inbox.
+  const [mode, setMode] = React.useState<"invite" | "password">("invite");
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const onOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      setMode("invite");
+      setError(null);
+    }
+  };
+
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
+    const formEl = e.currentTarget;
+    const fd = new FormData(formEl);
 
     const newUser: Partial<CompanyRep> = {
       first_name: String(fd.get("firstName") ?? "").trim() || undefined,
@@ -1212,15 +1227,41 @@ function UserFormDialog({ company, onCreate }: {
       status: "invited",
     };
 
+    if (mode === "password") {
+      const password = String(fd.get("password") ?? "");
+      if (password.length < 8) {
+        setError("The password needs at least 8 characters.");
+        return;
+      }
+      if (password !== String(fd.get("passwordConfirm") ?? "")) {
+        setError("The passwords do not match.");
+        return;
+      }
+      setSaving(true);
+      setError(null);
+      try {
+        await createCompanyRepAction(company.id, newUser, { password });
+        toast.success(`${newUser.email} can now sign in with the password you set.`);
+        onCreate({ ...newUser, status: "active" });
+        onOpenChange(false);
+        formEl.reset();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to create user");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
     createCompanyRepAction(company.id, newUser)
 
     onCreate(newUser); // parent will incorporate into CompanyRow.representatives
-    setOpen(false);
-    (e.target as HTMLFormElement).reset();
+    onOpenChange(false);
+    formEl.reset();
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <Button variant="outline"><IconPlus /> Add User</Button>
       </DialogTrigger>
@@ -1252,8 +1293,42 @@ function UserFormDialog({ company, onCreate }: {
             <Input name="funct" id="funct" />
           </div>
 
+          <div className="w-full flex flex-col gap-2">
+            <Label className="text-xs">Account access</Label>
+            <RadioGroup value={mode} onValueChange={(v) => { setMode(v as "invite" | "password"); setError(null); }}>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="invite" id="mode-invite" />
+                <Label htmlFor="mode-invite" className="font-normal cursor-pointer">Send an invite link by e-mail</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="password" id="mode-password" />
+                <Label htmlFor="mode-password" className="font-normal cursor-pointer">Set a password now (no e-mail is sent)</Label>
+              </div>
+            </RadioGroup>
+          </div>
+
+          {mode === "password" && (
+            <>
+              <p className="text-xs text-muted-foreground">
+                The account is active right away. The e-mail address is only used to sign in, so it does not have to be a real inbox.
+              </p>
+              <div className="w-full">
+                <Label htmlFor="password" className="text-xs">Password* (at least 8 characters)</Label>
+                <Input name="password" id="password" type="password" autoComplete="new-password" minLength={8} required />
+              </div>
+              <div className="w-full">
+                <Label htmlFor="passwordConfirm" className="text-xs">Confirm password*</Label>
+                <Input name="passwordConfirm" id="passwordConfirm" type="password" autoComplete="new-password" minLength={8} required />
+              </div>
+            </>
+          )}
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button type="submit" className="w-full sm:w-auto">Submit</Button>
+            <Button type="submit" className="w-full sm:w-auto" disabled={saving}>
+              {saving ? "Creating..." : mode === "password" ? "Create user" : "Submit"}
+            </Button>
             <DialogClose asChild>
               <Button variant="outline" className="w-full sm:w-auto">Cancel</Button>
             </DialogClose>
