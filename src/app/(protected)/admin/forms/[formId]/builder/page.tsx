@@ -91,6 +91,15 @@ const getFieldIcon = (type: FieldType) => {
   return fieldType?.icon || Type;
 };
 
+/**
+ * The icon for a field type. A module-level component so the React Compiler
+ * lint can see the icon is stable -- `const Icon = getFieldIcon(...)` in render
+ * reads to it as a component created on every render.
+ */
+function FieldTypeIcon({ type, className }: { type: FieldType; className?: string }) {
+  return React.createElement(getFieldIcon(type), { className });
+}
+
 /** Default title for a study field, used when the admin has not typed one yet. */
 const STUDY_FIELD_TITLES: Partial<Record<FieldType, string>> = {
   "study-programme": "Study programme",
@@ -586,7 +595,7 @@ function FieldEditor({
           <div className="flex-1 cursor-pointer" onClick={() => setExpanded(!expanded)}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                {React.createElement(getFieldIcon(field.type), { className: "h-5 w-5 text-muted-foreground" })}
+                <FieldTypeIcon type={field.type} className="h-5 w-5 text-muted-foreground" />
                 <div>
                   {field.label ? (
                     <p className="font-medium">{field.label}</p>
@@ -603,7 +612,7 @@ function FieldEditor({
                 </div>
               </div>
               <Badge variant="outline" className="flex items-center gap-1">
-                {React.createElement(getFieldIcon(field.type), { className: "h-3 w-3" })}
+                <FieldTypeIcon type={field.type} className="h-3 w-3" />
                 {field.type}
               </Badge>
             </div>
@@ -964,7 +973,6 @@ function FieldEditor({
 }
 
 function FormFieldPreview({ field }: { field: FormField }) {
-  const FieldIcon = getFieldIcon(field.type);
   
   switch (field.type) {
     case "textarea":
@@ -972,7 +980,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <FieldIcon className="h-4 w-4" />
+            <FieldTypeIcon type={field.type} className="h-4 w-4" />
             <span>Text Area</span>
             {wordLimit && (
               <span className="text-xs">(Max {wordLimit} words)</span>
@@ -990,7 +998,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <FieldIcon className="h-4 w-4" />
+            <FieldTypeIcon type={field.type} className="h-4 w-4" />
             <span>Select Dropdown</span>
           </div>
           <Select disabled>
@@ -1004,7 +1012,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <FieldIcon className="h-4 w-4" />
+            <FieldTypeIcon type={field.type} className="h-4 w-4" />
             <span>Checkbox Group</span>
           </div>
           <div className="space-y-2">
@@ -1021,7 +1029,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <FieldIcon className="h-4 w-4" />
+            <FieldTypeIcon type={field.type} className="h-4 w-4" />
             <span>Radio Buttons</span>
           </div>
           <RadioGroup value="" disabled>
@@ -1038,7 +1046,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <FieldIcon className="h-4 w-4" />
+            <FieldTypeIcon type={field.type} className="h-4 w-4" />
             <span>File Upload</span>
             {field.validation?.allowedFileTypes?.length ? (
               <span className="text-xs">({field.validation.allowedFileTypes.join(", ")} only)</span>
@@ -1051,7 +1059,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <FieldIcon className="h-4 w-4" />
+            <FieldTypeIcon type={field.type} className="h-4 w-4" />
             <span>Date Picker</span>
           </div>
           <Input type="date" disabled />
@@ -1061,7 +1069,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <FieldIcon className="h-4 w-4" />
+            <FieldTypeIcon type={field.type} className="h-4 w-4" />
             <span>Date Range Picker</span>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -1074,7 +1082,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <FieldIcon className="h-4 w-4" />
+            <FieldTypeIcon type={field.type} className="h-4 w-4" />
             <span>Time Picker</span>
           </div>
           <Input type="time" disabled />
@@ -1084,7 +1092,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <FieldIcon className="h-4 w-4" />
+            <FieldTypeIcon type={field.type} className="h-4 w-4" />
             <span>Email Input</span>
           </div>
           <Input type="email" placeholder={field.placeholder} disabled />
@@ -1094,7 +1102,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <FieldIcon className="h-4 w-4" />
+            <FieldTypeIcon type={field.type} className="h-4 w-4" />
             <span>Number Input</span>
           </div>
           <Input type="number" placeholder={field.placeholder} disabled />
@@ -1104,7 +1112,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <FieldIcon className="h-4 w-4" />
+            <FieldTypeIcon type={field.type} className="h-4 w-4" />
             <span>LinkedIn Profile URL</span>
           </div>
           <Input type="url" placeholder="https://linkedin.com/in/username" disabled />
@@ -1114,7 +1122,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <FieldIcon className="h-4 w-4" />
+            <FieldTypeIcon type={field.type} className="h-4 w-4" />
             <span>Master Degrees</span>
             {field.masterDegreesMultiple && <span className="text-xs">(multiple)</span>}
             {field.masterDegreesIncludeFaculties && <span className="text-xs">(by faculty)</span>}
@@ -1132,7 +1140,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <FieldIcon className="h-4 w-4" />
+            <FieldTypeIcon type={field.type} className="h-4 w-4" />
             <span>{field.type === "study-programme" ? "Study Programme" : "Study Year"}</span>
             {field.multiple && <span className="text-xs">(multiple)</span>}
           </div>
@@ -1160,7 +1168,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <FieldIcon className="h-4 w-4" />
+            <FieldTypeIcon type={field.type} className="h-4 w-4" />
             <span>Text Input</span>
           </div>
           <Input type="text" placeholder={field.placeholder} disabled />
