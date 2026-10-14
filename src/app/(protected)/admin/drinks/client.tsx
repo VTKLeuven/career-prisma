@@ -94,14 +94,7 @@ function TimePicker24h({ value, onChange, placeholder }: { value: string, onChan
 
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
+import { DataTable, RowDeleteButton } from "@/components/admin/DataTable";
 import {
     Dialog,
     DialogContent,
@@ -124,7 +117,7 @@ import { createDrinkAction, deleteDrinkAction, updateDrinkAction, setOrderingSet
 import { uploadFileAction } from "@/app/actions/media";
 import type { Drink, CareerEvent } from "@/lib/schema";
 import { useRouter } from "next/navigation";
-import { Trash2, Edit, Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
@@ -460,37 +453,20 @@ export default function DrinksClient({
                 </DialogContent>
             </Dialog>
 
-            <div className="rounded-md border">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Name</TableHead>
-                            <TableHead>Type</TableHead>
-                            <TableHead>Active</TableHead>
-                            <TableHead>Actions</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {initialDrinks.map((drink) => (
-                            <TableRow key={drink.id}>
-                                <TableCell className="font-medium">{drink.name}</TableCell>
-                                <TableCell>{drink.type}</TableCell>
-                                <TableCell>{drink.is_active ? "Yes" : "No"}</TableCell>
-                                <TableCell>
-                                    <div className="flex gap-2">
-                                        <Button variant="ghost" size="icon" onClick={() => openEdit(drink)}>
-                                            <Edit className="h-4 w-4" />
-                                        </Button>
-                                        <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDelete(drink.id)}>
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </div>
+            <DataTable
+                rows={initialDrinks}
+                columns={[
+                    { key: "name", label: "Name" },
+                    { key: "type", label: "Type", className: "capitalize", filter: true },
+                    { key: "is_active", label: "Available", value: (drink) => Boolean(drink.is_active), filter: true },
+                ]}
+                getRowId={(drink) => String(drink.id)}
+                noun="drink"
+                defaultSort={{ key: "name" }}
+                onRowClick={openEdit}
+                isRowSelected={(drink) => isOpen && editingDrink?.id === drink.id}
+                rowActions={(drink) => <RowDeleteButton onClick={() => handleDelete(drink.id)} label="Delete drink" />}
+            />
         </div>
     );
 }

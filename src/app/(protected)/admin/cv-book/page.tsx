@@ -15,21 +15,9 @@ import {
 } from "@/app/actions/cv-book";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-  VisibilityState,
-} from "@tanstack/react-table";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { DataTable } from "@/components/admin/DataTable";
+import type { ColumnConfig } from "@/components/admin/types";
 import {
   Dialog,
   DialogContent,
@@ -55,12 +43,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, ChevronDown, Trash2, Pencil } from "lucide-react";
+import { MoreHorizontal, Trash2, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
@@ -98,15 +84,6 @@ function CVBooksTable() {
   const [cvBooks, setCvBooks] = useState<CVBookRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingBook, setEditingBook] = useState<CVBookRow | null>(null);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
-    academicYear: true,
-    form: true,
-    firstNameField: true,
-    lastNameField: true,
-    emailField: true,
-    studyField: true,
-    cvField: true,
-  });
 
   const loadCVBooks = async () => {
     setLoading(true);
@@ -152,142 +129,94 @@ function CVBooksTable() {
     }
   };
 
-  const columns: ColumnDef<CVBookRow>[] = [
+  // The form-field mappings are setup detail; they start hidden and the
+  // Columns menu brings them back.
+  const fieldColumn = (key: keyof CVBookRow & string, label: string): ColumnConfig<CVBookRow> => ({
+    key,
+    label,
+    defaultHidden: true,
+    className: "font-mono text-xs text-muted-foreground",
+  });
+
+  const columns: ColumnConfig<CVBookRow>[] = [
     {
-      accessorKey: "year",
-      header: "Academic Year",
-      id: "academicYear",
-      cell: ({ row }) => {
-        const year = typeof row.original.year === "object" ? row.original.year : null;
-        return <div className="font-medium">{year?.name || "Unknown"}</div>;
-      },
+      key: "academicYear",
+      label: "Academic year",
+      value: (book) => (typeof book.year === "object" ? book.year?.name : null),
+      render: (book) => (typeof book.year === "object" ? book.year?.name : null) || "Unknown",
+      filter: true,
     },
     {
-      accessorKey: "form",
-      header: "Form",
-      id: "form",
-      cell: ({ row }) => {
-        const form = typeof row.original.form === "object" ? row.original.form : null;
-        return <div>{form?.name || "Unknown"}</div>;
-      },
+      key: "form",
+      label: "Form",
+      value: (book) => (typeof book.form === "object" ? book.form?.name : null),
+      render: (book) => (typeof book.form === "object" ? book.form?.name : null) || "Unknown",
     },
+    fieldColumn("student_first_name_field", "First name field"),
+    fieldColumn("student_last_name_field", "Last name field"),
+    fieldColumn("student_email_field", "Email field"),
+    fieldColumn("student_study_field", "Study field"),
+    fieldColumn("student_cv_field", "CV field"),
     {
-      accessorKey: "student_first_name_field",
-      header: "First Name Field",
-      id: "firstNameField",
-    },
-    {
-      accessorKey: "student_last_name_field",
-      header: "Last Name Field",
-      id: "lastNameField",
-    },
-    {
-      accessorKey: "student_email_field",
-      header: "Email Field",
-      id: "emailField",
-    },
-    {
-      accessorKey: "student_study_field",
-      header: "Study Field",
-      id: "studyField",
-    },
-    {
-      accessorKey: "student_cv_field",
-      header: "CV Field",
-      id: "cvField",
-    },
-    {
-      accessorKey: "active",
-      header: "Active",
-      id: "active",
-      cell: ({ row }) => {
-        const isActive = row.original.active;
-        return (
-          <div className="flex items-center">
-            {isActive ? (
-              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                Active
-              </span>
-            ) : (
-              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200">
-                Inactive
-              </span>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      id: "actions",
-      enableHiding: false,
-      cell: ({ row }) => {
-        const book = row.original;
-        return (
-          <div className="text-right">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => router.push(`/dashboard/job-platform/cv-book?cvBookId=${book.id}`)}
-                >
-                  View CV Book
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => router.push(`/admin/cv-book/screening?cvBookId=${book.id}`)}
-                >
-                  Screen CVs
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setEditingBook(book)}>
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Edit details
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {!book.active ? (
-                  <DropdownMenuItem
-                    onClick={() => handleToggleActive(book.id, true)}
-                  >
-                    <Check className="mr-2 h-4 w-4" />
-                    Activate
-                  </DropdownMenuItem>
-                ) : (
-                  <DropdownMenuItem
-                    onClick={() => handleToggleActive(book.id, false)}
-                  >
-                    <X className="mr-2 h-4 w-4" />
-                    Deactivate
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => handleDelete(book.id)}
-                  className="text-destructive"
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        );
-      },
+      key: "active",
+      label: "Active",
+      value: (book) => Boolean(book.active),
+      filter: true,
+      render: (book) => (
+        <Badge variant={book.active ? "success" : "muted"}>{book.active ? "Active" : "Inactive"}</Badge>
+      ),
     },
   ];
 
-  const table = useReactTable({
-    data: cvBooks,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    onColumnVisibilityChange: setColumnVisibility,
-    state: {
-      columnVisibility,
-    },
-  });
+  const rowMenu = (book: CVBookRow) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="size-8 text-muted-foreground" aria-label="CV book actions">
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          onClick={() => router.push(`/dashboard/job-platform/cv-book?cvBookId=${book.id}`)}
+        >
+          View CV Book
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => router.push(`/admin/cv-book/screening?cvBookId=${book.id}`)}
+        >
+          Screen CVs
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setEditingBook(book)}>
+          <Pencil className="mr-2 h-4 w-4" />
+          Edit details
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {!book.active ? (
+          <DropdownMenuItem
+            onClick={() => handleToggleActive(book.id, true)}
+          >
+            <Check className="mr-2 h-4 w-4" />
+            Activate
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem
+            onClick={() => handleToggleActive(book.id, false)}
+          >
+            <X className="mr-2 h-4 w-4" />
+            Deactivate
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => handleDelete(book.id)}
+          className="text-destructive"
+        >
+          <Trash2 className="mr-2 h-4 w-4" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
   if (loading) {
     return (
@@ -314,94 +243,23 @@ function CVBooksTable() {
       )}
       <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>All CV Books</CardTitle>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <ChevronDown className="mr-2 h-4 w-4" />
-                Columns
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {table
-                .getAllColumns()
-                .filter((column) => column.getCanHide())
-                .map((column) => {
-                  return (
-                    <DropdownMenuCheckboxItem
-                      key={column.id}
-                      className="capitalize"
-                      checked={column.getIsVisible()}
-                      onCheckedChange={(value) => column.toggleVisibility(!!value)}
-                    >
-                      {column.id === "academicYear" && "Academic Year"}
-                      {column.id === "form" && "Form"}
-                      {column.id === "firstNameField" && "First Name Field"}
-                      {column.id === "lastNameField" && "Last Name Field"}
-                      {column.id === "emailField" && "Email Field"}
-                      {column.id === "studyField" && "Study Field"}
-                      {column.id === "cvField" && "CV Field"}
-                    </DropdownMenuCheckboxItem>
-                  );
-                })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <CardTitle>All CV Books</CardTitle>
       </CardHeader>
       <CardContent>
-        {cvBooks.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            No CV Books yet. Create your first CV Book to get started.
-          </div>
-        ) : (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <TableRow key={headerGroup.id}>
-                    {headerGroup.headers.map((header) => {
-                      return (
-                        <TableHead key={header.id} className={header.id === "actions" ? "text-right" : ""}>
-                          {header.isPlaceholder
-                            ? null
-                            : flexRender(
-                                header.column.columnDef.header,
-                                header.getContext()
-                              )}
-                        </TableHead>
-                      );
-                    })}
-                  </TableRow>
-                ))}
-              </TableHeader>
-              <TableBody>
-                {table.getRowModel().rows?.length ? (
-                  table.getRowModel().rows.map((row) => (
-                    <TableRow
-                      key={row.id}
-                      data-state={row.getIsSelected() && "selected"}
-                    >
-                      {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id} className={cell.column.id === "actions" ? "text-right" : ""}>
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={columns.length} className="h-24 text-center">
-                      No results.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        )}
+        <DataTable
+          rows={cvBooks}
+          columns={columns}
+          getRowId={(book) => String(book.id)}
+          noun="CV book"
+          search={false}
+          defaultSort={{ key: "academicYear", desc: true }}
+          containerClassName=""
+          emptyMessage="No CV books yet. Create your first CV book to get started"
+          onRowClick={setEditingBook}
+          isRowSelected={(book) => editingBook?.id === book.id}
+          rowActionsAlwaysVisible
+          rowActions={rowMenu}
+        />
       </CardContent>
     </Card>
     </>

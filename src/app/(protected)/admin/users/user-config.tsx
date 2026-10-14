@@ -33,11 +33,13 @@ export function userResourceConfig(
     singular: "User",
     getId: (u) => u.id,
     getLabel: (u) => fullName(u),
-    searchKeys: ["first_name", "last_name", "email"],
+    searchKeys: ["first_name", "last_name"],
+    defaultSort: { key: "name" },
     columns: [
       {
         key: "avatar",
         label: "Photo",
+        sortable: false,
         render: (u) =>
           u.avatar ? (
             <Image
@@ -55,10 +57,11 @@ export function userResourceConfig(
       },
       { key: "name", label: "Name", render: (u) => fullName(u) },
       { key: "email", label: "Email", render: (u) => u.email || "—" },
-      { key: "role_name", label: "Role", render: (u) => u.role_name || "—" },
+      { key: "role_name", label: "Role", render: (u) => u.role_name || "—", filter: true },
       {
         key: "status",
         label: "Status",
+        filter: { options: STATUS_OPTIONS },
         render: (u) => (
           <span
             className={
@@ -73,7 +76,7 @@ export function userResourceConfig(
           </span>
         ),
       },
-      { key: "company_name", label: "Company", render: (u) => u.company_name || "—" },
+      { key: "company_name", label: "Company", render: (u) => u.company_name || "—", filter: true },
     ],
     fields: [
       { name: "avatar", label: "Photo", type: "image" },

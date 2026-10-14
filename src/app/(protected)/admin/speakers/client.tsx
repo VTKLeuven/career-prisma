@@ -42,6 +42,7 @@ export default function SpeakersClient({
       {
         key: "personal_information",
         label: "Bio",
+        value: (s) => stripHtml(s.personal_information),
         render: (s) => (
           <span className="block max-w-[40ch] truncate text-sm text-muted-foreground">
             {stripHtml(s.personal_information) || "—"}

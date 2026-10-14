@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   createAcademicYearAction,
   updateAcademicYearAction,
@@ -17,14 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable } from "@/components/admin/DataTable";
 import type { AcademicYear } from "@/lib/schema";
 
 const inputDate = (value: string) => {
@@ -80,24 +73,21 @@ export default function AcademicYearsClient({ initialYears }: { initialYears: Ac
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" /> Add academic year</Button>
-      </div>
-      <div className="overflow-hidden rounded-md border">
-        <Table>
-          <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Starts</TableHead><TableHead>Ends</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-          <TableBody>
-            {initialYears.map((year) => (
-              <TableRow key={year.id}>
-                <TableCell className="font-medium">{year.name}</TableCell>
-                <TableCell>{displayDate(year.start_of_year)}</TableCell>
-                <TableCell>{displayDate(year.end_of_year)}</TableCell>
-                <TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => openEdit(year)} aria-label={`Edit ${year.name}`}><Pencil className="h-4 w-4" /></Button></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable
+        rows={initialYears}
+        columns={[
+          { key: "name", label: "Name" },
+          { key: "start_of_year", label: "Starts", value: (year) => new Date(year.start_of_year), render: (year) => displayDate(year.start_of_year) },
+          { key: "end_of_year", label: "Ends", value: (year) => new Date(year.end_of_year), render: (year) => displayDate(year.end_of_year) },
+        ]}
+        getRowId={(year) => String(year.id)}
+        noun="academic year"
+        search={false}
+        defaultSort={{ key: "start_of_year", desc: true }}
+        onRowClick={openEdit}
+        isRowSelected={(year) => open && editingId === String(year.id)}
+        toolbar={<Button onClick={openCreate}><Plus className="h-4 w-4" /> Add academic year</Button>}
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

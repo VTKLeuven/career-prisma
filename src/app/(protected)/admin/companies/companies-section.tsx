@@ -4,27 +4,13 @@ import * as React from "react";
 import { fetchCompanyByIdAction, fetchCompaniesWithSubOptionsAction, createCompanyAction, updateCompanyAction, createCompanyRepAction, addOptionToCompanyAction, removeOptionFromCompanyAction, addSubOptionToCompanyAction, removeSubOptionFromCompanyAction, addSubOptionToCompanyOnlyAction, removeSubOptionFromCompanyOnlyAction, removeUserFromCompanyAction, processCompaniesCSVAction, resendInviteAction, fetchCompanyOptionsDebugAction } from "@/app/actions/companies";
 import { fetchEventsAction } from "@/app/actions/events";
 import { listSubOptionsAction, listEventOptionsAction } from "@/app/actions/career-options";
-import {
-  ColumnDef,
-  ColumnFiltersState,
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  SortingState,
-  useReactTable,
-  VisibilityState,
-}
-from "@tanstack/react-table";
-import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Loader2, MoreHorizontal, Package, Pencil, Search, Upload, Users, X } from "lucide-react";
+import { ChevronLeft, ExternalLink, Loader2, MoreHorizontal, Package, Pencil, Upload, Users, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -59,13 +45,14 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { IconBuilding, IconColumns, IconMail, IconPlus, IconTaxEuro } from "@tabler/icons-react";
+import { IconBuilding, IconMail, IconPlus, IconTaxEuro } from "@tabler/icons-react";
 import type { AcademicYear, CareerEvent, Company, CompanyRep, CareerEventOption, CareerSubOption, Master } from "@/lib/schema";
 import type { UserSummary as AppUser } from "@/lib/schema";
 import { slugifyCompanyName } from "@/lib/utils/slugify";
 import { toast } from "sonner";
 import { ResourceEditor } from "@/components/admin/ResourceManager";
-import type { SelectOption } from "@/components/admin/types";
+import type { ColumnConfig, SelectOption } from "@/components/admin/types";
+import { DataTable } from "@/components/admin/DataTable";
 import { fetchAdminUserAction } from "@/app/actions/admin-users";
 import type { AdminUserRow } from "@/lib/repos/users";
 import { userResourceConfig } from "../users/user-config";
@@ -88,7 +75,7 @@ type CareerEventOptionWithCompanySubOptions = CareerEventOption & { companySubOp
 /** ------------------------------------------------------------------
  * CompanyRow — allow representatives to be Partial<CompanyRep>[]
  * ------------------------------------------------------------------ */
-type CompanyRow = Pick<Company, "id" | "name" | "VAT" | "address" | "salesperson" | "status"> & {
+type CompanyRow = Pick<Company, "id" | "name" | "VAT" | "address" | "address_city" | "address_country" | "salesperson" | "status"> & {
   representatives?: Partial<CompanyRep>[];
   options?: CareerEventOptionWithCompanySubOptions[];
   /** Company-level sub-options (from company.sub_options junction) */
@@ -97,6 +84,8 @@ type CompanyRow = Pick<Company, "id" | "name" | "VAT" | "address" | "salesperson
   sub_option_history?: NonNullable<Company["sub_option_history"]>;
   /** `salesperson` is the display name; this is the id the edit form saves. */
   salesperson_id?: string | null;
+  /** Names of the masters the company targets, for the Masters filter. */
+  master_names?: string[];
 };
 
 /** Extract suboption IDs from option (option.sub_options or nested in option.events[].career_event_option_id.sub_options). Handles IDs and expanded objects with career_sub_option_id. */
@@ -294,6 +283,16 @@ const UserEditContext = React.createContext<{
   onSaved: () => void;
 } | null>(null);
 
+/** Names of a company's target masters, from the `category` junction. */
+function masterNamesOf(company: Company): string[] {
+  return (company.category ?? [])
+    .map((entry) => {
+      const master = entry && typeof entry === "object" && "master_id" in entry ? entry.master_id : entry;
+      return master && typeof master === "object" && "name" in master ? String(master.name) : null;
+    })
+    .filter((name): name is string => Boolean(name));
+}
+
 /** The table's rows: each company with its options' events and sub-options resolved. */
 function toCompanyRows({ companies: rows, allSubOptions }: CompaniesData): CompanyRow[] {
   return (rows ?? []).map((r: Company & { status?: string }) => ({
@@ -301,6 +300,9 @@ function toCompanyRows({ companies: rows, allSubOptions }: CompaniesData): Compa
     name: r.name,
     VAT: r.VAT ?? "",
     address: r.address ?? formatAddress(r),
+    address_city: r.address_city ?? "",
+    address_country: r.address_country ?? "",
+    master_names: masterNamesOf(r),
     salesperson: r.salesperson ?? "",
     salesperson_id: (r as { salesperson_id?: string | null }).salesperson_id ?? null,
     status: r.status ?? "",
@@ -407,14 +409,6 @@ export function CompaniesSection({
 }) {
   const [data, setData] = React.useState<CompanyRow[]>(() => toCompanyRows(initialData));
   const [loading, setLoading] = React.useState(false);
-  const [sorting, setSorting] = React.useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
-  const [globalFilter, setGlobalFilter] = React.useState("");
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
-  const [rowSelection, setRowSelection] = React.useState({});
-  // Fifty rows fit a laptop screen inside the scrolling table; tanstack's
-  // default of ten meant paging through dozens of pages.
-  const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: 50 });
   const [selectedCompany, setSelectedCompany] = React.useState<CompanyRow | null>(null);
   const [editingCompany, setEditingCompany] = React.useState<CompanyRow | null>(null);
   const [viewMode, setViewMode] = React.useState<"companies" | "users" | "options">("companies");
@@ -437,36 +431,9 @@ export function CompaniesSection({
       .finally(() => setLoading(false));
   }, []);
 
-  const table = useReactTable<CompanyRow>({
-    data,
-    columns: getCompanyColumns(
-      (company) => { setSelectedCompany(company); setViewMode("users"); },
-      (company) => { setSelectedCompany(company); setViewMode("options"); },
-      (company) => { setEditingCompany(company); }
-    ),
-    state: { sorting, columnFilters, columnVisibility, rowSelection, globalFilter, pagination },
-    onPaginationChange: setPagination,
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    onColumnVisibilityChange: setColumnVisibility,
-    onRowSelectionChange: setRowSelection,
-    onGlobalFilterChange: setGlobalFilter,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    globalFilterFn: (row, _columnId, filterValue) => {
-      if (!filterValue) return true;
-      const q = String(filterValue).toLowerCase();
-      const name = String(row.getValue("name") ?? "").toLowerCase();
-      const vat = String(row.getValue("VAT") ?? "").toLowerCase();
-      return name.includes(q) || vat.includes(q);
-    },
-  });
-
-  const salespersonOptions = React.useMemo(
-    () => Array.from(new Set(data.map(d => d.salesperson).filter(Boolean))).sort() as string[],
-    [data]
+  const columns = getCompanyColumns(
+    (company) => { setSelectedCompany(company); setViewMode("users"); },
+    (company) => { setSelectedCompany(company); setViewMode("options"); }
   );
 
   // Debug: log raw options structure + allSubOptions when viewing a company with options (check browser console)
@@ -539,9 +506,6 @@ export function CompaniesSection({
     }
   }, [selectedCompany]);
 
-  const filteredCount = table.getFilteredRowModel().rows.length;
-  const { pageIndex, pageSize } = table.getState().pagination;
-
   const companyOptions = React.useMemo(
     () => data.map((c) => ({ value: c.id, label: c.name || "(unnamed)" })),
     [data]
@@ -602,139 +566,28 @@ export function CompaniesSection({
             </div>
           )}
           {!selectedCompany ? (
-            <>
-              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                <div className="relative w-full sm:max-w-xs">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Search name or VAT…"
-                    value={table.getState().globalFilter ?? ""}
-                    onChange={e => table.setGlobalFilter(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-                <Select
-                  value={(table.getColumn("salesperson")?.getFilterValue() ?? "__all__") as string}
-                  onValueChange={(val) => table.getColumn("salesperson")?.setFilterValue(val === "__all__" ? undefined : val)}
-                >
-                  <SelectTrigger className="w-full sm:w-[200px]">
-                    <SelectValue placeholder="Assignee" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem key="__all__" value="__all__">All assignees</SelectItem>
-                    {salespersonOptions.map(name => <SelectItem key={String(name)} value={String(name)}>{name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-
-                <span className="text-sm text-muted-foreground tabular">
-                  {filteredCount === data.length ? `${data.length} companies` : `${filteredCount} of ${data.length}`}
-                </span>
-
-                <div className="flex items-center gap-2 sm:ml-auto">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline"><IconColumns /> <span className="hidden sm:inline">Columns</span><ChevronDown className="h-4 w-4 text-muted-foreground" /></Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {table.getAllColumns()
-                        .filter(c => c.getCanHide())
-                        .map(c => (
-                          <DropdownMenuCheckboxItem
-                            key={c.id}
-                            checked={c.getIsVisible()}
-                            onCheckedChange={v => c.toggleVisibility(v)}
-                            className="capitalize"
-                          >
-                            {c.id}
-                          </DropdownMenuCheckboxItem>
-                        ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  <CompanyFormDialog
-                    onRefresh={refreshCompanies}
-                    salespersons={salespersons}
-                  />
-                </div>
-              </div>
-
-              <div className="overflow-hidden rounded-xl border bg-background">
-                  <Table containerClassName="max-h-[calc(100svh-17rem)]">
-                    <TableHeader className="sticky top-0 z-10 bg-background shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
-                      {table.getHeaderGroups().map(headerGroup => (
-                        <TableRow key={headerGroup.id}>
-                          {headerGroup.headers.map(header => (
-                            <TableHead key={header.id} className="whitespace-nowrap first:pl-4">
-                              {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                            </TableHead>
-                          ))}
-                        </TableRow>
-                      ))}
-                    </TableHeader>
-                    <TableBody>
-                      {loading && data.length === 0 ? (
-                        Array.from({ length: 8 }).map((_, i) => (
-                          <TableRow key={i} className="hover:bg-transparent">
-                            <TableCell colSpan={table.getAllColumns().length} className="pl-4">
-                              <div className="flex items-center gap-3">
-                                <div className="size-7 animate-pulse rounded-lg bg-muted" />
-                                <div className="h-3 w-48 animate-pulse rounded bg-muted" />
-                                <div className="ml-auto h-3 w-24 animate-pulse rounded bg-muted" />
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      ) : table.getRowModel().rows.length ? (
-                        table.getRowModel().rows.map(row => {
-                          const company = row.original as CompanyRow;
-                          return (
-                            <TableRow
-                              key={row.id}
-                              tabIndex={0}
-                              className="group/row cursor-pointer outline-none focus-visible:bg-surface-hover focus-visible:shadow-[inset_2px_0_0_#1f82d1]"
-                              onClick={(e) => {
-                                // Menus and dialogs opened from a row are portaled, but React
-                                // still bubbles their clicks here; only real row clicks count.
-                                if (!e.currentTarget.contains(e.target as Node)) return;
-                                if ((e.target as HTMLElement).closest("a, button, [role=checkbox]")) return;
-                                setEditingCompany(company);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" && e.target === e.currentTarget) setEditingCompany(company);
-                              }}
-                            >
-                              {row.getVisibleCells().map(cell => (
-                                <TableCell key={cell.id} className="whitespace-nowrap first:pl-4">{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
-                              ))}
-                            </TableRow>
-                          );
-                        })
-                      ) : (
-                        <TableRow className="hover:bg-transparent">
-                          <TableCell colSpan={table.getAllColumns().length} className="h-40 text-center text-muted-foreground">
-                            No companies match these filters.
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-
-                {filteredCount > pageSize && (
-                  <div className="flex items-center justify-between gap-2 border-t bg-[#fafafa] px-4 py-2">
-                    <p className="text-xs text-muted-foreground tabular">
-                      {pageIndex * pageSize + 1}–{Math.min((pageIndex + 1) * pageSize, filteredCount)} of {filteredCount}
-                    </p>
-                    <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
-                        <ChevronLeft className="h-4 w-4" /> Previous
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
-                        Next <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </>
+            <DataTable
+              rows={data}
+              columns={columns}
+              getRowId={(company) => company.id}
+              noun="company"
+              nounPlural="companies"
+              defaultSort={{ key: "name" }}
+              loading={loading}
+              containerClassName="max-h-[calc(100svh-17rem)]"
+              onRowClick={setEditingCompany}
+              isRowSelected={(company) => editingCompany?.id === company.id}
+              rowActionsAlwaysVisible
+              rowActions={(company) => (
+                <CompanyRowMenu
+                  company={company}
+                  onEdit={() => setEditingCompany(company)}
+                  onViewUsers={() => { setSelectedCompany(company); setViewMode("users"); }}
+                  onViewOptions={() => { setSelectedCompany(company); setViewMode("options"); }}
+                />
+              )}
+              toolbar={<CompanyFormDialog onRefresh={refreshCompanies} salespersons={salespersons} />}
+            />
           ) : viewMode === "users" ? (
             <CompanyUsersTable
               company={selectedCompany}
@@ -829,56 +682,95 @@ function CountChip({
 /** ------------------------------------------------------------------
  * Company columns
  * ------------------------------------------------------------------ */
-function getCompanyColumns(onViewUsers: (company: CompanyRow) => void, onViewOptions: (company: CompanyRow) => void, onEditCompany: (company: CompanyRow) => void): ColumnDef<CompanyRow>[] {
+function getCompanyColumns(
+  onViewUsers: (company: CompanyRow) => void,
+  onViewOptions: (company: CompanyRow) => void
+): ColumnConfig<CompanyRow>[] {
   return [
     {
-      accessorKey: "name",
-      header: "Name",
-      enableHiding: false,
-      cell: ({ row }) => {
-        const company = row.original;
-        return (
-          <div className="flex min-w-0 items-center gap-2.5">
-            <CompanyAvatar name={company.name} />
-            <span className="truncate font-medium text-foreground capitalize">{row.getValue("name")}</span>
-            {company.status && company.status !== "published" ? (
-              <Badge variant="warning" className="capitalize">{company.status}</Badge>
-            ) : null}
-          </div>
-        );
-      },
+      key: "name",
+      label: "Name",
+      render: (company) => (
+        <div className="flex min-w-0 items-center gap-2.5">
+          <CompanyAvatar name={company.name} />
+          <span className="truncate font-medium text-foreground capitalize">{company.name}</span>
+          {company.status && company.status !== "published" ? (
+            <Badge variant="warning" className="capitalize">{company.status}</Badge>
+          ) : null}
+        </div>
+      ),
     },
-    { accessorKey: "VAT", header: "VAT", cell: ({ row }) => <div className="text-[13px] text-muted-foreground tabular">{row.getValue("VAT") || "—"}</div> },
-    { accessorKey: "address", header: "Address", cell: ({ row }) => <div className="max-w-[32ch] truncate text-muted-foreground">{row.getValue("address") || "—"}</div> },
     {
-      id: "representatives",
-      header: "Reps",
-      cell: ({ row }) => (
+      key: "VAT",
+      label: "VAT",
+      render: (company) => <span className="text-[13px] text-muted-foreground tabular">{company.VAT || "—"}</span>,
+    },
+    {
+      key: "address",
+      label: "Address",
+      render: (company) => <span className="text-muted-foreground">{company.address || "—"}</span>,
+    },
+    { key: "address_city", label: "City", defaultHidden: true },
+    { key: "address_country", label: "Country", filter: true },
+    {
+      key: "status",
+      label: "Status",
+      defaultHidden: true,
+      render: (company) => <span className="capitalize">{company.status || "—"}</span>,
+      filter: true,
+    },
+    {
+      key: "master_names",
+      label: "Masters",
+      defaultHidden: true,
+      value: (company) => company.master_names,
+      render: (company) => company.master_names?.join(", ") || "—",
+      filter: true,
+    },
+    {
+      key: "representatives",
+      label: "Reps",
+      value: (company) => company.representatives?.length ?? 0,
+      searchable: false,
+      render: (company) => (
         <CountChip
-          count={row.original.representatives?.length ?? 0}
+          count={company.representatives?.length ?? 0}
           label="representatives"
           icon={Users}
-          onClick={() => onViewUsers(row.original)}
+          onClick={() => onViewUsers(company)}
         />
       ),
     },
     {
-      id: "options",
-      header: "Options",
-      cell: ({ row }) => (
+      key: "options",
+      label: "Options",
+      value: (company) => company.options?.length ?? 0,
+      searchable: false,
+      render: (company) => (
         <CountChip
-          count={row.original.options?.length ?? 0}
+          count={company.options?.length ?? 0}
           label="options"
           icon={Package}
-          onClick={() => onViewOptions(row.original)}
+          onClick={() => onViewOptions(company)}
         />
       ),
     },
     {
-      accessorKey: "salesperson",
-      header: "Assignee",
-      cell: ({ row }) => {
-        const name = String(row.getValue("salesperson") ?? "");
+      // The packages a company bought this year, to filter on; the Options
+      // column above only counts them.
+      key: "option_names",
+      label: "Packages",
+      defaultHidden: true,
+      value: (company) => (company.options ?? []).map((option) => option.name),
+      render: (company) => (company.options ?? []).map((option) => option.name).join(", ") || "—",
+      filter: true,
+    },
+    {
+      key: "salesperson",
+      label: "Assignee",
+      filter: true,
+      render: (company) => {
+        const name = String(company.salesperson ?? "");
         if (!name) return <span className="text-muted-foreground">—</span>;
         return (
           <div className="flex items-center gap-2">
@@ -889,38 +781,35 @@ function getCompanyColumns(onViewUsers: (company: CompanyRow) => void, onViewOpt
           </div>
         );
       },
-      enableColumnFilter: true,
-      filterFn: (row, id, value: string) => !value || row.getValue(id) === value,
-    },
-    {
-      id: "actions",
-      enableHiding: false,
-      header: () => <span className="sr-only">Actions</span>,
-      cell: ({ row }) => {
-        const company = row.original;
-        return (
-          <div className="flex justify-end">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="size-8 text-muted-foreground"><span className="sr-only">Open menu</span><MoreHorizontal /></Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onEditCompany(company)}><Pencil /> Edit details</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onViewUsers(company)}><Users /> Representatives</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onViewOptions(company)}><Package /> Options</DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href={`/company/${slugifyCompanyName(company.name)}`}>
-                    <ExternalLink /> Public company page
-                  </Link>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        );
-      },
     },
   ];
+}
+
+/** The ⋯ menu at the end of a company row. */
+function CompanyRowMenu({ company, onEdit, onViewUsers, onViewOptions }: {
+  company: CompanyRow;
+  onEdit: () => void;
+  onViewUsers: () => void;
+  onViewOptions: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="size-8 text-muted-foreground"><span className="sr-only">Open menu</span><MoreHorizontal /></Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={onEdit}><Pencil /> Edit details</DropdownMenuItem>
+        <DropdownMenuItem onClick={onViewUsers}><Users /> Representatives</DropdownMenuItem>
+        <DropdownMenuItem onClick={onViewOptions}><Package /> Options</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href={`/company/${slugifyCompanyName(company.name)}`}>
+            <ExternalLink /> Public company page
+          </Link>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 /** ------------------------------------------------------------------
@@ -928,12 +817,6 @@ function getCompanyColumns(onViewUsers: (company: CompanyRow) => void, onViewOpt
  * - uses Partial<CompanyRep> for data so newly created users can be partial
  * ------------------------------------------------------------------ */
 function CompanyUsersTable({ company, onAddUser, onRemoveUser }: { company: CompanyRow; onAddUser: (newUser: Partial<CompanyRep>) => void; onRemoveUser: (userId: string) => void }) {
-  const [globalFilter, setGlobalFilter] = React.useState("");
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
-  const [sorting, setSorting] = React.useState<SortingState>([]);
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
-  const [rowSelection, setRowSelection] = React.useState({});
-
   // Local state to allow adding partial users immediately
   const [localRows, setLocalRows] = React.useState<Partial<CompanyRep>[]>(company.representatives ?? []);
 
@@ -941,29 +824,6 @@ function CompanyUsersTable({ company, onAddUser, onRemoveUser }: { company: Comp
   React.useEffect(() => {
     setLocalRows(company.representatives ?? []);
   }, [company.id, company.representatives]);
-
-  const table = useReactTable<Partial<CompanyRep>>({
-    data: localRows,
-    columns: getUserColumns(onRemoveUser, company.id) as ColumnDef<Partial<CompanyRep>>[],
-    state: { globalFilter, columnFilters, columnVisibility, rowSelection, sorting },
-    onGlobalFilterChange: setGlobalFilter,
-    onColumnFiltersChange: setColumnFilters,
-    onColumnVisibilityChange: setColumnVisibility,
-    onRowSelectionChange: setRowSelection,
-    onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    globalFilterFn: (row, _columnId, filterValue) => {
-      if (!filterValue) return true;
-      const q = String(filterValue).toLowerCase();
-      const first = String(row.getValue("first_name") ?? "").toLowerCase();
-      const last = String(row.getValue("last_name") ?? "").toLowerCase();
-      const email = String(row.getValue("email") ?? "").toLowerCase();
-      return first.includes(q) || last.includes(q) || email.includes(q);
-    },
-  });
 
   // Called by UserFormDialog. Persist locally and call parent callback to update outer state.
   const handleCreate = (newUser: Partial<CompanyRep>) => {
@@ -974,131 +834,29 @@ function CompanyUsersTable({ company, onAddUser, onRemoveUser }: { company: Comp
   };
 
   return (
-    <>
-      <div className="flex items-center gap-2 flex-wrap mb-2">
-        <Input
-          placeholder="Filter users..."
-          value={globalFilter}
-          onChange={(e) => setGlobalFilter(e.target.value)}
-          className="max-w-sm w-full sm:w-auto"
-        />
-
-        <UserFormDialog company={company} onCreate={handleCreate} />
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="w-full sm:w-auto"><IconColumns className="hidden sm:inline" /> <span className="hidden sm:inline">Columns </span><ChevronDown className="h-4 w-4" /></Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {table.getAllColumns().filter(c => c.getCanHide()).map(c => (
-              <DropdownMenuCheckboxItem
-                key={c.id}
-                checked={c.getIsVisible()}
-                onCheckedChange={(v) => c.toggleVisibility(v)}
-                className="capitalize"
-              >
-                {c.id}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      <div className="overflow-x-auto rounded-md border">
-        <div className="min-w-full">
-          <Table>
-            <TableHeader>
-              {table.getHeaderGroups().map(hg => (
-                <TableRow key={hg.id}>
-                  {hg.headers.map(h => (
-                    <TableHead key={h.id} className="whitespace-nowrap">{flexRender(h.column.columnDef.header, h.getContext())}</TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows.length ? table.getRowModel().rows.map(row => (
-                <TableRow key={row.id ?? JSON.stringify(row.getValue("email") ?? row.getValue("first_name") ?? row.index)}>
-                  {row.getVisibleCells().map(cell => <TableCell key={cell.id} className="whitespace-nowrap">{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>)}
-                </TableRow>
-              )) : (
-                <TableRow>
-                  <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center">No users found.</TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-
-      <div className="mt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-        <div className="text-muted-foreground text-xs sm:text-sm">
-          {table.getFilteredSelectedRowModel().rows.length} of {table.getFilteredRowModel().rows.length} row(s) selected.
-        </div>
-        <div className="flex space-x-2 w-full sm:w-auto">
-          <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="flex-1 sm:flex-initial">Previous</Button>
-          <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="flex-1 sm:flex-initial">Next</Button>
-        </div>
-      </div>
-    </>
+    <DataTable
+      rows={localRows}
+      columns={USER_COLUMNS}
+      // A user created a moment ago may not have an id back yet.
+      getRowId={(user) => String(user.id ?? user.email ?? "")}
+      noun="representative"
+      search={{ placeholder: "Search representatives…" }}
+      defaultSort={{ key: "first_name" }}
+      containerClassName=""
+      rowActionsAlwaysVisible
+      rowActions={(user) => <UserRowActions user={user} companyId={company.id} onRemoveUser={onRemoveUser} />}
+      toolbar={<UserFormDialog company={company} onCreate={handleCreate} />}
+    />
   );
 }
 
-/** ------------------------------------------------------------------
- * User columns definition (no 'role')
- * Using Partial<CompanyRep> friendly renderers
- * ------------------------------------------------------------------ */
-function getUserColumns(onRemoveUser: (userId: string) => void, companyId: string): ColumnDef<Partial<CompanyRep>>[] {
-  return [
-    {
-      id: "select",
-      header: ({ table }) => (
-        <Checkbox
-          checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && "indeterminate")}
-          onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
-          aria-label="Select all"
-        />
-      ),
-      cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(v) => row.toggleSelected(!!v)}
-          aria-label="Select row"
-        />
-      ),
-      enableSorting: false,
-      enableHiding: false,
-      size: 24,
-    },
-    {
-      accessorKey: "first_name",
-      header: "First name",
-      cell: ({ row }) => <div className="capitalize">{String(row.getValue("first_name") ?? "")}</div>,
-    },
-    {
-      accessorKey: "last_name",
-      header: "Last name",
-      cell: ({ row }) => <div className="capitalize">{String(row.getValue("last_name") ?? "")}</div>,
-    },
-    {
-      accessorKey: "email",
-      header: "Email",
-      cell: ({ row }) => <div className="truncate max-w-[36ch]">{String(row.getValue("email") ?? "")}</div>,
-    },
-    {
-      accessorKey: "status",
-      header: "Status",
-      cell: ({ row }) => <div className="font-medium">{String(row.getValue("status") ?? "—")}</div>,
-    },
-    {
-      id: "actions",
-      enableHiding: false,
-      cell: ({ row }) => (
-        <UserRowActions user={row.original} companyId={companyId} onRemoveUser={onRemoveUser} />
-      ),
-    },
-  ];
-}
+/** A company's representatives; `status` is the account status (active, invited, ...). */
+const USER_COLUMNS: ColumnConfig<Partial<CompanyRep>>[] = [
+  { key: "first_name", label: "First name", className: "capitalize" },
+  { key: "last_name", label: "Last name", className: "capitalize" },
+  { key: "email", label: "Email" },
+  { key: "status", label: "Status", className: "capitalize", filter: true },
+];
 
 /** ------------------------------------------------------------------
  * Row actions for a company user. A component of its own because it holds
@@ -1437,60 +1195,13 @@ function CompanyOptionsTable({ company, onAddOption, onRemoveOption, onSubOption
   onRemoveOption: (optionId: string) => void;
   onSubOptionsChange?: () => void;
 }) {
-  const [globalFilter, setGlobalFilter] = React.useState("");
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
-  const [sorting, setSorting] = React.useState<SortingState>([]);
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
-  const [rowSelection, setRowSelection] = React.useState({});
-
   // Local state to allow adding options immediately
-  const [localRows, setLocalRows] = React.useState<CareerEventOption[]>(company.options ?? []);
+  const [localRows, setLocalRows] = React.useState<CareerEventOptionWithCompanySubOptions[]>(company.options ?? []);
 
   // keep localRows in sync when company changes (e.g. when switching companies)
   React.useEffect(() => {
     setLocalRows(company.options ?? []);
   }, [company.id, company.options]);
-
-  const table = useReactTable<CareerEventOptionWithCompanySubOptions>({
-    data: localRows,
-    columns: getOptionColumns(onRemoveOption, company.id, onSubOptionsChange) as ColumnDef<CareerEventOptionWithCompanySubOptions>[],
-    state: { globalFilter, columnFilters, columnVisibility, rowSelection, sorting },
-    onGlobalFilterChange: setGlobalFilter,
-    onColumnFiltersChange: setColumnFilters,
-    onColumnVisibilityChange: setColumnVisibility,
-    onRowSelectionChange: setRowSelection,
-    onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    globalFilterFn: (row, _columnId, filterValue) => {
-      if (!filterValue) return true;
-      const q = String(filterValue).toLowerCase();
-      const name = String(row.getValue("name") ?? "").toLowerCase();
-      const description = String(row.getValue("description") ?? "").toLowerCase();
-      const option = row.original;
-      // Check events (multiple events)
-      let eventNames: string[] = [];
-      if (option.events && Array.isArray(option.events)) {
-        eventNames = option.events
-          .map(event => {
-            if (typeof event === 'object' && event !== null && 'name' in event) {
-              return String(event.name).toLowerCase();
-            }
-            return null;
-          })
-          .filter((name): name is string => name !== null);
-      } else if (option.event) {
-        // Fallback for backward compatibility
-        if (typeof option.event === 'object' && 'name' in option.event) {
-          eventNames = [String(option.event.name).toLowerCase()];
-        }
-      }
-      const eventMatch = eventNames.some(eventName => eventName.includes(q));
-      return name.includes(q) || description.includes(q) || eventMatch;
-    },
-  });
 
   // Called by OptionFormDialog. Persist locally and call parent callback to update outer state.
   const handleCreate = (newOption: CareerEventOption) => {
@@ -1501,73 +1212,22 @@ function CompanyOptionsTable({ company, onAddOption, onRemoveOption, onSubOption
   };
 
   return (
-    <>
-      <div className="flex items-center gap-2 flex-wrap mb-2">
-        <Input
-          placeholder="Filter options..."
-          value={globalFilter}
-          onChange={(e) => setGlobalFilter(e.target.value)}
-          className="max-w-sm w-full sm:w-auto"
+    <DataTable
+      rows={localRows}
+      columns={getOptionColumns(company.id, onSubOptionsChange)}
+      getRowId={(option) => String(option.id)}
+      noun="option"
+      containerClassName=""
+      rowActionsAlwaysVisible
+      rowActions={(option) => (
+        <RemoveOptionDialog
+          option={option}
+          companyId={company.id}
+          onRemove={() => onRemoveOption(option.id)}
         />
-
-        <OptionFormDialog company={company} onCreate={handleCreate} />
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="w-full sm:w-auto"><IconColumns className="hidden sm:inline" /> <span className="hidden sm:inline">Columns </span><ChevronDown className="h-4 w-4" /></Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {table.getAllColumns().filter(c => c.getCanHide()).map(c => (
-              <DropdownMenuCheckboxItem
-                key={c.id}
-                checked={c.getIsVisible()}
-                onCheckedChange={(v) => c.toggleVisibility(v)}
-                className="capitalize"
-              >
-                {c.id}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      <div className="overflow-x-auto rounded-md border">
-        <div className="min-w-full">
-          <Table>
-            <TableHeader>
-              {table.getHeaderGroups().map(hg => (
-                <TableRow key={hg.id}>
-                  {hg.headers.map(h => (
-                    <TableHead key={h.id} className="whitespace-nowrap">{flexRender(h.column.columnDef.header, h.getContext())}</TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows.length ? table.getRowModel().rows.map(row => (
-                <TableRow key={row.original.id ?? row.index}>
-                  {row.getVisibleCells().map(cell => <TableCell key={cell.id} className="whitespace-nowrap">{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>)}
-                </TableRow>
-              )) : (
-                <TableRow>
-                  <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center">No options found.</TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-
-      <div className="mt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-        <div className="text-muted-foreground text-xs sm:text-sm">
-          {table.getFilteredSelectedRowModel().rows.length} of {table.getFilteredRowModel().rows.length} row(s) selected.
-        </div>
-        <div className="flex space-x-2 w-full sm:w-auto">
-          <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="flex-1 sm:flex-initial">Previous</Button>
-          <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="flex-1 sm:flex-initial">Next</Button>
-        </div>
-      </div>
-    </>
+      )}
+      toolbar={<OptionFormDialog company={company} onCreate={handleCreate} />}
+    />
   );
 }
 
@@ -1657,27 +1317,6 @@ function CompanyOptionHistory({ company }: { company: CompanyRow }) {
     })),
   ].filter((entry) => academicYearHasEnded(entry.academicYear));
 
-  const yearGroups = Array.from(
-    rows.reduce((groups, row) => {
-      const key = row.academicYear?.id ? String(row.academicYear.id) : "unknown";
-      const existing = groups.get(key);
-      if (existing) existing.rows.push(row);
-      else groups.set(key, { academicYear: row.academicYear, rows: [row] });
-      return groups;
-    }, new Map<string, { academicYear: AcademicYear | null; rows: CompanyOptionHistoryRow[] }>()).values()
-  ).sort((a, b) => {
-    const aStart = a.academicYear?.start_of_year ? new Date(a.academicYear.start_of_year).getTime() : 0;
-    const bStart = b.academicYear?.start_of_year ? new Date(b.academicYear.start_of_year).getTime() : 0;
-    return bStart - aStart;
-  });
-
-  for (const group of yearGroups) {
-    group.rows.sort((a, b) => {
-      const dateDifference = new Date(b.dateCreated ?? 0).getTime() - new Date(a.dateCreated ?? 0).getTime();
-      return dateDifference || a.name.localeCompare(b.name);
-    });
-  }
-
   return (
     <section className="space-y-3 border-t pt-6">
       <div>
@@ -1687,57 +1326,54 @@ function CompanyOptionHistory({ company }: { company: CompanyRow }) {
         </p>
       </div>
 
-      {yearGroups.length === 0 ? (
-        <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-          No purchases recorded for previous academic years.
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {yearGroups.map((group) => (
-            <div key={group.academicYear?.id ?? "unknown"} className="overflow-hidden rounded-md border">
-              <div className="border-b bg-muted/40 px-4 py-3">
-                <h4 className="font-semibold">{group.academicYear?.name ?? "Legacy / unknown academic year"}</h4>
-              </div>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Events</TableHead>
-                      <TableHead>Sale price</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Recorded</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {group.rows.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell className="min-w-56 font-medium">{row.name}</TableCell>
-                        <TableCell className="whitespace-nowrap">{row.kind}</TableCell>
-                        <TableCell className="min-w-48">{row.events.length > 0 ? row.events.join(", ") : "—"}</TableCell>
-                        <TableCell className="whitespace-nowrap">{formatHistoricalPrice(row.price)}</TableCell>
-                        <TableCell>
-                          <span className={row.status === "sold"
-                            ? "inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
-                            : "inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
-                          }>
-                            {row.status === "sold" ? "Purchased" : row.status}
-                          </span>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">{formatHistoryDate(row.dateCreated)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <DataTable
+        rows={rows}
+        columns={HISTORY_COLUMNS}
+        getRowId={(row) => row.id}
+        noun="purchase"
+        defaultSort={{ key: "academicYear", desc: true }}
+        emptyMessage="No purchases recorded for previous academic years"
+        containerClassName=""
+      />
     </section>
   );
 }
+
+const HISTORY_COLUMNS: ColumnConfig<CompanyOptionHistoryRow>[] = [
+  { key: "name", label: "Name" },
+  { key: "kind", label: "Type", filter: true },
+  {
+    key: "academicYear",
+    label: "Academic year",
+    // Names like "2025-2026" sort chronologically as text.
+    value: (row) => row.academicYear?.name ?? null,
+    render: (row) => row.academicYear?.name ?? "Legacy / unknown",
+    filter: true,
+  },
+  { key: "events", label: "Events", value: (row) => row.events },
+  {
+    key: "price",
+    label: "Sale price",
+    value: (row) => row.price,
+    render: (row) => formatHistoricalPrice(row.price),
+  },
+  {
+    key: "status",
+    label: "Status",
+    filter: { options: [{ value: "sold", label: "Purchased" }] },
+    render: (row) => (
+      <Badge variant={row.status === "sold" ? "success" : "muted"} className="capitalize">
+        {row.status === "sold" ? "Purchased" : row.status}
+      </Badge>
+    ),
+  },
+  {
+    key: "dateCreated",
+    label: "Recorded",
+    value: (row) => (row.dateCreated ? new Date(row.dateCreated) : null),
+    render: (row) => formatHistoryDate(row.dateCreated),
+  },
+];
 
 /** ------------------------------------------------------------------
  * Helper function to strip HTML tags from description
@@ -1919,139 +1555,85 @@ function SubOptionsDialog({
 /** ------------------------------------------------------------------
  * Option columns definition
  * ------------------------------------------------------------------ */
+/** Names of the events an option belongs to, whichever shape they arrive in. */
+function optionEventNames(option: CareerEventOption): string[] {
+  // Helper to extract event name from various formats
+  const getEventName = (eventOrJunction: unknown): string | null => {
+    if (!eventOrJunction || typeof eventOrJunction !== 'object') return null;
+
+    // Check if it's a junction table entry - try multiple possible field names
+    const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
+    for (const fieldName of possibleJunctionFields) {
+      if (fieldName in eventOrJunction) {
+        const junction = eventOrJunction as Record<string, CareerEvent | string | null>;
+        const eventRef = junction[fieldName];
+        if (eventRef && typeof eventRef === 'object' && 'name' in eventRef) {
+          return String(eventRef.name);
+        }
+      }
+    }
+
+    // Direct event object
+    if ('name' in eventOrJunction) {
+      return String(eventOrJunction.name);
+    }
+
+    return null;
+  };
+
+  // Handle multiple events
+  if (option.events && Array.isArray(option.events) && option.events.length > 0) {
+    const eventNames = option.events
+      .map(getEventName)
+      .filter((name): name is string => name !== null);
+    if (eventNames.length > 0) return eventNames;
+  }
+
+  // Fallback: try to handle single event (for backward compatibility)
+  const single = option.event ? getEventName(option.event) : null;
+  return single ? [single] : [];
+}
+
 function getOptionColumns(
-  onRemoveOption: (optionId: string) => void,
   companyId: string,
   onSubOptionsChange?: () => void
-): ColumnDef<CareerEventOptionWithCompanySubOptions>[] {
+): ColumnConfig<CareerEventOptionWithCompanySubOptions>[] {
   return [
+    { key: "name", label: "Name" },
     {
-      id: "select",
-      header: ({ table }) => (
-        <Checkbox
-          checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && "indeterminate")}
-          onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
-          aria-label="Select all"
+      key: "description",
+      label: "Description",
+      value: (option) => stripHtml(String(option.description ?? "")),
+      render: (option) => <div className="truncate max-w-[48ch]">{stripHtml(String(option.description ?? ""))}</div>,
+    },
+    { key: "price", label: "Price", className: "font-medium" },
+    {
+      key: "sub_options",
+      label: "Sub-options",
+      render: (option) => (
+        <SubOptionsDialog
+          companyId={companyId}
+          option={option}
+          companySubOptions={option.companySubOptions ?? []}
+          availableSubOptions={option.sub_options ?? []}
+          onUpdate={onSubOptionsChange}
         />
       ),
-      cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(v) => row.toggleSelected(!!v)}
-          aria-label="Select row"
-        />
-      ),
-      enableSorting: false,
-      enableHiding: false,
-      size: 24,
     },
     {
-      accessorKey: "name",
-      header: "Name",
-      cell: ({ row }) => <div className="font-medium">{String(row.getValue("name") ?? "")}</div>,
-    },
-    {
-      accessorKey: "description",
-      header: "Description",
-      cell: ({ row }) => {
-        const description = String(row.getValue("description") ?? "");
-        const plainText = stripHtml(description);
-        return <div className="truncate max-w-[48ch]">{plainText}</div>;
-      },
-    },
-    {
-      accessorKey: "price",
-      header: "Price",
-      cell: ({ row }) => <div className="font-medium">{String(row.getValue("price") ?? "—")}</div>,
-    },
-    {
-      id: "sub_options",
-      header: "Sub-options",
-      cell: ({ row }) => {
-        const option = row.original;
-        const companySubs = option.companySubOptions ?? [];
-        const availableSubs = option.sub_options ?? [];
+      key: "event",
+      label: "Events",
+      value: (option) => optionEventNames(option),
+      render: (option) => {
+        const eventNames = optionEventNames(option);
+        if (!eventNames.length) return <div className="font-medium">—</div>;
         return (
-          <SubOptionsDialog
-            companyId={companyId}
-            option={option}
-            companySubOptions={companySubs}
-            availableSubOptions={availableSubs}
-            onUpdate={onSubOptionsChange}
-          />
-        );
-      },
-    },
-    {
-      id: "event",
-      header: "Events",
-      cell: ({ row }) => {
-        const option = row.original;
-        
-        // Helper to extract event name from various formats
-        const getEventName = (eventOrJunction: unknown): string | null => {
-          if (!eventOrJunction || typeof eventOrJunction !== 'object') return null;
-          
-          // Check if it's a junction table entry - try multiple possible field names
-          const possibleJunctionFields = ['career_event_id', 'career_event', 'event_id', 'event'];
-          for (const fieldName of possibleJunctionFields) {
-            if (fieldName in eventOrJunction) {
-              const junction = eventOrJunction as Record<string, CareerEvent | string | null>;
-              const eventRef = junction[fieldName];
-              if (eventRef && typeof eventRef === 'object' && 'name' in eventRef) {
-                return String(eventRef.name);
-              }
+          <div className="font-medium">
+            {eventNames.length === 1
+              ? eventNames[0]
+              : `${eventNames.length} events: ${eventNames.join(', ')}`
             }
-          }
-          
-          // Direct event object
-          if ('name' in eventOrJunction) {
-            return String(eventOrJunction.name);
-          }
-          
-          return null;
-        };
-        
-        // Handle multiple events
-        if (option.events && Array.isArray(option.events) && option.events.length > 0) {
-          const eventNames = option.events
-            .map(getEventName)
-            .filter((name): name is string => name !== null);
-          
-          if (eventNames.length > 0) {
-            return (
-              <div className="font-medium">
-                {eventNames.length === 1 
-                  ? eventNames[0]
-                  : `${eventNames.length} events: ${eventNames.join(', ')}`
-                }
-              </div>
-            );
-          }
-        }
-        
-        // Fallback: try to handle single event (for backward compatibility)
-        if (option.event) {
-          const eventName = getEventName(option.event);
-          if (eventName) {
-            return <div className="font-medium">{eventName}</div>;
-          }
-        }
-        
-        return <div className="font-medium">—</div>;
-      },
-    },
-    {
-      id: "actions",
-      enableHiding: false,
-      cell: ({ row }) => {
-        const option = row.original;
-        return (
-          <RemoveOptionDialog
-            option={option}
-            companyId={companyId}
-            onRemove={() => onRemoveOption(option.id)}
-          />
+          </div>
         );
       },
     },

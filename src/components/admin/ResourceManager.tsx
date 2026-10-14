@@ -2,30 +2,13 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import {
-  Plus,
-  Trash2,
-  Loader2,
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  Inbox,
-  X,
-} from "lucide-react";
+import { Plus, Trash2, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Sheet,
   SheetContent,
@@ -42,19 +25,13 @@ import {
 } from "@/components/ui/select";
 import { uploadFileAction } from "@/app/actions/media";
 import { SimpleRichTextEditor } from "@/components/admin/SimpleRichTextEditor";
+import { DataTable, RowDeleteButton } from "@/components/admin/DataTable";
 import type { FieldConfig, ResourceConfig, SelectOption } from "@/components/admin/types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
 
 type FormValues = Record<string, unknown>;
-
-/**
- * Rows rendered at once. Admin resources run to thousands of rows (students,
- * company reps), and rendering them all is what makes those pages crawl.
- * Filtering still searches every row -- only the rendering is paged.
- */
-const PAGE_SIZE = 50;
 
 /** Sensible empty value for a field when creating a new row. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -97,7 +74,6 @@ export function ResourceManager<T extends Record<string, unknown>>({
 }) {
   const router = useRouter();
   const [rows, setRows] = React.useState<T[]>(initialRows);
-  const [search, setSearch] = React.useState("");
 
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<T | null>(null);
@@ -165,238 +141,41 @@ export function ResourceManager<T extends Record<string, unknown>>({
     }
   };
 
-  const filtered = React.useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q || !config.searchKeys?.length) return rows;
-    return rows.filter((row) =>
-      config.searchKeys!.some((key) =>
-        String(row[key] ?? "").toLowerCase().includes(q)
-      )
-    );
-  }, [rows, search, config]);
-
-  const [pageIndex, setPageIndex] = React.useState(0);
-
-  // A narrower filter can leave the current page out of range; jumping back to
-  // the first page is less surprising than an empty table.
-  React.useEffect(() => {
-    setPageIndex(0);
-  }, [search]);
-
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const currentPage = Math.min(pageIndex, pageCount - 1);
-  const firstRow = currentPage * PAGE_SIZE;
-  const visible = React.useMemo(
-    () => filtered.slice(firstRow, firstRow + PAGE_SIZE),
-    [filtered, firstRow]
-  );
-
-  // "/" jumps to the filter box, as in Dopl and most list-heavy tools.
-  const searchRef = React.useRef<HTMLInputElement>(null);
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
-      const target = e.target as HTMLElement | null;
-      if (target?.closest("input, textarea, select, [contenteditable=true], [role=dialog]")) return;
-      if (!searchRef.current) return;
-      e.preventDefault();
-      searchRef.current.focus();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
   const canEdit = !config.readOnly;
   const canCreate = !config.readOnly && !config.hideCreate && Boolean(config.actions.create);
   const noun = config.singular.toLowerCase();
 
-  // A click on a row opens it, unless the click landed on something that is
-  // interactive in its own right (a link or button rendered inside a cell).
-  const onRowClick = (e: React.MouseEvent, row: T) => {
-    if (!canEdit) return;
-    if ((e.target as HTMLElement).closest("a, button, input, label, [role=checkbox], [data-no-row-click]")) return;
-    openEdit(row);
-  };
+  const newButton = canCreate ? (
+    <Button onClick={() => openCreate()}>
+      <Plus className="h-4 w-4" /> New {noun}
+    </Button>
+  ) : null;
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        {config.searchKeys?.length ? (
-          <div className="relative w-full sm:max-w-xs">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              ref={searchRef}
-              placeholder={`Search ${noun}s…`}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-9 pl-9 pr-9"
-            />
-            {search ? (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                className="absolute right-2 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:text-foreground"
-                aria-label="Clear search"
-              >
-                <X className="size-3.5" />
-              </button>
-            ) : (
-              <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded border bg-muted px-1.5 text-[11px] font-semibold text-muted-foreground sm:block">
-                /
-              </kbd>
-            )}
-          </div>
-        ) : null}
-        <span className="text-sm text-muted-foreground tabular">
-          {search.trim()
-            ? `${filtered.length} of ${rows.length}`
-            : `${rows.length} ${rows.length === 1 ? noun : `${noun}s`}`}
-        </span>
-        {canCreate ? (
-          <Button className="sm:ml-auto" onClick={() => openCreate()}>
-            <Plus className="h-4 w-4" /> New {noun}
-          </Button>
-        ) : null}
-      </div>
-
-      <div className="overflow-hidden rounded-xl border bg-background">
-        <Table containerClassName="max-h-[calc(100svh-15rem)] min-h-0">
-          <TableHeader className="sticky top-0 z-10 bg-background shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
-            <TableRow>
-              {config.columns.map((col) => (
-                <TableHead key={col.key} className="whitespace-nowrap first:pl-4">
-                  {col.label}
-                </TableHead>
-              ))}
-              {canEdit ? <TableHead className="w-12"><span className="sr-only">Actions</span></TableHead> : null}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {visible.length ? (
-              visible.map((row) => {
-                const id = config.getId(row);
-                return (
-                  <TableRow
-                    key={id}
-                    tabIndex={canEdit ? 0 : undefined}
-                    onClick={(e) => onRowClick(e, row)}
-                    onKeyDown={(e) => {
-                      if (canEdit && e.key === "Enter" && e.target === e.currentTarget) openEdit(row);
-                    }}
-                    data-state={editing && open && config.getId(editing) === id ? "selected" : undefined}
-                    className={cn(
-                      "group/row",
-                      canEdit && "cursor-pointer outline-none focus-visible:bg-surface-hover focus-visible:shadow-[inset_2px_0_0_#1f82d1]"
-                    )}
-                  >
-                    {config.columns.map((col, colIndex) => {
-                      const content = col.render
-                        ? col.render(row)
-                        : String(row[col.key] ?? "—");
-                      // Only plain-text cells can carry a tooltip; a rendered
-                      // cell is a node, not a string.
-                      const title =
-                        typeof content === "string" ? content : undefined;
-                      return (
-                        <TableCell
-                          key={col.key}
-                          className={cn(
-                            "first:pl-4",
-                            colIndex === 0 && "font-medium text-foreground",
-                            !col.wrap && "max-w-[22rem]",
-                            col.wrap && "whitespace-normal"
-                          )}
-                        >
-                          <div
-                            className={cn(!col.wrap && "truncate")}
-                            title={title}
-                          >
-                            {content}
-                          </div>
-                        </TableCell>
-                      );
-                    })}
-                    {canEdit ? (
-                      <TableCell className="w-12 pr-2 text-right">
-                        <div className="flex items-center justify-end">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8 text-muted-foreground opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100 hover:bg-[#fef2f2] hover:text-[#b91c1c]"
-                            onClick={() => handleDelete(row)}
-                            disabled={deletingId === id}
-                            aria-label={`Delete ${noun}`}
-                          >
-                            {deletingId === id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </div>
-                      </TableCell>
-                    ) : null}
-                  </TableRow>
-                );
-              })
-            ) : (
-              <TableRow className="hover:bg-transparent">
-                <TableCell
-                  colSpan={config.columns.length + (canEdit ? 1 : 0)}
-                  className="h-56 text-center"
-                >
-                  <div className="flex flex-col items-center gap-2">
-                    <span className="flex size-10 items-center justify-center rounded-xl border bg-background text-[#0a6cba] shadow-[0_1px_2px_rgb(16_16_20/0.04)]">
-                      {search.trim() ? <Search className="size-4" /> : <Inbox className="size-4" />}
-                    </span>
-                    <p className="text-sm font-medium text-foreground">
-                      {search.trim() ? `No ${noun}s match “${search.trim()}”` : `No ${noun}s yet`}
-                    </p>
-                    {search.trim() ? (
-                      <Button variant="outline" size="sm" onClick={() => setSearch("")}>Clear search</Button>
-                    ) : canCreate ? (
-                      <Button size="sm" onClick={() => openCreate()}>
-                        <Plus className="h-4 w-4" /> New {noun}
-                      </Button>
-                    ) : null}
-                  </div>
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-
-        {filtered.length > PAGE_SIZE ? (
-          <div className="flex flex-col items-center justify-between gap-3 border-t bg-[#fafafa] px-4 py-2 sm:flex-row">
-            <p className="text-xs text-muted-foreground tabular">
-              {firstRow + 1}–{Math.min(firstRow + PAGE_SIZE, filtered.length)} of {filtered.length}
-            </p>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
-                disabled={currentPage === 0}
-              >
-                <ChevronLeft className="h-4 w-4" /> Previous
-              </Button>
-              <span className="px-1 text-xs text-muted-foreground whitespace-nowrap tabular">
-                {currentPage + 1} / {pageCount}
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  setPageIndex((p) => Math.min(pageCount - 1, p + 1))
-                }
-                disabled={currentPage >= pageCount - 1}
-              >
-                Next <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        ) : null}
-      </div>
+      <DataTable
+        rows={rows}
+        columns={config.columns}
+        getRowId={config.getId}
+        noun={noun}
+        search={{ keys: config.searchKeys }}
+        defaultSort={config.defaultSort}
+        onRowClick={canEdit ? openEdit : undefined}
+        isRowSelected={(row) => Boolean(editing && open && config.getId(editing) === config.getId(row))}
+        toolbar={newButton}
+        emptyAction={newButton}
+        rowActions={
+          canEdit
+            ? (row) => (
+                <RowDeleteButton
+                  onClick={() => handleDelete(row)}
+                  pending={deletingId === config.getId(row)}
+                  label={`Delete ${noun}`}
+                />
+              )
+            : undefined
+        }
+      />
 
       <ResourceEditor
         key={editorKey}

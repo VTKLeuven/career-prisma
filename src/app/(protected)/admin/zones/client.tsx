@@ -4,14 +4,7 @@ import Link from "next/link";
 
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
+import { DataTable, RowDeleteButton } from "@/components/admin/DataTable";
 import {
     Dialog,
     DialogContent,
@@ -31,7 +24,7 @@ import {
 import { createZoneAction, deleteZoneAction, updateZoneAction } from "@/app/actions/zones";
 import type { Zone, Booth, CareerEventPage } from "@/lib/schema";
 import { useRouter } from "next/navigation";
-import { Trash2, Edit, Plus, Printer, X, Download } from "lucide-react";
+import { Plus, Printer, X, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { confirmDialog } from "@/components/confirm-dialog";
 
@@ -441,38 +434,24 @@ export default function ZonesClient({
                         </Button>
                     </div>
 
-                    <div className="rounded-md border">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Name</TableHead>
-                                    <TableHead>Booths</TableHead>
-                                    <TableHead>Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {filteredZones.map((zone) => {
-                                    const boothCount = Array.isArray(zone.booths) ? zone.booths.length : 0;
-                                    return (
-                                        <TableRow key={zone.id}>
-                                            <TableCell className="font-medium">{zone.name}</TableCell>
-                                            <TableCell>{boothCount} Booths</TableCell>
-                                            <TableCell>
-                                                <div className="flex gap-2">
-                                                    <Button variant="ghost" size="icon" onClick={() => openEdit(zone)}>
-                                                        <Edit className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDelete(zone.id)}>
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    )
-                                })}
-                            </TableBody>
-                        </Table>
-                    </div>
+                    <DataTable
+                        rows={filteredZones}
+                        columns={[
+                            { key: "name", label: "Name" },
+                            {
+                                key: "booths",
+                                label: "Booths",
+                                align: "right",
+                                value: (zone) => (Array.isArray(zone.booths) ? zone.booths.length : 0),
+                            },
+                        ]}
+                        getRowId={(zone) => String(zone.id)}
+                        noun="zone"
+                        defaultSort={{ key: "name" }}
+                        onRowClick={openEdit}
+                        isRowSelected={(zone) => isOpen && editingZone?.id === zone.id}
+                        rowActions={(zone) => <RowDeleteButton onClick={() => handleDelete(zone.id)} label="Delete zone" />}
+                    />
                 </div>
             )}
         </div>

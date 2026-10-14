@@ -31,7 +31,8 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, RefreshCw, Loader2, BarChart3, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, RefreshCw, Loader2, BarChart3 } from "lucide-react";
+import { DataTable } from "@/components/admin/DataTable";
 import { useUser } from "@/providers/UserProvider";
 import type { MatchingSoftware, AcademicYear, Form, CareerEvent } from "@/lib/schema";
 import { PageHeader } from "@/components/admin/PageHeader";
@@ -320,8 +321,6 @@ function ViewMatchesDialog({ item }: { item: MatchingSoftwareRow }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<MatchCountRow[]>([]);
-  const [sortBy, setSortBy] = useState<"name" | "matches">("matches");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
     if (open && item.id) {
@@ -332,28 +331,6 @@ function ViewMatchesDialog({ item }: { item: MatchingSoftwareRow }) {
         .finally(() => setLoading(false));
     }
   }, [open, item.id]);
-
-  const sorted = React.useMemo(() => {
-    const arr = [...data];
-    arr.sort((a, b) => {
-      if (sortBy === "name") {
-        const cmp = (a.companyName || a.companyId).localeCompare(b.companyName || b.companyId, undefined, { sensitivity: "base" });
-        return sortDir === "asc" ? cmp : -cmp;
-      }
-      const cmp = a.matchCount - b.matchCount;
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-    return arr;
-  }, [data, sortBy, sortDir]);
-
-  const toggleSort = (field: "name" | "matches") => {
-    if (sortBy === field) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortBy(field);
-      setSortDir(field === "matches" ? "desc" : "asc");
-    }
-  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -370,49 +347,22 @@ function ViewMatchesDialog({ item }: { item: MatchingSoftwareRow }) {
             {(item.event as CareerEvent)?.name || "Event"} – {(item.year as AcademicYear)?.name || "Year"}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm text-muted-foreground">Sort by:</span>
-          <Button
-            variant={sortBy === "name" ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => toggleSort("name")}
-          >
-            Name {sortBy === "name" && (sortDir === "asc" ? <ArrowUp className="ml-1 h-3 w-3" /> : <ArrowDown className="ml-1 h-3 w-3" />)}
-          </Button>
-          <Button
-            variant={sortBy === "matches" ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => toggleSort("matches")}
-          >
-            Matches {sortBy === "matches" && (sortDir === "asc" ? <ArrowUp className="ml-1 h-3 w-3" /> : <ArrowDown className="ml-1 h-3 w-3" />)}
-          </Button>
-        </div>
-        <div className="flex-1 min-h-0 overflow-auto border rounded-md">
-          {loading ? (
-            <div className="py-12 text-center text-muted-foreground">Loading…</div>
-          ) : sorted.length === 0 ? (
-            <div className="py-12 text-center text-muted-foreground">No companies with completed matching.</div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 sticky top-0">
-                <tr>
-                  <th className="text-left p-3 font-medium">Company</th>
-                  <th className="text-right p-3 font-medium">Matches</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((row) => (
-                  <tr key={row.companyId} className="border-t">
-                    <td className="p-3">{row.companyName || row.companyId || "—"}</td>
-                    <td className="p-3 text-right font-medium">{row.matchCount}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <DataTable
+          rows={data}
+          columns={[
+            { key: "companyName", label: "Company", value: (row) => row.companyName || row.companyId },
+            { key: "matchCount", label: "Matches", align: "right", className: "font-medium" },
+          ]}
+          getRowId={(row) => row.companyId}
+          noun="company"
+          nounPlural="companies"
+          loading={loading}
+          defaultSort={{ key: "matchCount", desc: true }}
+          emptyMessage="No companies with completed matching"
+          containerClassName="max-h-[55vh]"
+        />
         <p className="text-xs text-muted-foreground">
-          {sorted.length} companies • Total: {sorted.reduce((s, r) => s + r.matchCount, 0)} matches
+          Total: {data.reduce((s, r) => s + r.matchCount, 0)} matches
         </p>
       </DialogContent>
     </Dialog>
@@ -476,7 +426,6 @@ function CreateMatchingSoftwareDialog({ eventId: preselectedEventId, onCreated }
       setLoading(false);
     }
   };
-
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>

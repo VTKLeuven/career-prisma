@@ -60,10 +60,44 @@ export type FieldConfig<T = Record<string, unknown>> = {
   }) => React.ReactNode;
 };
 
+/** A plain value a column sorts, searches and filters on. */
+export type CellValue = string | number | boolean | Date | null | undefined;
+
+/**
+ * One column of a `DataTable` (and so of a `ResourceManager`).
+ *
+ * A column's *value* drives sorting, searching and filtering; `render` only
+ * decides what the cell shows. The value is, in order: `value(row)` if given,
+ * else `row[key]` if that is a plain value, else whatever `render` returns when
+ * it returns a string or number. A column with none of those (a `render` that
+ * returns markup over a computed field) cannot sort -- give it a `value`.
+ */
 export type ColumnConfig<T> = {
   key: string;
   label: string;
   render?: (row: T) => React.ReactNode;
+  /**
+   * What the column sorts, searches and filters on. Return a list for a column
+   * holding several values (a company's masters): the filter then matches a row
+   * holding any selected value, and sorting uses the values joined.
+   */
+  value?: (row: T) => CellValue | CellValue[];
+  /** Clicking the header sorts by this column. Default true when it has a value. */
+  sortable?: boolean;
+  /** Whether the search box looks at this column. Default: the same as `sortable`. */
+  searchable?: boolean;
+  /**
+   * Adds a filter for this column to the toolbar: a dropdown of the column's
+   * distinct values with how many rows hold each. `true` labels the values as
+   * they are (booleans as Yes/No); pass options to set labels and their order.
+   */
+  filter?: boolean | { label?: string; options?: SelectOption[] };
+  /** Starts hidden; the table then shows a Columns menu to bring it back. */
+  defaultHidden?: boolean;
+  /** Right-aligns the column, for numbers and amounts. */
+  align?: "left" | "right";
+  /** Extra classes for this column's cells (e.g. `font-mono text-xs`). */
+  className?: string;
   /**
    * Let this column wrap onto several lines instead of being truncated to a
    * single line with an ellipsis. Use it for columns whose content is the point
@@ -81,8 +115,13 @@ export type ResourceConfig<T> = {
   getLabel?: (row: T) => string;
   columns: ColumnConfig<T>[];
   fields: FieldConfig<T>[];
-  /** Row property keys the filter box searches. */
+  /**
+   * Extra row keys the search box looks at, for fields without a column (a
+   * username). Every column with a value is searched already.
+   */
   searchKeys?: string[];
+  /** The order rows start in, e.g. `{ key: "name" }`. */
+  defaultSort?: { key: string; desc?: boolean };
   /** Hides the "Add" button when creation isn't supported (e.g. students self-register). */
   hideCreate?: boolean;
   /** Shows the resource without create, edit, or delete controls. */

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { DataTable } from "@/components/admin/DataTable";
 import {
   Card,
   CardHeader,
@@ -247,32 +248,25 @@ export default function CheckinsClient({ eventId }: { eventId: string }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {data.recentCheckins.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No check-ins yet</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="pb-2 pr-4 font-medium">Name</th>
-                    <th className="pb-2 pr-4 font-medium">Barcode</th>
-                    <th className="pb-2 font-medium">Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.recentCheckins.map((c, i) => (
-                    <tr key={i} className="border-b last:border-0">
-                      <td className="py-2 pr-4">{c.name}</td>
-                      <td className="py-2 pr-4 font-mono text-xs text-muted-foreground">
-                        {c.barcode}
-                      </td>
-                      <td className="py-2">{formatDateTime(c.checked_in_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <DataTable
+            rows={data.recentCheckins}
+            columns={[
+              { key: "name", label: "Name" },
+              { key: "barcode", label: "Barcode", className: "font-mono text-xs text-muted-foreground" },
+              {
+                key: "checked_in_at",
+                label: "Time",
+                value: (c) => (c.checked_in_at ? new Date(c.checked_in_at) : null),
+                render: (c) => formatDateTime(c.checked_in_at),
+              },
+            ]}
+            // A barcode can check in more than once; with the time it is unique.
+            getRowId={(c) => `${c.barcode}-${c.checked_in_at}`}
+            noun="check-in"
+            search={false}
+            emptyMessage="No check-ins yet"
+            containerClassName=""
+          />
         </CardContent>
       </Card>
     </div>

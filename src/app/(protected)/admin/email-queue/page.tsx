@@ -11,14 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable } from "@/components/admin/DataTable";
 import {
   Mail,
   Loader2,
@@ -315,34 +308,29 @@ function EmailQueueDashboard() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Scope</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Sent</TableHead>
-                  <TableHead className="text-right">Failed</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Duration</TableHead>
-                  <TableHead>Started</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recentJobs.map((job) => (
-                  <TableRow key={job.id}>
-                    <TableCell className="font-medium">{job.scope}</TableCell>
-                    <TableCell><JobStatusBadge status={job.status} /></TableCell>
-                    <TableCell className="text-right tabular-nums text-green-600 dark:text-green-400">{job.sent}</TableCell>
-                    <TableCell className="text-right tabular-nums text-red-600 dark:text-red-400">{job.failed}</TableCell>
-                    <TableCell className="text-right tabular-nums">{job.total}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {job.completedAt ? formatDuration(job.completedAt - job.createdAt) : "—"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{formatTime(job.createdAt)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable
+              rows={recentJobs}
+              columns={[
+                { key: "scope", label: "Scope", filter: true },
+                { key: "status", label: "Status", filter: true, render: (job) => <JobStatusBadge status={job.status} /> },
+                { key: "sent", label: "Sent", align: "right", className: "text-green-600 dark:text-green-400" },
+                { key: "failed", label: "Failed", align: "right", className: "text-red-600 dark:text-red-400" },
+                { key: "total", label: "Total", align: "right" },
+                {
+                  key: "duration",
+                  label: "Duration",
+                  align: "right",
+                  value: (job) => (job.completedAt ? job.completedAt - job.createdAt : null),
+                  render: (job) => (job.completedAt ? formatDuration(job.completedAt - job.createdAt) : "—"),
+                },
+                { key: "createdAt", label: "Started", className: "text-muted-foreground", render: (job) => formatTime(job.createdAt) },
+              ]}
+              getRowId={(job) => job.id}
+              noun="job"
+              search={false}
+              defaultSort={{ key: "createdAt", desc: true }}
+              containerClassName=""
+            />
           </CardContent>
         </Card>
       )}
@@ -364,45 +352,35 @@ function EmailQueueDashboard() {
               No emails sent yet in this server session.
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[80px]">Status</TableHead>
-                    <TableHead>To</TableHead>
-                    <TableHead>Subject</TableHead>
-                    <TableHead>Job</TableHead>
-                    <TableHead>Time</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {stats.recentLog.map((entry) => (
-                    <TableRow key={entry.id}>
-                      <TableCell><EmailStatusBadge status={entry.status} /></TableCell>
-                      <TableCell className="font-mono text-xs max-w-[200px] truncate">
-                        {entry.to}
-                      </TableCell>
-                      <TableCell className="max-w-[300px] truncate text-sm">
-                        {entry.subject}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate">
-                        {entry.jobId || "—"}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                        {entry.sentAt
-                          ? formatTime(entry.sentAt)
-                          : formatTime(entry.queuedAt)}
-                        {entry.error && (
-                          <span className="block text-red-500 truncate max-w-[200px]" title={entry.error}>
-                            {entry.error}
-                          </span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+            <DataTable
+              rows={stats.recentLog}
+              columns={[
+                { key: "status", label: "Status", filter: true, render: (entry) => <EmailStatusBadge status={entry.status} /> },
+                { key: "to", label: "To", className: "font-mono text-xs max-w-[200px]" },
+                { key: "subject", label: "Subject", className: "max-w-[300px] text-sm" },
+                { key: "jobId", label: "Job", className: "text-xs text-muted-foreground max-w-[120px]" },
+                {
+                  key: "time",
+                  label: "Time",
+                  className: "text-xs text-muted-foreground",
+                  value: (entry) => entry.sentAt ?? entry.queuedAt,
+                  render: (entry) => (
+                    <>
+                      {entry.sentAt ? formatTime(entry.sentAt) : formatTime(entry.queuedAt)}
+                      {entry.error && (
+                        <span className="block text-red-500 truncate max-w-[200px]" title={entry.error}>
+                          {entry.error}
+                        </span>
+                      )}
+                    </>
+                  ),
+                },
+              ]}
+              getRowId={(entry) => String(entry.id)}
+              noun="email"
+              defaultSort={{ key: "time", desc: true }}
+              containerClassName="max-h-[32rem]"
+            />
           )}
         </CardContent>
       </Card>

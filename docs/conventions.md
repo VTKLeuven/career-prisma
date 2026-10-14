@@ -85,6 +85,18 @@ so re-apply the classes if you do.
   `ResourceManager` does all of this and edits in a panel sliding in from the
   right; tables keep a sticky header inside a height-capped scroll area
   (`Table`'s `containerClassName`) so the toolbar stays in view.
+- **Tables.** Every admin list is a `DataTable`
+  (`src/components/admin/DataTable.tsx`); don't hand-roll a `<Table>` or a
+  second `useReactTable`. It gives click-to-sort headers, search, per-column
+  filter dropdowns (`filter: true` on a column, e.g. Country), a Columns menu
+  for `defaultHidden` columns, paging at 50 rows and the row conventions above.
+  Columns are `ColumnConfig`s (`components/admin/types.ts`): a column sorts and
+  filters on its `value`, falling back to `row[key]` or a string `render`, so a
+  column that renders markup over a computed field needs a `value`. Trailing
+  row buttons go in `rowActions` (`RowDeleteButton` for delete).
+  It works on the rows it is given, in the browser: pages still load every row
+  (students up to `listStudents`' limit). The one exception is the form
+  responses viewer, which pages on the server and keeps its own table.
 - **Status pills.** Use the pastel `Badge` variants (`success`, `warning`,
   `info`, `purple`, `muted`, `destructive`) rather than solid fills.
 

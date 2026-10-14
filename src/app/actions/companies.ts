@@ -39,6 +39,8 @@ export async function fetchCompaniesAction() {
     id: c.id,
     name: c.name,
     address: formatAddress(c),
+    address_city: c.address_city ?? "",
+    address_country: c.address_country ?? "",
     // Raw values, empty when missing: the edit dialog saves what it is given,
     // so placeholders like "Not set" were written back as the VAT number --
     // and the salesperson's display name as their id, which Postgres rejects.

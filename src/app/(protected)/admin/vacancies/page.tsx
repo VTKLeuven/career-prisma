@@ -6,14 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable, RowDeleteButton } from "@/components/admin/DataTable";
+import { confirmDialog } from "@/components/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -28,18 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   fetchVacancyTypesAction,
   createVacancyTypeAction,
@@ -67,6 +50,12 @@ import type {
 import { PageHeader } from "@/components/admin/PageHeader";
 
 type Tab = "types" | "sectors" | "sections" | "vacancies";
+
+const VACANCY_STATUS_OPTIONS = [
+  { value: "draft", label: "Draft" },
+  { value: "published", label: "Published" },
+  { value: "archived", label: "Archived" },
+];
 
 // ---------------------------------------------------------------------------
 // Reusable CRUD table for simple name+sort+active items
@@ -158,100 +147,46 @@ function ConfigTable<T extends { id: string; name: string; sort?: number; active
 
   return (
     <>
-      <div className="flex justify-between items-center mb-4">
-        <p className="text-sm text-muted-foreground">
-          {items.length} item{items.length !== 1 ? "s" : ""}
-        </p>
-        <Button size="sm" onClick={openAdd}>
-          <Plus className="h-4 w-4 mr-1" />
-          Add
-        </Button>
-      </div>
-
-      <div className="border rounded-lg">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              {extraColumns?.map((c) => (
-                <TableHead key={c.key}>{c.header}</TableHead>
-              ))}
-              <TableHead>Sort</TableHead>
-              <TableHead>Active</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={4 + (extraColumns?.length ?? 0)}
-                  className="text-center text-muted-foreground py-8"
-                >
-                  No items yet.
-                </TableCell>
-              </TableRow>
-            ) : (
-              items.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.name}</TableCell>
-                  {extraColumns?.map((c) => (
-                    <TableCell key={c.key}>{c.render(item)}</TableCell>
-                  ))}
-                  <TableCell>{item.sort ?? "-"}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={item.active ? "default" : "secondary"}
-                      className={
-                        item.active
-                          ? "bg-green-100 text-green-800"
-                          : "bg-neutral-100 text-neutral-500"
-                      }
-                    >
-                      {item.active ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEdit(item)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete &quot;{item.name}&quot;?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => onDelete(item.id)}
-                              className="bg-red-600 hover:bg-red-700"
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable
+        rows={items}
+        columns={[
+          { key: "name", label: "Name" },
+          ...(extraColumns ?? []).map((c) => ({ key: c.key, label: c.header, render: c.render })),
+          { key: "sort", label: "Sort", align: "right" as const },
+          {
+            key: "active",
+            label: "Active",
+            filter: true,
+            render: (item: T) => (
+              <Badge variant={item.active ? "success" : "muted"}>
+                {item.active ? "Active" : "Inactive"}
+              </Badge>
+            ),
+          },
+        ]}
+        getRowId={(item) => item.id}
+        noun="item"
+        search={false}
+        defaultSort={{ key: "sort" }}
+        containerClassName=""
+        onRowClick={openEdit}
+        isRowSelected={(item) => dialogOpen && editId === item.id}
+        rowActions={(item) => (
+          <RowDeleteButton
+            label={`Delete ${item.name}`}
+            onClick={async () => {
+              if (await confirmDialog({ title: `Delete "${item.name}"?`, description: "This action cannot be undone.", confirmLabel: "Delete", destructive: true })) {
+                await onDelete(item.id);
+              }
+            }}
+          />
+        )}
+        toolbar={
+          <Button onClick={openAdd}>
+            <Plus className="h-4 w-4" /> Add
+          </Button>
+        }
+      />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
@@ -538,105 +473,64 @@ export default function AdminVacanciesPage() {
                 Overview of all vacancies across all companies. You can change
                 status or delete entries.
               </p>
-              <div className="border rounded-lg">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Title</TableHead>
-                      <TableHead>Company</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {vacancies.length === 0 ? (
-                      <TableRow>
-                        <TableCell
-                          colSpan={6}
-                          className="text-center text-muted-foreground py-8"
-                        >
-                          No vacancies yet.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      vacancies.map((v) => {
-                        const companyName =
-                          typeof v.company === "object"
-                            ? (v.company as Company).name
-                            : v.company;
-                        const typeName =
-                          typeof v.type === "object"
-                            ? (v.type as VacancyType).name
-                            : v.type;
-
-                        return (
-                          <TableRow key={v.id}>
-                            <TableCell className="font-medium">
-                              {v.title}
-                            </TableCell>
-                            <TableCell>{companyName}</TableCell>
-                            <TableCell>{typeName}</TableCell>
-                            <TableCell>
-                              <Select
-                                value={v.status}
-                                onValueChange={(val) =>
-                                  handleUpdateVacancyStatus(v.id, val)
-                                }
-                              >
-                                <SelectTrigger className="w-32 h-8">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="draft">Draft</SelectItem>
-                                  <SelectItem value="published">
-                                    Published
-                                  </SelectItem>
-                                  <SelectItem value="archived">
-                                    Archived
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </TableCell>
-                            <TableCell>
-                              {new Date(v.date_created).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button variant="ghost" size="sm">
-                                    <Trash2 className="h-4 w-4 text-red-500" />
-                                  </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>
-                                      Delete &quot;{v.title}&quot;?
-                                    </AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      This will permanently delete this vacancy.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction
-                                      onClick={() => handleDeleteVacancy(v.id)}
-                                      className="bg-red-600 hover:bg-red-700"
-                                    >
-                                      Delete
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+              <DataTable
+                rows={vacancies}
+                columns={[
+                  { key: "title", label: "Title" },
+                  {
+                    key: "company",
+                    label: "Company",
+                    value: (v) => (typeof v.company === "object" ? (v.company as Company).name : v.company),
+                    filter: true,
+                  },
+                  {
+                    key: "type",
+                    label: "Type",
+                    value: (v) => (typeof v.type === "object" ? (v.type as VacancyType).name : v.type),
+                    filter: true,
+                  },
+                  {
+                    key: "status",
+                    label: "Status",
+                    filter: { options: VACANCY_STATUS_OPTIONS },
+                    render: (v) => (
+                      <Select
+                        value={v.status}
+                        onValueChange={(val) => handleUpdateVacancyStatus(v.id, val)}
+                      >
+                        <SelectTrigger className="w-32 h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {VACANCY_STATUS_OPTIONS.map((o) => (
+                            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ),
+                  },
+                  {
+                    key: "date_created",
+                    label: "Date",
+                    value: (v) => new Date(v.date_created),
+                    render: (v) => new Date(v.date_created).toLocaleDateString("en-GB"),
+                  },
+                ]}
+                getRowId={(v) => String(v.id)}
+                noun="vacancy"
+                nounPlural="vacancies"
+                defaultSort={{ key: "date_created", desc: true }}
+                rowActions={(v) => (
+                  <RowDeleteButton
+                    label={`Delete ${v.title}`}
+                    onClick={async () => {
+                      if (await confirmDialog({ title: `Delete "${v.title}"?`, description: "This will permanently delete this vacancy.", confirmLabel: "Delete", destructive: true })) {
+                        await handleDeleteVacancy(v.id);
+                      }
+                    }}
+                  />
+                )}
+              />
             </div>
           )}
         </>

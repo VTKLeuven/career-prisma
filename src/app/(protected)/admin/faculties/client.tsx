@@ -52,6 +52,7 @@ export default function FacultiesClient({
       {
         key: "logo",
         label: "Logo",
+        sortable: false,
         render: (f) =>
           f.logo ? (
             <Image
@@ -69,6 +70,7 @@ export default function FacultiesClient({
       {
         key: "masters",
         label: "Masters",
+        value: (f) => masterIdsOf(f).map((id) => masterNameById.get(id) ?? id),
         render: (f) => (
           <span className="text-sm text-muted-foreground">
             {masterNamesOf(f, masterNameById)}

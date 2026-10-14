@@ -103,6 +103,7 @@ export default function EventPagesClient({
       {
         key: "event_status",
         label: "Status",
+        filter: { options: STATUS_OPTIONS },
         // A published edition needs no badge; only a draft is worth flagging.
         render: (p) =>
           p.event_status === "published" ? null : (
@@ -111,9 +112,9 @@ export default function EventPagesClient({
             </span>
           ),
       },
-      { key: "companies", label: "Companies", render: (p) => String(p.companyIds.length) },
-      { key: "speakers", label: "Speakers", render: (p) => String(p.speakerIds.length) },
-      { key: "slots", label: "Slots", render: (p) => String(p.timetableIds.length) },
+      { key: "companies", label: "Companies", align: "right", value: (p) => p.companyIds.length },
+      { key: "speakers", label: "Speakers", align: "right", value: (p) => p.speakerIds.length },
+      { key: "slots", label: "Slots", align: "right", value: (p) => p.timetableIds.length },
     ],
     dialogClassName: "sm:max-w-4xl",
     fieldsClassName: "grid grid-cols-1 gap-5 md:grid-cols-2",

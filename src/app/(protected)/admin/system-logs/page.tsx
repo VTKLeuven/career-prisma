@@ -6,41 +6,14 @@ import {
   listSystemLogs,
   type SystemLogLevel,
 } from "@/lib/repos/system-logs";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { filterHref, type Filters } from "./filters";
+import { LogsTable } from "./logs-table";
 
 export const dynamic = "force-dynamic";
 
 const LEVELS: SystemLogLevel[] = ["error", "warn", "info"];
-
-const LEVEL_STYLES: Record<SystemLogLevel, string> = {
-  error: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
-  warn: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-  info: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-};
-
-type Filters = { source?: string; level?: SystemLogLevel; event?: string };
-
-/** Builds a filter link that keeps the other active filters. */
-function filterHref(current: Filters, change: Partial<Filters>): string {
-  const next = { ...current, ...change };
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(next)) {
-    if (value) params.set(key, value);
-  }
-  const query = params.toString();
-  return query ? `/admin/system-logs?${query}` : "/admin/system-logs";
-}
 
 function FilterChip({
   href,
@@ -138,65 +111,7 @@ export default async function SystemLogsPage({
         )}
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          {logs.length === 0 ? (
-            <p className="p-6 text-muted-foreground">No log entries match these filters.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-44">Time</TableHead>
-                  <TableHead className="w-20">Level</TableHead>
-                  <TableHead className="w-48">Event</TableHead>
-                  <TableHead>Message</TableHead>
-                  <TableHead className="w-24">Student</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {logs.map((log) => (
-                  <TableRow key={log.id} className="align-top">
-                    <TableCell className="whitespace-nowrap font-mono text-xs">
-                      {log.createdAt.toLocaleString("en-GB", {
-                        timeZone: "Europe/Brussels",
-                      })}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={LEVEL_STYLES[log.level] ?? LEVEL_STYLES.info}>
-                        {log.level}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      <Link
-                        href={filterHref(filters, { source: log.source, event: log.event })}
-                        className="hover:underline"
-                      >
-                        {log.source}/{log.event}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="whitespace-normal break-words">
-                      {log.message}
-                      {log.details && (
-                        <details className="mt-1">
-                          <summary className="cursor-pointer text-xs text-muted-foreground">
-                            details
-                          </summary>
-                          <pre className="mt-1 overflow-x-auto rounded bg-muted p-2 text-xs">
-                            {JSON.stringify(log.details, null, 2)}
-                          </pre>
-                        </details>
-                      )}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {log.studentId ?? "—"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <LogsTable logs={logs} filters={filters} />
     </div>
   );
 }

@@ -13,15 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { CalendarDays, Loader2, Plus, Trash2 } from "lucide-react";
+import { DataTable, RowDeleteButton } from "@/components/admin/DataTable";
+import { CalendarDays, Loader2, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   createSubOptionAction,
@@ -140,6 +133,8 @@ export default function CareerOptionsClient({
       {
         key: "events",
         label: "Events",
+        value: (o) => eventIdsOf(o).map((id) => eventNameById.get(id) ?? id),
+        filter: true,
         render: (o) => {
           const names = eventIdsOf(o).map((id) => eventNameById.get(id) ?? id);
           return (
@@ -188,6 +183,7 @@ export default function CareerOptionsClient({
       {
         key: "description",
         label: "Description",
+        value: (s) => stripHtml(s.description),
         render: (s) => (
           <span className="block max-w-[40ch] truncate text-sm text-muted-foreground">
             {stripHtml(s.description) || "—"}
@@ -357,33 +353,52 @@ function SalesHistory({
       )}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-      <div className="overflow-x-auto rounded-md border">
-        <Table>
-          <TableHeader><TableRow>
-            <TableHead>Company</TableHead><TableHead>Type</TableHead><TableHead>Option</TableHead><TableHead>Events</TableHead><TableHead>Sold price</TableHead><TableHead>Status</TableHead><TableHead>Date</TableHead><TableHead className="text-right">Actions</TableHead>
-          </TableRow></TableHeader>
-          <TableBody>
-            {sales.length ? sales.map((sale) => (
-              <TableRow key={sale.id}>
-                <TableCell>{sale.company_name}</TableCell>
-                <TableCell>{sale.kind === "option" ? "Package" : "Sub-option"}</TableCell>
-                <TableCell>{sale.option_name}</TableCell>
-                <TableCell>{sale.event_names.join(", ") || "—"}</TableCell>
-                <TableCell>{sale.price_at_sale == null ? "—" : `€${sale.price_at_sale}`}</TableCell>
-                <TableCell className="capitalize">{sale.status}</TableCell>
-                <TableCell>{sale.date_created ? new Date(sale.date_created).toLocaleDateString("en-GB") : "—"}</TableCell>
-                <TableCell className="text-right">
-                  {!isPastYear && sale.status === "sold" ? <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={async () => {
-                    if (!(await confirmDialog({ title: "Cancel this sale?", description: "Its history will be retained.", confirmLabel: "Cancel sale", destructive: true }))) return;
-                    await deleteOptionSaleAction(sale.id, sale.kind);
-                    router.refresh();
-                  }}><Trash2 className="h-4 w-4" /></Button> : null}
-                </TableCell>
-              </TableRow>
-            )) : <TableRow><TableCell colSpan={8} className="h-24 text-center text-muted-foreground">No sales for this academic year.</TableCell></TableRow>}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable
+        rows={sales}
+        columns={[
+          { key: "company_name", label: "Company", filter: true },
+          {
+            key: "kind",
+            label: "Type",
+            filter: { options: [{ value: "option", label: "Package" }, { value: "sub-option", label: "Sub-option" }] },
+            render: (sale) => (sale.kind === "option" ? "Package" : "Sub-option"),
+          },
+          { key: "option_name", label: "Option", filter: true },
+          { key: "event_names", label: "Events", value: (sale) => sale.event_names, filter: true },
+          {
+            key: "price_at_sale",
+            label: "Sold price",
+            align: "right",
+            render: (sale) => (sale.price_at_sale == null ? "—" : `€${sale.price_at_sale}`),
+          },
+          { key: "status", label: "Status", className: "capitalize", filter: true },
+          {
+            key: "date_created",
+            label: "Date",
+            value: (sale) => (sale.date_created ? new Date(sale.date_created) : null),
+            render: (sale) => (sale.date_created ? new Date(sale.date_created).toLocaleDateString("en-GB") : "—"),
+          },
+        ]}
+        getRowId={(sale) => `${sale.kind}:${sale.id}`}
+        noun="sale"
+        defaultSort={{ key: "date_created", desc: true }}
+        emptyMessage="No sales for this academic year"
+        rowActions={
+          isPastYear
+            ? undefined
+            : (sale) =>
+                sale.status === "sold" ? (
+                  <RowDeleteButton
+                    label="Cancel sale"
+                    onClick={async () => {
+                      if (!(await confirmDialog({ title: "Cancel this sale?", description: "Its history will be retained.", confirmLabel: "Cancel sale", destructive: true }))) return;
+                      await deleteOptionSaleAction(sale.id, sale.kind);
+                      router.refresh();
+                    }}
+                  />
+                ) : null
+        }
+      />
     </div>
   );
 }

@@ -27,6 +27,7 @@ export default function MastersClient({ initialMasters }: { initialMasters: Mast
       {
         key: "logo",
         label: "Logo",
+        sortable: false,
         render: (m) =>
           m.logo ? (
             <Image
@@ -45,12 +46,15 @@ export default function MastersClient({ initialMasters }: { initialMasters: Mast
       {
         key: "study_programme",
         label: "vtk.be programme",
+        value: (m) => (m.study_programme ? labelForProgramme(m.study_programme) : null),
+        filter: true,
         render: (m) =>
           m.study_programme ? labelForProgramme(m.study_programme) : <span className="text-muted-foreground">—</span>,
       },
       {
         key: "students",
         label: "Students",
+        align: "right",
         render: (m) => (m.students != null ? String(m.students) : "—"),
       },
     ],

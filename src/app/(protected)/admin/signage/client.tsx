@@ -21,18 +21,10 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
+import { DataTable, RowDeleteButton } from "@/components/admin/DataTable";
 import {
     Plus,
     Trash2,
-    Edit,
     Copy,
     Upload,
     Monitor,
@@ -289,52 +281,34 @@ function ScreensTab({
                         No screens yet. Create one to get started.
                     </div>
                 ) : (
-                    <div className="rounded-md border">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Name</TableHead>
-                                    <TableHead>Slug</TableHead>
-                                    <TableHead>URL</TableHead>
-                                    <TableHead className="w-[120px]">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {screens.map((screen) => (
-                                    <TableRow key={screen.id}>
-                                        <TableCell className="font-medium">{screen.name}</TableCell>
-                                        <TableCell className="font-mono text-sm text-muted-foreground">
-                                            {screen.slug}
-                                        </TableCell>
-                                        <TableCell>
-                                            <button
-                                                onClick={() => copyUrl(screen.slug)}
-                                                className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 transition-colors"
-                                            >
-                                                <Copy className="h-3.5 w-3.5" />
-                                                {copied === screen.slug ? "Copied!" : `/screen/${screen.slug}`}
-                                            </button>
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex gap-1">
-                                                <Button variant="ghost" size="icon" onClick={() => openEdit(screen)}>
-                                                    <Edit className="h-4 w-4" />
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="text-destructive"
-                                                    onClick={() => handleDelete(screen.id)}
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </div>
+                    <DataTable
+                        rows={screens}
+                        columns={[
+                            { key: "name", label: "Name" },
+                            { key: "slug", label: "Slug", className: "font-mono text-sm text-muted-foreground" },
+                            {
+                                key: "url",
+                                label: "URL",
+                                sortable: false,
+                                render: (screen) => (
+                                    <button
+                                        onClick={() => copyUrl(screen.slug)}
+                                        className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 transition-colors"
+                                    >
+                                        <Copy className="h-3.5 w-3.5" />
+                                        {copied === screen.slug ? "Copied!" : `/screen/${screen.slug}`}
+                                    </button>
+                                ),
+                            },
+                        ]}
+                        getRowId={(screen) => String(screen.id)}
+                        noun="screen"
+                        search={false}
+                        containerClassName=""
+                        onRowClick={openEdit}
+                        isRowSelected={(screen) => isOpen && editing?.id === screen.id}
+                        rowActions={(screen) => <RowDeleteButton onClick={() => handleDelete(screen.id)} label="Delete screen" />}
+                    />
                 )}
             </CardContent>
         </Card>
@@ -947,52 +921,42 @@ function ScheduleTab({
                                 No timeslots yet. Add one to schedule media on this screen.
                             </div>
                         ) : (
-                            <div className="rounded-md border">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Start</TableHead>
-                                            <TableHead>End</TableHead>
-                                            <TableHead>Media</TableHead>
-                                            <TableHead>Type</TableHead>
-                                            <TableHead className="w-[100px]">Actions</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {slots.map((slot) => {
+                            <DataTable
+                                rows={slots}
+                                columns={[
+                                    { key: "start_time", label: "Start", className: "font-mono" },
+                                    { key: "end_time", label: "End", className: "font-mono" },
+                                    {
+                                        key: "media",
+                                        label: "Media",
+                                        value: (slot) => resolveSlotMedia(slot, media)?.name ?? null,
+                                        render: (slot) => {
                                             const slotMedia = resolveSlotMedia(slot, media);
                                             return (
-                                                <TableRow key={slot.id}>
-                                                    <TableCell className="font-mono">{slot.start_time}</TableCell>
-                                                    <TableCell className="font-mono">{slot.end_time}</TableCell>
-                                                    <TableCell className="flex items-center gap-2">
-                                                        {slotMedia && getMediaIcon(slotMedia.type)}
-                                                        {slotMedia?.name || "Unknown"}
-                                                    </TableCell>
-                                                    <TableCell className="capitalize text-muted-foreground text-sm">
-                                                        {slotMedia?.type || "—"}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <div className="flex gap-1">
-                                                            <Button variant="ghost" size="icon" onClick={() => openEdit(slot)}>
-                                                                <Edit className="h-4 w-4" />
-                                                            </Button>
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                className="text-destructive"
-                                                                onClick={() => handleDeleteSlot(slot.id)}
-                                                            >
-                                                                <Trash2 className="h-4 w-4" />
-                                                            </Button>
-                                                        </div>
-                                                    </TableCell>
-                                                </TableRow>
+                                                <span className="flex items-center gap-2">
+                                                    {slotMedia && getMediaIcon(slotMedia.type)}
+                                                    {slotMedia?.name || "Unknown"}
+                                                </span>
                                             );
-                                        })}
-                                    </TableBody>
-                                </Table>
-                            </div>
+                                        },
+                                    },
+                                    {
+                                        key: "type",
+                                        label: "Type",
+                                        className: "capitalize text-muted-foreground text-sm",
+                                        value: (slot) => resolveSlotMedia(slot, media)?.type ?? null,
+                                        filter: true,
+                                    },
+                                ]}
+                                getRowId={(slot) => String(slot.id)}
+                                noun="timeslot"
+                                search={false}
+                                defaultSort={{ key: "start_time" }}
+                                containerClassName=""
+                                onRowClick={openEdit}
+                                isRowSelected={(slot) => isAddOpen && editingSlot?.id === slot.id}
+                                rowActions={(slot) => <RowDeleteButton onClick={() => handleDeleteSlot(slot.id)} label="Delete timeslot" />}
+                            />
                         )}
                     </>
                 )}

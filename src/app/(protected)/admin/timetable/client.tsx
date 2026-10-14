@@ -41,6 +41,8 @@ export default function TimetableClient({
       {
         key: "type",
         label: "Type",
+        value: (s) => (Array.isArray(s.type) ? s.type : []),
+        filter: { options: TYPE_OPTIONS },
         render: (s) =>
           Array.isArray(s.type) && s.type.length ? (
             <span className="flex flex-wrap gap-1">

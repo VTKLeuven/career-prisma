@@ -48,6 +48,7 @@ import NextImage from "next/image";
 import { resolveMasterDegreeValueToDisplayLabel, normalizeFaculties, type FacultyItem } from "@/lib/utils/master-degree-options";
 import type { Master } from "@/lib/schema";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { DataTable } from "@/components/admin/DataTable";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
 
@@ -96,8 +97,6 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
   const [viewMode, setViewMode] = useState<"submissions" | "incomplete">("submissions");
   const [incompleteCompanies, setIncompleteCompanies] = useState<Array<{ id: string; name: string; salesperson: string; optionName: string }>>([]);
   const [loadingIncompleteCompanies, setLoadingIncompleteCompanies] = useState(false);
-  const [incompleteSortField, setIncompleteSortField] = useState<"name" | "salesperson" | "optionName">("name");
-  const [incompleteSortDirection, setIncompleteSortDirection] = useState<"asc" | "desc">("asc");
   const [submissionsSortField, setSubmissionsSortField] = useState<"submitted_at" | "company_name">("submitted_at");
   const [submissionsSortDirection, setSubmissionsSortDirection] = useState<"asc" | "desc">("desc");
   const [companyCompletionStats, setCompanyCompletionStats] = useState<{ completed: number; incomplete: number } | null>(null);
@@ -1974,113 +1973,21 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
                   </Table>
                 </div>
               ) : (
-                <div className="border rounded-lg overflow-hidden">
-                  {loadingIncompleteCompanies ? (
-                    <div className="text-center py-8">
-                      <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
-                      <p className="text-sm text-muted-foreground">Loading incomplete companies...</p>
-                    </div>
-                  ) : incompleteCompanies.length === 0 ? (
-                    <div className="text-center py-12">
-                      <p className="text-muted-foreground mb-4">All companies have completed this form!</p>
-                    </div>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>
-                            <button
-                              onClick={() => {
-                                if (incompleteSortField === "name") {
-                                  setIncompleteSortDirection(incompleteSortDirection === "asc" ? "desc" : "asc");
-                                } else {
-                                  setIncompleteSortField("name");
-                                  setIncompleteSortDirection("asc");
-                                }
-                              }}
-                              className="flex items-center gap-1 hover:text-foreground transition-colors"
-                            >
-                              Company Name
-                              {incompleteSortField === "name" ? (
-                                incompleteSortDirection === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
-                              ) : (
-                                <ArrowUpDown className="h-4 w-4 opacity-50" />
-                              )}
-                            </button>
-                          </TableHead>
-                          <TableHead>
-                            <button
-                              onClick={() => {
-                                if (incompleteSortField === "salesperson") {
-                                  setIncompleteSortDirection(incompleteSortDirection === "asc" ? "desc" : "asc");
-                                } else {
-                                  setIncompleteSortField("salesperson");
-                                  setIncompleteSortDirection("asc");
-                                }
-                              }}
-                              className="flex items-center gap-1 hover:text-foreground transition-colors"
-                            >
-                              Salesperson
-                              {incompleteSortField === "salesperson" ? (
-                                incompleteSortDirection === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
-                              ) : (
-                                <ArrowUpDown className="h-4 w-4 opacity-50" />
-                              )}
-                            </button>
-                          </TableHead>
-                          <TableHead>
-                            <button
-                              onClick={() => {
-                                if (incompleteSortField === "optionName") {
-                                  setIncompleteSortDirection(incompleteSortDirection === "asc" ? "desc" : "asc");
-                                } else {
-                                  setIncompleteSortField("optionName");
-                                  setIncompleteSortDirection("asc");
-                                }
-                              }}
-                              className="flex items-center gap-1 hover:text-foreground transition-colors"
-                            >
-                              Option
-                              {incompleteSortField === "optionName" ? (
-                                incompleteSortDirection === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
-                              ) : (
-                                <ArrowUpDown className="h-4 w-4 opacity-50" />
-                              )}
-                            </button>
-                          </TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {[...incompleteCompanies]
-                          .sort((a, b) => {
-                            let aValue: string;
-                            let bValue: string;
-                            
-                            if (incompleteSortField === "name") {
-                              aValue = a.name.toLowerCase();
-                              bValue = b.name.toLowerCase();
-                            } else if (incompleteSortField === "salesperson") {
-                              aValue = a.salesperson.toLowerCase();
-                              bValue = b.salesperson.toLowerCase();
-                            } else {
-                              aValue = a.optionName.toLowerCase();
-                              bValue = b.optionName.toLowerCase();
-                            }
-                            
-                            const comparison = aValue.localeCompare(bValue);
-                            return incompleteSortDirection === "asc" ? comparison : -comparison;
-                          })
-                          .map((company) => (
-                            <TableRow key={company.id}>
-                              <TableCell className="font-medium">{company.name}</TableCell>
-                              <TableCell>{company.salesperson}</TableCell>
-                              <TableCell>{company.optionName}</TableCell>
-                            </TableRow>
-                          ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </div>
+                <DataTable
+                  rows={incompleteCompanies}
+                  columns={[
+                    { key: "name", label: "Company name" },
+                    { key: "salesperson", label: "Salesperson", filter: true },
+                    { key: "optionName", label: "Option", filter: true },
+                  ]}
+                  getRowId={(company) => company.id}
+                  noun="company"
+                  nounPlural="companies"
+                  loading={loadingIncompleteCompanies}
+                  defaultSort={{ key: "name" }}
+                  emptyMessage="All companies have completed this form!"
+                  containerClassName=""
+                />
               )}
 
               {/* Pagination Controls - only show for submissions */}

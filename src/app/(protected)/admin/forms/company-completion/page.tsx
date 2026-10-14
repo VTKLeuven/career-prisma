@@ -15,14 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable } from "@/components/admin/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import type { CareerEvent } from "@/lib/schema";
@@ -51,8 +44,6 @@ type CompanyFormStatus = {
   incompleteCount: number;
 };
 
-type SortOption = "incomplete" | "name-asc" | "name-desc";
-
 export default function CompanyFormCompletionPage() {
   const { user } = useUser();
   const [events, setEvents] = useState<CareerEvent[]>([]);
@@ -60,8 +51,6 @@ export default function CompanyFormCompletionPage() {
   const [loading, setLoading] = useState(true);
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [companyStatuses, setCompanyStatuses] = useState<CompanyFormStatus[]>([]);
-  const [sortBy, setSortBy] = useState<SortOption>("incomplete");
-  const [salespersonFilter, setSalespersonFilter] = useState<string>("all");
 
   useEffect(() => {
     fetchEventsAction()
@@ -312,7 +301,6 @@ export default function CompanyFormCompletionPage() {
   useEffect(() => {
     if (selectedEventId) {
       loadCompanyFormStatus();
-      setSalespersonFilter("all");
     } else {
       setCompanyStatuses([]);
     }
@@ -320,34 +308,6 @@ export default function CompanyFormCompletionPage() {
 
   const selectedEvent = events.find((e) => e.id === selectedEventId);
 
-  // Filter and sort for display
-  const displayedStatuses = React.useMemo(() => {
-    let result = [...companyStatuses];
-    if (salespersonFilter !== "all") {
-      result = result.filter((s) => s.salesperson?.id === salespersonFilter);
-    }
-    if (sortBy === "name-asc") {
-      result = [...result].sort((a, b) => a.company.name.localeCompare(b.company.name));
-    } else if (sortBy === "name-desc") {
-      result = [...result].sort((a, b) => b.company.name.localeCompare(a.company.name));
-    } else {
-      result = [...result].sort((a, b) => {
-        if (b.incompleteCount !== a.incompleteCount) return b.incompleteCount - a.incompleteCount;
-        return a.company.name.localeCompare(b.company.name);
-      });
-    }
-    return result;
-  }, [companyStatuses, salespersonFilter, sortBy]);
-
-  const uniqueSalespersons = React.useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const s of companyStatuses) {
-      if (s.salesperson && !seen.has(s.salesperson.id)) {
-        seen.set(s.salesperson.id, s.salesperson.name);
-      }
-    }
-    return Array.from(seen.entries()).sort((a, b) => a[1].localeCompare(b[1]));
-  }, [companyStatuses]);
 
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-6">
@@ -391,57 +351,15 @@ export default function CompanyFormCompletionPage() {
 
       {selectedEventId && (
         <Card>
-          <CardHeader className="flex flex-row items-start justify-between space-y-0">
-            <div>
-              <CardTitle>
-                {selectedEvent ? `${selectedEvent.name} - Form Completion Status` : "Loading..."}
-              </CardTitle>
-              <CardDescription>
-                Filter and sort companies by name or salesperson
-              </CardDescription>
-            </div>
-            {!loadingStatus && companyStatuses.length > 0 && (
-              <span className="text-sm text-muted-foreground font-medium whitespace-nowrap">
-                {salespersonFilter === "all"
-                  ? `${companyStatuses.length} companies`
-                  : `${displayedStatuses.length} of ${companyStatuses.length} companies`}
-              </span>
-            )}
+          <CardHeader>
+            <CardTitle>
+              {selectedEvent ? `${selectedEvent.name} - Form Completion Status` : "Loading..."}
+            </CardTitle>
+            <CardDescription>
+              Most incomplete first. Sort by any column; filter by salesperson, option or status.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            {!loadingStatus && companyStatuses.length > 0 && (
-              <div className="flex flex-wrap items-center gap-4 mb-6">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Sort by:</span>
-                  <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="incomplete">Incomplete count</SelectItem>
-                      <SelectItem value="name-asc">Name (A–Z)</SelectItem>
-                      <SelectItem value="name-desc">Name (Z–A)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Salesperson:</span>
-                  <Select value={salespersonFilter} onValueChange={setSalespersonFilter}>
-                    <SelectTrigger className="w-[200px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All</SelectItem>
-                      {uniqueSalespersons.map(([id, name]) => (
-                        <SelectItem key={id} value={id}>
-                          {name || id}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            )}
             {loadingStatus ? (
               <div className="flex items-center justify-center py-12">
                 <div className="text-center">
@@ -456,84 +374,85 @@ export default function CompanyFormCompletionPage() {
                   : "Please select an event to view completion status."}
               </div>
             ) : (
-              <div className="space-y-4">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Company</TableHead>
-                      <TableHead>Option</TableHead>
-                      <TableHead>Salesperson</TableHead>
-                      <TableHead>Forms</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {displayedStatuses.map((status) => {
-                      const isUnpublished = user?.admin && status.company.status !== "published";
-                      return (
-                      <TableRow
-                        key={status.company.id}
-                        className={isUnpublished ? "bg-red-50/80 dark:bg-red-950/20" : undefined}
-                      >
-                        <TableCell className="font-medium">
-                          {status.company.name}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {status.optionNames.length > 0 ? status.optionNames.join(", ") : "–"}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {status.salesperson?.name ?? "–"}
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-1">
-                            {status.forms.map((form) => (
-                              <div key={form.formVersionId ? `${form.formId}-${form.formVersionId}` : form.formId} className="flex items-center gap-2">
-                                {form.completed ? (
-                                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                ) : (
-                                  <XCircle className="h-4 w-4 text-red-600" />
+              <DataTable
+                rows={companyStatuses}
+                columns={[
+                  { key: "company", label: "Company", value: (status) => status.company.name },
+                  {
+                    key: "options",
+                    label: "Option",
+                    className: "text-muted-foreground text-sm",
+                    value: (status) => status.optionNames,
+                    filter: true,
+                  },
+                  {
+                    key: "salesperson",
+                    label: "Salesperson",
+                    className: "text-muted-foreground text-sm",
+                    value: (status) => status.salesperson?.name ?? null,
+                    filter: true,
+                  },
+                  {
+                    key: "forms",
+                    label: "Forms",
+                    wrap: true,
+                    sortable: false,
+                    searchable: false,
+                    render: (status) => (
+                      <div className="space-y-1">
+                        {status.forms.map((form) => (
+                          <div key={form.formVersionId ? `${form.formId}-${form.formVersionId}` : form.formId} className="flex items-center gap-2">
+                            {form.completed ? (
+                              <CheckCircle2 className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <XCircle className="h-4 w-4 text-red-600" />
+                            )}
+                            {form.isMatchingSoftware && form.matchingSoftwareLink ? (
+                              <Link
+                                href={form.matchingSoftwareLink}
+                                className="text-sm hover:underline"
+                                target="_blank"
+                              >
+                                {form.formName}
+                              </Link>
+                            ) : (
+                              <Link
+                                href={`/forms/company/${selectedEventId}/${form.formSlug}`}
+                                className="text-sm hover:underline"
+                                target="_blank"
+                              >
+                                {form.formName}
+                                {form.isCompulsory && !form.completed && (
+                                  <span className="ml-1 text-xs font-medium text-amber-600">(Mandatory)</span>
                                 )}
-                                {form.isMatchingSoftware && form.matchingSoftwareLink ? (
-                                  <Link
-                                    href={form.matchingSoftwareLink}
-                                    className="text-sm hover:underline"
-                                    target="_blank"
-                                  >
-                                    {form.formName}
-                                  </Link>
-                                ) : (
-                                  <Link
-                                    href={`/forms/company/${selectedEventId}/${form.formSlug}`}
-                                    className="text-sm hover:underline"
-                                    target="_blank"
-                                  >
-                                    {form.formName}
-                                    {form.isCompulsory && !form.completed && (
-                                      <span className="ml-1 text-xs font-medium text-amber-600">(Mandatory)</span>
-                                    )}
-                                  </Link>
-                                )}
-                              </div>
-                            ))}
+                              </Link>
+                            )}
                           </div>
-                        </TableCell>
-                        <TableCell>
-                          {status.incompleteCount === 0 ? (
-                            <Badge variant="default" className="bg-green-600">
-                              All Complete
-                            </Badge>
-                          ) : (
-                            <Badge variant="destructive">
-                              {status.incompleteCount} Incomplete
-                            </Badge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+                        ))}
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "incompleteCount",
+                    label: "Status",
+                    searchable: false,
+                    filter: { label: "Incomplete forms", options: [{ value: "0", label: "All complete" }] },
+                    render: (status) =>
+                      status.incompleteCount === 0 ? (
+                        <Badge variant="success">All complete</Badge>
+                      ) : (
+                        <Badge variant="destructive">{status.incompleteCount} incomplete</Badge>
+                      ),
+                  },
+                ]}
+                getRowId={(status) => status.company.id}
+                noun="company"
+                nounPlural="companies"
+                containerClassName=""
+                rowClassName={(status) =>
+                  user?.admin && status.company.status !== "published" ? "bg-red-50/80 dark:bg-red-950/20" : undefined
+                }
+              />
             )}
           </CardContent>
         </Card>
