@@ -99,6 +99,12 @@ so re-apply the classes if you do.
   responses viewer, which pages on the server and keeps its own table.
 - **Status pills.** Use the pastel `Badge` variants (`success`, `warning`,
   `info`, `purple`, `muted`, `destructive`) rather than solid fills.
+- **Phones.** The back office has to work on a phone held upright. The
+  page never scrolls sideways — only a table's own scroll area may — and
+  rows of buttons wrap or stack rather than run off the screen. Cards read
+  their horizontal padding from `--card-px`, which `globals.css` drops to
+  1rem below `sm` inside `.app-ui`, so pass `px-…` to a card part only when
+  it really needs a different inset.
 
 ## Dates and times
 

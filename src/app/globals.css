@@ -212,3 +212,12 @@
   font-family: var(--font-inter), var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   letter-spacing: -0.003em;
 }
+
+/* On phones the back office's cards give their content the width back: the
+   page gutter is already 12px, so a 24px inset on top of it squeezes tables
+   and forms. Card's padding reads --card-px; the public site keeps 1.5rem. */
+@media (max-width: 639px) {
+  .app-ui [data-slot="card"] {
+    --card-px: 1rem;
+  }
+}
