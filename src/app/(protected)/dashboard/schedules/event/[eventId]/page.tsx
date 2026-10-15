@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileText, ChevronDown } from "lucide-react";
+import { FileText, ChevronDown, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -95,9 +95,21 @@ export default async function DashboardSchedulesPage({ params }: { params: Promi
                     {pdfUrl && (
                       <CollapsibleContent>
                         <div className="border-t bg-white p-0 overflow-hidden">
+                          {/* Phone browsers don't render a PDF in an iframe (Android
+                              shows nothing, iOS only the first page), and a
+                              timetable needs pinch-zoom anyway: open it in the
+                              native viewer there. */}
+                          <div className="p-4 sm:hidden">
+                            <Button asChild variant="outline" className="w-full">
+                              <a href={pdfUrl} target="_blank" rel="noopener noreferrer">
+                                <ExternalLink className="h-4 w-4" />
+                                Open schedule (PDF)
+                              </a>
+                            </Button>
+                          </div>
                           <iframe
                             src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&view=Fit`}
-                            className="w-full border-0 block min-h-[1100px]"
+                            className="hidden w-full border-0 min-h-[1100px] sm:block"
                             title={masterName}
                           />
                         </div>
