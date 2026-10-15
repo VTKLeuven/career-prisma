@@ -259,7 +259,7 @@ function ScreensTab({
                                     placeholder="e.g. lobby"
                                     required
                                 />
-                                <p className="text-xs text-muted-foreground">
+                                <p className="text-xs text-muted-foreground break-all">
                                     Public URL: {baseUrl}/screen/{slug || "..."}
                                 </p>
                             </div>
