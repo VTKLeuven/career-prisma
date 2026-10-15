@@ -328,7 +328,7 @@ export default function FormBuilderPage() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr,300px]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <div className="min-w-0 space-y-4">
           <Card>
             <CardHeader>
