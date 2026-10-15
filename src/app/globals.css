@@ -8,6 +8,11 @@
    enough that a height-capped table still shows a useful number of rows. On a
    phone (upright or on its side) the table grows with its rows instead, so
    the page has one vertical scroll, not a scroll box nested in another. */
+/* Devices that cannot hover (phones, tablets). Tailwind's hover: already
+   skips them, so anything revealed only on hover must be shown here, or it
+   sits invisible but still tappable. */
+@custom-variant touch (@media (hover: none));
+
 @custom-variant roomy (@media (min-width: 640px) and (min-height: 600px));
 
 @theme inline {

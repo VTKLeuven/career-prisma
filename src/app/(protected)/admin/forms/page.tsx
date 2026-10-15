@@ -1669,7 +1669,7 @@ function SlugCell({ slug, metadata }: { slug: string; metadata?: { is_company_fo
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0 text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"
+              className="h-6 w-6 p-0 text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 touch:opacity-100"
               onClick={handleCopy}
             >
               {copied ? (

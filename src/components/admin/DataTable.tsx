@@ -682,7 +682,7 @@ function DataTableRow<T>({
             className={cn(
               "flex items-center justify-end gap-1",
               !actionsAlwaysVisible &&
-                "opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-visible/row:opacity-100 focus-within:opacity-100 has-[[data-state=open]]:opacity-100"
+                "opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-visible/row:opacity-100 focus-within:opacity-100 has-[[data-state=open]]:opacity-100 touch:opacity-100"
             )}
           >
             {actions}

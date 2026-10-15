@@ -80,7 +80,8 @@ so re-apply the classes if you do.
   Its icon comes from `ADMIN_NAV_ITEMS`, so header, sidebar and breadcrumb agree.
 - **Lists.** A click on a row opens it for editing; don't add a separate edit
   button. Destructive and secondary actions appear on row hover or in a `⋯`
-  menu. Ignore clicks that land on a link/button inside the row, and clicks
+  menu; on a device that cannot hover they are always shown (the `touch:`
+  variant in `globals.css`), never left invisible but tappable. Ignore clicks that land on a link/button inside the row, and clicks
   bubbling up from portaled dialogs (`e.currentTarget.contains(e.target)`).
   `ResourceManager` does all of this and edits in a panel sliding in from the
   right; tables keep a sticky header inside a height-capped scroll area

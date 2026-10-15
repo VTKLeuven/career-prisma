@@ -423,8 +423,8 @@ function MediaTab({
                                                     <span className="text-xs uppercase font-medium">{item.type}</span>
                                                 </div>
                                             )}
-                                            {/* Hover overlay */}
-                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                            {/* Hover overlay; on touch screens just the button, in the corner */}
+                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 touch:opacity-100 touch:bg-transparent touch:items-end touch:justify-end touch:p-2">
                                                 <Button
                                                     variant="secondary"
                                                     size="sm"
