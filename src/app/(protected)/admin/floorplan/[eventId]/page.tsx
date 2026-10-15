@@ -544,9 +544,9 @@ export default function AdminFloorplanPage() {
   return (
     <div className="flex flex-col gap-4 w-full">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4 p-4 bg-white/95 backdrop-blur-md border rounded-lg shadow-sm">
+      <div className="flex flex-col gap-3 p-4 bg-white/95 backdrop-blur-md border rounded-lg shadow-sm lg:flex-row lg:items-center lg:justify-between lg:gap-4">
         {/* Left: Back + Event name */}
-        <div className="flex items-center gap-4 flex-1 min-w-0">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 flex-1 min-w-0">
           <Link
             href="/admin"
             className="rounded-full bg-vtk-blue px-4 py-2 text-sm font-medium text-white hover:bg-vtk-blueDark transition-colors whitespace-nowrap"
@@ -565,7 +565,7 @@ export default function AdminFloorplanPage() {
         </div>
 
         {/* Right: CSV + Delete */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {booths.length > 0 && (
             <>
               <Button
