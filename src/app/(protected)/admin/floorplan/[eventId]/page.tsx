@@ -83,10 +83,8 @@ export default function AdminFloorplanPage() {
     fetchFloorplanEditorAction(eventId)
       .then((data) => {
         if (cancelled) return
-        if (!data) {
-          console.error("No floorplan found for this event")
-          return
-        }
+        // No floorplan yet is a normal state; the page says so itself.
+        if (!data) return
         const { page: eventPage, svg, booths: boothsData, companies: companiesData, forms } = data
 
         setPage(eventPage)
