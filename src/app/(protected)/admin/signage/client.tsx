@@ -115,12 +115,12 @@ export default function SignageClient({
     return (
         <div className="space-y-4">
             {/* Tab Bar */}
-            <div className="flex border-b">
+            <div className="scrollbar-hide flex overflow-x-auto border-b">
                 {tabs.map((tab) => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors
+                        className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 transition-colors
               ${activeTab === tab.id
                                 ? "border-primary text-primary"
                                 : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/40"

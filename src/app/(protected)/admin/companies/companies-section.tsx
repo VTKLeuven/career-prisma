@@ -2810,7 +2810,7 @@ function EditCompanyDialog({ company, salespersons, masters, onClose, onSaved }:
         <SheetHeader className="shrink-0 gap-3 border-b px-5 pt-4 pb-0">
           <SheetTitle className="text-base">{company?.name || "Edit company"}</SheetTitle>
           <SheetDescription className="sr-only">Edit this company</SheetDescription>
-          <div className="-mb-px flex gap-1" role="tablist">
+          <div className="scrollbar-hide -mx-5 -mb-px flex gap-1 overflow-x-auto px-5" role="tablist">
             {tabs.map((t) => (
               <button
                 key={t.id}
@@ -2818,7 +2818,7 @@ function EditCompanyDialog({ company, salespersons, masters, onClose, onSaved }:
                 role="tab"
                 aria-selected={tab === t.id}
                 onClick={() => setTab(t.id)}
-                className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+                className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
                   tab === t.id ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
