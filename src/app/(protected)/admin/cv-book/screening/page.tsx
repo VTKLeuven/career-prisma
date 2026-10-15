@@ -531,9 +531,9 @@ export default function CVBookScreeningPage() {
                   className="border rounded-xl bg-white/80 shadow-sm ring-1 ring-black/5 px-2 hover:bg-white transition-colors"
                 >
                   <AccordionTrigger className="px-3 cursor-pointer hover:no-underline">
-                    <div className="flex items-center justify-between w-full pr-2">
-                      <span className="text-base sm:text-lg font-semibold text-neutral-900">{group.study}</span>
-                      <span className="text-sm text-muted-foreground">
+                    <div className="flex items-center justify-between gap-3 w-full pr-2">
+                      <span className="min-w-0 text-base sm:text-lg font-semibold text-neutral-900">{group.study}</span>
+                      <span className="shrink-0 whitespace-nowrap text-sm text-muted-foreground">
                         {group.students.length} CV{group.students.length !== 1 ? "s" : ""}
                       </span>
                     </div>
