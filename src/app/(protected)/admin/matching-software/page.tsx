@@ -281,7 +281,7 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
     </Card>
 
     <Dialog open={updateDialogOpen} onOpenChange={setUpdateDialogOpen}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Sync company matches – log</DialogTitle>
           <DialogDescription>
@@ -344,7 +344,7 @@ function ViewMatchesDialog({ item }: { item: MatchingSoftwareRow }) {
           <span className="ml-1.5">View matches</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Match counts per company</DialogTitle>
           <DialogDescription>
@@ -438,7 +438,7 @@ function CreateMatchingSoftwareDialog({ eventId: preselectedEventId, onCreated }
           Create Matching Software
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Create Matching Software</DialogTitle>
           <DialogDescription>

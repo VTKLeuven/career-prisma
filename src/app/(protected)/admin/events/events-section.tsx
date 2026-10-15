@@ -578,7 +578,7 @@ function AddMatchingSoftwareDialog({ event, onCreated }: { event: CareerEvent; o
           Add matching software
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>Add Matching Software</DialogTitle>
@@ -892,7 +892,7 @@ function AddCompaniesDialog({ event, hasCompanies }: { event: CareerEvent; hasCo
           {hasExistingCompanies ? "Edit companies" : "Add companies"}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{hasExistingCompanies ? "Edit Companies" : "Add Companies"} to {event.name}</DialogTitle>
           <DialogDescription>

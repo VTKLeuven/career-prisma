@@ -2053,7 +2053,7 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
         }
         setQrDialogOpen(open);
       }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Send QR Code Emails</DialogTitle>
             <DialogDescription>
@@ -2254,7 +2254,7 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
         }
         setReminderDialogOpen(open);
       }}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Send Reminder Emails</DialogTitle>
             <DialogDescription>
@@ -2487,7 +2487,7 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
           setEditingFieldValue("");
         }
       }}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Form Response</DialogTitle>
             <DialogDescription>
@@ -2713,7 +2713,7 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
 
       {/* Scanning columns config dialog */}
       <Dialog open={scanningColumnsDialogOpen} onOpenChange={setScanningColumnsDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Scanning columns</DialogTitle>
             <DialogDescription>

@@ -408,7 +408,7 @@ function CreateCVBookDialog({ onCreated }: { onCreated?: () => void }) {
           Create CV Book
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New CV Book</DialogTitle>
           <DialogDescription>
@@ -876,7 +876,7 @@ function EditCVBookDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit CV Book Details</DialogTitle>
           <DialogDescription>

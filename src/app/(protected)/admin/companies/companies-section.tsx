@@ -1478,7 +1478,7 @@ function SubOptionsDialog({
           {displayText}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Sub-options for {option.name}</DialogTitle>
           <DialogDescription>
@@ -2114,7 +2114,7 @@ function OptionFormDialog({ company, onCreate }: {
       <DialogTrigger asChild>
         <Button variant="outline"><IconPlus /> Add Option</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90dvh] overflow-y-auto">
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>Add Option to Company</DialogTitle>
@@ -2547,7 +2547,7 @@ function CompanyFormDialog({ onRefresh, salespersons }: { onRefresh?: () => void
 
     {/* CSV Upload Dialog */}
     <Dialog open={csvUploadOpen} onOpenChange={setCsvUploadOpen}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Upload Companies (CSV)</DialogTitle>
           <DialogDescription>

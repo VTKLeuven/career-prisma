@@ -273,7 +273,7 @@ export default function ZonesClient({
                                     <Plus className="mr-2 h-4 w-4" /> Add Zone
                                 </Button>
                             </DialogTrigger>
-                            <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+                            <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
                                 <DialogHeader>
                                     <DialogTitle>{editingZone ? "Edit Zone" : "Create Zone"}</DialogTitle>
                                 </DialogHeader>

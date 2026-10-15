@@ -527,7 +527,7 @@ function MediaPreviewModal({
 
     return (
         <Dialog open onOpenChange={() => onClose()}>
-            <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+            <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         {getMediaIcon(media.type)}
