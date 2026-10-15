@@ -56,7 +56,7 @@ export default function RequestCompanyPage() {
             </p>
 
             <div className="mt-6 p-4 bg-muted rounded-lg sm:p-6">
-              <h3 className="text-xl font-semibold mb-4">What&apos;s included:</h3>
+              <h3 className="mt-0 text-xl font-semibold mb-4">What&apos;s included:</h3>
               <ul className="list-disc list-inside space-y-2 text-muted-foreground">
                 <li>Public company profile page</li>
                 <li>Company logo and background image</li>
@@ -70,7 +70,7 @@ export default function RequestCompanyPage() {
             <div className="mt-6 p-4 border-2 border-primary rounded-lg sm:p-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="text-2xl font-bold">€200</h3>
+                  <h3 className="mt-0 text-2xl font-bold">€200</h3>
                   <p className="text-sm text-muted-foreground mt-1">Yearly fee, also included in Jobfair Package</p>
                 </div>
                 <Button

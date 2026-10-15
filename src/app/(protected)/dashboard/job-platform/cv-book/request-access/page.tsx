@@ -69,7 +69,7 @@ export default function RequestCVBookAccessPage() {
             </p>
 
             <div className="mt-6 p-4 bg-muted rounded-lg sm:p-6">
-              <h3 className="text-xl font-semibold mb-4">What&apos;s included:</h3>
+              <h3 className="mt-0 text-xl font-semibold mb-4">What&apos;s included:</h3>
               <ul className="list-disc list-inside space-y-2 text-muted-foreground">
                 <li>Browse student CVs from the engineering faculty</li>
                 <li>Search for candidates by skills and experience</li>
@@ -82,13 +82,13 @@ export default function RequestCVBookAccessPage() {
                 <div>
                   {price && (
                     <>
-                      <h3 className="text-2xl font-bold">€{price}</h3>
+                      <h3 className="mt-0 text-2xl font-bold">€{price}</h3>
                       <p className="text-sm text-muted-foreground mt-1">Price for this year&apos;s CV Book</p>
                     </>
                   )}
                   {!price && (
                     <>
-                      <h3 className="text-2xl font-bold">Request Access</h3>
+                      <h3 className="mt-0 text-2xl font-bold">Request Access</h3>
                       <p className="text-sm text-muted-foreground mt-1">
                         Your request will be sent to your salesperson for approval
                       </p>
