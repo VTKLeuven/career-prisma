@@ -1585,16 +1585,16 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
             </div>
           ) : (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="py-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-4">
+                <Card className="col-span-2 py-3 md:col-span-1">
                   <CardContent>
-                    <div className="text-2xl font-bold">{totalCount}</div>
+                    <div className="text-xl font-bold sm:text-2xl">{totalCount}</div>
                     <div className="text-sm text-muted-foreground">Total Responses</div>
                   </CardContent>
                 </Card>
                 <Card className="py-3">
                   <CardContent>
-                    <div className="text-2xl font-bold">
+                    <div className="text-xl font-bold sm:text-2xl">
                       {firstResponseDate ? formatDateBE(firstResponseDate) : "N/A"}
                     </div>
                     <div className="text-sm text-muted-foreground">First Response</div>
@@ -1602,7 +1602,7 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
                 </Card>
                 <Card className="py-3">
                   <CardContent>
-                    <div className="text-2xl font-bold">
+                    <div className="text-xl font-bold sm:text-2xl">
                       {latestResponseDate ? formatDateBE(latestResponseDate) : "N/A"}
                     </div>
                     <div className="text-sm text-muted-foreground">Latest Response</div>
