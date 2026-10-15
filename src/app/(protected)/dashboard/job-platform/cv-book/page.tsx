@@ -270,7 +270,7 @@ export default function CVBookPage() {
           </div>
           <div className="text-center">
             <p className="font-semibold">{student.firstName} {student.lastName}</p>
-            <p className="text-sm text-muted-foreground break-all">{student.email}</p>
+            <p className="text-sm text-muted-foreground truncate" title={student.email}>{student.email}</p>
             {student.linkedinUrl && (
               <a
                 href={student.linkedinUrl}
@@ -473,7 +473,7 @@ export default function CVBookPage() {
                       if (prev) setSelectedStudent(prev)
                     }}
                   >
-                    Previous student
+                    Previous<span className="hidden sm:inline"> student</span>
                   </Button>
                   <Button
                     variant="outline"
@@ -484,7 +484,7 @@ export default function CVBookPage() {
                       if (next) setSelectedStudent(next)
                     }}
                   >
-                    Next student
+                    Next<span className="hidden sm:inline"> student</span>
                   </Button>
                 </div>
               </div>
@@ -515,7 +515,7 @@ export default function CVBookPage() {
                             LinkedIn
                           </a>
                         )}
-                        <Badge variant="secondary">{selectedStudent.study}</Badge>
+                        <Badge variant="secondary" className="max-w-full whitespace-normal text-left">{selectedStudent.study}</Badge>
                       </div>
                     </div>
                     {showFavourites && selectedCVBook?.id && (

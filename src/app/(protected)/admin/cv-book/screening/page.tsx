@@ -388,7 +388,7 @@ export default function CVBookScreeningPage() {
                             LinkedIn
                           </a>
                         )}
-                        <Badge variant="secondary">{selectedStudent.study}</Badge>
+                        <Badge variant="secondary" className="max-w-full whitespace-normal text-left">{selectedStudent.study}</Badge>
                         <span className="text-xs text-muted-foreground">
                           Uploaded: {formatDate(selectedStudent.submittedAt)}
                         </span>
