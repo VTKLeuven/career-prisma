@@ -1761,7 +1761,7 @@ function VersionsDialog({
           ) : (
             versions.map((version) => (
               <Card key={version.id}>
-                <CardContent className="pt-6">
+                <CardContent>
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">

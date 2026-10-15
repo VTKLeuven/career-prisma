@@ -1387,7 +1387,7 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
     return (
       <div className="container mx-auto sm:p-8">
         <Card>
-          <CardContent className="pt-6">
+          <CardContent>
             <div className="text-center py-12">
               <h2 className="text-2xl font-bold mb-2">Form Not Found</h2>
               <p className="text-muted-foreground mb-4">The form you&apos;re looking for doesn&apos;t exist.</p>

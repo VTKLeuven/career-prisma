@@ -165,7 +165,7 @@ function EmailQueueDashboard() {
       {/* Metrics overview */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
-          <CardContent className="pt-6">
+          <CardContent>
             <div className="flex items-center gap-3">
               <div className="rounded-lg bg-blue-100 dark:bg-blue-900/30 p-2">
                 <Send className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -178,7 +178,7 @@ function EmailQueueDashboard() {
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-6">
+          <CardContent>
             <div className="flex items-center gap-3">
               <div className="rounded-lg bg-red-100 dark:bg-red-900/30 p-2">
                 <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
@@ -191,7 +191,7 @@ function EmailQueueDashboard() {
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-6">
+          <CardContent>
             <div className="flex items-center gap-3">
               <div className="rounded-lg bg-amber-100 dark:bg-amber-900/30 p-2">
                 <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
@@ -204,7 +204,7 @@ function EmailQueueDashboard() {
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-6">
+          <CardContent>
             <div className="flex items-center gap-3">
               <div className="rounded-lg bg-green-100 dark:bg-green-900/30 p-2">
                 <Activity className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -217,7 +217,7 @@ function EmailQueueDashboard() {
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-6">
+          <CardContent>
             <div className="flex items-center gap-3">
               <div className={`rounded-lg p-2 ${stats.metrics.rateLimitErrors > 0 ? "bg-red-100 dark:bg-red-900/30" : "bg-muted"}`}>
                 <AlertTriangle className={`h-5 w-5 ${stats.metrics.rateLimitErrors > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`} />

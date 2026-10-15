@@ -26,7 +26,7 @@ export default async function DashboardSchedulesPage({ params }: { params: Promi
     return (
       <div className="w-full gap-4 flex flex-col">
         <Card>
-          <CardContent className="pt-6">
+          <CardContent>
             <h2 className="text-lg font-semibold">No access</h2>
             <p className="mt-2 text-sm text-muted-foreground">
               Your company does not have access to Student Schedules. Contact us if you believe this is an error.
@@ -45,7 +45,7 @@ export default async function DashboardSchedulesPage({ params }: { params: Promi
     return (
       <div className="w-full gap-4 flex flex-col">
         <Card>
-          <CardContent className="pt-6">
+          <CardContent>
             <h2 className="text-lg font-semibold">Schedules not available</h2>
             <p className="mt-2 text-sm text-muted-foreground">
               Student schedules are only available during the event. Please come back when the event is taking place.
