@@ -243,8 +243,8 @@ export default function ShifterDashboardClient({ initialZones, currentUserId }: 
         <div className="space-y-6 w-full max-w-full min-w-0 overflow-x-hidden">
             {/* Header with view toggle */}
             <div className="flex items-center justify-between flex-wrap gap-4">
-                <div className="flex items-center gap-4">
-                    <label className="font-medium">Filter by Zone:</label>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <label className="font-medium whitespace-nowrap">Filter by Zone:</label>
                     <Select value={selectedZone} onValueChange={setSelectedZone}>
                         <SelectTrigger className="w-[200px]">
                             <SelectValue placeholder="All Zones" />
@@ -266,7 +266,7 @@ export default function ShifterDashboardClient({ initialZones, currentUserId }: 
                     </Select>
 
                     {!showHistory && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
                             <Loader2 className="h-4 w-4 animate-spin" />
                             <span>Live updates</span>
                         </div>
