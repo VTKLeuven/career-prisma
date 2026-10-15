@@ -369,7 +369,7 @@ export default function ZonesClient({
                                             )}
                                         </div>
 
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
                                             <p className="text-sm text-muted-foreground">
                                                 {formData.booths.length} of {filteredBooths2.length} booths selected
                                             </p>
@@ -398,18 +398,18 @@ export default function ZonesClient({
                                             </div>
                                         </div>
 
-                                        <div className="border rounded-md p-4 h-60 overflow-y-auto grid grid-cols-2 gap-2">
+                                        <div className="border rounded-md p-4 h-60 overflow-y-auto grid grid-cols-1 gap-2 sm:grid-cols-2">
                                             {filteredBooths2.map(booth => {
                                                 const companyName = booth.company?.name || "Unassigned";
                                                 const floorPlanName = booth.Floorplan?.name || "Unknown Floorplan";
                                                 return (
-                                                    <div key={booth.id} className="flex items-center space-x-2">
+                                                    <div key={booth.id} className="flex items-start space-x-2">
                                                         <input
                                                             type="checkbox"
                                                             id={`booth-${booth.id}`}
                                                             checked={formData.booths.includes(String(booth.id))}
                                                             onChange={() => toggleBooth(String(booth.id))}
-                                                            className="h-4 w-4 rounded border-gray-300"
+                                                            className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300"
                                                         />
                                                         <label htmlFor={`booth-${booth.id}`} className="text-sm cursor-pointer">
                                                             <span className="font-bold">{booth.booth_number}</span> - {companyName} <span className="text-xs text-muted-foreground">({floorPlanName})</span>
