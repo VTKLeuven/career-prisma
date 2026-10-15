@@ -2501,20 +2501,21 @@ function CompanyFormDialog({ onRefresh, salespersons }: { onRefresh?: () => void
               </div>
             </div>
 
-            <div className="w-full flex gap-4">
-              <div className="flex-2/5">
+            {/* Country gets its own row on a phone; a fifth of the width can't hold it. */}
+            <div className="grid w-full grid-cols-2 gap-4 sm:grid-cols-[2fr_2fr_1fr]">
+              <div>
                 <Label htmlFor="zip" className="text-xs">
                   ZIP
                 </Label>
                 <Input name="zip" id="zip" placeholder="3001" />
               </div>
-              <div className="flex-2/5">
+              <div>
                 <Label htmlFor="city" className="text-xs">
                   City
                 </Label>
                 <Input name="city" id="city" placeholder="Leuven" />
               </div>
-              <div className="flex-1/5">
+              <div className="col-span-2 sm:col-span-1">
                 <Label htmlFor="country" className="text-xs">
                   Country
                 </Label>
