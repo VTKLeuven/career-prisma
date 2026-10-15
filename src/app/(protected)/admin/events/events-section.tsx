@@ -375,9 +375,9 @@ function EventCard({ event, status, onChanged }: { event: CareerEvent; status?: 
   };
 
   return (
-    <Card className="border rounded-lg shadow-sm">
+    <Card className="@container border rounded-lg shadow-sm">
       <CardHeader className="flex flex-row items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <CardTitle>{event.name}</CardTitle>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
             <span className="rounded-full bg-muted px-2 py-1">
@@ -400,8 +400,10 @@ function EventCard({ event, status, onChanged }: { event: CareerEvent; status?: 
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="grid grid-cols-2 gap-4">
-        <div className="grid grid-cols-2 gap-1 text-sm text-muted-foreground">
+      {/* Details beside the actions only when the card itself is wide enough:
+          on a phone, or two cards to a row, the buttons need the full width. */}
+      <CardContent className="grid grid-cols-1 gap-4 @lg:grid-cols-2">
+        <div className="grid grid-cols-[auto_1fr] content-start gap-x-4 gap-y-1 text-sm text-muted-foreground">
           <span>Date</span>
           <span className="font-medium text-foreground">{String(event.date ?? "TBA")}</span>
           <span>Hours</span>
