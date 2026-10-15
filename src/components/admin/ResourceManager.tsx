@@ -499,7 +499,7 @@ function FieldInput({
           value={String(value ?? "")}
           onValueChange={(v) => onChange(v === "__none__" ? "" : v)}
         >
-          <SelectTrigger id={id}>
+          <SelectTrigger id={id} className="w-full">
             <SelectValue placeholder={field.placeholder ?? "Select..."} />
           </SelectTrigger>
           <SelectContent>
