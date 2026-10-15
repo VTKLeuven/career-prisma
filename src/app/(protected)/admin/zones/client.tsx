@@ -217,7 +217,7 @@ export default function ZonesClient({
             <div className="flex flex-col gap-4 rounded-lg border p-4 bg-muted/30">
                 <Label>Career Event Page</Label>
                 <Select value={selectedEventPageId} onValueChange={setSelectedEventPageId}>
-                    <SelectTrigger className="max-w-md">
+                    <SelectTrigger className="w-full max-w-md">
                         <SelectValue placeholder="Select a career event page to manage zones & booths..." />
                     </SelectTrigger>
                     <SelectContent>

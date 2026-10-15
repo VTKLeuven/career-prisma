@@ -750,7 +750,7 @@ function ScheduleTab({
                 <div className="flex flex-col gap-2">
                     <Label>Select Screen</Label>
                     <Select value={selectedScreenId} onValueChange={setSelectedScreenId}>
-                        <SelectTrigger className="max-w-md">
+                        <SelectTrigger className="w-full max-w-md">
                             <SelectValue placeholder="Choose a screen to manage its schedule..." />
                         </SelectTrigger>
                         <SelectContent>
