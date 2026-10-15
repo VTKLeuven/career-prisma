@@ -231,4 +231,9 @@
   .app-ui [data-slot="card"] {
     --card-px: 1rem;
   }
+  /* Same for dialogs, which already sit 1rem from the screen edge. */
+  .app-ui [data-slot="dialog-content"],
+  .app-ui [data-slot="alert-dialog-content"] {
+    --dialog-p: 1rem;
+  }
 }
