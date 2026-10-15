@@ -574,7 +574,7 @@ export function CompaniesSection({
               nounPlural="companies"
               defaultSort={{ key: "name" }}
               loading={loading}
-              containerClassName="max-h-[calc(100svh-17rem)]"
+              containerClassName="roomy:max-h-[calc(100svh-17rem)]"
               onRowClick={setEditingCompany}
               isRowSelected={(company) => editingCompany?.id === company.id}
               rowActionsAlwaysVisible

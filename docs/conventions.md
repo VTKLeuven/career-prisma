@@ -84,7 +84,9 @@ so re-apply the classes if you do.
   bubbling up from portaled dialogs (`e.currentTarget.contains(e.target)`).
   `ResourceManager` does all of this and edits in a panel sliding in from the
   right; tables keep a sticky header inside a height-capped scroll area
-  (`Table`'s `containerClassName`) so the toolbar stays in view.
+  (`Table`'s `containerClassName`) so the toolbar stays in view. The cap sits
+  behind the `roomy:` variant (`globals.css`): on a phone the table grows with
+  its rows instead, so the page scrolls once rather than a box inside a box.
 - **Tables.** Every admin list is a `DataTable`
   (`src/components/admin/DataTable.tsx`); don't hand-roll a `<Table>` or a
   second `useReactTable`. It gives click-to-sort headers, search, per-column

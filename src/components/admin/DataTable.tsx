@@ -203,6 +203,8 @@ export type DataTableProps<T> = {
    * Classes for the scroll area. The default caps the height to the viewport
    * so the header stays sticky and the toolbar stays in view; a table that
    * shares its page with other content can pass a smaller cap, or "" for none.
+   * Put a cap behind `roomy:` -- on a phone it would nest a second vertical
+   * scroll inside the page's, so there the table grows with its rows.
    */
   containerClassName?: string;
   className?: string;
@@ -235,7 +237,7 @@ export function DataTable<T>({
   emptyAction,
   emptyMessage,
   loading = false,
-  containerClassName = "max-h-[calc(100svh-15rem)]",
+  containerClassName = "roomy:max-h-[calc(100svh-15rem)]",
   className,
 }: DataTableProps<T>) {
   const plural = nounPlural ?? `${noun}s`;

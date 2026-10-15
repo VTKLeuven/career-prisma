@@ -379,7 +379,7 @@ function EmailQueueDashboard() {
               getRowId={(entry) => String(entry.id)}
               noun="email"
               defaultSort={{ key: "time", desc: true }}
-              containerClassName="max-h-[32rem]"
+              containerClassName="roomy:max-h-[32rem]"
             />
           )}
         </CardContent>

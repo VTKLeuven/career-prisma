@@ -359,7 +359,7 @@ function ViewMatchesDialog({ item }: { item: MatchingSoftwareRow }) {
           loading={loading}
           defaultSort={{ key: "matchCount", desc: true }}
           emptyMessage="No companies with completed matching"
-          containerClassName="max-h-[55vh]"
+          containerClassName="roomy:max-h-[55vh]"
         />
         <p className="text-xs text-muted-foreground">
           Total: {data.reduce((s, r) => s + r.matchCount, 0)} matches

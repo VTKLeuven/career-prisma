@@ -4,6 +4,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* A screen with room for a scroll area inside the page: wide enough and tall
+   enough that a height-capped table still shows a useful number of rows. On a
+   phone (upright or on its side) the table grows with its rows instead, so
+   the page has one vertical scroll, not a scroll box nested in another. */
+@custom-variant roomy (@media (min-width: 640px) and (min-height: 600px));
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

@@ -133,7 +133,7 @@ export default function AdminFormsPage() {
         noun="form"
         search={{ keys: ["slug", "description"] }}
         loading={loading}
-        containerClassName="max-h-[calc(100svh-17rem)]"
+        containerClassName="roomy:max-h-[calc(100svh-17rem)]"
         emptyMessage="No forms yet. Create your first form to get started"
         onRowClick={(form) => setEditingId(form.id)}
         isRowSelected={(form) => editingId === form.id}
