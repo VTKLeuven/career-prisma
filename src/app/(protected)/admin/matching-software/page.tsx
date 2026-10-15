@@ -37,6 +37,7 @@ import { useUser } from "@/providers/UserProvider";
 import type { MatchingSoftware, AcademicYear, Form, CareerEvent } from "@/lib/schema";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { toast } from "sonner";
+import { formatDateBE } from "@/lib/date-utils";
 
 type MatchingSoftwareRow = MatchingSoftware & {
   year: AcademicYear;
@@ -455,7 +456,7 @@ function CreateMatchingSoftwareDialog({ eventId: preselectedEventId, onCreated }
               <SelectContent>
                 {academicYears.map((y) => (
                   <SelectItem key={y.id} value={y.id}>
-                    {y.name} ({y.start_of_year} - {y.end_of_year})
+                    {y.name} ({formatDateBE(y.start_of_year)} - {formatDateBE(y.end_of_year)})
                   </SelectItem>
                 ))}
               </SelectContent>

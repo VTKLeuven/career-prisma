@@ -35,6 +35,7 @@ import { IconPlus } from "@tabler/icons-react";
 import type { CareerEvent, Company, HeaderButtonType } from "@/lib/schema";
 import { SimpleRichTextEditor } from "@/components/admin/SimpleRichTextEditor";
 import { toast } from "sonner";
+import { formatDateBE } from "@/lib/date-utils";
 import { confirmDialog } from "@/components/confirm-dialog";
 
 export type EventsSectionData = { events: CareerEvent[]; statuses: Record<string, EventSetupStatus> };
@@ -598,7 +599,7 @@ function AddMatchingSoftwareDialog({ event, onCreated }: { event: CareerEvent; o
               <SelectContent>
                 {academicYears.map((y) => (
                   <SelectItem key={y.id} value={y.id}>
-                    {y.name} ({y.start_of_year} - {y.end_of_year})
+                    {y.name} ({formatDateBE(y.start_of_year)} - {formatDateBE(y.end_of_year)})
                   </SelectItem>
                 ))}
               </SelectContent>
