@@ -321,7 +321,7 @@ export default function CVBookPage() {
     .sort((a, b) => b.start_of_year.localeCompare(a.start_of_year))
 
   return (
-    <div className="container mx-auto p-8">
+    <div className="container mx-auto sm:p-8">
       <Card className="max-w-6xl w-full">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">

@@ -160,7 +160,7 @@ export default function PrintClient({
   };
 
   return (
-    <div className="p-8">
+    <div className="sm:p-8">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Print Booth QR Codes</h1>

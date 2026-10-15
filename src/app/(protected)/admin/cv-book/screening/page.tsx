@@ -230,7 +230,7 @@ export default function CVBookScreeningPage() {
   // renders. The admin layout already redirects non-admins; this is a fallback.
   if (!user?.admin) {
     return (
-      <div className="container mx-auto p-8">
+      <div className="container mx-auto sm:p-8">
         <p className="text-destructive">Access denied. Admin only.</p>
       </div>
     );

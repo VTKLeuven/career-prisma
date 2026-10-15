@@ -48,7 +48,7 @@ export default function RequestCVBookAccessPage() {
   }
 
   return (
-    <div className="container mx-auto max-w-4xl py-8 px-4">
+    <div className="container mx-auto max-w-4xl sm:px-4 sm:py-8">
       <Card className="rounded-2xl shadow-md">
         <CardHeader>
           <div className="flex justify-center mb-4">

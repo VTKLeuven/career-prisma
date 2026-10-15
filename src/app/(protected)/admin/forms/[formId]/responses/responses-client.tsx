@@ -1385,7 +1385,7 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
 
   if (!form) {
     return (
-      <div className="container mx-auto p-8">
+      <div className="container mx-auto sm:p-8">
         <Card>
           <CardContent className="pt-6">
             <div className="text-center py-12">

@@ -32,7 +32,7 @@ export default async function DashboardOrderDrinksPage() {
     }
 
     return (
-        <div className="container mx-auto max-w-md py-8 px-4">
+        <div className="container mx-auto max-w-md sm:px-4 sm:py-8">
             <div className="text-center mb-8">
                 <h1 className="text-2xl font-bold">{boothData.company?.name || "Booth " + boothData.booth_number}</h1>
                 <p className="text-muted-foreground">Booth #{boothData.booth_number}</p>

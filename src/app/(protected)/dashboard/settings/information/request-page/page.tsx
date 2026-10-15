@@ -32,7 +32,7 @@ export default function RequestCompanyPage() {
   }
 
   return (
-    <div className="container mx-auto max-w-4xl py-8 px-4">
+    <div className="container mx-auto max-w-4xl sm:px-4 sm:py-8">
       <Link
         href="/dashboard/settings/information"
         className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6"
