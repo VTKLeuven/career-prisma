@@ -24,8 +24,8 @@ type Master = { id: string; name: string };
 type FacultyItem = { id: string; name: string; masters?: Array<{ master_id: Master | string | null } | Master>; faculty_master?: unknown[]; faculty_masters?: unknown[] };
 
 /** Normalize for matching: trim, collapse spaces, lowercase, strip content in brackets () [] {} */
-function normalizeForMatch(s: string): string {
-  return s
+function normalizeForMatch(s: unknown): string {
+  return String(s ?? "")
     .replace(/\([^)]*\)/g, "")
     .replace(/\[[^\]]*\]/g, "")
     .replace(/\{[^}]*\}/g, "")
@@ -40,7 +40,8 @@ function buildMasterDegreeOptions(
   includeFaculties: boolean
 ): MasterOption[] {
   if (!includeFaculties || !faculties || faculties.length === 0) {
-    return masters.map((m) => ({ value: m.id, label: m.name }));
+    // Master ids are Int columns; Select values and stored answers are strings.
+    return masters.map((m) => ({ value: String(m.id), label: m.name ?? "" }));
   }
   // Sort: faculties with masters first, then those without, "Other" always last
   const sortedFaculties = [...faculties].sort((a, b) => {
@@ -69,7 +70,7 @@ function buildMasterDegreeOptions(
         if (item && typeof item === "object" && "master_id" in item) {
           const mid = (item as { master_id: Master | string | null }).master_id;
           if (mid && typeof mid === "object" && "id" in mid) return mid as Master;
-          if (mid && typeof mid === "string") return masters.find((m) => m.id === mid) ?? null;
+          if (mid != null && typeof mid !== "object") return masters.find((m) => String(m.id) === String(mid)) ?? null;
           return null;
         }
         return (item && typeof item === "object" && "id" in item) ? (item as Master) : null;
