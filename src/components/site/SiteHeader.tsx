@@ -578,7 +578,7 @@ const studentLogout = async (router: ReturnType<typeof useRouter>) => {
 /**
  * The desktop account cluster. Every public page shows exactly this, which is
  * the point: the Admin button appears whenever a staff account is signed in,
- * beside the Company Dashboard button, on every page or none.
+ * beside the Company Dashboard button (Company login when signed out), on every page or none.
  */
 function AccountButtons({ companyRep, student, router }: AccountProps) {
   return (
@@ -594,7 +594,7 @@ function AccountButtons({ companyRep, student, router }: AccountProps) {
           variant="outline"
           className="hidden rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 md:inline-flex"
         >
-          <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>
+          <Link href={companyRep ? "/dashboard" : "/login"}>{companyRep ? "Company Dashboard" : "Company login"}</Link>
         </Button>
       )}
       {!student && !companyRep && (
@@ -691,7 +691,7 @@ function MobileAccountButtons({
           className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
           onClick={onNavigate}
         >
-          <Link href={companyRep ? "/dashboard" : "/login"}>Company Dashboard</Link>
+          <Link href={companyRep ? "/dashboard" : "/login"}>{companyRep ? "Company Dashboard" : "Company login"}</Link>
         </Button>
       )}
       {!student && !companyRep && (
