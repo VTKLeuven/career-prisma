@@ -210,9 +210,9 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
             {items.map((item) => (
               <div
                 key={item.id}
-                className="flex items-center justify-between rounded-lg border p-4"
+                className="flex flex-col gap-3 rounded-lg border p-4 lg:flex-row lg:items-center lg:justify-between"
               >
-                <div>
+                <div className="min-w-0">
                   <div className="font-medium">
                     {(item.event as CareerEvent)?.name || "Unknown event"}
                   </div>
@@ -221,7 +221,7 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
                     {(item.prerequisite_form as Form)?.name || "None"}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                   <ViewMatchesDialog item={item} />
                   <Button
                     variant="outline"
@@ -236,38 +236,42 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
                     )}
                     <span className="ml-1.5">{syncingId === item.id ? "Syncing…" : "Sync company matches"}</span>
                   </Button>
-                  <Checkbox
-                    id={`active-${item.id}`}
-                    checked={item.active ?? true}
-                    onCheckedChange={() => handleToggleActive(item)}
-                    disabled={togglingId === item.id}
-                  />
-                  <Label
-                    htmlFor={`active-${item.id}`}
-                    className="text-sm cursor-pointer select-none"
-                  >
-                    {item.active ? (
-                      <span className="text-green-600">Active</span>
-                    ) : (
-                      <span className="text-muted-foreground">Inactive</span>
-                    )}
-                  </Label>
-                  <Checkbox
-                    id={`view-${item.id}`}
-                    checked={item.companies_can_view_matches ?? false}
-                    onCheckedChange={() => handleToggleCompaniesCanViewMatches(item)}
-                    disabled={togglingViewId === item.id}
-                  />
-                  <Label
-                    htmlFor={`view-${item.id}`}
-                    className="text-sm cursor-pointer select-none"
-                  >
-                    {item.companies_can_view_matches ? (
-                      <span className="text-green-600">Companies can view matches</span>
-                    ) : (
-                      <span className="text-muted-foreground">Companies can view matches</span>
-                    )}
-                  </Label>
+                  <span className="flex items-center gap-2">
+                    <Checkbox
+                      id={`active-${item.id}`}
+                      checked={item.active ?? true}
+                      onCheckedChange={() => handleToggleActive(item)}
+                      disabled={togglingId === item.id}
+                    />
+                    <Label
+                      htmlFor={`active-${item.id}`}
+                      className="text-sm cursor-pointer select-none"
+                    >
+                      {item.active ? (
+                        <span className="text-green-600">Active</span>
+                      ) : (
+                        <span className="text-muted-foreground">Inactive</span>
+                      )}
+                    </Label>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <Checkbox
+                      id={`view-${item.id}`}
+                      checked={item.companies_can_view_matches ?? false}
+                      onCheckedChange={() => handleToggleCompaniesCanViewMatches(item)}
+                      disabled={togglingViewId === item.id}
+                    />
+                    <Label
+                      htmlFor={`view-${item.id}`}
+                      className="text-sm cursor-pointer select-none"
+                    >
+                      {item.companies_can_view_matches ? (
+                        <span className="text-green-600">Companies can view matches</span>
+                      ) : (
+                        <span className="text-muted-foreground">Companies can view matches</span>
+                      )}
+                    </Label>
+                  </span>
                 </div>
               </div>
             ))}

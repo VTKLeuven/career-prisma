@@ -77,7 +77,7 @@ export function EventsSection({
 
   return (
     <Card className="rounded-xl">
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <CardTitle className="text-2xl">Annual event editions</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">

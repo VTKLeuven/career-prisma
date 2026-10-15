@@ -68,7 +68,7 @@ export default function RequestCVBookAccessPage() {
               and connect with talented students from the engineering faculty.
             </p>
 
-            <div className="mt-6 p-6 bg-muted rounded-lg">
+            <div className="mt-6 p-4 bg-muted rounded-lg sm:p-6">
               <h3 className="text-xl font-semibold mb-4">What&apos;s included:</h3>
               <ul className="list-disc list-inside space-y-2 text-muted-foreground">
                 <li>Browse student CVs from the engineering faculty</li>
@@ -77,8 +77,8 @@ export default function RequestCVBookAccessPage() {
               </ul>
             </div>
 
-            <div className="mt-6 p-6 border-2 border-primary rounded-lg">
-              <div className="flex items-center justify-between">
+            <div className="mt-6 p-4 border-2 border-primary rounded-lg sm:p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   {price && (
                     <>
@@ -97,7 +97,7 @@ export default function RequestCVBookAccessPage() {
                 </div>
                 <Button
                   size="lg"
-                  className="cursor-pointer"
+                  className="w-full cursor-pointer sm:w-auto"
                   onClick={handleRequest}
                   disabled={loading || success}
                 >

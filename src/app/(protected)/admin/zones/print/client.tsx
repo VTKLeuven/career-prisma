@@ -161,7 +161,7 @@ export default function PrintClient({
 
   return (
     <div className="p-8">
-      <div className="mb-8 flex justify-between items-center">
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Print Booth QR Codes</h1>
           {eventPageName && (
@@ -171,7 +171,7 @@ export default function PrintClient({
             </p>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" asChild>
             <Link href="/admin/zones">
               <ArrowLeft className="mr-2 h-4 w-4" />

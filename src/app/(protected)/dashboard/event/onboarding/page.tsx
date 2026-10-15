@@ -39,7 +39,7 @@ function EventDetailsCard() {
     <Card className="rounded-2xl shadow-md bg-slate-700 text-white">
       <CardHeader>
         <CardTitle>VTK Jobfair</CardTitle>
-        <div className="grid grid-cols-[150px_1fr] gap-y-1 text-sm mt-6">
+        <div className="grid grid-cols-[6rem_1fr] gap-y-1 text-sm mt-6 sm:grid-cols-[150px_1fr]">
           <span className="font-medium">Date:</span>
           <span>Mar 14, 2025</span>
           <span className="font-medium">Time:</span>
@@ -59,7 +59,7 @@ function GeneralCompanyInfoForm() {
   return (
     <Card className="rounded-2xl shadow-md">
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-xl">Primary Contact For Issues</CardTitle>
           <p className="text-sm font-semibold text-red-600">
             Submission Deadline: <time dateTime="2025-09-01">September 1, 2025</time>
@@ -111,7 +111,7 @@ function CompanyGuideForm() {
   return (
     <Card className="rounded-2xl shadow-md">
       <CardHeader>
-        <div className="flex items-center justify-between">        <CardTitle className="text-xl">Company Guide Form</CardTitle>
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">        <CardTitle className="text-xl">Company Guide Form</CardTitle>
           <p className="text-sm font-semibold text-red-600">
             Submission Deadline: <time dateTime="2025-09-01">xxx</time>
           </p></div>
@@ -123,7 +123,7 @@ function CompanyGuideForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button type="submit"><IconEdit />Start Editing Your CG Info</Button>
           <Button variant="secondary" type="submit"><IconEye />Preview Example</Button>
         </div>
@@ -193,7 +193,7 @@ export default function CompanyParticipantsForm() {
         <CompanyGuideForm />
         <Card className="rounded-2xl shadow-md">
           <CardHeader>
-            <div className="flex items-center justify-between">        <CardTitle className="text-xl">Participant Form</CardTitle>
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">        <CardTitle className="text-xl">Participant Form</CardTitle>
               <p className="text-sm font-semibold text-red-600">
                 Submission Deadline: <time dateTime="2025-09-01">xxxs</time>
               </p></div>

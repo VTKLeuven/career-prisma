@@ -315,7 +315,7 @@ export default function CVBookScreeningPage() {
             <div className="text-center py-8 text-muted-foreground">Loading CVs...</div>
           ) : viewMode === "detail" && selectedStudent ? (
             <div className="flex flex-col min-h-0" style={{ minHeight: "calc(100vh - 12rem)" }}>
-              <div className="flex items-center justify-between shrink-0 mb-4">
+              <div className="flex items-center justify-between gap-2 shrink-0 mb-4">
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -324,7 +324,7 @@ export default function CVBookScreeningPage() {
                     setEditingStudy(null);
                   }}
                 >
-                  ← Back to Overview
+                  ← Back<span className="hidden sm:inline"> to Overview</span>
                 </Button>
                 <div className="flex items-center gap-2">
                   <Button
@@ -373,7 +373,7 @@ export default function CVBookScreeningPage() {
                       <div className="flex items-center gap-4 flex-wrap">
                         <div className="flex items-center gap-2">
                           <IconMail className="h-5 w-5 text-muted-foreground" />
-                          <a href={`mailto:${selectedStudent.email}`} className="text-vtk-blue hover:underline">
+                          <a href={`mailto:${selectedStudent.email}`} className="break-all text-vtk-blue hover:underline">
                             {selectedStudent.email}
                           </a>
                         </div>

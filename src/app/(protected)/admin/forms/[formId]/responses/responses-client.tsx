@@ -1418,14 +1418,14 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <CardTitle>Form Responses</CardTitle>
               <CardDescription>
                 {totalCount} response(s) {isAllVersions ? "across all versions" : selectedVersion && `for version ${selectedVersion.version_number}`}
               </CardDescription>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 lg:justify-end">
               <Select 
                 value={isAllVersions ? "__all__" : selectedVersionId} 
                 onValueChange={(value) => {
@@ -1438,7 +1438,7 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
                   }
                 }}
               >
-                <SelectTrigger className="w-48">
+                <SelectTrigger className="w-full sm:w-48">
                   <SelectValue placeholder="Select version" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1992,7 +1992,7 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
 
               {/* Pagination Controls - only show for submissions */}
               {viewMode === "submissions" && totalCount > pageSize && (
-                <div className="flex items-center justify-between border-t pt-4">
+                <div className="flex flex-col items-center gap-3 border-t pt-4 sm:flex-row sm:justify-between">
                   <div className="text-sm text-muted-foreground">
                     Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} responses
                   </div>
@@ -2012,8 +2012,8 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
                       onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                       disabled={currentPage === 1 || loadingResponses}
                     >
-                      <ChevronLeft className="h-4 w-4 mr-1" />
-                      Previous
+                      <ChevronLeft className="h-4 w-4 sm:mr-1" />
+                      <span className="sr-only sm:not-sr-only">Previous</span>
                     </Button>
                     <div className="text-sm text-muted-foreground">
                       Page {currentPage} of {Math.ceil(totalCount / pageSize)}
@@ -2024,8 +2024,8 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
                       onClick={() => setCurrentPage(prev => Math.min(Math.ceil(totalCount / pageSize), prev + 1))}
                       disabled={currentPage >= Math.ceil(totalCount / pageSize) || loadingResponses}
                     >
-                      Next
-                      <ChevronRight className="h-4 w-4 ml-1" />
+                      <span className="sr-only sm:not-sr-only">Next</span>
+                      <ChevronRight className="h-4 w-4 sm:ml-1" />
                     </Button>
                     <Button
                       variant="outline"

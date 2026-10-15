@@ -399,7 +399,7 @@ export function CompanyInformationForm({
     <div className="w-full gap-4 flex flex-col">
       {/* Company Information Section */}
       <Card className="rounded-2xl shadow-md">
-        <CardHeader className="flex flex-row items-start justify-between gap-4">
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex-1">
             <CardTitle className="text-xl">Company Information</CardTitle>
             <CardDescription>
