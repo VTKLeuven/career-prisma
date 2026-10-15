@@ -65,19 +65,15 @@ export const STUDY_YEARS: StudyOption[] = [
   { value: "other", labelNl: "Andere", labelEn: "Other" },
 ];
 
-const PROGRAMME_VALUES = new Set(STUDY_PROGRAMMES.map((o) => o.value));
 const YEAR_VALUES = new Set(STUDY_YEARS.map((o) => o.value));
 
 /**
- * Keeps only values this app recognises. The SSO's own claims are NOT filtered
+ * Keeps only years this app recognises. The SSO's own claims are NOT filtered
  * through this — it may know enum values we have not listed yet, and dropping
  * them would be worse than storing them. This exists for the onboarding form,
- * where the input comes from the browser.
+ * where the input comes from the browser. (Programmes are no longer chosen
+ * from this vocabulary on Career: see src/lib/study-choices.ts.)
  */
-export function filterProgrammes(values: string[]): string[] {
-  return [...new Set(values.filter((v) => PROGRAMME_VALUES.has(v)))];
-}
-
 export function filterYears(values: string[]): string[] {
   return [...new Set(values.filter((v) => YEAR_VALUES.has(v)))];
 }

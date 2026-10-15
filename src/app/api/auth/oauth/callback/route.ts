@@ -27,6 +27,7 @@ import {
 } from "@/lib/vtk-sso";
 import { toSsoProfile, unmappedClaims } from "@/lib/vtk-sso-claims";
 import { upsertStudentFromSso } from "@/lib/repos/students";
+import { studyEditability } from "@/lib/study-options";
 import { logSystemEvent, type SystemLogLevel } from "@/lib/repos/system-logs";
 import {
   createSessionToken,
@@ -207,8 +208,14 @@ export async function GET(request: NextRequest) {
         details: { preferredEmail: profile.email, otherStudentId: emailConflictWith },
       });
     }
+    // A programme that is the student's to choose (vtk.be sent none, or they
+    // are not at the faculty) is answered by the masters/faculties they ticked
+    // on Career; a locked one always has vtk.be's programmes behind it.
     const needsStudyOnboarding =
-      student.study_programmes.length === 0 || student.study_years.length === 0;
+      (studyEditability(student).programmes &&
+        student.study_master_ids.length === 0 &&
+        student.study_faculty_ids.length === 0) ||
+      student.study_years.length === 0;
 
     await logSystemEvent({
       source: "vtk_sso",

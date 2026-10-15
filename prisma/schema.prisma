@@ -730,6 +730,15 @@ model Student {
   // /student/account. For a member outside the faculty it also stops the next
   // login overwriting their programme choice with vtk.be's.
   study_self_reported             Boolean                          @default(false)
+  // What the student studies, as chosen on Career from the admin's Education
+  // tab: ids into `masters`, plus `faculties` for a faculty without masters
+  // (students outside FIRW). Plain id lists, not junctions — a deleted master
+  // or faculty just stops matching (src/lib/study-choices.ts). Only read while
+  // the programme is the student's to choose (studyEditability()); for a
+  // locked SSO student vtk.be's programmes map to masters through
+  // `masters.study_programme` instead.
+  study_master_ids                Int[]                            @default([])
+  study_faculty_ids               Int[]                            @default([])
   // What the SSO last SENT for study info, verbatim, separate from what we use
   // (`study_programmes` / `study_years`). The two differ for members outside
   // the faculty, who may choose their programme on Career, and for anyone the

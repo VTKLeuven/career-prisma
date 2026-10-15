@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { getStudentFromCookies } from "@/lib/auth-student";
 import { studyEditability } from "@/lib/study-options";
+import { loadStudentStudy } from "@/lib/student-study";
+import { toChoiceValues } from "@/lib/study-choices";
 import StudyDetailsClient from "./client";
 
 export const dynamic = "force-dynamic";
@@ -34,11 +36,14 @@ export default async function StudyDetailsPage({
     redirect(`/student-login?redirectTo=${encodeURIComponent("/student/study-details")}`);
   }
 
+  const study = await loadStudentStudy(student);
+
   return (
     <StudyDetailsClient
       redirectTo={redirectTo}
       name={student.first_name ?? student.full_name ?? null}
-      programmes={student.study_programmes}
+      studyGroups={study.groups}
+      studies={toChoiceValues(study.ids)}
       years={student.study_years}
       editable={studyEditability(student)}
     />

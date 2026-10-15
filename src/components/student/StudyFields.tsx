@@ -2,8 +2,11 @@
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { STUDY_PROGRAMMES, STUDY_YEARS, type StudyOption } from "@/lib/study-options";
+import { STUDY_YEARS } from "@/lib/study-options";
+import type { StudyChoiceGroup, StudyChoiceOption } from "@/lib/study-choices";
 import { cn } from "@/lib/utils";
+
+const YEAR_OPTIONS: StudyChoiceOption[] = STUDY_YEARS.map((y) => ({ value: y.value, label: y.labelEn }));
 
 function toggle(value: string, current: string[]): string[] {
   return current.includes(value)
@@ -11,87 +14,111 @@ function toggle(value: string, current: string[]): string[] {
     : [...current, value];
 }
 
-function OptionList({
+function OptionGrid({
   idPrefix,
-  legend,
   options,
   selected,
   disabled,
   onChange,
 }: {
   idPrefix: string;
-  legend: string;
-  options: StudyOption[];
+  options: StudyChoiceOption[];
   selected: string[];
   disabled: boolean;
   onChange: (next: string[]) => void;
 }) {
   return (
-    <fieldset className="space-y-3" disabled={disabled}>
-      <legend className="text-sm font-medium mb-2">{legend}</legend>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {options.map((option) => (
+    <div className="grid gap-2 sm:grid-cols-2">
+      {options.map((option) => {
+        const id = `${idPrefix}-${option.value.replace(/[^a-z0-9_-]/gi, "-")}`;
+        return (
           <div key={option.value} className="flex items-center space-x-2">
             <Checkbox
-              id={`${idPrefix}-${option.value}`}
+              id={id}
               checked={selected.includes(option.value)}
               disabled={disabled}
               onCheckedChange={() => onChange(toggle(option.value, selected))}
             />
             <Label
-              htmlFor={`${idPrefix}-${option.value}`}
+              htmlFor={id}
               className={cn(
                 "text-sm font-normal",
                 disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
               )}
             >
-              {option.labelEn}
+              {option.label}
             </Label>
           </div>
-        ))}
-      </div>
-    </fieldset>
+        );
+      })}
+    </div>
   );
 }
 
 /**
- * Programme and year checkboxes. Which of the two a student may change is
- * decided by `studyEditability()`; a locked list stays visible, greyed out, so
- * the student can still see what vtk.be has on file for them.
+ * The study checklists. "What do you study?" lists the masters and faculties
+ * of the admin's Education tab (`studyChoiceGroups()`), grouped by faculty;
+ * the year list is vtk.be's vocabulary. Which of the two a student may change
+ * is decided by `studyEditability()`; a locked list stays visible, greyed out,
+ * so the student can still see what vtk.be has on file for them.
  */
 export function StudyFields({
-  programmes,
+  studyGroups,
+  studies,
   years,
-  onProgrammesChange,
+  onStudiesChange,
   onYearsChange,
-  programmesDisabled = false,
+  studiesDisabled = false,
   yearsDisabled = false,
 }: {
-  programmes: string[];
+  studyGroups: StudyChoiceGroup[];
+  studies: string[];
   years: string[];
-  onProgrammesChange: (next: string[]) => void;
+  onStudiesChange: (next: string[]) => void;
   onYearsChange: (next: string[]) => void;
-  programmesDisabled?: boolean;
+  studiesDisabled?: boolean;
   yearsDisabled?: boolean;
 }) {
   return (
     <div className="space-y-6">
-      <OptionList
-        idPrefix="programme"
-        legend="What do you study?"
-        options={STUDY_PROGRAMMES}
-        selected={programmes}
-        disabled={programmesDisabled}
-        onChange={onProgrammesChange}
-      />
-      <OptionList
-        idPrefix="year"
-        legend="Which year are you in?"
-        options={STUDY_YEARS}
-        selected={years}
-        disabled={yearsDisabled}
-        onChange={onYearsChange}
-      />
+      <fieldset className="space-y-3" disabled={studiesDisabled}>
+        <legend className="text-sm font-medium mb-2">What do you study?</legend>
+        {studyGroups.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No masters or faculties have been set up yet.
+          </p>
+        ) : (
+          studyGroups.map((group, index) => (
+            <div key={group.label} className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {group.label}
+              </p>
+              <OptionGrid
+                idPrefix={`study-${index}`}
+                options={group.options}
+                selected={studies}
+                disabled={studiesDisabled}
+                onChange={onStudiesChange}
+              />
+            </div>
+          ))
+        )}
+        {studiesDisabled && studies.length === 0 && studyGroups.length > 0 && (
+          <p className="text-sm text-muted-foreground">
+            Your vtk.be programme is not linked to a master here yet.
+          </p>
+        )}
+      </fieldset>
+      <fieldset className="space-y-3" disabled={yearsDisabled}>
+        <legend className="text-sm font-medium mb-2">Which year are you in?</legend>
+        <OptionGrid
+          idPrefix="year"
+          options={YEAR_OPTIONS}
+          selected={years}
+          disabled={yearsDisabled}
+          onChange={onYearsChange}
+        />
+      </fieldset>
     </div>
   );
 }

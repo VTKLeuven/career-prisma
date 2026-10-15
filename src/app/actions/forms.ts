@@ -19,7 +19,7 @@ import {
   countFormResponses,
   countFormVersionResponses,
 } from "@/lib/repos/forms";
-import type { Form, FormVersion, FormSchema, FormMetadata, FormResponse } from "@/lib/schema";
+import type { Form, FormVersion, FormSchema, FormMetadata, FormResponse, Student } from "@/lib/schema";
 import { getCompanyById } from "@/lib/repos/company";
 import {
   FORM_SUBMIT_SESSION_TIMEOUT_MESSAGE,
@@ -27,7 +27,7 @@ import {
 } from "@/lib/form-submit-errors";
 import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
 import { after } from "next/server";
-import { listMasters, listFaculties } from "@/lib/repos/features";
+import { loadStudentStudy } from "@/lib/student-study";
 import { studyPrefillForFields, type PrefillFaculty } from "@/lib/form-fields";
 import { setEventRegistrationLink } from "@/lib/repos/event-page";
 import { formPath } from "@/lib/site-path";
@@ -1042,7 +1042,7 @@ export async function fetchPublicFormBySlugAction(slug: string) {
     let studentEmail: string | undefined = undefined;
     let studentId: string | undefined = undefined;
     // For prefilling master-degrees / study-year fields; set whenever a student is signed in.
-    let studentStudy: { study_programmes: string[]; study_years: string[] } | undefined = undefined;
+    let prefillStudent: Student | undefined = undefined;
     const toBoolFlag = (v: unknown): boolean => {
       if (v === true) return true;
       if (v === false) return false;
@@ -1065,7 +1065,7 @@ export async function fetchPublicFormBySlugAction(slug: string) {
         isAuthenticated = !!student;
         if (student?.email) studentEmail = student.email;
         if (student?.id) studentId = student.id;
-        if (student) studentStudy = { study_programmes: student.study_programmes, study_years: student.study_years };
+        if (student) prefillStudent = student;
       } catch (error) {
         console.error('[fetchPublicFormBySlugAction] Error checking student authentication:', error);
         isAuthenticated = false;
@@ -1076,28 +1076,31 @@ export async function fetchPublicFormBySlugAction(slug: string) {
         const { getStudentFromCookies } = await import("@/lib/auth-student");
         const student = await getStudentFromCookies();
         if (student?.id) studentId = student.id;
-        if (student) studentStudy = { study_programmes: student.study_programmes, study_years: student.study_years };
+        if (student) prefillStudent = student;
       } catch {
         // Ignore
       }
     }
 
-    // Starting answers for study fields: master degrees through the programme links
-    // set in /admin/masters, study year straight from the student's account.
+    // Starting answers for study fields: master degrees from what the student
+    // studies (their own choice, or the masters linked to their vtk.be
+    // programme in /admin/masters), study year straight from their account.
     let studyPrefill: Record<string, string | string[]> = {};
     const versionFields = activeVersion.schema?.fields ?? [];
     const STUDY_FIELD_TYPES = ["master-degrees", "study-year", "study-programme"];
-    if (studentStudy && versionFields.some((f) => STUDY_FIELD_TYPES.includes(f.type))) {
+    if (prefillStudent && versionFields.some((f) => STUDY_FIELD_TYPES.includes(f.type))) {
       try {
         const needsMasters = versionFields.some((f) => f.type === "master-degrees");
-        const [masters, faculties] = needsMasters
-          ? await Promise.all([listMasters({ limit: 500, sort: "name" }), listFaculties({ limit: 100 })])
-          : [[], []];
+        const study = needsMasters ? await loadStudentStudy(prefillStudent) : null;
         studyPrefill = studyPrefillForFields(
           versionFields,
-          studentStudy,
-          masters ?? [],
-          (faculties ?? []) as unknown as PrefillFaculty[],
+          {
+            study_programmes: prefillStudent.study_programmes,
+            study_years: prefillStudent.study_years,
+            master_ids: study?.ids.masterIds ?? [],
+            faculty_ids: study?.ids.facultyIds ?? [],
+          },
+          (study?.faculties ?? []) as unknown as PrefillFaculty[],
         );
       } catch (error) {
         // A failed prefill must not stop the form from loading; the student just picks.

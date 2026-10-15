@@ -71,6 +71,8 @@ export type Student = {
   student_number?: string; // r-number, e.g. "r0812345"
   sso_synced_at?: string; // ISO date of the last claim refresh
   study_self_reported: boolean; // Programmes chosen on Career, not taken from the SSO
+  study_master_ids: string[]; // Masters ticked on Career (src/lib/study-choices.ts)
+  study_faculty_ids: string[]; // Faculties without masters ticked on Career
   sso_study_programmes: string[]; // What the SSO last sent, verbatim (may be [])
   sso_study_years: string[]; // What the SSO last sent, verbatim (may be [])
   sso_locale?: string; // The SSO's `locale` claim as sent, e.g. "nl-BE"

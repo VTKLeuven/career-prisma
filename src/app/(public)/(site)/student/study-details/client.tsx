@@ -12,22 +12,25 @@ import {
 } from "@/components/ui/card";
 import { StudyFields } from "@/components/student/StudyFields";
 import { saveStudyDetailsAction } from "@/app/actions/student-study";
+import type { StudyChoiceGroup } from "@/lib/study-choices";
 
 export default function StudyDetailsClient({
   redirectTo,
   name,
-  programmes: initialProgrammes,
+  studyGroups,
+  studies: initialStudies,
   years: initialYears,
   editable,
 }: {
   redirectTo: string;
   name: string | null;
-  programmes: string[];
+  studyGroups: StudyChoiceGroup[];
+  studies: string[];
   years: string[];
   editable: { programmes: boolean; years: boolean };
 }) {
   const router = useRouter();
-  const [programmes, setProgrammes] = useState<string[]>(initialProgrammes);
+  const [studies, setStudies] = useState<string[]>(initialStudies);
   const [years, setYears] = useState<string[]>(initialYears);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +40,7 @@ export default function StudyDetailsClient({
     setSaving(true);
     setError(null);
 
-    const result = await saveStudyDetailsAction({ programmes, years });
+    const result = await saveStudyDetailsAction({ studies, years });
 
     if (!result.ok) {
       setError(result.error);
@@ -64,11 +67,12 @@ export default function StudyDetailsClient({
         <CardContent>
           <form className="space-y-6" onSubmit={onSubmit}>
             <StudyFields
-              programmes={programmes}
+              studyGroups={studyGroups}
+              studies={studies}
               years={years}
-              onProgrammesChange={setProgrammes}
+              onStudiesChange={setStudies}
               onYearsChange={setYears}
-              programmesDisabled={!editable.programmes}
+              studiesDisabled={!editable.programmes}
               yearsDisabled={!editable.years}
             />
 

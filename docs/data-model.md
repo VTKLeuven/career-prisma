@@ -81,9 +81,14 @@ and to vacancies via `VacancyMaster`.
 `masters.study_programme` links a master to a vtk.be study programme (the SSO
 enum value from `src/lib/study-options.ts`), set in `/admin/masters`. It is
 what lets one question type serve everyone: a student with a vtk.be programme
-gets the linked master prefilled in `master-degrees` fields, and a student
-outside the faculty picks from the same master list. Several masters may share
-a programme; a single-choice field is then left empty rather than guessed.
+gets the linked master prefilled in `master-degrees` fields, and anyone whose
+programme is theirs to choose ticks masters (or a faculty without masters) on
+`/student/account`, stored as `students.study_master_ids` /
+`study_faculty_ids` and prefilled the same way (`src/lib/study-choices.ts`,
+see [auth.md](auth.md#study-info-who-may-change-what)). These are plain id
+lists rather than junctions: a deleted master or faculty just stops matching.
+Several masters may share a programme; a single-choice field is then left
+empty rather than guessed.
 
 ## Files
 

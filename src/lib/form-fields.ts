@@ -32,10 +32,19 @@ export function studyFieldOptions(type: "study-programme" | "study-year"): strin
   return (type === "study-programme" ? STUDY_PROGRAMMES : STUDY_YEARS).map((o) => o.labelEn);
 }
 
-export type StudentStudy = { study_programmes: string[]; study_years: string[] };
+/**
+ * A signed-in student's study info. `master_ids` / `faculty_ids` are what they
+ * study, already resolved by `studentStudyIds()` (src/lib/study-choices.ts):
+ * their own choice, or the masters linked to their vtk.be programmes.
+ */
+export type StudentStudy = {
+  study_programmes: string[];
+  study_years: string[];
+  master_ids: string[];
+  faculty_ids: string[];
+};
 
-/** The bits of a master / faculty the prefill needs — both come from repos/features. */
-export type PrefillMaster = { id: string | number; study_programme?: string | null };
+/** The bits of a faculty the prefill needs — it comes from repos/features. */
 export type PrefillFaculty = {
   id: string | number;
   masters?: Array<{ master_id: { id: string | number } | string | number | null }>;
@@ -59,25 +68,23 @@ function studyFieldPrefill(field: FormField, student: StudentStudy): string | st
 
 /**
  * The masters a master-degrees field starts with for a signed-in student: the
- * masters an admin linked (in /admin/masters) to one of the student's vtk.be
- * programmes. Values are in the field's own option format — the master id, or
- * `fac:<faculty>:<master>` when the field groups by faculty — or the select
- * would not recognise them.
+ * masters (and faculties without masters) they study, see `StudentStudy`.
+ * Values are in the field's own option format — the master id, or
+ * `fac:<faculty>:<master>` / `fac:<faculty>` when the field groups by faculty
+ * — or the select would not recognise them. A field without faculties has no
+ * option for a faculty, so a faculty choice only prefills the grouped kind.
  *
- * A single-choice field is only prefilled when exactly one master matches;
- * guessing between two would look like the student had chosen. Students
- * outside the faculty, or without a programme, get nothing and pick themselves.
+ * A single-choice field is only prefilled when exactly one value matches;
+ * guessing between two would look like the student had chosen. Students who
+ * have not said what they study get nothing and pick themselves.
  */
 function masterDegreesPrefill(
   field: FormField,
   student: StudentStudy,
-  masters: PrefillMaster[],
   faculties: PrefillFaculty[],
 ): string | string[] | undefined {
-  if (field.type !== "master-degrees" || student.study_programmes.length === 0) return undefined;
-  const masterIds = masters
-    .filter((m) => m.study_programme && student.study_programmes.includes(m.study_programme))
-    .map((m) => String(m.id));
+  if (field.type !== "master-degrees") return undefined;
+  const masterIds = student.master_ids;
 
   let values: string[];
   if (field.masterDegreesIncludeFaculties) {
@@ -92,6 +99,10 @@ function masterDegreesPrefill(
         }),
       );
       if (faculty) values.push(`fac:${faculty.id}:${id}`);
+    }
+    for (const id of student.faculty_ids) {
+      const faculty = faculties.find((f) => String(f.id) === id);
+      if (faculty && !(faculty.masters ?? []).length) values.push(`fac:${faculty.id}`);
     }
   } else {
     values = masterIds;
@@ -110,14 +121,13 @@ function masterDegreesPrefill(
 export function studyPrefillForFields(
   fields: FormField[],
   student: StudentStudy,
-  masters: PrefillMaster[],
   faculties: PrefillFaculty[],
 ): Record<string, string | string[]> {
   const prefill: Record<string, string | string[]> = {};
   for (const field of fields) {
     const value =
       field.type === "master-degrees"
-        ? masterDegreesPrefill(field, student, masters, faculties)
+        ? masterDegreesPrefill(field, student, faculties)
         : studyFieldPrefill(field, student);
     if (value !== undefined) prefill[field.name] = value;
   }

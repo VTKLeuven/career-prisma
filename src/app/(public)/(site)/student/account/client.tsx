@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { StudyFields } from "@/components/student/StudyFields";
 import { labelForProgramme, labelForYear } from "@/lib/study-options";
+import type { StudyChoiceGroup } from "@/lib/study-choices";
 import {
   saveLanguageAction,
   saveStudyDetailsAction,
@@ -90,7 +91,8 @@ export default function StudentAccountClient({
   hasPassword,
   viaSso,
   language: initialLanguage,
-  programmes: initialProgrammes,
+  studyGroups,
+  studies: initialStudies,
   years: initialYears,
   editable,
   vtkAccountUrl,
@@ -105,7 +107,8 @@ export default function StudentAccountClient({
   hasPassword: boolean;
   viaSso: boolean;
   language: Language | null;
-  programmes: string[];
+  studyGroups: StudyChoiceGroup[];
+  studies: string[];
   years: string[];
   editable: { programmes: boolean; years: boolean };
   vtkAccountUrl: string;
@@ -116,7 +119,7 @@ export default function StudentAccountClient({
   const [language, setLanguage] = useState<Language | null>(initialLanguage);
   const [languageMessage, setLanguageMessage] = useState<Message>(null);
 
-  const [programmes, setProgrammes] = useState(initialProgrammes);
+  const [studies, setStudies] = useState(initialStudies);
   const [years, setYears] = useState(initialYears);
   const [savingStudy, setSavingStudy] = useState(false);
   const [studyMessage, setStudyMessage] = useState<Message>(null);
@@ -143,7 +146,7 @@ export default function StudentAccountClient({
     e.preventDefault();
     setSavingStudy(true);
     setStudyMessage(null);
-    const result = await saveStudyDetailsAction({ programmes, years });
+    const result = await saveStudyDetailsAction({ studies, years });
     setSavingStudy(false);
     setStudyMessage(
       result.ok
@@ -228,11 +231,12 @@ export default function StudentAccountClient({
         <CardContent>
           <form className="space-y-6" onSubmit={onSaveStudy}>
             <StudyFields
-              programmes={programmes}
+              studyGroups={studyGroups}
+              studies={studies}
               years={years}
-              onProgrammesChange={setProgrammes}
+              onStudiesChange={setStudies}
               onYearsChange={setYears}
-              programmesDisabled={!editable.programmes}
+              studiesDisabled={!editable.programmes}
               yearsDisabled={!editable.years}
             />
 

@@ -29,6 +29,8 @@ function shapeStudent(row: StudentRowWithPassword): Student {
     student_number: student.student_number ?? undefined,
     sso_synced_at: student.sso_synced_at?.toISOString(),
     study_self_reported: student.study_self_reported ?? false,
+    study_master_ids: (student.study_master_ids ?? []).map(String),
+    study_faculty_ids: (student.study_faculty_ids ?? []).map(String),
     sso_study_programmes: student.sso_study_programmes ?? [],
     sso_study_years: student.sso_study_years ?? [],
     sso_locale: student.sso_locale ?? undefined,

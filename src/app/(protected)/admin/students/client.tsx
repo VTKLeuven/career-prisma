@@ -9,6 +9,9 @@ import { STUDY_PROGRAMMES, STUDY_YEARS, labelForProgramme, labelForYear } from "
 const PROGRAMME_OPTIONS = STUDY_PROGRAMMES.map((p) => ({ value: p.value, label: p.labelEn }));
 const YEAR_OPTIONS = STUDY_YEARS.map((y) => ({ value: y.value, label: y.labelEn }));
 
+/** A student with what they study, as labels (computed on the page). */
+type StudentRow = Student & { study: string[] };
+
 function fullName(s: Student): string {
   return (
     [s.first_name, s.last_name].filter(Boolean).join(" ") ||
@@ -18,8 +21,8 @@ function fullName(s: Student): string {
   );
 }
 
-export default function StudentsClient({ initialStudents }: { initialStudents: Student[] }) {
-  const config: ResourceConfig<Student> = {
+export default function StudentsClient({ initialStudents }: { initialStudents: StudentRow[] }) {
+  const config: ResourceConfig<StudentRow> = {
     singular: "Student",
     hideCreate: true,
     getId: (s) => String(s.id),
@@ -39,11 +42,20 @@ export default function StudentsClient({ initialStudents }: { initialStudents: S
       { key: "email", label: "Email" },
       { key: "university", label: "University", filter: true },
       {
+        key: "study",
+        label: "Study",
+        value: (s) => s.study,
+        render: (s) => s.study.join(", ") || "—",
+        filter: true,
+      },
+      {
+        // vtk.be's own vocabulary; what the Study column is derived from for SSO students.
         key: "study_programmes",
-        label: "Programme",
+        label: "vtk.be programme",
         value: (s) => s.study_programmes,
         render: (s) => s.study_programmes.map(labelForProgramme).join(", ") || "—",
         filter: { options: PROGRAMME_OPTIONS },
+        defaultHidden: true,
       },
       {
         key: "study_years",

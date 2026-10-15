@@ -192,6 +192,16 @@ pages and the server action (`app/actions/student-study.ts`) apply it:
   arrive with `[]`; the callback sends them to `/student/study-details` and
   whatever is empty there is open. When vtk.be later sends a value, it wins.
 
+What a student *chooses* as their programme is not vtk.be's vocabulary: the
+"What do you study?" checklist lists the masters of the admin's Education tab,
+grouped by faculty, plus every faculty without masters as a choice of its own
+(how a password student from another faculty says where they come from). The
+choice is stored as `study_master_ids` / `study_faculty_ids`. While the
+programme is locked, the checklist instead shows — greyed out — the masters an
+admin linked to the student's vtk.be programmes (`masters.study_programme`).
+`src/lib/study-choices.ts` builds both; `study_programmes` itself only ever
+holds vtk.be's values. The callback's onboarding check follows the same split.
+
 `sso_study_programmes` / `sso_study_years` / `sso_locale` keep exactly what
 the SSO last sent, apart from the values in use. The account page shows them
 under "From vtk.be" — the quickest way to see whether the claims arrive.

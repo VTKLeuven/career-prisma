@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { getStudentFromCookies } from "@/lib/auth-student";
 import { studyEditability } from "@/lib/study-options";
 import { vtkAccountUrl } from "@/lib/vtk-sso";
+import { loadStudentStudy } from "@/lib/student-study";
+import { toChoiceValues } from "@/lib/study-choices";
 import StudentAccountClient from "./client";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +28,8 @@ export default async function StudentAccountPage() {
     redirect(`/student-login?redirectTo=${encodeURIComponent("/student/account")}`);
   }
 
+  const study = await loadStudentStudy(student);
+
   // Only what the page shows, not the whole shaped student.
   return (
     <StudentAccountClient
@@ -38,7 +42,8 @@ export default async function StudentAccountPage() {
       hasPassword={Boolean(student.has_password)}
       viaSso={Boolean(student.sso_subject)}
       language={student.preferred_language === "nl" ? "nl" : student.preferred_language === "en" ? "en" : null}
-      programmes={student.study_programmes}
+      studyGroups={study.groups}
+      studies={toChoiceValues(study.ids)}
       years={student.study_years}
       editable={studyEditability(student)}
       vtkAccountUrl={vtkAccountUrl()}

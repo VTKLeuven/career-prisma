@@ -24,6 +24,8 @@ function shapeStudent(row: NonNullable<StudentRow>): Student {
     student_number: row.student_number ?? undefined,
     sso_synced_at: row.sso_synced_at?.toISOString(),
     study_self_reported: row.study_self_reported ?? false,
+    study_master_ids: (row.study_master_ids ?? []).map(String),
+    study_faculty_ids: (row.study_faculty_ids ?? []).map(String),
     sso_study_programmes: row.sso_study_programmes ?? [],
     sso_study_years: row.sso_study_years ?? [],
     sso_locale: row.sso_locale ?? undefined,
@@ -354,13 +356,16 @@ export async function upsertStudentFromSso(
 
 /**
  * Stores study info a student chose on Career — during onboarding, or on
- * `/student/account`. Either list may be left out, which leaves that column as
- * it is: the caller (`app/actions/student-study.ts`) only passes the fields
- * this student is allowed to change (`studyEditability()`).
+ * `/student/account`. Either part may be left out, which leaves those columns
+ * as they are: the caller (`app/actions/student-study.ts`) only passes the
+ * fields this student is allowed to change (`studyEditability()`).
+ *
+ * The programme is stored as masters and faculties (src/lib/study-choices.ts);
+ * `study_programmes` stays vtk.be's.
  */
 export async function saveSelfReportedStudy(
   studentId: string,
-  study: { programmes?: string[]; years?: string[] }
+  study: { masterIds?: number[]; facultyIds?: number[]; years?: string[] }
 ): Promise<Student | null> {
   const id = Number(studentId);
   if (!Number.isSafeInteger(id)) return null;
@@ -369,7 +374,8 @@ export async function saveSelfReportedStudy(
     const row = await prisma.student.update({
       where: { id },
       data: {
-        ...(study.programmes ? { study_programmes: study.programmes } : {}),
+        ...(study.masterIds ? { study_master_ids: study.masterIds } : {}),
+        ...(study.facultyIds ? { study_faculty_ids: study.facultyIds } : {}),
         ...(study.years ? { study_years: study.years } : {}),
         study_self_reported: true,
         date_updated: new Date(),
