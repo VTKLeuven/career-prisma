@@ -104,7 +104,7 @@ function ManageEventCard({ managed, orderingEnabled }: { managed: ManagedEvent; 
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm text-muted-foreground sm:grid-cols-2 sm:gap-x-1">
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm text-muted-foreground *:wrap-anywhere sm:grid-cols-2 sm:gap-x-1">
             <span>Date</span>
             <span className="font-medium text-foreground">{String(event.date ?? "TBA")}</span>
             <span>Hours</span>

@@ -108,7 +108,10 @@ so re-apply the classes if you do.
   their horizontal padding from `--card-px` and dialogs theirs from
   `--dialog-p`, both of which `globals.css` drops to 1rem below `sm` inside
   `.app-ui`; pass `px-…`/`p-…` to them only when one really needs a
-  different inset.
+  different inset. Long saved values (names, emails, URLs) must wrap, not
+  overflow: the content area, dialogs, sheets and toasts set
+  `wrap-anywhere`, so don't add `whitespace-nowrap` to text that shows user
+  data unless it also truncates.
 
 ## Dates and times
 

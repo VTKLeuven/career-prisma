@@ -404,7 +404,7 @@ function EventCard({ event, status, onChanged }: { event: CareerEvent; status?: 
       {/* Details beside the actions only when the card itself is wide enough:
           on a phone, or two cards to a row, the buttons need the full width. */}
       <CardContent className="grid grid-cols-1 gap-4 @lg:grid-cols-2">
-        <div className="grid grid-cols-[auto_1fr] content-start gap-x-4 gap-y-1 text-sm text-muted-foreground">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] content-start gap-x-4 gap-y-1 text-sm text-muted-foreground *:wrap-anywhere">
           <span>Date</span>
           <span className="font-medium text-foreground">{String(event.date ?? "TBA")}</span>
           <span>Hours</span>
