@@ -83,7 +83,9 @@ export default async function WithSidebarLayout({ children }: { children: React.
             id="app-scroll"
             className="scrollbar-thin flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto"
           >
-            <div className="flex w-full min-w-0 flex-col gap-4 px-3 pt-4 pb-10 sm:gap-6 sm:px-6 sm:pt-6 lg:px-8">
+            {/* wrap-anywhere: a long name, email or URL breaks rather than
+                pushing the page sideways; ordinary words are unaffected. */}
+            <div className="flex w-full min-w-0 flex-col gap-4 px-3 pt-4 pb-10 wrap-anywhere sm:gap-6 sm:px-6 sm:pt-6 lg:px-8">
               {children}
             </div>
           </div>

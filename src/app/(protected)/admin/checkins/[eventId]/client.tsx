@@ -110,27 +110,27 @@ export default function CheckinsClient({ eventId }: { eventId: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader>
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        <Card className="py-4 sm:py-6">
+          <CardHeader className="px-3 sm:px-[var(--card-px)]">
             <CardDescription>Registered</CardDescription>
-            <CardTitle className="text-4xl tabular-nums">
+            <CardTitle className="text-2xl tabular-nums sm:text-4xl">
               {data.totalRegistered}
             </CardTitle>
           </CardHeader>
         </Card>
-        <Card>
-          <CardHeader>
+        <Card className="py-4 sm:py-6">
+          <CardHeader className="px-3 sm:px-[var(--card-px)]">
             <CardDescription>Checked In</CardDescription>
-            <CardTitle className="text-4xl tabular-nums text-green-600 dark:text-green-400">
+            <CardTitle className="text-2xl tabular-nums sm:text-4xl text-green-600 dark:text-green-400">
               {data.totalCheckedIn}
             </CardTitle>
           </CardHeader>
         </Card>
-        <Card>
-          <CardHeader>
+        <Card className="py-4 sm:py-6">
+          <CardHeader className="px-3 sm:px-[var(--card-px)]">
             <CardDescription>Remaining</CardDescription>
-            <CardTitle className="text-4xl tabular-nums text-orange-600 dark:text-orange-400">
+            <CardTitle className="text-2xl tabular-nums sm:text-4xl text-orange-600 dark:text-orange-400">
               {Math.max(0, data.remaining)}
             </CardTitle>
           </CardHeader>

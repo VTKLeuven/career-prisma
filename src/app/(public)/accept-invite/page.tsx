@@ -462,7 +462,7 @@ function CompanySetupForm({ token, company, masters, onComplete }: {
                             key={opt.id}
                             type="button"
                             onClick={() => toggleMaster(opt.id)}
-                            className={`w-full py-2 rounded-lg border transition text-center cursor-pointer ${
+                            className={`w-full px-3 py-2 rounded-lg border transition text-center wrap-anywhere cursor-pointer ${
                               selected
                                 ? "bg-slate-700 text-white border-slate-700 opacity-100"
                                 : "bg-white text-black border-gray-300 opacity-40"

@@ -134,7 +134,14 @@ function getSubOptionsToCheck(
  * @param company The company to check
  * @param subOptionName The name of the sub-option to check (e.g., "CV Book")
  * @param allSubOptions Optional list to resolve sub_options when they're returned as IDs
- * @returns The sub-option if found and active, null otherwise
+ * @returns The sub-option if the company holds it this year, null otherwise
+ *
+ * "Holds it" means present in company.sub_options or in a purchased
+ * package's sub_options. The company repo already narrows both to sales with
+ * status "sold" in the current academic year (_shape.ts), so presence is the
+ * whole check. This used to also require `active === true` on the sub-option,
+ * a Directus-era field career_sub_options never had in Postgres -- which made
+ * every check fail, so no company could ever open the CV book.
  */
 export function getCompanySubOption(
   company: Company | null | undefined,
@@ -151,9 +158,7 @@ export function getCompanySubOption(
       (s) =>
         s?.name &&
         typeof s.name === "string" &&
-        s.name.toLowerCase().trim() === match &&
-        "active" in s &&
-        (s as CareerSubOption).active === true
+        s.name.toLowerCase().trim() === match
     );
     if (found) return found;
   }
@@ -178,9 +183,7 @@ export function getCompanySubOption(
         subOption &&
         'name' in subOption &&
         typeof subOption.name === 'string' &&
-        subOption.name.toLowerCase().trim() === match &&
-        'active' in subOption &&
-        subOption.active === true
+        subOption.name.toLowerCase().trim() === match
       ) {
         return subOption;
       }
@@ -247,7 +250,7 @@ export function getCompanySubOptionAnyStatus(
 /**
  * Check if a company has access to CV Book
  * @param company The company to check
- * @returns true if company has CV Book sub-option and it's active, false otherwise
+ * @returns true if company holds the CV Book sub-option this year, false otherwise
  */
 export function hasCVBookAccess(company: Company | null | undefined): boolean {
   return getCompanySubOption(company, "CV Book") !== null;

@@ -160,8 +160,8 @@ export default function PrintClient({
   };
 
   return (
-    <div className="p-8">
-      <div className="mb-8 flex justify-between items-center">
+    <div className="sm:p-8">
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Print Booth QR Codes</h1>
           {eventPageName && (
@@ -171,7 +171,7 @@ export default function PrintClient({
             </p>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" asChild>
             <Link href="/admin/zones">
               <ArrowLeft className="mr-2 h-4 w-4" />
@@ -190,16 +190,16 @@ export default function PrintClient({
         </p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-8 font-sans">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-8 font-sans">
         {booths.map((booth) => {
           const url = `${baseUrl}/booth/${booth.id}`;
           const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(url)}`;
 
           return (
-            <div key={booth.id} className="border border-neutral-400 border-dotted p-6 flex flex-col items-center justify-center text-center aspect-square shadow-sm bg-white">
-              <h2 className="text-xl font-bold mb-4 uppercase tracking-tight line-clamp-2">{booth.company?.name || "Available"}</h2>
-              <img src={qrSrc} alt={`QR for Booth ${booth.booth_number}`} className="w-48 h-48 object-contain" />
-              <p className="mt-4 text-2xl font-mono font-bold">Booth {booth.booth_number}</p>
+            <div key={booth.id} className="min-w-0 border border-neutral-400 border-dotted p-3 sm:p-6 flex flex-col items-center justify-center text-center sm:aspect-square shadow-sm bg-white">
+              <h2 className="text-base sm:text-xl font-bold mb-4 uppercase tracking-tight line-clamp-2">{booth.company?.name || "Available"}</h2>
+              <img src={qrSrc} alt={`QR for Booth ${booth.booth_number}`} className="aspect-square w-full max-w-48 object-contain" />
+              <p className="mt-4 text-lg sm:text-2xl font-mono font-bold">Booth {booth.booth_number}</p>
               <p className="text-sm text-gray-500 mt-2">{booth.Floorplan?.name}</p>
             </div>
           )

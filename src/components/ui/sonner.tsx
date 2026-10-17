@@ -9,5 +9,14 @@ import { Toaster as Sonner, type ToasterProps } from "sonner";
  * toasts never appeared.
  */
 export function Toaster(props: ToasterProps) {
-  return <Sonner position="bottom-right" richColors closeButton {...props} />;
+  return (
+    <Sonner
+      position="bottom-right"
+      richColors
+      closeButton
+      // a toast often repeats what was typed; let a long value wrap
+      toastOptions={{ classNames: { toast: "wrap-anywhere" } }}
+      {...props}
+    />
+  );
 }

@@ -574,7 +574,7 @@ export function CompaniesSection({
               nounPlural="companies"
               defaultSort={{ key: "name" }}
               loading={loading}
-              containerClassName="max-h-[calc(100svh-17rem)]"
+              containerClassName="roomy:max-h-[calc(100svh-17rem)]"
               onRowClick={setEditingCompany}
               isRowSelected={(company) => editingCompany?.id === company.id}
               rowActionsAlwaysVisible
@@ -1478,7 +1478,7 @@ function SubOptionsDialog({
           {displayText}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Sub-options for {option.name}</DialogTitle>
           <DialogDescription>
@@ -2114,7 +2114,7 @@ function OptionFormDialog({ company, onCreate }: {
       <DialogTrigger asChild>
         <Button variant="outline"><IconPlus /> Add Option</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90dvh] overflow-y-auto">
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>Add Option to Company</DialogTitle>
@@ -2501,20 +2501,21 @@ function CompanyFormDialog({ onRefresh, salespersons }: { onRefresh?: () => void
               </div>
             </div>
 
-            <div className="w-full flex gap-4">
-              <div className="flex-2/5">
+            {/* Country gets its own row on a phone; a fifth of the width can't hold it. */}
+            <div className="grid w-full grid-cols-2 gap-4 sm:grid-cols-[2fr_2fr_1fr]">
+              <div>
                 <Label htmlFor="zip" className="text-xs">
                   ZIP
                 </Label>
                 <Input name="zip" id="zip" placeholder="3001" />
               </div>
-              <div className="flex-2/5">
+              <div>
                 <Label htmlFor="city" className="text-xs">
                   City
                 </Label>
                 <Input name="city" id="city" placeholder="Leuven" />
               </div>
-              <div className="flex-1/5">
+              <div className="col-span-2 sm:col-span-1">
                 <Label htmlFor="country" className="text-xs">
                   Country
                 </Label>
@@ -2547,7 +2548,7 @@ function CompanyFormDialog({ onRefresh, salespersons }: { onRefresh?: () => void
 
     {/* CSV Upload Dialog */}
     <Dialog open={csvUploadOpen} onOpenChange={setCsvUploadOpen}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Upload Companies (CSV)</DialogTitle>
           <DialogDescription>
@@ -2810,7 +2811,7 @@ function EditCompanyDialog({ company, salespersons, masters, onClose, onSaved }:
         <SheetHeader className="shrink-0 gap-3 border-b px-5 pt-4 pb-0">
           <SheetTitle className="text-base">{company?.name || "Edit company"}</SheetTitle>
           <SheetDescription className="sr-only">Edit this company</SheetDescription>
-          <div className="-mb-px flex gap-1" role="tablist">
+          <div className="scrollbar-hide -mx-5 -mb-px flex gap-1 overflow-x-auto px-5" role="tablist">
             {tabs.map((t) => (
               <button
                 key={t.id}
@@ -2818,7 +2819,7 @@ function EditCompanyDialog({ company, salespersons, masters, onClose, onSaved }:
                 role="tab"
                 aria-selected={tab === t.id}
                 onClick={() => setTab(t.id)}
-                className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+                className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
                   tab === t.id ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >

@@ -230,7 +230,7 @@ export default function CVBookScreeningPage() {
   // renders. The admin layout already redirects non-admins; this is a fallback.
   if (!user?.admin) {
     return (
-      <div className="container mx-auto p-8">
+      <div className="container mx-auto sm:p-8">
         <p className="text-destructive">Access denied. Admin only.</p>
       </div>
     );
@@ -315,7 +315,7 @@ export default function CVBookScreeningPage() {
             <div className="text-center py-8 text-muted-foreground">Loading CVs...</div>
           ) : viewMode === "detail" && selectedStudent ? (
             <div className="flex flex-col min-h-0" style={{ minHeight: "calc(100vh - 12rem)" }}>
-              <div className="flex items-center justify-between shrink-0 mb-4">
+              <div className="flex items-center justify-between gap-2 shrink-0 mb-4">
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -324,7 +324,7 @@ export default function CVBookScreeningPage() {
                     setEditingStudy(null);
                   }}
                 >
-                  ← Back to Overview
+                  ← Back<span className="hidden sm:inline"> to Overview</span>
                 </Button>
                 <div className="flex items-center gap-2">
                   <Button
@@ -373,7 +373,7 @@ export default function CVBookScreeningPage() {
                       <div className="flex items-center gap-4 flex-wrap">
                         <div className="flex items-center gap-2">
                           <IconMail className="h-5 w-5 text-muted-foreground" />
-                          <a href={`mailto:${selectedStudent.email}`} className="text-vtk-blue hover:underline">
+                          <a href={`mailto:${selectedStudent.email}`} className="break-all text-vtk-blue hover:underline">
                             {selectedStudent.email}
                           </a>
                         </div>
@@ -388,7 +388,7 @@ export default function CVBookScreeningPage() {
                             LinkedIn
                           </a>
                         )}
-                        <Badge variant="secondary">{selectedStudent.study}</Badge>
+                        <Badge variant="secondary" className="max-w-full whitespace-normal text-left">{selectedStudent.study}</Badge>
                         <span className="text-xs text-muted-foreground">
                           Uploaded: {formatDate(selectedStudent.submittedAt)}
                         </span>
@@ -531,9 +531,9 @@ export default function CVBookScreeningPage() {
                   className="border rounded-xl bg-white/80 shadow-sm ring-1 ring-black/5 px-2 hover:bg-white transition-colors"
                 >
                   <AccordionTrigger className="px-3 cursor-pointer hover:no-underline">
-                    <div className="flex items-center justify-between w-full pr-2">
-                      <span className="text-base sm:text-lg font-semibold text-neutral-900">{group.study}</span>
-                      <span className="text-sm text-muted-foreground">
+                    <div className="flex items-center justify-between gap-3 w-full pr-2">
+                      <span className="min-w-0 text-base sm:text-lg font-semibold text-neutral-900">{group.study}</span>
+                      <span className="shrink-0 whitespace-nowrap text-sm text-muted-foreground">
                         {group.students.length} CV{group.students.length !== 1 ? "s" : ""}
                       </span>
                     </div>

@@ -80,11 +80,14 @@ so re-apply the classes if you do.
   Its icon comes from `ADMIN_NAV_ITEMS`, so header, sidebar and breadcrumb agree.
 - **Lists.** A click on a row opens it for editing; don't add a separate edit
   button. Destructive and secondary actions appear on row hover or in a `⋯`
-  menu. Ignore clicks that land on a link/button inside the row, and clicks
+  menu; on a device that cannot hover they are always shown (the `touch:`
+  variant in `globals.css`), never left invisible but tappable. Ignore clicks that land on a link/button inside the row, and clicks
   bubbling up from portaled dialogs (`e.currentTarget.contains(e.target)`).
   `ResourceManager` does all of this and edits in a panel sliding in from the
   right; tables keep a sticky header inside a height-capped scroll area
-  (`Table`'s `containerClassName`) so the toolbar stays in view.
+  (`Table`'s `containerClassName`) so the toolbar stays in view. The cap sits
+  behind the `roomy:` variant (`globals.css`): on a phone the table grows with
+  its rows instead, so the page scrolls once rather than a box inside a box.
 - **Tables.** Every admin list is a `DataTable`
   (`src/components/admin/DataTable.tsx`); don't hand-roll a `<Table>` or a
   second `useReactTable`. It gives click-to-sort headers, search, per-column
@@ -99,6 +102,16 @@ so re-apply the classes if you do.
   responses viewer, which pages on the server and keeps its own table.
 - **Status pills.** Use the pastel `Badge` variants (`success`, `warning`,
   `info`, `purple`, `muted`, `destructive`) rather than solid fills.
+- **Phones.** The back office has to work on a phone held upright. The
+  page never scrolls sideways — only a table's own scroll area may — and
+  rows of buttons wrap or stack rather than run off the screen. Cards read
+  their horizontal padding from `--card-px` and dialogs theirs from
+  `--dialog-p`, both of which `globals.css` drops to 1rem below `sm` inside
+  `.app-ui`; pass `px-…`/`p-…` to them only when one really needs a
+  different inset. Long saved values (names, emails, URLs) must wrap, not
+  overflow: the content area, dialogs, sheets and toasts set
+  `wrap-anywhere`, so don't add `whitespace-nowrap` to text that shows user
+  data unless it also truncates.
 
 ## Dates and times
 

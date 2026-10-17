@@ -29,8 +29,9 @@ export function SectionLayout({ title, description, items, children }: SectionLa
       </div>
 
       {/* Navigation Tabs */}
-      <div className="border-b">
-        <nav className="flex space-x-1" aria-label="Tabs">
+      {/* Scrolls sideways on a phone rather than breaking labels in two. */}
+      <div className="scrollbar-hide overflow-x-auto border-b">
+        <nav className="flex space-x-1 [&>*]:shrink-0 [&_a]:whitespace-nowrap" aria-label="Tabs">
           {items.map((item, index) => {
             // Check if item is a ReactNode (React element) or a SectionItem
             if (React.isValidElement(item)) {

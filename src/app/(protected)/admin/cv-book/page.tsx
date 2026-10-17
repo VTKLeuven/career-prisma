@@ -49,6 +49,7 @@ import {
 import { MoreHorizontal, Trash2, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { toast } from "sonner";
+import { formatDateBE } from "@/lib/date-utils";
 import { confirmDialog } from "@/components/confirm-dialog";
 
 type CVBookRow = CVBook & {
@@ -408,7 +409,7 @@ function CreateCVBookDialog({ onCreated }: { onCreated?: () => void }) {
           Create CV Book
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New CV Book</DialogTitle>
           <DialogDescription>
@@ -422,7 +423,7 @@ function CreateCVBookDialog({ onCreated }: { onCreated?: () => void }) {
               <SelectTrigger id="year" className="w-full">
                 {selectedYearId && academicYears.find(y => y.id === selectedYearId) ? (
                   <span className="block truncate">
-                    {academicYears.find(y => y.id === selectedYearId)?.name} ({academicYears.find(y => y.id === selectedYearId)?.start_of_year} - {academicYears.find(y => y.id === selectedYearId)?.end_of_year})
+                    {academicYears.find(y => y.id === selectedYearId)?.name} ({formatDateBE(academicYears.find(y => y.id === selectedYearId)?.start_of_year)} - {formatDateBE(academicYears.find(y => y.id === selectedYearId)?.end_of_year)})
                   </span>
                 ) : (
                   <SelectValue placeholder="Select an academic year" />
@@ -431,7 +432,7 @@ function CreateCVBookDialog({ onCreated }: { onCreated?: () => void }) {
               <SelectContent>
                 {academicYears.map((year) => (
                   <SelectItem key={year.id} value={year.id}>
-                    {year.name} ({year.start_of_year} - {year.end_of_year})
+                    {year.name} ({formatDateBE(year.start_of_year)} - {formatDateBE(year.end_of_year)})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -876,7 +877,7 @@ function EditCVBookDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit CV Book Details</DialogTitle>
           <DialogDescription>

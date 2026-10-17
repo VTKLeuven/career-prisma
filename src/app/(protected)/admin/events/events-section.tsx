@@ -35,6 +35,7 @@ import { IconPlus } from "@tabler/icons-react";
 import type { CareerEvent, Company, HeaderButtonType } from "@/lib/schema";
 import { SimpleRichTextEditor } from "@/components/admin/SimpleRichTextEditor";
 import { toast } from "sonner";
+import { formatDateBE } from "@/lib/date-utils";
 import { confirmDialog } from "@/components/confirm-dialog";
 
 export type EventsSectionData = { events: CareerEvent[]; statuses: Record<string, EventSetupStatus> };
@@ -77,7 +78,7 @@ export function EventsSection({
 
   return (
     <Card className="rounded-xl">
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <CardTitle className="text-2xl">Annual event editions</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -375,9 +376,9 @@ function EventCard({ event, status, onChanged }: { event: CareerEvent; status?: 
   };
 
   return (
-    <Card className="border rounded-lg shadow-sm">
+    <Card className="@container border rounded-lg shadow-sm">
       <CardHeader className="flex flex-row items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <CardTitle>{event.name}</CardTitle>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
             <span className="rounded-full bg-muted px-2 py-1">
@@ -400,8 +401,10 @@ function EventCard({ event, status, onChanged }: { event: CareerEvent; status?: 
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="grid grid-cols-2 gap-4">
-        <div className="grid grid-cols-2 gap-1 text-sm text-muted-foreground">
+      {/* Details beside the actions only when the card itself is wide enough:
+          on a phone, or two cards to a row, the buttons need the full width. */}
+      <CardContent className="grid grid-cols-1 gap-4 @lg:grid-cols-2">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] content-start gap-x-4 gap-y-1 text-sm text-muted-foreground *:wrap-anywhere">
           <span>Date</span>
           <span className="font-medium text-foreground">{String(event.date ?? "TBA")}</span>
           <span>Hours</span>
@@ -576,7 +579,7 @@ function AddMatchingSoftwareDialog({ event, onCreated }: { event: CareerEvent; o
           Add matching software
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>Add Matching Software</DialogTitle>
@@ -596,7 +599,7 @@ function AddMatchingSoftwareDialog({ event, onCreated }: { event: CareerEvent; o
               <SelectContent>
                 {academicYears.map((y) => (
                   <SelectItem key={y.id} value={y.id}>
-                    {y.name} ({y.start_of_year} - {y.end_of_year})
+                    {y.name} ({formatDateBE(y.start_of_year)} - {formatDateBE(y.end_of_year)})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -890,7 +893,7 @@ function AddCompaniesDialog({ event, hasCompanies }: { event: CareerEvent; hasCo
           {hasExistingCompanies ? "Edit companies" : "Add companies"}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{hasExistingCompanies ? "Edit Companies" : "Add Companies"} to {event.name}</DialogTitle>
           <DialogDescription>

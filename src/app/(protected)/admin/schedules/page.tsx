@@ -142,9 +142,9 @@ function SchedulesTable({ eventId, onChanged }: { eventId?: string; onChanged: (
                   return (
                     <div
                       key={s.id}
-                      className="flex items-center justify-between rounded-lg border p-3"
+                      className="flex items-center justify-between gap-2 rounded-lg border p-3"
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                         <FileText className="h-5 w-5 text-muted-foreground" />
                         <span className="font-medium">{masterName}</span>
                         {pdfUrl && (
