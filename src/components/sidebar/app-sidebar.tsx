@@ -31,12 +31,12 @@ import { LayoutDashboard, LayoutGrid, MessageSquareWarning, Search } from "lucid
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  ADMIN_FEEDBACK_URL,
   ADMIN_NAV_GROUP_ICONS,
   ADMIN_NAV_GROUP_ORDER,
   ADMIN_NAV_ITEMS,
 } from "./admin-nav";
 import { useUser } from "@/providers/UserProvider";
+import { FeedbackDialog } from "./feedback-dialog";
 import { fetchPendingApprovalRequestsAction, fetchCompanyByIdAction } from "@/app/actions/companies";
 import { validateExistingPageImage } from "@/lib/utils/image-validation";
 import { getFileUrl } from "@/components/Images";
@@ -119,6 +119,7 @@ export function AppSidebar({ data: sidebarData, ...props }: React.ComponentProps
   const pathname = usePathname();
   const [pendingCount, setPendingCount] = React.useState<number>(sidebarData.pendingApprovals);
   const [pageImageInvalid, setPageImageInvalid] = React.useState<boolean>(false);
+  const [feedbackOpen, setFeedbackOpen] = React.useState(false);
   const companyEvents = sidebarData.companyEvents;
   const companyOrderingBoothId = sidebarData.orderingBoothId;
 
@@ -418,15 +419,10 @@ export function AppSidebar({ data: sidebarData, ...props }: React.ComponentProps
         </SidebarContent>
         <SidebarFooter className="gap-1 border-t border-sidebar-border px-3 pt-2 pb-3">
           {inAdminArea && user?.admin && (
-            <a
-              href={ADMIN_FEEDBACK_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={navRowClass}
-            >
+            <button type="button" onClick={() => setFeedbackOpen(true)} className={navRowClass}>
               <MessageSquareWarning />
               <span>Feedback / IT Support</span>
-            </a>
+            </button>
           )}
           {user?.admin && (
             <Link
@@ -442,6 +438,7 @@ export function AppSidebar({ data: sidebarData, ...props }: React.ComponentProps
         <SidebarRail />
       </Sidebar>
       {paletteItems.length > 0 && <CommandPalette items={paletteItems} />}
+      <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} user={user} />
     </>
   );
 }

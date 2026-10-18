@@ -27,8 +27,36 @@ import {
 
 export type AdminNavIcon = ComponentType<{ className?: string }>;
 
+/** Where Dopl runs; the feedback dialog only listens to messages from here. */
+export const DOPL_ORIGIN = "https://dopl.vtk.be";
+
 /** Public Dopl intake form where admins send feedback and IT support requests. */
-export const ADMIN_FEEDBACK_URL = "https://dopl.vtk.be/f/career-it-support-requests";
+const ADMIN_FEEDBACK_FORM = `${DOPL_ORIGIN}/f/career-it-support-requests`;
+
+/**
+ * The form with the signed-in admin's email and name filled in, so they don't
+ * type what we already know. Dopl reads `?email=` and `?name=` (its D-142);
+ * they stay editable there, and Dopl ignores a value it can't use. No `?lang=`:
+ * the back office is English, which is what Dopl shows by default.
+ *
+ * With `embedOrigin` it is the form as Dopl's own `embed.js` loads it in a
+ * modal: no page chrome, its own close button, and our origin so Dopl accepts
+ * the submission (`allowedEmbedOrigins` on the form).
+ */
+export function adminFeedbackUrl(
+  user: { email?: string | null; name?: string | null } | null,
+  embedOrigin?: string,
+): string {
+  const params = new URLSearchParams();
+  if (embedOrigin) {
+    params.set("embed", "modal");
+    params.set("origin", embedOrigin);
+  }
+  if (user?.email) params.set("email", user.email);
+  if (user?.name) params.set("name", user.name);
+  const query = params.toString();
+  return query ? `${ADMIN_FEEDBACK_FORM}?${query}` : ADMIN_FEEDBACK_FORM;
+}
 
 /** A logical grouping for the admin hub screen. Order here defines display order. */
 export type AdminNavGroup =
