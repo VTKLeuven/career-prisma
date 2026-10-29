@@ -199,11 +199,13 @@ export default function FormBuilderPage() {
     const newFields = [...fields];
     const currentField = newFields[index];
     
-    // Auto-generate field name from label if label is being updated
+    // Auto-generate field name from label if label is being updated. Unique
+    // among the other fields: answers are stored by name, so two fields with
+    // the same title (a duplicate, say) would otherwise share one value.
     if (updates.label !== undefined && updates.label !== currentField.label) {
       const generatedName = generateFieldName(updates.label);
       if (generatedName) {
-        updates.name = generatedName;
+        updates.name = uniqueFieldName(generatedName, fields.filter((_, i) => i !== index));
       }
     }
     
@@ -247,14 +249,21 @@ export default function FormBuilderPage() {
     setFields(newFields);
   };
 
+  // Dragging starts from a card's header row only, so the inputs inside an
+  // expanded card stay selectable; the whole card still moves and is dimmed.
   const handleDragStart = (index: number) => (e: React.DragEvent) => {
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", index.toString());
-    e.currentTarget.classList.add("opacity-50");
+    const row = e.currentTarget.closest<HTMLElement>("[data-field-row]");
+    if (row) {
+      const rect = row.getBoundingClientRect();
+      e.dataTransfer.setDragImage(row, e.clientX - rect.left, e.clientY - rect.top);
+      row.classList.add("opacity-50");
+    }
   };
 
   const handleDragEnd = (e: React.DragEvent) => {
-    e.currentTarget.classList.remove("opacity-50");
+    e.currentTarget.closest("[data-field-row]")?.classList.remove("opacity-50");
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -344,17 +353,20 @@ export default function FormBuilderPage() {
                 fields.map((field, index) => (
                   <div
                     key={field.id}
-                    draggable
-                    onDragStart={handleDragStart(index)}
-                    onDragEnd={handleDragEnd}
+                    data-field-row
                     onDragOver={handleDragOver}
                     onDrop={handleDrop(index)}
                     // Untitled inputs belong to the titled field above them; indent to show it.
-                    className={`cursor-move ${!field.label && index > 0 ? "ml-8" : ""}`}
+                    className={!field.label && index > 0 ? "ml-8" : undefined}
                   >
                     <FieldEditor
                       field={field}
                       index={index}
+                      dragHandleProps={{
+                        draggable: true,
+                        onDragStart: handleDragStart(index),
+                        onDragEnd: handleDragEnd,
+                      }}
                       onUpdate={(updates) => updateField(index, updates)}
                       onDuplicateBelow={() => duplicateFieldBelow(index)}
                       onRemove={() => removeField(index)}
@@ -480,6 +492,7 @@ export default function FormBuilderPage() {
 function FieldEditor({
   field,
   index,
+  dragHandleProps,
   onUpdate,
   onDuplicateBelow,
   onRemove,
@@ -490,6 +503,8 @@ function FieldEditor({
 }: {
   field: FormField;
   index: number;
+  /** Makes the header row the drag handle for reordering. */
+  dragHandleProps: React.HTMLAttributes<HTMLDivElement>;
   onUpdate: (updates: Partial<FormField>) => void;
   onDuplicateBelow: () => void;
   onRemove: () => void;
@@ -568,7 +583,7 @@ function FieldEditor({
   return (
     <Card className={expanded ? "border-primary" : ""}>
       <CardContent className="p-4">
-        <div className="flex items-center gap-2">
+        <div {...dragHandleProps} className="flex cursor-move items-center gap-2">
           <div className="flex items-center gap-1">
             <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab active:cursor-grabbing" />
             <div className="flex flex-col gap-1">
