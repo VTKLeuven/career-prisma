@@ -369,7 +369,7 @@ export function AppSidebar({ data: sidebarData, ...props }: React.ComponentProps
       <Sidebar variant="inset" collapsible="offcanvas" {...props}>
         <SidebarHeader className="gap-3 px-3 pt-3 pb-1">
           <Link
-            href={inAdminArea ? "/admin" : "/"}
+            href="/"
             className="flex h-10 items-center gap-2.5 rounded-[10px] px-1.5 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
