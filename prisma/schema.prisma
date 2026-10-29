@@ -367,6 +367,9 @@ model CvBook {
   active                          Boolean?          @default(false)
   student_linkedin_field          String?           @db.VarChar(255)
   student_linkedin_field_backup   String?           @db.VarChar(255)
+  // Unused: `active` alone now publishes a book to companies. Kept so the
+  // image still running during a deploy can select it; drop it in a later
+  // migration (docs/operations.md, destructive migrations).
   screening_complete              Boolean?          @default(false)
   cvBookFavourites                CvBookFavourite[]
   cvBookScreenings                CvBookScreening[]

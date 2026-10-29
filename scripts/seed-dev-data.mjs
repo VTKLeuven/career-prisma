@@ -111,6 +111,9 @@ const SPEAKER_USER = {
   chiara: dev(8, 3),
 };
 
+// One private PDF per seeded CV: dev(9, n).
+const cvFile = (n) => dev(9, n);
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -1103,6 +1106,225 @@ async function main() {
     },
   });
   log(`1 historical sale in ${previous.name}`);
+
+  // -- CV book -------------------------------------------------------------
+  // Two years of CVs through one form, the way /forms/cv-book is used: last
+  // year's book is published, this year's is hidden while it is screened.
+  // TechnoBel (the rep's company) bought the CV book both years and sees last
+  // year's; Aurora bought last year only; Delta never did, so its rep would
+  // land on the request-access page. The dev student has a CV in last year's book
+  // only, so they can upload for this year and try the opt-out switch. See
+  // docs/data-model.md for the rules this exercises.
+  console.log("\nCV book");
+  const cvBookSub = await findOrCreate(
+    prisma.careerSubOption,
+    { name: "CV Book" },
+    { description: "Access to the screened student CVs of that academic year.", price: "500" },
+  );
+  for (const [companyId, year] of [
+    [COMPANY.technobel, previousYear],
+    [COMPANY.technobel, currentYear],
+    [COMPANY.aurora, previousYear],
+  ]) {
+    await prisma.companyCareerSubOption.upsert({
+      where: {
+        company_id_career_sub_option_id_academic_year_id: {
+          company_id: companyId,
+          career_sub_option_id: cvBookSub.id,
+          academic_year_id: year.id,
+        },
+      },
+      update: { status: "sold" },
+      create: {
+        company_id: companyId,
+        career_sub_option_id: cvBookSub.id,
+        academic_year_id: year.id,
+        price_at_sale: "500",
+        name_at_sale: "CV Book",
+        status: "sold",
+      },
+    });
+  }
+
+  const cvForm = await findOrCreate(
+    prisma.form,
+    { slug: "cv-book" },
+    {
+      name: "CV Book",
+      description: "Upload your CV so companies at the VTK Jobfair can find you.",
+      is_active: true,
+      updated_at: now,
+    },
+  );
+  const cvFields = [
+    { id: "cv_first", name: "first_name", label: "First name", type: "text", required: true, layout: "half" },
+    { id: "cv_last", name: "last_name", label: "Last name", type: "text", required: true, layout: "half" },
+    { id: "cv_email", name: "email", label: "Email", type: "email", required: true },
+    { id: "cv_study", name: "study", label: "Master", type: "master-degrees", required: true },
+    { id: "cv_file", name: "cv", label: "CV (PDF)", type: "file", required: true, validation: { allowedFileTypes: [".pdf"] } },
+    { id: "cv_linkedin", name: "linkedin", label: "LinkedIn", type: "linkedin", required: false },
+  ];
+  const cvVersion = await findOrCreate(
+    prisma.formVersion,
+    { form_id: cvForm.id, version_number: 1 },
+    {
+      schema: { fields: cvFields },
+      is_active: true,
+      metadata: { requires_login: true },
+      created_at: previous.start,
+    },
+  );
+
+  // Fixed dates inside each year, so the seed is stable and every response
+  // lands in its year's book.
+  const inPrevious = (days) => new Date(previous.start.getTime() + days * 86_400_000);
+  const inCurrent = (days) =>
+    new Date(Math.min(current.start.getTime() + days * 86_400_000, now.getTime() - 3_600_000));
+
+  // status: approved / rejected / pending (no screening row); override: a
+  // study the admin corrected. `student` links the dev student's account.
+  const cvs = [
+    // Last year -- published.
+    { n: 1, first: "Lien", last: "Peeters", master: "CW", at: inPrevious(20), status: "approved", linkedin: "lien-peeters" },
+    { n: 2, first: "Arne", last: "Janssens", master: "WTK", at: inPrevious(24), status: "approved" },
+    { n: 3, first: "Sofie", last: "Maes", master: "ELT", at: inPrevious(31), status: "approved", linkedin: "sofie-maes" },
+    { n: 4, first: "Pieter", last: "Willems", master: "BWK", at: inPrevious(35), status: "approved" },
+    { n: 5, first: "Emma", last: "Claes", master: "CW", at: inPrevious(42), status: "approved", linkedin: "emma-claes" },
+    { n: 6, first: "Jonas", last: "Goossens", master: "WTK", at: inPrevious(47), status: "approved" },
+    { n: 7, first: "Noor", last: "Wouters", master: "ELT", at: inPrevious(55), status: "approved", override: "Computerwetenschappen" },
+    { n: 8, first: "Tibo", last: "De Smet", master: "CW", at: inPrevious(60), status: "rejected" },
+    { n: 9, first: "Dev", last: "Student", master: "CW", at: inPrevious(70), status: "approved", student: true, email: studentEmail },
+    // Sent without signing in by someone who later opted out on their
+    // account: matched by email, shown as withdrawn in screening.
+    { n: 10, first: "Lotte", last: "Vermeulen", master: "BWK", at: inPrevious(75), status: "approved", email: "lotte.optout@dev.local" },
+    // This year -- screening in progress.
+    { n: 11, first: "Ruben", last: "Mertens", master: "CW", at: inCurrent(5), status: "approved", linkedin: "ruben-mertens" },
+    { n: 12, first: "Hanne", last: "Jacobs", master: "WTK", at: inCurrent(9), status: "approved" },
+    { n: 13, first: "Wout", last: "Hermans", master: "ELT", at: inCurrent(14), status: "rejected" },
+    { n: 14, first: "Fien", last: "Aerts", master: "BWK", at: inCurrent(18), status: "pending", linkedin: "fien-aerts" },
+    { n: 15, first: "Lars", last: "Van den Broeck", master: "CW", at: inCurrent(22), status: "pending" },
+    { n: 16, first: "Elise", last: "Dubois", master: "WTK", at: inCurrent(26), status: "pending" },
+    // Lien sends a new CV this year: one response per year, one per book.
+    { n: 17, first: "Lien", last: "Peeters", master: "CW", at: inCurrent(30), status: "pending", linkedin: "lien-peeters" },
+  ];
+
+  await prisma.student.upsert({
+    where: { email: "lotte.optout@dev.local" },
+    update: { cv_book_opt_out: true },
+    create: {
+      username: "lotte.optout",
+      email: "lotte.optout@dev.local",
+      first_name: "Lotte",
+      last_name: "Vermeulen",
+      full_name: "Lotte Vermeulen",
+      verified: true,
+      cv_book_opt_out: true,
+      date_created: now,
+    },
+  });
+
+  const cvBooks = {};
+  for (const [key, year, published] of [
+    ["previous", previousYear, true],
+    ["current", currentYear, false],
+  ]) {
+    cvBooks[key] = await findOrCreate(
+      prisma.cvBook,
+      { form_id: cvForm.id, year_id: year.id },
+      {
+        student_first_name_field: "first_name",
+        student_last_name_field: "last_name",
+        student_email_field: "email",
+        student_study_field: "study",
+        student_cv_field: "cv",
+        student_linkedin_field: "linkedin",
+        active: published,
+        date_updated: now,
+      },
+    );
+  }
+
+  const cvResponses = {};
+  for (const cv of cvs) {
+    const email =
+      cv.email ?? `${cv.first}.${cv.last}`.toLowerCase().replace(/\s+/g, "") + "@student.dev.local";
+    const fileId = cvFile(cv.n);
+    const pdf = minimalPdf(`CV -- ${cv.first} ${cv.last} (${masters[cv.master].name})`);
+    await writeFile(path.join(uploadsDirectory, fileId), pdf);
+    await prisma.file.upsert({
+      where: { id: fileId },
+      update: { filesize: pdf.length, private: true, modified_on: now },
+      create: {
+        id: fileId,
+        storage: "local",
+        filename_disk: fileId,
+        filename_download: `CV ${cv.first} ${cv.last}.pdf`,
+        title: `CV ${cv.first} ${cv.last}`,
+        type: "application/pdf",
+        filesize: pdf.length,
+        private: true,
+        uploaded_on: cv.at,
+      },
+    });
+
+    const data = {
+      first_name: cv.first,
+      last_name: cv.last,
+      email,
+      study: String(masters[cv.master].id),
+      cv: fileId,
+      ...(cv.linkedin ? { linkedin: `https://www.linkedin.com/in/${cv.linkedin}` } : {}),
+      ...(cv.student ? { _student_id: String(student.id), _student_email: student.email } : {}),
+    };
+    // Keyed on email and academic year -- one CV per student per year, the
+    // rule the app keeps too -- so re-running never duplicates a response.
+    const window = cv.at >= current.start ? current : previous;
+    const existing = await prisma.formResponse.findFirst({
+      where: {
+        form_version_id: cvVersion.id,
+        submitter_email: email,
+        submitted_at: { gte: window.start, lte: window.end },
+      },
+      orderBy: { submitted_at: "asc" },
+    });
+    const response = existing
+      ? await prisma.formResponse.update({ where: { id: existing.id }, data: { data, submitted_at: cv.at } })
+      : await prisma.formResponse.create({
+          data: {
+            form_version_id: cvVersion.id,
+            submitter_email: email,
+            submitter_first_name: cv.first,
+            submitter_last_name: cv.last,
+            submitted_at: cv.at,
+            data,
+          },
+        });
+    cvResponses[cv.n] = response;
+
+    const book = cv.at >= current.start ? cvBooks.current : cvBooks.previous;
+    const screening = { cv_book: book.id, form_response: response.id };
+    if (cv.status === "pending") {
+      await prisma.cvBookScreening.deleteMany({ where: screening });
+    } else {
+      await findOrCreate(prisma.cvBookScreening, screening, {
+        status: cv.status,
+        study_override: cv.override ?? null,
+        screened_at: new Date(cv.at.getTime() + 2 * 86_400_000),
+        screened_by: USER_ADMIN,
+      });
+    }
+  }
+
+  for (const n of [1, 5]) {
+    await findOrCreate(
+      prisma.cvBookFavourite,
+      { company_id: COMPANY.technobel, cv_book: cvBooks.previous.id, form_response: cvResponses[n].id },
+      { date_created: now },
+    );
+  }
+  log(`${previous.name}: published, ${cvs.filter((c) => c.at < current.start).length} CVs (1 rejected, 1 withdrawn)`);
+  log(`${current.name}: hidden, ${cvs.filter((c) => c.at >= current.start).length} CVs (4 pending)`);
+  log("CV Book sold to TechnoBel (both years) and Aurora (last year)");
 
   // -- Vacancies -----------------------------------------------------------
   console.log("\nVacancies");

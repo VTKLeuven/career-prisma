@@ -67,8 +67,14 @@ announces it. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
     year's CV.
   - **Access per year bought, for good.** A company opens a year's book if it
     bought the "CV Book" sub-option that year, alone or inside a package
-    (`listCVBookYearIdsForCompany()`), and only once the book is active *and*
-    screening is complete.
+    (`listCVBookYearIdsForCompany()`), and only while the book is published.
+  - **One publish switch, no bulk approval.** `cv_books.active` alone decides
+    whether companies see a book ("Publish" / "Unpublish" in admin), and it
+    can be flipped both ways. Companies only ever see CVs an admin approved
+    one by one: publishing approves nothing, so CVs sent later stay hidden
+    until screened. `screening_complete` (the old "Mark ready for companies",
+    which bulk-approved every unscreened CV) is no longer read; its column is
+    left for a later migration to drop.
   - **CVs are private files.** `files.private` is set on every CV in a book
     (`markCVFilesPrivate()`, after each submission and book change);
     `/api/files` then serves it only to an admin, a company that can see that

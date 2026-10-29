@@ -319,7 +319,8 @@ export default function CVBookPage() {
     .filter((year, index, self) =>
       index === self.findIndex(y => y.id === year.id)
     )
-    .sort((a, b) => b.start_of_year.localeCompare(a.start_of_year))
+    // Typed as a string, but Prisma hands over a Date: compare as dates.
+    .sort((a, b) => new Date(b.start_of_year).getTime() - new Date(a.start_of_year).getTime())
 
   return (
     <div className="container mx-auto sm:p-8">

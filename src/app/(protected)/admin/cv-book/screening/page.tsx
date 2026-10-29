@@ -15,7 +15,7 @@ import {
   approveCVAction,
   rejectCVAction,
   updateStudyOverrideAction,
-  markCVBookScreeningCompleteAction,
+  toggleCVBookActiveAction,
   fetchStudyOptionsForCVBookAction,
 } from "@/app/actions/cv-book";
 import type { CVBook, AcademicYear } from "@/lib/schema";
@@ -37,7 +37,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Check, X, Trash2, CheckCircle } from "lucide-react";
+import { Check, X, Trash2, Eye, EyeOff } from "lucide-react";
 import { PageHeader } from "@/components/admin/PageHeader";
 
 export default function CVBookScreeningPage() {
@@ -54,12 +54,12 @@ export default function CVBookScreeningPage() {
   const [editingStudy, setEditingStudy] = useState<string | null>(null);
   const [studyInput, setStudyInput] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [markingComplete, setMarkingComplete] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [studyOptions, setStudyOptions] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<"grid" | "detail">("grid");
   const [selectedStudent, setSelectedStudent] = useState<StudentCVData | null>(null);
-  const [markCompleteError, setMarkCompleteError] = useState<string | null>(null);
-  const [markCompleteDialogOpen, setMarkCompleteDialogOpen] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
 
   const flatStudents = useMemo(
     () => studentGroups.flatMap((g) => g.students),
@@ -192,24 +192,32 @@ export default function CVBookScreeningPage() {
     }
   }
 
-  async function handleMarkComplete() {
+  // Publishing is the one switch for companies; it never approves anything.
+  // Only CVs approved here are shown, so screening can go on after publishing.
+  async function handleTogglePublished() {
     if (!selectedCVBook?.id) return;
-    setMarkingComplete(true);
-    const result = await markCVBookScreeningCompleteAction(selectedCVBook.id, true);
-    setMarkingComplete(false);
+    const publish = !selectedCVBook.active;
+    setPublishing(true);
+    const result = await toggleCVBookActiveAction(selectedCVBook.id, publish);
+    setPublishing(false);
     if (result.success) {
-      setSelectedCVBook((prev) => (prev ? { ...prev, screening_complete: true } : null));
-      setMarkCompleteError(null);
+      setSelectedCVBook((prev) => (prev ? { ...prev, active: publish } : null));
+      setCvBooks((prev) => prev.map((b) => (b.id === selectedCVBook.id ? { ...b, active: publish } : b)));
+      setPublishError(null);
     } else {
-      setMarkCompleteError(result.error ?? "Failed to mark as complete");
+      setPublishError(result.error ?? `Failed to ${publish ? "publish" : "unpublish"} the CV book`);
     }
   }
+
+  const visibleCount = flatStudents.filter((s) => s.screeningStatus === "approved" && !s.withdrawn).length;
+  const unscreenedCount = flatStudents.filter((s) => !s.screeningStatus || s.screeningStatus === "pending").length;
 
   const availableYears = cvBooks
     .map((b) => (typeof b.year === "object" ? b.year : null))
     .filter((y): y is AcademicYear => y !== null)
     .filter((y, i, self) => self.findIndex((x) => x.id === y.id) === i)
-    .sort((a, b) => b.start_of_year.localeCompare(a.start_of_year));
+    // Typed as a string, but Prisma hands over a Date: compare as dates.
+    .sort((a, b) => new Date(b.start_of_year).getTime() - new Date(a.start_of_year).getTime());
 
   function formatDate(iso: string | undefined) {
     if (!iso) return "—";
@@ -261,50 +269,59 @@ export default function CVBookScreeningPage() {
                 </Select>
                 {selectedCVBook && (
                   <>
-                    <Badge variant={selectedCVBook.screening_complete ? "default" : "secondary"}>
-                      {selectedCVBook.screening_complete ? "Ready for companies" : "Screening"}
+                    <Badge variant={selectedCVBook.active ? "default" : "secondary"}>
+                      {selectedCVBook.active ? "Published" : "Hidden from companies"}
                     </Badge>
-                    {!selectedCVBook.screening_complete && (
-                      <>
-                        <Button
-                          onClick={() => {
-                            setMarkCompleteError(null);
-                            setMarkCompleteDialogOpen(true);
-                          }}
-                          disabled={markingComplete}
-                          className="gap-2"
-                        >
-                          <CheckCircle className="h-4 w-4" />
-                          Mark ready for companies
-                        </Button>
-                        <AlertDialog open={markCompleteDialogOpen} onOpenChange={setMarkCompleteDialogOpen}>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Mark ready for companies?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                {flatStudents.filter((s) => s.screeningStatus !== "rejected").length} of{" "}
-                                {studentGroups.flatMap((g) => g.students).length} CVs will be visible to companies.
-                                Rejected CVs stay hidden. New CVs added later will not show until screened.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={async () => {
-                                  setMarkCompleteDialogOpen(false);
-                                  await handleMarkComplete();
-                                }}
-                              >
-                                Mark ready
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                        {markCompleteError && (
-                          <span className="text-sm text-destructive">{markCompleteError}</span>
-                        )}
-                      </>
-                    )}
+                    <Button
+                      variant={selectedCVBook.active ? "outline" : "default"}
+                      onClick={() => {
+                        setPublishError(null);
+                        setPublishDialogOpen(true);
+                      }}
+                      disabled={publishing}
+                      className="gap-2"
+                    >
+                      {selectedCVBook.active ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {selectedCVBook.active ? "Unpublish" : "Publish"}
+                    </Button>
+                    <AlertDialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>
+                            {selectedCVBook.active ? "Unpublish this CV book?" : "Publish this CV book?"}
+                          </AlertDialogTitle>
+                          <AlertDialogDescription>
+                            {selectedCVBook.active ? (
+                              <>Companies will no longer see this book. Screening is kept, so you can publish it again later.</>
+                            ) : (
+                              <>
+                                Companies that bought this year will see the {visibleCount} approved{" "}
+                                {visibleCount === 1 ? "CV" : "CVs"}.
+                                {unscreenedCount > 0 && (
+                                  <>
+                                    {" "}{unscreenedCount} not yet screened {unscreenedCount === 1 ? "stays" : "stay"} hidden
+                                    until you approve {unscreenedCount === 1 ? "it" : "them"}.
+                                  </>
+                                )}{" "}
+                                Rejected CVs and students who opted out are never shown.
+                              </>
+                            )}
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={async () => {
+                              setPublishDialogOpen(false);
+                              await handleTogglePublished();
+                            }}
+                          >
+                            {selectedCVBook.active ? "Unpublish" : "Publish"}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                    {publishError && <span className="text-sm text-destructive">{publishError}</span>}
                   </>
                 )}
               </div>

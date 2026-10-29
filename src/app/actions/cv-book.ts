@@ -21,7 +21,6 @@ import {
   approveCV,
   rejectCV,
   updateStudyOverride,
-  markCVBookScreeningComplete,
 } from "@/lib/repos/cv-book-screening";
 import {
   addFavourite,
@@ -161,6 +160,7 @@ export async function fetchCVBookAccessAction(): Promise<boolean> {
   }
 }
 
+/** Publish or unpublish: whether companies that bought the year can see the book. */
 export async function toggleCVBookActiveAction(id: string, active: boolean): Promise<{ success: boolean; error?: string }> {
   try {
     await requireAdminUser();
@@ -206,8 +206,7 @@ export async function fetchCVBookStudentDataAction(cvBook: CVBook): Promise<impo
     const user = await getUserFromCookies();
     if (!user) return [];
     if (!user.admin) {
-      // Published, and for a year the company bought -- not just "active",
-      // which a book is while screening is still going on.
+      // Published, and for a year the company bought.
       const companyId = companyIdOf(user);
       if (!companyId || !(await canCompanyOpenCVBook(companyId, cvBook.id))) return [];
     }
@@ -280,28 +279,6 @@ export async function updateStudyOverrideAction(
 ): Promise<{ success: boolean; error?: string }> {
   await requireAdminUser();
   return updateStudyOverride(cvBookId, formResponseId, studyOverride);
-}
-
-export async function markCVBookScreeningCompleteAction(
-  cvBookId: string,
-  complete: boolean
-): Promise<{ success: boolean; error?: string }> {
-  await requireAdminUser();
-  if (complete) {
-    // When marking ready: create approved screening records for all CVs that don't have one.
-    // This ensures existing CVs are visible; new CVs added later (without screening) stay hidden.
-    const book = await getCVBookById(cvBookId);
-    if (book) {
-      const groups = await getCVBookStudentData(book, { forScreening: true });
-      const students = groups.flatMap((g) => g.students);
-      for (const s of students) {
-        if (!s.screeningRecord || s.screeningStatus === "pending") {
-          await approveCV(cvBookId, s.id, s.study);
-        }
-      }
-    }
-  }
-  return markCVBookScreeningComplete(cvBookId, complete);
 }
 
 /** Get study options from the form's study field (for screening dropdown) */

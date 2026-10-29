@@ -35,7 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Check, X, Plus } from "lucide-react";
+import { Eye, EyeOff, Plus } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useUser } from "@/providers/UserProvider";
 import type { CVBook, AcademicYear, Form, FormField } from "@/lib/schema";
@@ -126,7 +126,7 @@ function CVBooksTable() {
     if (result.success) {
       loadCVBooks();
     } else {
-      toast.error(`Failed to ${active ? 'activate' : 'deactivate'} CV Book: ${result.error}`);
+      toast.error(`Failed to ${active ? 'publish' : 'unpublish'} CV Book: ${result.error}`);
     }
   };
 
@@ -159,12 +159,13 @@ function CVBooksTable() {
     fieldColumn("student_study_field", "Study field"),
     fieldColumn("student_cv_field", "CV field"),
     {
+      // `active` is the one switch that shows a book to companies.
       key: "active",
-      label: "Active",
-      value: (book) => Boolean(book.active),
+      label: "Status",
+      value: (book) => (book.active ? "Published" : "Hidden"),
       filter: true,
       render: (book) => (
-        <Badge variant={book.active ? "success" : "muted"}>{book.active ? "Active" : "Inactive"}</Badge>
+        <Badge variant={book.active ? "success" : "muted"}>{book.active ? "Published" : "Hidden"}</Badge>
       ),
     },
   ];
@@ -196,15 +197,15 @@ function CVBooksTable() {
           <DropdownMenuItem
             onClick={() => handleToggleActive(book.id, true)}
           >
-            <Check className="mr-2 h-4 w-4" />
-            Activate
+            <Eye className="mr-2 h-4 w-4" />
+            Publish to companies
           </DropdownMenuItem>
         ) : (
           <DropdownMenuItem
             onClick={() => handleToggleActive(book.id, false)}
           >
-            <X className="mr-2 h-4 w-4" />
-            Deactivate
+            <EyeOff className="mr-2 h-4 w-4" />
+            Unpublish
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />

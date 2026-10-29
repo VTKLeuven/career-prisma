@@ -471,7 +471,6 @@ export type CVBook = {
   student_linkedin_field_backup?: string;
   active: boolean;
   /** When true, companies can see approved CVs. Admin screens first, then sets this. */
-  screening_complete?: boolean;
 }
 
 /** Company favourite for a student CV in a CV Book. */

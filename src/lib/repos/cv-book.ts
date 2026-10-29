@@ -64,7 +64,6 @@ export async function listCVBooks(opts?: {
   sort?: string;
   filter?: {
     active?: boolean;
-    screening_complete?: boolean;
   };
 }) {
   try {
@@ -85,9 +84,6 @@ export async function listCVBooks(opts?: {
     const rows = await prisma.cvBook.findMany({
       where: {
         ...(filter?.active !== undefined ? { active: filter.active } : {}),
-        ...(filter?.screening_complete !== undefined
-          ? { screening_complete: filter.screening_complete }
-          : {}),
         ...(search ? { form: { name: { contains: search, mode: "insensitive" } } } : {}),
       },
       include: CV_BOOK_INCLUDE,
@@ -103,11 +99,16 @@ export async function listCVBooks(opts?: {
   }
 }
 
-/** Active CV books for companies: only show when screening is complete */
+/**
+ * Published books (`active`), the one switch that decides whether companies
+ * can see a book. It used to take a second flag, `screening_complete` ("Mark
+ * ready for companies"), which also bulk-approved every unscreened CV; that
+ * defeated the manual check, so it is gone and the column is unused.
+ */
 export async function getActiveCVBooks() {
   try {
     return await listCVBooks({
-      filter: { active: true, screening_complete: true },
+      filter: { active: true },
       sort: "-year.start_of_year", // Most recent year first
     });
   } catch (error) {
@@ -129,7 +130,7 @@ export async function getCVBookByYear(yearId: string) {
   }
 }
 
-/** Get CV Book by year for admin screening (ignores active/screening_complete) */
+/** Get CV Book by year for admin screening (published or not) */
 export async function getCVBookByYearForScreening(yearId: string): Promise<CVBook | null> {
   try {
     const row = await prisma.cvBook.findFirst({
@@ -355,13 +356,12 @@ export async function getCVBookStudentData(
 
     let finalStudentData = withStudyOverride;
     if (!opts?.forScreening) {
-      // Company view: only show CVs that went through screening and are not
-      // rejected (new unscreened CVs stay hidden), and never a student who
-      // opted out.
-      finalStudentData = withStudyOverride.filter((s) => {
-        if (!s.screeningRecord || s.withdrawn) return false;
-        return s.screeningStatus !== "rejected";
-      });
+      // Company view: only CVs an admin approved -- unscreened ones, and
+      // "pending" records left by a study correction, stay hidden -- and never
+      // a student who opted out.
+      finalStudentData = withStudyOverride.filter(
+        (s) => s.screeningStatus === "approved" && !s.withdrawn
+      );
     }
 
     // Group by study
@@ -531,12 +531,12 @@ export async function listCVBookYearIdsForCompany(companyId: string): Promise<st
   return Array.from(new Set([...direct, ...viaPackage].map((r) => String(r.academic_year_id))));
 }
 
-/** The books a company may open: published (active, screened) and for a year it bought. */
+/** The books a company may open: published (`active`) and for a year it bought. */
 export async function listCVBooksForCompany(companyId: string): Promise<CVBook[]> {
   const yearIds = await listCVBookYearIdsForCompany(companyId);
   if (yearIds.length === 0) return [];
   const rows = await prisma.cvBook.findMany({
-    where: { active: true, screening_complete: true, year_id: { in: yearIds.map(num) } },
+    where: { active: true, year_id: { in: yearIds.map(num) } },
     include: CV_BOOK_INCLUDE,
     orderBy: { year: { start_of_year: "desc" } },
   });

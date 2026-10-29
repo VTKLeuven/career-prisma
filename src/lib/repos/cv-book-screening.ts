@@ -162,23 +162,3 @@ export async function updateStudyOverride(
     };
   }
 }
-
-/** Mark CV Book as screening complete and ready for companies */
-export async function markCVBookScreeningComplete(
-  cvBookId: string,
-  complete: boolean
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    await prisma.cvBook.update({
-      where: { id: num(cvBookId) },
-      data: { screening_complete: complete },
-    });
-    return { success: true };
-  } catch (error) {
-    console.error("[markCVBookScreeningComplete] Error:", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Failed to update CV Book",
-    };
-  }
-}
