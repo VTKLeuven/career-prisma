@@ -8,10 +8,9 @@ import { Linkedin, Star } from "lucide-react"
 import { CVFirstPagePreview } from "@/components/cv-first-page-preview"
 import { CVDocumentViewer } from "@/components/cv-document-viewer"
 import { useUser } from "@/providers/UserProvider"
-import { fetchCompanyByIdAction } from "@/app/actions/companies"
-import { getCompanySubOptionAnyStatus } from "@/lib/utils/company-access"
 import {
   fetchActiveCVBooksAction,
+  fetchCVBookAccessAction,
   fetchCVBookByIdAction,
   fetchCVBookByYearAction,
   fetchCVBookStudentDataAction,
@@ -107,6 +106,20 @@ export default function CVBookPage() {
       }
 
       try {
+        // A company that never bought the CV book is offered it instead. One
+        // that bought a year keeps that year's book for good; the books listed
+        // are only the published ones for years it bought.
+        if (!user?.admin) {
+          const access = await fetchCVBookAccessAction()
+          setHasAccess(access)
+          if (!access) {
+            router.replace("/dashboard/job-platform/cv-book/request-access")
+            return
+          }
+        } else {
+          setHasAccess(true)
+        }
+
         const books = user?.admin ? await fetchCVBooksAction() : await fetchActiveCVBooksAction()
         setActiveCVBooks(books)
 
@@ -128,18 +141,6 @@ export default function CVBookPage() {
           const mostRecentBook = books[0]
           const yearId = typeof mostRecentBook.year === "object" ? mostRecentBook.year.id : mostRecentBook.year
           setSelectedYearId(yearId)
-        }
-
-        if (!user?.admin && user?.company?.id) {
-          const fetchedCompany = await fetchCompanyByIdAction(user.company.id)
-          const companySubOption = getCompanySubOptionAnyStatus(fetchedCompany ?? null, "CV Book")
-          const access = companySubOption !== null
-          setHasAccess(access)
-          if (!access) {
-            router.replace("/dashboard/job-platform/cv-book/request-access")
-          }
-        } else {
-          setHasAccess(true)
         }
       } catch (error) {
         console.error("[CVBookPage] Error fetching:", error)

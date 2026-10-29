@@ -30,6 +30,7 @@ function shapeStudent(row: NonNullable<StudentRow>): Student {
     sso_study_years: row.sso_study_years ?? [],
     sso_locale: row.sso_locale ?? undefined,
     preferred_language: row.preferred_language ?? undefined,
+    cv_book_opt_out: row.cv_book_opt_out ?? false,
     verified: row.verified ?? undefined,
     date_created: row.date_created?.toISOString(),
     date_updated: row.date_updated?.toISOString(),
@@ -406,6 +407,41 @@ export async function saveStudentLanguage(
     console.error("[saveStudentLanguage] Failed:", error);
     return false;
   }
+}
+
+/** The student's own "don't show me in any CV book" switch. */
+export async function setStudentCVBookOptOut(
+  studentId: string,
+  optOut: boolean
+): Promise<boolean> {
+  const id = Number(studentId);
+  if (!Number.isSafeInteger(id)) return false;
+
+  try {
+    await prisma.student.update({
+      where: { id },
+      data: { cv_book_opt_out: optOut, date_updated: new Date() },
+    });
+    return true;
+  } catch (error) {
+    console.error("[setStudentCVBookOptOut] Failed:", error);
+    return false;
+  }
+}
+
+/**
+ * Students who opted out of the CV book, by id and by lowercased email. The
+ * email catches CVs sent without signing in, which carry no student id.
+ */
+export async function listCVBookOptOuts(): Promise<{ ids: Set<string>; emails: Set<string> }> {
+  const rows = await prisma.student.findMany({
+    where: { cv_book_opt_out: true },
+    select: { id: true, email: true },
+  });
+  return {
+    ids: new Set(rows.map((r) => String(r.id))),
+    emails: new Set(rows.map((r) => r.email.trim().toLowerCase())),
+  };
 }
 
 /**

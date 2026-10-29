@@ -342,7 +342,11 @@ export async function updateFormResponseAction(
 ) {
   try {
     await requireAdminUser();
-    return await updateFormResponse(id, data);
+    const response = await updateFormResponse(id, data);
+    // An admin may have swapped the CV in a CV-book response.
+    const { markCVFilesPrivate } = await import("@/lib/repos/cv-book");
+    await markCVFilesPrivate();
+    return response;
   } catch (error) {
     console.error("Error updating form response:", error);
     throw error;
@@ -510,10 +514,14 @@ export async function submitFormResponseAction(data: {
     if (student) {
       const formId = typeof formVersion.form_id === "string" ? formVersion.form_id : (formVersion.form_id as { id: string }).id;
       const { getStudentLatestFormResponseForForm, listFormVersionsForServer } = await import("@/lib/repos/forms");
+      const { cvBookResponseWindowStart } = await import("@/lib/repos/cv-book");
       const allVersions = await listFormVersionsForServer(formId);
       const versionIds = allVersions.map((v) => v.id);
       if (versionIds.length > 0) {
-        const existing = await getStudentLatestFormResponseForForm(student.id, versionIds);
+        // A CV-book form starts a new response each academic year, so every
+        // year's book gets its own CV (see cvBookResponseWindowStart).
+        const since = await cvBookResponseWindowStart(formId);
+        const existing = await getStudentLatestFormResponseForForm(student.id, versionIds, { since });
         if (existing) {
           existingResponseId = existing.id;
           existingAttendantUuid = existing.attendant_uuid ?? null;
@@ -601,6 +609,15 @@ export async function submitFormResponseAction(data: {
     } catch (error) {
       console.error('[submitFormResponseAction] Error saving form response:', error);
       throw error;
+    }
+
+    // A CV sent to a CV-book form must stop being public by UUID right away.
+    try {
+      const { markCVFilesPrivate } = await import("@/lib/repos/cv-book");
+      const formId = typeof formVersion.form_id === "string" ? formVersion.form_id : (formVersion.form_id as { id: string }).id;
+      await markCVFilesPrivate(formId);
+    } catch (error) {
+      console.error('[submitFormResponseAction] Error marking CV files private:', error);
     }
 
     // Find email field - check common field names (case-insensitive)
@@ -1113,13 +1130,16 @@ export async function fetchPublicFormBySlugAction(slug: string) {
     if (studentId) {
       try {
         const { getStudentLatestFormResponseForForm } = await import("@/lib/repos/forms");
+        const { cvBookResponseWindowStart } = await import("@/lib/repos/cv-book");
         let versionIds = form.form_versions?.map((v: { id: string }) => v.id) ?? [];
         if (versionIds.length === 0 && form.id) {
           const versions = await listFormVersions(form.id);
           versionIds = versions.map((v) => v.id);
         }
         if (versionIds.length > 0) {
-          const resp = await getStudentLatestFormResponseForForm(studentId, versionIds);
+          // Same window as the submit: last year's CV is not this year's to edit.
+          const since = form.id ? await cvBookResponseWindowStart(form.id) : null;
+          const resp = await getStudentLatestFormResponseForForm(studentId, versionIds, { since });
           if (resp) {
             existingResponse = { id: resp.id, form_version_id: resp.form_version_id, data: resp.data ?? {}, attendant_uuid: resp.attendant_uuid };
           }

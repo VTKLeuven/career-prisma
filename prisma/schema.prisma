@@ -448,6 +448,10 @@ model File {
   tus_id                  String?           @db.VarChar(64)
   tus_data                Json?
   uploaded_on             DateTime?         @db.Timestamptz(6)
+  // Served only to whoever may see it, never cached publicly: set on student
+  // CVs in a CV book (markCVFilesPrivate() in lib/repos/cv-book.ts). Every
+  // other upload stays public by UUID, the layout inherited from Directus.
+  private                 Boolean           @default(false)
   careerEventPages        CareerEventPage[] @relation("career_event_pages_company_guideTofiles")
   imageIdCareerEventPages CareerEventPage[] @relation("career_event_pages_image_idTofiles")
   careerEvents            CareerEvent[]
@@ -767,6 +771,10 @@ model Student {
   password_reset_token            String?                          @db.VarChar(255)
   password_reset_token_created    DateTime?                        @db.Timestamp(6)
   is_shifter                      Boolean?                         @default(false)
+  // "Don't show me in any CV book", chosen on /student/account. Hides the
+  // student from companies in every year's book; their submission and CV
+  // stay, so admins see them as withdrawn and the student can switch back.
+  cv_book_opt_out                 Boolean                          @default(false)
   companyMatchingResponseStudents CompanyMatchingResponseStudent[]
   studentMatchingResponses        StudentMatchingResponse[]
   studentCompanies                StudentCompany[]

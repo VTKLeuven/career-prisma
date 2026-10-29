@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * A student's own account: their details, password, preferred language and
- * study info (meant to pre-fill forms later on), and deleting the account.
+ * study info (meant to pre-fill forms later on), whether they appear in the
+ * CV book, and deleting the account.
  *
  * For an SSO student vtk.be owns name, email and r-number, and there is no
  * password; those show read-only with a link to vtk.be.
@@ -47,6 +48,7 @@ export default async function StudentAccountPage() {
       years={student.study_years}
       editable={studyEditability(student)}
       vtkAccountUrl={vtkAccountUrl()}
+      cvBookOptOut={student.cv_book_opt_out}
       fromVtk={
         student.sso_subject
           ? {

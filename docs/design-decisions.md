@@ -55,6 +55,10 @@ removed unused — students sign in through the VTK SSO instead.
 Uploads are UUID-named files under `UPLOADS_DIR`, with metadata rows in the
 `files` table — the layout inherited from Directus, kept so the 2,236 existing
 uploads did not have to move. Back up the directory together with Postgres.
+Uploads are public to anyone with the UUID and cached for a year, except files
+marked `private` — today, student CVs in a CV book — which `/api/files`
+authorizes per request and never lets a cache keep
+([data-model.md](data-model.md#company-facing-products)).
 
 **7. `DEV_ENVIRONMENT` gates unfinished features.**
 Features that are demo-ready but not ship-ready are visible on

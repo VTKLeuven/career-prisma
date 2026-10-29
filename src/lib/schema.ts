@@ -77,6 +77,7 @@ export type Student = {
   sso_study_years: string[]; // What the SSO last sent, verbatim (may be [])
   sso_locale?: string; // The SSO's `locale` claim as sent, e.g. "nl-BE"
   preferred_language?: string; // "nl" | "en", chosen on /student/account
+  cv_book_opt_out: boolean; // Hidden from companies in every CV book, by their own choice
   // The password hash, SSO access token and verification token never leave
   // the database layer (see SECRET_COLUMNS in lib/prisma.ts). Code that has
   // to check a password loads the hash on its own (getStudentPasswordHash).

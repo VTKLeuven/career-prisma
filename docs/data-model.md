@@ -55,6 +55,30 @@ announces it. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
 
 - `CvBook` / `CvBookScreening` / `CvBookFavourite` — students upload CVs,
   admins screen them, companies request access and favourite candidates.
+  A `CvBook` is not a document: it points at a form plus the field names
+  holding name, email, study, CV and LinkedIn, and its contents are read live
+  from that form's responses (`getCVBookStudentData()`). The rules that are
+  easy to miss, all in `src/lib/repos/cv-book.ts`:
+  - **One form, many years.** `/forms/cv-book` feeds every year's book. A
+    response belongs to the book whose academic year had most recently started
+    when it was submitted (the oldest book also keeps anything earlier), and a
+    signed-in student's resubmit starts a new response once a new academic
+    year has begun (`cvBookResponseWindowStart()`), instead of overwriting last
+    year's CV.
+  - **Access per year bought, for good.** A company opens a year's book if it
+    bought the "CV Book" sub-option that year, alone or inside a package
+    (`listCVBookYearIdsForCompany()`), and only once the book is active *and*
+    screening is complete.
+  - **CVs are private files.** `files.private` is set on every CV in a book
+    (`markCVFilesPrivate()`, after each submission and book change);
+    `/api/files` then serves it only to an admin, a company that can see that
+    CV, or the student who uploaded it (`src/lib/file-access.ts`), uncached.
+  - **Students can opt out.** `students.cv_book_opt_out`, switched on
+    `/student/account`, hides them from companies in every book; matched by
+    student id, or by email for CVs sent without signing in. Screening still
+    lists them as "Withdrawn by student".
+  - A `master-degrees` study field stores ids; the book shows master and
+    faculty names, and screening offers the masters as study options.
 - `Vacancy` + `VacancyType` / `VacancySector` / `VacancySectorLink` /
   `VacancyMaster` / `VacancySectionConfig` — job board. Behind
   `DEV_ENVIRONMENT`.

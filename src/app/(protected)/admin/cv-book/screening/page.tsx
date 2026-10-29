@@ -404,6 +404,7 @@ export default function CVBookScreeningPage() {
                           <X className="h-3 w-3" /> Rejected
                         </Badge>
                       ) : null}
+                      {selectedStudent?.withdrawn && <WithdrawnBadge />}
                       {selectedStudent?.screeningStatus !== "rejected" && (
                         <Button
                           size="sm"
@@ -583,6 +584,7 @@ export default function CVBookScreeningPage() {
                                     <X className="h-3 w-3" /> Rejected
                                   </Badge>
                                 )}
+                                {student.withdrawn && <WithdrawnBadge />}
                               </div>
                               <p className="text-sm text-muted-foreground">{student.email}</p>
                               <p className="text-xs text-muted-foreground mt-1">
@@ -721,5 +723,14 @@ export default function CVBookScreeningPage() {
         </>
       )}
     </div>
+  );
+}
+
+/** The student opted out on /student/account: companies never see them, whatever the screening says. */
+function WithdrawnBadge() {
+  return (
+    <Badge variant="outline" title="The student asked not to be shown in CV books. Companies do not see this CV.">
+      Withdrawn by student
+    </Badge>
   );
 }

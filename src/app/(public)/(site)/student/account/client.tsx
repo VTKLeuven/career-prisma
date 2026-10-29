@@ -28,6 +28,7 @@ import {
 } from "@/app/actions/student-study";
 import {
   AccountDetailsCard,
+  CVBookCard,
   DeleteAccountCard,
   PasswordCard,
   Status,
@@ -97,6 +98,7 @@ export default function StudentAccountClient({
   editable,
   vtkAccountUrl,
   fromVtk,
+  cvBookOptOut,
 }: {
   name: string;
   email: string;
@@ -113,6 +115,7 @@ export default function StudentAccountClient({
   editable: { programmes: boolean; years: boolean };
   vtkAccountUrl: string;
   fromVtk: FromVtk | null;
+  cvBookOptOut: boolean;
 }) {
   const router = useRouter();
 
@@ -328,6 +331,8 @@ export default function StudentAccountClient({
           </CardContent>
         </Card>
       )}
+
+      <CVBookCard optedOut={cvBookOptOut} />
 
       <DeleteAccountCard viaSso={viaSso} />
     </div>

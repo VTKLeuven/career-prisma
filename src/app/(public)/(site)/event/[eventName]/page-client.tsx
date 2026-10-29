@@ -171,7 +171,7 @@ function Header({ page, floorplanEnabled = false }: { page?: CareerEventPage; fl
       })
     }
     if (shouldShowHeaderButton(page, "cv_upload")) {
-      navItems.push({ key: "cv-upload", label: "CV Upload", href: "https://career.vtk.be/forms/cv-book" })
+      navItems.push({ key: "cv-upload", label: "CV Upload", href: "/forms/cv-book" })
     }
   }
 

@@ -4,6 +4,7 @@ import { Readable } from "stream";
 import { createGzip } from "zlib";
 import { NextResponse } from "next/server";
 import { getStoredFile } from "@/lib/file-storage";
+import { canReadFile, fileCacheControl } from "@/lib/file-access";
 
 export const runtime = "nodejs";
 
@@ -28,7 +29,8 @@ export async function GET(
   try {
     const { fileId } = await context.params;
     const stored = await getStoredFile(fileId);
-    if (!stored) {
+    // A private file the viewer may not open looks the same as a missing one.
+    if (!stored || !(await canReadFile(stored.metadata))) {
       return NextResponse.json({ error: "File not found" }, { status: 404 });
     }
 
@@ -91,7 +93,7 @@ export async function GET(
         // So a shared cache keeps the gzipped and plain copies apart.
         ...(COMPRESSIBLE_TYPE.test(contentType) && { Vary: "Accept-Encoding" }),
         "Content-Disposition": `inline; filename="${filename}"`,
-        "Cache-Control": "public, max-age=31536000, immutable",
+        "Cache-Control": fileCacheControl(stored.metadata),
         "Accept-Ranges": "bytes",
         ...(status === 206 && {
           "Content-Range": `bytes ${start}-${end}/${fileStat.size}`,

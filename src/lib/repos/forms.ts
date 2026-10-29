@@ -474,7 +474,9 @@ export async function getLatestFormResponse(formVersionId: string) {
  */
 export async function getStudentLatestFormResponseForForm(
   studentId: string,
-  versionIds: string[]
+  versionIds: string[],
+  /** Only responses submitted from this moment on; see cvBookResponseWindowStart(). */
+  opts?: { since?: Date | null }
 ): Promise<{ id: string; form_version_id: string; data: Record<string, unknown>; attendant_uuid?: string } | null> {
   if (versionIds.length === 0) return null;
   try {
@@ -484,6 +486,7 @@ export async function getStudentLatestFormResponseForForm(
     const match = await prisma.formResponse.findFirst({
       where: {
         form_version_id: { in: ids },
+        ...(opts?.since ? { submitted_at: { gte: opts.since } } : {}),
         // Both of these are OR-shaped, so they are combined with AND rather
         // than spread into one object (see the note on NOT_ARCHIVED).
         AND: [NOT_ARCHIVED, studentIdMatch(studentId)],
@@ -504,6 +507,26 @@ export async function getStudentLatestFormResponseForForm(
     console.error("[getStudentLatestFormResponseForForm] Error:", error);
     return null;
   }
+}
+
+/**
+ * Whether one of this student's own form responses holds the file -- how a
+ * student may still open the CV they uploaded once it is private. The UUID is
+ * checked before it reaches the query, and the student match mirrors
+ * studentIdMatch().
+ */
+export async function studentHasFileInResponses(
+  studentId: string | number,
+  fileId: string
+): Promise<boolean> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(fileId)) return false;
+  const sid = String(studentId);
+  const rows = await prisma.$queryRaw<unknown[]>`
+    SELECT 1 FROM form_responses
+    WHERE COALESCE(data->>'_student_id', data->>'student_id') = ${sid}
+      AND data::text LIKE ${`%"${fileId}"%`}
+    LIMIT 1`;
+  return rows.length > 0;
 }
 
 export type ScanningColumns = {

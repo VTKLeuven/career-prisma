@@ -35,6 +35,7 @@ function shapeStudent(row: StudentRowWithPassword): Student {
     sso_study_years: student.sso_study_years ?? [],
     sso_locale: student.sso_locale ?? undefined,
     preferred_language: student.preferred_language ?? undefined,
+    cv_book_opt_out: student.cv_book_opt_out ?? false,
     has_password: Boolean(row.password),
     verified: student.verified ?? undefined,
     date_created: student.date_created?.toISOString(),

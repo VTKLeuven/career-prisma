@@ -15,6 +15,7 @@ import {
   changeStudentEmail,
   deleteStudent,
   getStudentPasswordHash,
+  setStudentCVBookOptOut,
   setStudentPasswordHash,
   updateOwnStudentDetails,
 } from "@/lib/repos/students";
@@ -162,4 +163,16 @@ export async function deleteOwnAccountAction(): Promise<Result> {
   cookieStore.set(SSO_HINT_COOKIE, "", { path: "/", maxAge: 0, domain });
 
   return { ok: true };
+}
+
+/**
+ * "Don't show me in any CV book." Hides the student from companies in every
+ * year's book from the next page load; the CV itself stays, so switching back
+ * restores them without uploading again.
+ */
+export async function setCVBookOptOutAction(optOut: boolean): Promise<Result> {
+  const student = await getStudentFromCookies();
+  if (!student) return { ok: false, error: "You are not signed in." };
+  const saved = await setStudentCVBookOptOut(student.id, optOut === true);
+  return saved ? { ok: true } : { ok: false, error: "Could not save your choice." };
 }

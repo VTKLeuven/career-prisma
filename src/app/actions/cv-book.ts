@@ -12,6 +12,10 @@ import {
   getCVBookByYear,
   getCVBookByYearForScreening,
   getCVBookStudentData,
+  listCVBooksForCompany,
+  listCVBookYearIdsForCompany,
+  canCompanyOpenCVBook,
+  masterDegreeStudyOptions,
 } from "@/lib/repos/cv-book";
 import {
   approveCV,
@@ -35,6 +39,12 @@ async function requireSignedInUser() {
   return user;
 }
 
+/** The signed-in user's company id, if they are a company user. */
+function companyIdOf(user: Awaited<ReturnType<typeof getUserFromCookies>>): string | null {
+  if (!user?.company) return null;
+  return typeof user.company === "string" ? user.company : user.company.id;
+}
+
 export async function fetchCVBooksAction(): Promise<CVBook[]> {
   try {
     await requireAdminUser();
@@ -47,7 +57,12 @@ export async function fetchCVBooksAction(): Promise<CVBook[]> {
 
 export async function fetchCVBookByIdAction(id: string): Promise<CVBook | null> {
   try {
-    await requireSignedInUser();
+    const user = await requireSignedInUser();
+    if (!user.admin) {
+      // A company only learns about books it may open (listCVBooksForCompany).
+      const companyId = companyIdOf(user);
+      if (!companyId || !(await canCompanyOpenCVBook(companyId, id))) return null;
+    }
     return await getCVBookById(id);
   } catch (error) {
     console.error("[fetchCVBookByIdAction] Error:", error);
@@ -115,13 +130,34 @@ export async function deleteCVBookAction(id: string): Promise<{ success: boolean
   }
 }
 
+/** Published books: all of them for an admin, the years it bought for a company. */
 export async function fetchActiveCVBooksAction(): Promise<CVBook[]> {
   try {
-    await requireSignedInUser();
-    return await getActiveCVBooks();
+    const user = await requireSignedInUser();
+    if (user.admin) return await getActiveCVBooks();
+    const companyId = companyIdOf(user);
+    return companyId ? await listCVBooksForCompany(companyId) : [];
   } catch (error) {
     console.error("[fetchActiveCVBooksAction] Error:", error);
     return [];
+  }
+}
+
+/**
+ * Whether the company bought the CV book for any year -- what decides between
+ * the CV book page and the request-access page. A purchase for a year whose
+ * book is not published yet still counts: the page then says there is
+ * nothing to show yet, rather than offering to sell it again.
+ */
+export async function fetchCVBookAccessAction(): Promise<boolean> {
+  try {
+    const user = await requireSignedInUser();
+    if (user.admin) return true;
+    const companyId = companyIdOf(user);
+    return companyId ? (await listCVBookYearIdsForCompany(companyId)).length > 0 : false;
+  } catch (error) {
+    console.error("[fetchCVBookAccessAction] Error:", error);
+    return false;
   }
 }
 
@@ -141,7 +177,13 @@ export async function toggleCVBookActiveAction(id: string, active: boolean): Pro
 
 export async function fetchCVBookByYearAction(yearId: string): Promise<CVBook | null> {
   try {
-    await requireSignedInUser();
+    const user = await requireSignedInUser();
+    if (!user.admin) {
+      const companyId = companyIdOf(user);
+      if (!companyId) return null;
+      const books = await listCVBooksForCompany(companyId);
+      return books.find((b) => String(typeof b.year === "object" ? b.year.id : b.year) === String(yearId)) ?? null;
+    }
     return await getCVBookByYear(yearId);
   } catch (error) {
     console.error("[fetchCVBookByYearAction] Error:", error);
@@ -162,12 +204,15 @@ export async function fetchCVBookByYearForScreeningAction(yearId: string): Promi
 export async function fetchCVBookStudentDataAction(cvBook: CVBook): Promise<import("@/lib/repos/cv-book").StudentCVGroup[]> {
   try {
     const user = await getUserFromCookies();
-    const { hasCVBookAccess } = await import("@/lib/utils/company-access");
-    if (!user?.admin && (!user?.company || !hasCVBookAccess(user.company))) {
-      return [];
+    if (!user) return [];
+    if (!user.admin) {
+      // Published, and for a year the company bought -- not just "active",
+      // which a book is while screening is still going on.
+      const companyId = companyIdOf(user);
+      if (!companyId || !(await canCompanyOpenCVBook(companyId, cvBook.id))) return [];
     }
     const current = await getCVBookById(cvBook.id);
-    if (!current || (!user.admin && !current.active)) return [];
+    if (!current) return [];
     return await getCVBookStudentData(current);
   } catch (error) {
     console.error("[fetchCVBookStudentDataAction] Error:", error);
@@ -192,12 +237,13 @@ export async function toggleCVBookFavouriteAction(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const user = await getUserFromCookies();
-    if (!user?.company?.id) {
+    const companyId = companyIdOf(user);
+    if (!companyId) {
       return { success: false, error: "Not authenticated or no company" };
     }
-
-    const companyId =
-      typeof user.company === "string" ? user.company : user.company.id;
+    if (!(await canCompanyOpenCVBook(companyId, cvBookId))) {
+      return { success: false, error: "No access to this CV book" };
+    }
 
     if (isFavourite) {
       return await removeFavourite(companyId, formResponseId, cvBookId);
@@ -262,6 +308,9 @@ export async function markCVBookScreeningCompleteAction(
 export async function fetchStudyOptionsForCVBookAction(cvBook: CVBook): Promise<string[]> {
   try {
     await requireAdminUser();
+    // A master-degrees field keeps its options in /admin/masters, not on the field.
+    const masterOptions = await masterDegreeStudyOptions(cvBook);
+    if (masterOptions) return masterOptions;
     const formId = typeof cvBook.form === "string" ? cvBook.form : cvBook.form.id;
     const formFields = await getFormFieldsAcrossAllVersions(formId);
     const studyFieldName = cvBook.student_study_field;

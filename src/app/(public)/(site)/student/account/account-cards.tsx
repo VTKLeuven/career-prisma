@@ -6,6 +6,7 @@ import { ExternalLink, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Card,
   CardContent,
@@ -27,6 +28,7 @@ import {
   changeEmailAction,
   changePasswordAction,
   deleteOwnAccountAction,
+  setCVBookOptOutAction,
   updateAccountDetailsAction,
 } from "@/app/actions/student-account";
 
@@ -308,6 +310,57 @@ export function PasswordCard() {
 }
 
 /** Deleting the account, behind an "are you sure?" dialog. */
+/**
+ * The student's say over the CV book: on by default, and switching it off
+ * hides them from companies in every year's book. The CV stays on file, so
+ * switching back on needs no new upload.
+ */
+export function CVBookCard({ optedOut: initialOptedOut }: { optedOut: boolean }) {
+  const [optedOut, setOptedOut] = useState(initialOptedOut);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<Message>(null);
+
+  async function onChange(show: boolean) {
+    const previous = optedOut;
+    setOptedOut(!show);
+    setSaving(true);
+    setMessage(null);
+    const result = await setCVBookOptOutAction(!show);
+    setSaving(false);
+    if (!result.ok) {
+      setOptedOut(previous);
+      setMessage({ ok: false, text: result.error });
+      return;
+    }
+    setMessage({
+      ok: true,
+      text: show
+        ? "Companies with access to the CV book can see your CV again."
+        : "Companies no longer see you in any CV book.",
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>CV book</CardTitle>
+        <CardDescription>
+          When you upload your CV for the CV book, companies that bought it can
+          see your name, email, study, LinkedIn and CV. You can take yourself
+          out of every CV book here, and come back later.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <div className="flex items-center gap-3">
+          <Switch checked={!optedOut} onCheckedChange={onChange} disabled={saving} />
+          <span className="text-sm font-medium">Show me in CV books</span>
+        </div>
+        <Status message={message} />
+      </CardContent>
+    </Card>
+  );
+}
+
 export function DeleteAccountCard({ viaSso }: { viaSso: boolean }) {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);

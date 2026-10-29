@@ -1,10 +1,13 @@
 // lib/repos/cv-book.ts
 import "server-only";
 
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import type { CVBook, AcademicYear, FormResponse } from "@/lib/schema";
+import type { CVBook, AcademicYear, FormResponse, FormSchema } from "@/lib/schema";
 import { listFormResponsesForAllVersions } from "./forms";
 import { listScreeningForCVBook, type CVBookScreeningRecord, type ScreeningStatus } from "./cv-book-screening";
+import { getCurrentAcademicYear } from "./academic-year";
+import { listCVBookOptOuts } from "./students";
 
 /** Ids cross this API as strings; the columns are integers. */
 const num = (v: string | number) => Number(v);
@@ -156,6 +159,8 @@ export type StudentCVData = {
   screeningStatus?: ScreeningStatus;
   /** Full screening record (when forScreening: true) - for study_override etc */
   screeningRecord?: CVBookScreeningRecord;
+  /** The student opted out of the CV book; only the screening view still lists them. */
+  withdrawn?: boolean;
 };
 
 export type StudentCVGroup = {
@@ -184,6 +189,10 @@ export async function getCVBookStudentData(
       return [];
     }
 
+    const bookResponses = await responsesForBook(cvBook, formId, responses);
+    const studyLabel = await studyLabeler(cvBook, formId);
+    const optOuts = await listCVBookOptOuts();
+
     // Get account ID from response: student_id relation or data._student_id
     function getAccountId(response: FormResponse): string | null {
       const sid = response.student_id;
@@ -199,7 +208,7 @@ export async function getCVBookStudentData(
     const responsesByAccount = new Map<string, FormResponse>();
     const responsesWithoutAccount: FormResponse[] = [];
 
-    for (const response of responses) {
+    for (const response of bookResponses) {
       const accountId = getAccountId(response);
       if (accountId) {
         const existing = responsesByAccount.get(accountId);
@@ -232,8 +241,8 @@ export async function getCVBookStudentData(
                        (cvBook.student_last_name_field_backup ? data[cvBook.student_last_name_field_backup] : null)) as string;
       const email = (data[cvBook.student_email_field] ||
                     (cvBook.student_email_field_backup ? data[cvBook.student_email_field_backup] : null)) as string;
-      const study = (data[cvBook.student_study_field] ||
-                    (cvBook.student_study_field_backup ? data[cvBook.student_study_field_backup] : null)) as string;
+      const study = studyLabel(data[cvBook.student_study_field] ||
+                    (cvBook.student_study_field_backup ? data[cvBook.student_study_field_backup] : null));
       const cvFileId = (data[cvBook.student_cv_field] ||
                        (cvBook.student_cv_field_backup ? data[cvBook.student_cv_field_backup] : null)) as string | null;
       const linkedinRaw = (cvBook.student_linkedin_field ? (data[cvBook.student_linkedin_field] ||
@@ -298,6 +307,9 @@ export async function getCVBookStudentData(
         cvFileUrl: `/api/cv-file/${cvFileId}`,
         linkedinUrl,
         ...(opts?.forScreening && { submittedAt: response.submitted_at }),
+        withdrawn:
+          optOuts.ids.has(String(getAccountId(response))) ||
+          (typeof email === "string" && optOuts.emails.has(email.trim().toLowerCase())),
       });
     }
 
@@ -344,9 +356,10 @@ export async function getCVBookStudentData(
     let finalStudentData = withStudyOverride;
     if (!opts?.forScreening) {
       // Company view: only show CVs that went through screening and are not
-      // rejected (new unscreened CVs stay hidden).
+      // rejected (new unscreened CVs stay hidden), and never a student who
+      // opted out.
       finalStudentData = withStudyOverride.filter((s) => {
-        if (!s.screeningRecord) return false;
+        if (!s.screeningRecord || s.withdrawn) return false;
         return s.screeningStatus !== "rejected";
       });
     }
@@ -376,6 +389,225 @@ export async function getCVBookStudentData(
     console.error("[getCVBookStudentData] Error getting student CV data:", error);
     throw error;
   }
+}
+
+/**
+ * The responses that belong to this book. One form can feed several books --
+ * /forms/cv-book collects CVs year after year -- and a book used to show every
+ * response the form ever had, so each year's book was the same list. A
+ * response now belongs to the book whose academic year had most recently
+ * started when it was submitted; the oldest book also keeps anything sent
+ * before its year began, so no CV falls between two books. A form behind a
+ * single book is not filtered at all.
+ */
+async function responsesForBook<T extends Pick<FormResponse, "submitted_at">>(
+  cvBook: CVBook,
+  formId: string,
+  responses: T[]
+): Promise<T[]> {
+  const siblings = await prisma.cvBook.findMany({
+    where: { form_id: num(formId) },
+    select: { id: true, year: { select: { start_of_year: true } } },
+  });
+  if (siblings.length < 2) return responses;
+
+  const startOf = (b: (typeof siblings)[number]) => b.year?.start_of_year?.getTime() ?? null;
+  const own = siblings.find((b) => String(b.id) === String(cvBook.id));
+  const ownStart = own ? startOf(own) : null;
+  if (ownStart == null) return responses;
+
+  const starts = siblings.map(startOf).filter((t): t is number => t != null);
+  const nextStart = Math.min(Infinity, ...starts.filter((t) => t > ownStart));
+  const isOldest = !starts.some((t) => t < ownStart);
+
+  return responses.filter((r) => {
+    const submitted = r.submitted_at ? new Date(r.submitted_at).getTime() : NaN;
+    // An undated response counts as older than every book.
+    const t = Number.isNaN(submitted) ? -Infinity : submitted;
+    return (isOldest || t >= ownStart) && t < nextStart;
+  });
+}
+
+/**
+ * Masters by id and faculties by id, for turning master-degrees answers into
+ * names. Those answers are ids -- a master id, or `fac:<faculty>:<master>` /
+ * `fac:<faculty>` when the field groups by faculty (lib/form-fields.ts).
+ */
+async function masterDegreeNames() {
+  const [masters, faculties] = await Promise.all([
+    prisma.master.findMany({ select: { id: true, name: true } }),
+    prisma.faculty.findMany({ select: { id: true, name: true, facultyMasters: { select: { id: true } } } }),
+  ]);
+  return { masters, faculties };
+}
+
+/** Whether the book's study field (or its backup) is a master-degrees field in any version. */
+async function studyFieldIsMasterDegrees(cvBook: CVBook, formId: string): Promise<boolean> {
+  const names = [cvBook.student_study_field, cvBook.student_study_field_backup].filter(Boolean);
+  const versions = await prisma.formVersion.findMany({
+    where: { form_id: num(formId) },
+    select: { schema: true },
+  });
+  return versions.some((v) =>
+    ((v.schema as FormSchema | null)?.fields ?? []).some(
+      (f) => names.includes(f.name) && f.type === "master-degrees"
+    )
+  );
+}
+
+/**
+ * Turns a stored study answer into the text the book groups by. A select
+ * stores that text already; a multi-choice answer is a list, joined; and a
+ * master-degrees answer stores ids, which become master or faculty names. An
+ * id that no longer resolves is shown as stored, so the admin can still
+ * correct it with the study override.
+ */
+async function studyLabeler(cvBook: CVBook, formId: string): Promise<(value: unknown) => string> {
+  const join = (values: string[]) => values.filter(Boolean).join(", ");
+  if (!(await studyFieldIsMasterDegrees(cvBook, formId))) {
+    return (value) => (Array.isArray(value) ? join(value.map(String)) : value == null ? "" : String(value));
+  }
+
+  const { masters, faculties } = await masterDegreeNames();
+  const masterName = new Map(masters.map((m) => [String(m.id), m.name ?? ""]));
+  const facultyName = new Map(faculties.map((f) => [String(f.id), f.name ?? ""]));
+  const one = (raw: string) => {
+    const grouped = /^fac:([^:]+)(?::(.+))?$/.exec(raw);
+    if (grouped) {
+      const name = grouped[2] ? masterName.get(grouped[2]) : facultyName.get(grouped[1]);
+      return name || raw;
+    }
+    return masterName.get(raw) || raw;
+  };
+  return (value) => {
+    if (value == null || value === "") return "";
+    return join((Array.isArray(value) ? value : [value]).map((v) => one(String(v))));
+  };
+}
+
+/**
+ * The studies an admin can pick in screening when the study field is a
+ * master-degrees field, whose options live in /admin/masters rather than on
+ * the field: every master, plus faculties without masters. Null for any other
+ * field type, which carries its own options.
+ */
+export async function masterDegreeStudyOptions(cvBook: CVBook): Promise<string[] | null> {
+  const formId = typeof cvBook.form === "string" ? cvBook.form : String((cvBook.form as { id: unknown }).id);
+  if (!(await studyFieldIsMasterDegrees(cvBook, formId))) return null;
+  const { masters, faculties } = await masterDegreeNames();
+  const names = [
+    ...masters.map((m) => m.name),
+    ...faculties.filter((f) => f.facultyMasters.length === 0).map((f) => f.name),
+  ].filter((n): n is string => Boolean(n));
+  return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
+}
+
+// ===================== COMPANY ACCESS =====================
+
+/** "CV Book", however it was capitalised when the sub-option was created. */
+const CV_BOOK_SUB_OPTION = { name: { equals: "CV Book", mode: "insensitive" as const } };
+
+/**
+ * The academic years a company bought the CV book for: the "CV Book"
+ * sub-option sold on its own, or as part of a package that includes it.
+ * Access to a year's book is kept for good once bought. This is the one place
+ * to extend when older books can be bought separately.
+ */
+export async function listCVBookYearIdsForCompany(companyId: string): Promise<string[]> {
+  const [direct, viaPackage] = await Promise.all([
+    prisma.companyCareerSubOption.findMany({
+      where: { company_id: companyId, status: "sold", careerSubOption: CV_BOOK_SUB_OPTION },
+      select: { academic_year_id: true },
+    }),
+    prisma.companyCareerEventOption.findMany({
+      where: {
+        company_id: companyId,
+        status: "sold",
+        careerEventOption: { careerEventOptionSubOptions: { some: { careerSubOption: CV_BOOK_SUB_OPTION } } },
+      },
+      select: { academic_year_id: true },
+    }),
+  ]);
+  return Array.from(new Set([...direct, ...viaPackage].map((r) => String(r.academic_year_id))));
+}
+
+/** The books a company may open: published (active, screened) and for a year it bought. */
+export async function listCVBooksForCompany(companyId: string): Promise<CVBook[]> {
+  const yearIds = await listCVBookYearIdsForCompany(companyId);
+  if (yearIds.length === 0) return [];
+  const rows = await prisma.cvBook.findMany({
+    where: { active: true, screening_complete: true, year_id: { in: yearIds.map(num) } },
+    include: CV_BOOK_INCLUDE,
+    orderBy: { year: { start_of_year: "desc" } },
+  });
+  return rows.map((r) => shapeCVBook(r)!);
+}
+
+/** Whether the company may open this book (see listCVBooksForCompany). */
+export async function canCompanyOpenCVBook(companyId: string, cvBookId: string): Promise<boolean> {
+  const books = await listCVBooksForCompany(companyId);
+  return books.some((b) => String(b.id) === String(cvBookId));
+}
+
+/**
+ * Whether the file is the CV of a student this company can see -- in a book
+ * it may open, approved, and not opted out. Built on the same list the
+ * company's CV book page shows, so the two cannot disagree.
+ */
+export async function companyCanSeeCVFile(companyId: string, fileId: string): Promise<boolean> {
+  for (const book of await listCVBooksForCompany(companyId)) {
+    const groups = await getCVBookStudentData(book);
+    if (groups.some((g) => g.students.some((s) => s.cvFileId === fileId))) return true;
+  }
+  return false;
+}
+
+// ===================== CV FILE PRIVACY =====================
+
+/**
+ * Marks the CVs in CV books private (files.private), so /api/files only
+ * serves them to an admin, a company that can see them, or the student who
+ * uploaded them. Runs after every submission to a CV-book form and whenever a
+ * book is created or remapped; the migration that added the column did the
+ * same for the CVs already there. Narrowed to one form when given.
+ */
+export async function markCVFilesPrivate(formId?: string | number | null): Promise<void> {
+  const formFilter =
+    formId != null && Number.isSafeInteger(Number(formId))
+      ? Prisma.sql`AND b.form_id = ${Number(formId)}`
+      : Prisma.empty;
+  await prisma.$executeRaw`
+    UPDATE files f
+    SET private = true
+    FROM cv_books b
+    JOIN form_versions v ON v.form_id = b.form_id
+    JOIN form_responses r ON r.form_version_id = v.id
+    CROSS JOIN LATERAL (
+      SELECT r.data -> b.student_cv_field AS val
+      UNION ALL
+      SELECT r.data -> b.student_cv_field_backup
+    ) cv
+    WHERE f.private = false ${formFilter}
+      AND (
+        (jsonb_typeof(cv.val) = 'string' AND cv.val #>> '{}' = f.id::text)
+        OR (jsonb_typeof(cv.val) = 'array' AND cv.val ? f.id::text)
+      )`;
+}
+
+/**
+ * Where a signed-in student's submission to this form starts counting as new.
+ * A student has one response per form, updated on every resubmit; for a form
+ * that feeds a CV book that would keep a CV in the year it was first sent,
+ * forever. From the current academic year's start a resubmit makes a new
+ * response, so each year's book gets its own. Null for any other form.
+ */
+export async function cvBookResponseWindowStart(formId: string | number): Promise<Date | null> {
+  const id = Number(formId);
+  if (!Number.isSafeInteger(id)) return null;
+  const hasBook = await prisma.cvBook.findFirst({ where: { form_id: id }, select: { id: true } });
+  if (!hasBook) return null;
+  const year = await getCurrentAcademicYear();
+  return year?.start_of_year ? new Date(year.start_of_year) : null;
 }
 
 export async function getCVBookById(id: string) {
@@ -420,6 +652,7 @@ export async function createCVBook(data: {
       },
       include: CV_BOOK_INCLUDE,
     });
+    await markCVFilesPrivate(row.form_id);
     return shapeCVBook(row) as CVBook;
   } catch (error) {
     console.error("[createCVBook] Error creating CV book:", error);
@@ -442,6 +675,7 @@ export async function updateCVBook(id: string, data: Partial<CVBook>) {
       },
       include: CV_BOOK_INCLUDE,
     });
+    await markCVFilesPrivate(row.form_id);
     return shapeCVBook(row) as CVBook;
   } catch (error) {
     console.error("[updateCVBook] Error updating CV book:", error);
