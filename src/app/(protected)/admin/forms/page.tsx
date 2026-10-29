@@ -133,7 +133,7 @@ export default function AdminFormsPage() {
         noun="form"
         search={{ keys: ["slug", "description"] }}
         loading={loading}
-        containerClassName="max-h-[calc(100svh-17rem)]"
+        containerClassName="roomy:max-h-[calc(100svh-17rem)]"
         emptyMessage="No forms yet. Create your first form to get started"
         onRowClick={(form) => setEditingId(form.id)}
         isRowSelected={(form) => editingId === form.id}
@@ -1669,7 +1669,7 @@ function SlugCell({ slug, metadata }: { slug: string; metadata?: { is_company_fo
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0 text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"
+              className="h-6 w-6 p-0 text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 touch:opacity-100"
               onClick={handleCopy}
             >
               {copied ? (
@@ -1744,7 +1744,7 @@ function VersionsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Manage Versions - {form.name}</DialogTitle>
           <DialogDescription>
@@ -1761,7 +1761,7 @@ function VersionsDialog({
           ) : (
             versions.map((version) => (
               <Card key={version.id}>
-                <CardContent className="pt-6">
+                <CardContent>
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">

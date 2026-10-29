@@ -4,6 +4,17 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* A screen with room for a scroll area inside the page: wide enough and tall
+   enough that a height-capped table still shows a useful number of rows. On a
+   phone (upright or on its side) the table grows with its rows instead, so
+   the page has one vertical scroll, not a scroll box nested in another. */
+/* Devices that cannot hover (phones, tablets). Tailwind's hover: already
+   skips them, so anything revealed only on hover must be shown here, or it
+   sits invisible but still tappable. */
+@custom-variant touch (@media (hover: none));
+
+@custom-variant roomy (@media (min-width: 640px) and (min-height: 600px));
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -211,4 +222,18 @@
 .app-ui {
   font-family: var(--font-inter), var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   letter-spacing: -0.003em;
+}
+
+/* On phones the back office's cards give their content the width back: the
+   page gutter is already 12px, so a 24px inset on top of it squeezes tables
+   and forms. Card's padding reads --card-px; the public site keeps 1.5rem. */
+@media (max-width: 639px) {
+  .app-ui [data-slot="card"] {
+    --card-px: 1rem;
+  }
+  /* Same for dialogs, which already sit 1rem from the screen edge. */
+  .app-ui [data-slot="dialog-content"],
+  .app-ui [data-slot="alert-dialog-content"] {
+    --dialog-p: 1rem;
+  }
 }

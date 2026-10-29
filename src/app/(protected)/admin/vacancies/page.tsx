@@ -364,12 +364,12 @@ export default function AdminVacanciesPage() {
       />
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b">
+      <div className="scrollbar-hide flex gap-1 overflow-x-auto border-b">
         {tabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            className={`shrink-0 whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id
                 ? "border-vtk-blue text-vtk-blue"
                 : "border-transparent text-muted-foreground hover:text-foreground"

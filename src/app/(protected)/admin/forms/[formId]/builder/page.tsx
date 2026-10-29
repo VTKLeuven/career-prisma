@@ -328,8 +328,8 @@ export default function FormBuilderPage() {
         }
       />
 
-      <div className="grid gap-6 md:grid-cols-[1fr,300px]">
-        <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <div className="min-w-0 space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Form Fields</CardTitle>
@@ -592,11 +592,11 @@ function FieldEditor({
               </Button>
             </div>
           </div>
-          <div className="flex-1 cursor-pointer" onClick={() => setExpanded(!expanded)}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <FieldTypeIcon type={field.type} className="h-5 w-5 text-muted-foreground" />
-                <div>
+          <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setExpanded(!expanded)}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-3">
+                <FieldTypeIcon type={field.type} className="hidden h-5 w-5 shrink-0 text-muted-foreground sm:block" />
+                <div className="min-w-0 break-words">
                   {field.label ? (
                     <p className="font-medium">{field.label}</p>
                   ) : (
@@ -611,7 +611,8 @@ function FieldEditor({
                   </p>
                 </div>
               </div>
-              <Badge variant="outline" className="flex items-center gap-1">
+              {/* The type is already in the subtitle; on a phone the row needs the room. */}
+              <Badge variant="outline" className="hidden items-center gap-1 sm:flex">
                 <FieldTypeIcon type={field.type} className="h-3 w-3" />
                 {field.type}
               </Badge>
@@ -632,7 +633,7 @@ function FieldEditor({
 
         {expanded && (
           <div className="mt-4 space-y-3 border-t pt-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label htmlFor={`field-${index}-label`}>Title (optional)</Label>
                 <Input

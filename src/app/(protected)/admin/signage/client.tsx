@@ -115,12 +115,12 @@ export default function SignageClient({
     return (
         <div className="space-y-4">
             {/* Tab Bar */}
-            <div className="flex border-b">
+            <div className="scrollbar-hide flex overflow-x-auto border-b">
                 {tabs.map((tab) => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors
+                        className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 transition-colors
               ${activeTab === tab.id
                                 ? "border-primary text-primary"
                                 : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/40"
@@ -259,7 +259,7 @@ function ScreensTab({
                                     placeholder="e.g. lobby"
                                     required
                                 />
-                                <p className="text-xs text-muted-foreground">
+                                <p className="text-xs text-muted-foreground break-all">
                                     Public URL: {baseUrl}/screen/{slug || "..."}
                                 </p>
                             </div>
@@ -423,8 +423,8 @@ function MediaTab({
                                                     <span className="text-xs uppercase font-medium">{item.type}</span>
                                                 </div>
                                             )}
-                                            {/* Hover overlay */}
-                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                            {/* Hover overlay; on touch screens just the button, in the corner */}
+                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 touch:opacity-100 touch:bg-transparent touch:items-end touch:justify-end touch:p-2">
                                                 <Button
                                                     variant="secondary"
                                                     size="sm"
@@ -527,7 +527,7 @@ function MediaPreviewModal({
 
     return (
         <Dialog open onOpenChange={() => onClose()}>
-            <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+            <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         {getMediaIcon(media.type)}
@@ -750,7 +750,7 @@ function ScheduleTab({
                 <div className="flex flex-col gap-2">
                     <Label>Select Screen</Label>
                     <Select value={selectedScreenId} onValueChange={setSelectedScreenId}>
-                        <SelectTrigger className="max-w-md">
+                        <SelectTrigger className="w-full max-w-md">
                             <SelectValue placeholder="Choose a screen to manage its schedule..." />
                         </SelectTrigger>
                         <SelectContent>

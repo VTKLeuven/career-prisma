@@ -37,6 +37,7 @@ import { useUser } from "@/providers/UserProvider";
 import type { MatchingSoftware, AcademicYear, Form, CareerEvent } from "@/lib/schema";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { toast } from "sonner";
+import { formatDateBE } from "@/lib/date-utils";
 
 type MatchingSoftwareRow = MatchingSoftware & {
   year: AcademicYear;
@@ -210,9 +211,9 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
             {items.map((item) => (
               <div
                 key={item.id}
-                className="flex items-center justify-between rounded-lg border p-4"
+                className="flex flex-col gap-3 rounded-lg border p-4 lg:flex-row lg:items-center lg:justify-between"
               >
-                <div>
+                <div className="min-w-0">
                   <div className="font-medium">
                     {(item.event as CareerEvent)?.name || "Unknown event"}
                   </div>
@@ -221,7 +222,7 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
                     {(item.prerequisite_form as Form)?.name || "None"}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                   <ViewMatchesDialog item={item} />
                   <Button
                     variant="outline"
@@ -236,38 +237,42 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
                     )}
                     <span className="ml-1.5">{syncingId === item.id ? "Syncing…" : "Sync company matches"}</span>
                   </Button>
-                  <Checkbox
-                    id={`active-${item.id}`}
-                    checked={item.active ?? true}
-                    onCheckedChange={() => handleToggleActive(item)}
-                    disabled={togglingId === item.id}
-                  />
-                  <Label
-                    htmlFor={`active-${item.id}`}
-                    className="text-sm cursor-pointer select-none"
-                  >
-                    {item.active ? (
-                      <span className="text-green-600">Active</span>
-                    ) : (
-                      <span className="text-muted-foreground">Inactive</span>
-                    )}
-                  </Label>
-                  <Checkbox
-                    id={`view-${item.id}`}
-                    checked={item.companies_can_view_matches ?? false}
-                    onCheckedChange={() => handleToggleCompaniesCanViewMatches(item)}
-                    disabled={togglingViewId === item.id}
-                  />
-                  <Label
-                    htmlFor={`view-${item.id}`}
-                    className="text-sm cursor-pointer select-none"
-                  >
-                    {item.companies_can_view_matches ? (
-                      <span className="text-green-600">Companies can view matches</span>
-                    ) : (
-                      <span className="text-muted-foreground">Companies can view matches</span>
-                    )}
-                  </Label>
+                  <span className="flex items-center gap-2">
+                    <Checkbox
+                      id={`active-${item.id}`}
+                      checked={item.active ?? true}
+                      onCheckedChange={() => handleToggleActive(item)}
+                      disabled={togglingId === item.id}
+                    />
+                    <Label
+                      htmlFor={`active-${item.id}`}
+                      className="text-sm cursor-pointer select-none"
+                    >
+                      {item.active ? (
+                        <span className="text-green-600">Active</span>
+                      ) : (
+                        <span className="text-muted-foreground">Inactive</span>
+                      )}
+                    </Label>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <Checkbox
+                      id={`view-${item.id}`}
+                      checked={item.companies_can_view_matches ?? false}
+                      onCheckedChange={() => handleToggleCompaniesCanViewMatches(item)}
+                      disabled={togglingViewId === item.id}
+                    />
+                    <Label
+                      htmlFor={`view-${item.id}`}
+                      className="text-sm cursor-pointer select-none"
+                    >
+                      {item.companies_can_view_matches ? (
+                        <span className="text-green-600">Companies can view matches</span>
+                      ) : (
+                        <span className="text-muted-foreground">Companies can view matches</span>
+                      )}
+                    </Label>
+                  </span>
                 </div>
               </div>
             ))}
@@ -277,7 +282,7 @@ function MatchingSoftwareTable({ eventId }: { eventId?: string }) {
     </Card>
 
     <Dialog open={updateDialogOpen} onOpenChange={setUpdateDialogOpen}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Sync company matches – log</DialogTitle>
           <DialogDescription>
@@ -340,7 +345,7 @@ function ViewMatchesDialog({ item }: { item: MatchingSoftwareRow }) {
           <span className="ml-1.5">View matches</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Match counts per company</DialogTitle>
           <DialogDescription>
@@ -359,7 +364,7 @@ function ViewMatchesDialog({ item }: { item: MatchingSoftwareRow }) {
           loading={loading}
           defaultSort={{ key: "matchCount", desc: true }}
           emptyMessage="No companies with completed matching"
-          containerClassName="max-h-[55vh]"
+          containerClassName="roomy:max-h-[55vh]"
         />
         <p className="text-xs text-muted-foreground">
           Total: {data.reduce((s, r) => s + r.matchCount, 0)} matches
@@ -434,7 +439,7 @@ function CreateMatchingSoftwareDialog({ eventId: preselectedEventId, onCreated }
           Create Matching Software
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Create Matching Software</DialogTitle>
           <DialogDescription>
@@ -451,7 +456,7 @@ function CreateMatchingSoftwareDialog({ eventId: preselectedEventId, onCreated }
               <SelectContent>
                 {academicYears.map((y) => (
                   <SelectItem key={y.id} value={y.id}>
-                    {y.name} ({y.start_of_year} - {y.end_of_year})
+                    {y.name} ({formatDateBE(y.start_of_year)} - {formatDateBE(y.end_of_year)})
                   </SelectItem>
                 ))}
               </SelectContent>

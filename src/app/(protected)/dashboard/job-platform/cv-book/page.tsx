@@ -270,7 +270,7 @@ export default function CVBookPage() {
           </div>
           <div className="text-center">
             <p className="font-semibold">{student.firstName} {student.lastName}</p>
-            <p className="text-sm text-muted-foreground">{student.email}</p>
+            <p className="text-sm text-muted-foreground truncate" title={student.email}>{student.email}</p>
             {student.linkedinUrl && (
               <a
                 href={student.linkedinUrl}
@@ -321,7 +321,7 @@ export default function CVBookPage() {
     .sort((a, b) => b.start_of_year.localeCompare(a.start_of_year))
 
   return (
-    <div className="container mx-auto p-8">
+    <div className="container mx-auto sm:p-8">
       <Card className="max-w-6xl w-full">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
@@ -395,7 +395,7 @@ export default function CVBookPage() {
                   </AccordionTrigger>
                   <AccordionContent className="px-3 pb-4">
                     {everOpenedCategories.has("favourites") && (
-                      <div className="grid grid-cols-2 gap-6 pt-4">
+                      <div className="grid grid-cols-2 gap-3 pt-4 sm:gap-6">
                         {favouriteStudents.map((student) => renderStudentCard(student))}
                       </div>
                     )}
@@ -417,7 +417,7 @@ export default function CVBookPage() {
                     </AccordionTrigger>
                     <AccordionContent className="px-3 pb-4">
                       {everOpenedCategories.has(group.study) && (
-                        <div className="grid grid-cols-2 gap-6 pt-4">
+                        <div className="grid grid-cols-2 gap-3 pt-4 sm:gap-6">
                           {group.students.map((student) => renderStudentCard(student))}
                         </div>
                       )}
@@ -439,7 +439,7 @@ export default function CVBookPage() {
                   </AccordionTrigger>
                   <AccordionContent className="px-3 pb-4">
                     {everOpenedCategories.has("all") && (
-                      <div className="grid grid-cols-2 gap-6 pt-4">
+                      <div className="grid grid-cols-2 gap-3 pt-4 sm:gap-6">
                         {(showFavourites && favouriteStudents.length > 0
                           ? flatStudents.filter((s) => !favouriteIds.has(String(s.id)))
                           : flatStudents
@@ -452,7 +452,7 @@ export default function CVBookPage() {
             </Accordion>
           ) : selectedStudent ? (
             <div className="flex flex-col min-h-0" style={{ minHeight: 'calc(100vh - 12rem)' }}>
-              <div className="flex items-center justify-between shrink-0 mb-4">
+              <div className="flex items-center justify-between gap-2 shrink-0 mb-4">
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -460,7 +460,7 @@ export default function CVBookPage() {
                     setSelectedStudent(null)
                   }}
                 >
-                  ← Back to Overview
+                  ← Back<span className="hidden sm:inline"> to Overview</span>
                 </Button>
 
                 <div className="flex items-center gap-2">
@@ -473,7 +473,7 @@ export default function CVBookPage() {
                       if (prev) setSelectedStudent(prev)
                     }}
                   >
-                    Previous student
+                    Previous<span className="hidden sm:inline"> student</span>
                   </Button>
                   <Button
                     variant="outline"
@@ -484,22 +484,22 @@ export default function CVBookPage() {
                       if (next) setSelectedStudent(next)
                     }}
                   >
-                    Next student
+                    Next<span className="hidden sm:inline"> student</span>
                   </Button>
                 </div>
               </div>
               
               <Card className="flex flex-col flex-1 min-h-0">
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
+                  <div className="flex items-start justify-between gap-2 sm:items-center">
+                    <div className="min-w-0">
                       <CardTitle className="text-2xl mb-2">
                         {selectedStudent.firstName} {selectedStudent.lastName}
                       </CardTitle>
                       <div className="flex items-center gap-4 flex-wrap">
                         <div className="flex items-center gap-2">
                           <IconMail className="h-5 w-5 text-muted-foreground" />
-                          <a href={`mailto:${selectedStudent.email}`} className="text-vtk-blue hover:underline">
+                          <a href={`mailto:${selectedStudent.email}`} className="break-all text-vtk-blue hover:underline">
                             {selectedStudent.email}
                           </a>
                         </div>
@@ -515,7 +515,7 @@ export default function CVBookPage() {
                             LinkedIn
                           </a>
                         )}
-                        <Badge variant="secondary">{selectedStudent.study}</Badge>
+                        <Badge variant="secondary" className="max-w-full whitespace-normal text-left">{selectedStudent.study}</Badge>
                       </div>
                     </div>
                     {showFavourites && selectedCVBook?.id && (

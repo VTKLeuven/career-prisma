@@ -399,7 +399,7 @@ export function CompanyInformationForm({
     <div className="w-full gap-4 flex flex-col">
       {/* Company Information Section */}
       <Card className="rounded-2xl shadow-md">
-        <CardHeader className="flex flex-row items-start justify-between gap-4">
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex-1">
             <CardTitle className="text-xl">Company Information</CardTitle>
             <CardDescription>
@@ -661,7 +661,7 @@ export function CompanyInformationForm({
                         key={opt.id}
                         type="button"
                         onClick={() => toggleMaster(opt.id)}
-                        className={`w-full py-2 rounded-lg border transition text-center cursor-pointer ${
+                        className={`w-full px-3 py-2 rounded-lg border transition text-center wrap-anywhere cursor-pointer ${
                           selected
                             ? "bg-slate-700 text-white border-slate-700 opacity-100"
                             : "bg-white text-black border-gray-300 opacity-40"

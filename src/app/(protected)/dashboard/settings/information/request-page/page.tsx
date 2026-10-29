@@ -32,7 +32,7 @@ export default function RequestCompanyPage() {
   }
 
   return (
-    <div className="container mx-auto max-w-4xl py-8 px-4">
+    <div className="container mx-auto max-w-4xl sm:px-4 sm:py-8">
       <Link
         href="/dashboard/settings/information"
         className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6"
@@ -55,8 +55,8 @@ export default function RequestCompanyPage() {
               Your page will be publicly accessible and include all your company information, logo, and descriptions.
             </p>
 
-            <div className="mt-6 p-6 bg-muted rounded-lg">
-              <h3 className="text-xl font-semibold mb-4">What&apos;s included:</h3>
+            <div className="mt-6 p-4 bg-muted rounded-lg sm:p-6">
+              <h3 className="mt-0 text-xl font-semibold mb-4">What&apos;s included:</h3>
               <ul className="list-disc list-inside space-y-2 text-muted-foreground">
                 <li>Public company profile page</li>
                 <li>Company logo and background image</li>
@@ -67,15 +67,15 @@ export default function RequestCompanyPage() {
               </ul>
             </div>
 
-            <div className="mt-6 p-6 border-2 border-primary rounded-lg">
-              <div className="flex items-center justify-between">
+            <div className="mt-6 p-4 border-2 border-primary rounded-lg sm:p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="text-2xl font-bold">€200</h3>
+                  <h3 className="mt-0 text-2xl font-bold">€200</h3>
                   <p className="text-sm text-muted-foreground mt-1">Yearly fee, also included in Jobfair Package</p>
                 </div>
                 <Button
                   size="lg"
-                  className="cursor-pointer"
+                  className="w-full cursor-pointer sm:w-auto"
                   onClick={handleRequest}
                   disabled={loading || success}
                 >

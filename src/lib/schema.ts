@@ -154,7 +154,6 @@ export type CareerSubOption = {
   name: string;
   description: string;
   price: string;
-  active: boolean;
 }
 
 export type CareerEventOption = {

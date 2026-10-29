@@ -31,9 +31,9 @@ function HealthIcon({ health }: { health: Health }) {
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[12rem_1fr] gap-4 py-1.5 text-sm">
+    <div className="grid grid-cols-1 gap-0.5 py-1.5 text-sm sm:grid-cols-[12rem_1fr] sm:gap-4">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="break-all font-mono text-xs leading-5">{children}</dd>
+      <dd className="wrap-anywhere font-mono text-xs leading-5">{children}</dd>
     </div>
   );
 }

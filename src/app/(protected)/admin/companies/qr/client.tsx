@@ -22,18 +22,18 @@ export default function CompanyQRsClient({ initialCompanies }: { initialCompanie
         <Button onClick={handlePrint}>Print QR Codes</Button>
       </div>
       
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-8 print:grid-cols-3 print:gap-8">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-8 print:grid-cols-3 print:gap-8">
         {initialCompanies.map((company) => (
-          <div key={company.id} className="border p-6 rounded-lg flex flex-col items-center justify-center text-center break-inside-avoid shadow-sm print:shadow-none print:border-gray-300">
-            <h3 className="font-bold text-xl mb-4 text-gray-900">{company.name}</h3>
+          <div key={company.id} className="min-w-0 border p-3 sm:p-6 rounded-lg flex flex-col items-center justify-center text-center break-inside-avoid shadow-sm print:shadow-none print:border-gray-300">
+            <h3 className="font-bold text-base sm:text-xl mb-4 text-gray-900 break-words">{company.name}</h3>
             {/* Using a reliable public QR code API */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img 
               src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&data=${encodeURIComponent(`${baseUrl}/booth/${company.id}`)}`} 
               alt={`QR Code for ${company.name}`}
-              className="w-48 h-48 mb-2"
+              className="aspect-square w-full max-w-48 mb-2"
             />
-            <p className="text-xs text-muted-foreground mt-2">{baseUrl}/booth/{company.id}</p>
+            <p className="text-xs text-muted-foreground mt-2 break-all">{baseUrl}/booth/{company.id}</p>
           </div>
         ))}
       </div>
