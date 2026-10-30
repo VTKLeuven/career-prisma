@@ -29,7 +29,7 @@ function isOptionJunction(value: unknown): value is OptionJunction {
 async function loadVisibleCompany(slug: string) {
   const data = await loadCompanyPage(slug);
   // Only companies with the company-page sub-option (and published) have a page.
-  if (!data.company || !hasCompanyPageAccess(data.company, data.allSubOptions ?? [])) return null;
+  if (!data.company || !hasCompanyPageAccess(data.company)) return null;
   return data;
 }
 

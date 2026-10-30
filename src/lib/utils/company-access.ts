@@ -1,316 +1,42 @@
 // lib/utils/company-access.ts
-import type { Company, CareerEventOption, CareerSubOption } from "@/lib/schema";
+//
+// What a company may do, from the grants on the sub-options it bought
+// (lib/grants.ts). Access used to be decided by sub-option *names* -- "CV
+// Book", "Company Page On Platform", "Student Schedules", "Extra Booth", and
+// anything containing both "matching" and "software" -- resolved through four
+// Directus-era shapes of the sub-option junctions. Renaming a sub-option
+// silently switched the feature off for every company. Names are now labels;
+// the grants decide.
+//
+// These checks are synchronous and run in client components too, so they read
+// `company.grants`: the grant types the company holds this academic year,
+// worked out by shapeCompany() in lib/repos/_shape.ts from the sub-options it
+// bought directly and those inside the packages it bought. CV books, kept for
+// good, are not checked here but across all years in lib/repos/cv-book.ts.
+import type { GrantType } from "@/lib/grants";
 
-/** Resolve sub-option from various Directus formats */
-function resolveSubOption(subOpt: unknown): CareerSubOption | null {
-  if (!subOpt || typeof subOpt !== 'object') return null;
-  if ('career_sub_option_id' in subOpt) {
-    const ref = (subOpt as { career_sub_option_id: CareerSubOption | string | null }).career_sub_option_id;
-    if (ref && typeof ref === 'object' && 'name' in ref) return ref as CareerSubOption;
-  }
-  if ('career_sub_option' in subOpt) {
-    const ref = (subOpt as { career_sub_option: CareerSubOption | string | null }).career_sub_option;
-    if (ref && typeof ref === 'object' && 'name' in ref) return ref as CareerSubOption;
-  }
-  if ('name' in subOpt) return subOpt as CareerSubOption;
-  return null;
+/** Minimal company shape for access checks: its grants this year and its status. */
+type CompanyLike = { grants?: string[]; status?: string } | null | undefined;
+
+/** Whether the company holds this grant in the current academic year. */
+export function hasGrant(company: CompanyLike, type: GrantType): boolean {
+  return Array.isArray(company?.grants) && company.grants.includes(type);
 }
 
-/** Collect suboption IDs from an array (handles IDs as numbers or strings) */
-function collectSubOptionIds(arr: unknown[]): string[] {
-  return arr
-    .map((s) => {
-      if (typeof s === 'string') return s;
-      if (typeof s === 'number') return String(s);
-      if (s && typeof s === 'object' && 'id' in s) return String((s as { id: string | number }).id);
-      return null;
-    })
-    .filter((id): id is string => id != null && id !== '');
-}
-
-/** Resolve sub_options array to CareerSubOption[] (handles IDs, objects with career_sub_option_id, etc.) */
-function resolveSubOptionsArray(
-  subOpts: unknown[],
-  allSubOptions?: CareerSubOption[]
-): CareerSubOption[] {
-  const result: CareerSubOption[] = [];
-  const seen = new Set<string>();
-  const add = (resolved: CareerSubOption | null) => {
-    if (resolved && !seen.has(resolved.id || resolved.name)) {
-      seen.add(resolved.id || resolved.name);
-      result.push(resolved);
-    }
-  };
-  const resolveIds = (ids: string[]) => {
-    if (!allSubOptions || ids.length === 0) return;
-    const byId = new Map<string, CareerSubOption>();
-    for (const s of allSubOptions) {
-      const k = String(s.id);
-      byId.set(k, s);
-      if (k !== s.id) byId.set(s.id as string, s);
-    }
-    for (const id of ids) {
-      add(byId.get(id) ?? byId.get(String(id)) ?? null);
-    }
-  };
-  for (const s of subOpts) {
-    const resolved = resolveSubOption(s);
-    if (resolved) add(resolved);
-  }
-  resolveIds(collectSubOptionIds(subOpts));
-  return result;
-}
-
-/** Get sub_options to check: junction, option.sub_options, and option.events[].career_event_option_id.sub_options (nested). Handles IDs when allSubOptions provided. */
-function getSubOptionsToCheck(
-  opt: unknown,
-  option: CareerEventOption | null,
-  allSubOptions?: CareerSubOption[]
-): CareerSubOption[] {
-  const result: CareerSubOption[] = [];
-  const seen = new Set<string>();
-  const add = (resolved: CareerSubOption | null) => {
-    if (resolved && !seen.has(resolved.id || resolved.name)) {
-      seen.add(resolved.id || resolved.name);
-      result.push(resolved);
-    }
-  };
-  const resolveIds = (ids: string[]) => {
-    if (!allSubOptions || ids.length === 0) return;
-    const byId = new Map<string, CareerSubOption>();
-    for (const s of allSubOptions) {
-      const k = String(s.id);
-      byId.set(k, s);
-      if (k !== s.id) byId.set(s.id as string, s);
-    }
-    for (const id of ids) {
-      add(byId.get(id) ?? byId.get(String(id)) ?? null);
-    }
-  };
-
-  // 1) Junction's sub_options (company's selected sub_options)
-  const rawOpt = opt as Record<string, unknown> | null;
-  const junctionSubOpts = (rawOpt?.sub_options ?? rawOpt?.career_sub_options) as unknown[] | undefined;
-  if (Array.isArray(junctionSubOpts)) {
-    for (const s of junctionSubOpts) {
-      const resolved = resolveSubOption(s);
-      if (resolved) add(resolved);
-    }
-    resolveIds(collectSubOptionIds(junctionSubOpts));
-  }
-
-  // 2) Option's sub_options (can be IDs [7,8,9,18] or objects)
-  const optSubOpts = option?.sub_options;
-  if (Array.isArray(optSubOpts)) {
-    for (const s of optSubOpts) {
-      const resolved = resolveSubOption(s);
-      if (resolved) add(resolved);
-    }
-    resolveIds(collectSubOptionIds(optSubOpts));
-  }
-
-  // 3) Nested: option.events[].career_event_option_id.sub_options (Directus nests sub_options in events junction)
-  const events = option?.events;
-  if (Array.isArray(events)) {
-    for (const ev of events) {
-      const nested = ev as Record<string, unknown>;
-      const nestedOpt = nested?.career_event_option_id as { sub_options?: unknown[] } | undefined;
-      const nestedSubOpts = nestedOpt?.sub_options;
-      if (Array.isArray(nestedSubOpts)) {
-        for (const s of nestedSubOpts) {
-          const resolved = resolveSubOption(s);
-          if (resolved) add(resolved);
-        }
-        resolveIds(collectSubOptionIds(nestedSubOpts));
-      }
-    }
-  }
-
-  return result;
+/** Whether the company may see the students it was matched with. */
+export function hasMatchingSoftwareAccess(company: CompanyLike): boolean {
+  return hasGrant(company, "matching_software");
 }
 
 /**
- * Check if a company has access to a specific sub-option by name
- * @param company The company to check
- * @param subOptionName The name of the sub-option to check (e.g., "CV Book")
- * @param allSubOptions Optional list to resolve sub_options when they're returned as IDs
- * @returns The sub-option if the company holds it this year, null otherwise
- *
- * "Holds it" means present in company.sub_options or in a purchased
- * package's sub_options. The company repo already narrows both to sales with
- * status "sold" in the current academic year (_shape.ts), so presence is the
- * whole check. This used to also require `active === true` on the sub-option,
- * a Directus-era field career_sub_options never had in Postgres -- which made
- * every check fail, so no company could ever open the CV book.
+ * Whether the company's public page (/company/<name>) is live. There is no
+ * page to create: it renders from what the company filled in under Settings
+ * -> Information as soon as both hold -- the company is published (an admin
+ * switch in /admin/companies, to hide a page that is paid for) and it holds
+ * the company-page grant this year.
  */
-export function getCompanySubOption(
-  company: Company | null | undefined,
-  subOptionName: string,
-  allSubOptions?: CareerSubOption[]
-): CareerSubOption | null {
-  const match = subOptionName.toLowerCase().trim();
-
-  // 1) Company-level sub_options (company_career_sub_option junction)
-  const companySubs = (company as { sub_options?: unknown[] })?.sub_options;
-  if (Array.isArray(companySubs) && companySubs.length > 0) {
-    const resolved = resolveSubOptionsArray(companySubs, allSubOptions);
-    const found = resolved.find(
-      (s) =>
-        s?.name &&
-        typeof s.name === "string" &&
-        s.name.toLowerCase().trim() === match
-    );
-    if (found) return found;
-  }
-
-  if (!company?.options || !Array.isArray(company.options)) {
-    return null;
-  }
-
-  for (const opt of company.options) {
-    if (!opt) continue;
-
-    let option: CareerEventOption | null = null;
-    if (typeof opt === 'object' && 'career_event_option_id' in opt) {
-      option = (opt as { career_event_option_id: CareerEventOption }).career_event_option_id;
-    } else if (typeof opt === 'object' && 'id' in opt) {
-      option = opt as CareerEventOption;
-    }
-
-    const subOpts = getSubOptionsToCheck(opt, option, allSubOptions);
-    for (const subOption of subOpts) {
-      if (
-        subOption &&
-        'name' in subOption &&
-        typeof subOption.name === 'string' &&
-        subOption.name.toLowerCase().trim() === match
-      ) {
-        return subOption;
-      }
-    }
-  }
-
-  return null;
-}
-
-/**
- * Get a sub-option by name regardless of active status (useful for getting price info)
- * @param company The company to check
- * @param subOptionName The name of the sub-option to check (e.g., "CV Book")
- * @param allSubOptions Optional list to resolve sub_options when they're returned as IDs
- * @returns The sub-option if found, null otherwise
- */
-export function getCompanySubOptionAnyStatus(
-  company: Company | null | undefined,
-  subOptionName: string,
-  allSubOptions?: CareerSubOption[]
-): CareerSubOption | null {
-  const match = subOptionName.toLowerCase().trim();
-
-  // 1) Company-level sub_options (company_career_sub_option junction)
-  const companySubs = (company as { sub_options?: unknown[] })?.sub_options;
-  if (Array.isArray(companySubs) && companySubs.length > 0) {
-    const resolved = resolveSubOptionsArray(companySubs, allSubOptions);
-    const found = resolved.find(
-      (s) => s?.name && typeof s.name === "string" && s.name.toLowerCase().trim() === match
-    );
-    if (found) return found;
-  }
-
-  if (!company?.options || !Array.isArray(company.options)) {
-    return null;
-  }
-
-  for (const opt of company.options) {
-    if (!opt) continue;
-
-    let option: CareerEventOption | null = null;
-    if (typeof opt === 'object' && 'career_event_option_id' in opt) {
-      option = (opt as { career_event_option_id: CareerEventOption }).career_event_option_id;
-    } else if (typeof opt === 'object' && 'id' in opt) {
-      option = opt as CareerEventOption;
-    }
-
-    const subOpts = getSubOptionsToCheck(opt, option, allSubOptions);
-    for (const subOption of subOpts) {
-      if (
-        subOption &&
-        'name' in subOption &&
-        typeof subOption.name === 'string' &&
-        subOption.name.toLowerCase().trim() === match
-      ) {
-        return subOption;
-      }
-    }
-  }
-
-  return null;
-}
-
-/**
- * Check if a company has access to CV Book
- * @param company The company to check
- * @returns true if company holds the CV Book sub-option this year, false otherwise
- */
-export function hasCVBookAccess(company: Company | null | undefined): boolean {
-  return getCompanySubOption(company, "CV Book") !== null;
-}
-
-/** Minimal company shape for access checks (options, sub_options, status) */
-type CompanyLike = { options?: unknown[]; sub_options?: unknown[]; status?: string } | null | undefined;
-
-/** Suboption name variants for Matching Software (Directus may use different casing). */
-const MATCHING_SOFTWARE_SUBOPTION_NAMES = ["Matching Software", "Matching software", "matching software", "MatchingSoftware"];
-
-/** Check if a suboption name matches "Matching Software" (flexible: contains both words). */
-function isMatchingSoftwareSubOptionName(name: string | null | undefined): boolean {
-  if (!name || typeof name !== "string") return false;
-  const lower = name.toLowerCase().trim();
-  return lower.includes("matching") && lower.includes("software");
-}
-
-/**
- * Check if company has the Matching Software suboption (for viewing matched students).
- * Tries exact name variants first, then checks all company suboptions for names containing "matching" and "software".
- */
-export function hasMatchingSoftwareSubOption(company: Company | null | undefined, allSubOptions?: CareerSubOption[]): boolean {
-  if (!company) return false;
-  for (const name of MATCHING_SOFTWARE_SUBOPTION_NAMES) {
-    if (getCompanySubOptionAnyStatus(company, name, allSubOptions) !== null) return true;
-  }
-  // Fallback: scan all suboptions for name containing "matching" and "software"
-  const companySubs = (company as { sub_options?: unknown[] })?.sub_options;
-  if (Array.isArray(companySubs)) {
-    const resolved = resolveSubOptionsArray(companySubs, allSubOptions);
-    if (resolved.some((s) => isMatchingSoftwareSubOptionName(s?.name))) return true;
-  }
-  if (company?.options && Array.isArray(company.options)) {
-    for (const opt of company.options) {
-      if (!opt) continue;
-      let option: CareerEventOption | null = null;
-      if (typeof opt === "object" && "career_event_option_id" in opt) {
-        option = (opt as { career_event_option_id: CareerEventOption }).career_event_option_id;
-      } else if (typeof opt === "object" && "id" in opt) {
-        option = opt as CareerEventOption;
-      }
-      const subOpts = getSubOptionsToCheck(opt, option, allSubOptions);
-      if (subOpts.some((s) => isMatchingSoftwareSubOptionName(s?.name))) return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Check if a company has access to view their company page (public profile)
- * Requires: published status AND the "Company Page On Platform" sub-option (company.sub_options or in options).
- * @param company The company to check (Company or minimal { options, sub_options, status })
- * @param allSubOptions Optional list to resolve sub_options when they're returned as IDs (e.g. [7,8,9,18])
- * @returns true if company can view their company page
- */
-export function hasCompanyPageAccess(company: CompanyLike, allSubOptions?: CareerSubOption[]): boolean {
+export function hasCompanyPageAccess(company: CompanyLike): boolean {
   if (!company) return false;
   if (company.status !== "published") return false;
-  const companyPageSub = getCompanySubOptionAnyStatus(company as Company | null | undefined, "Company Page On Platform", allSubOptions);
-  return companyPageSub !== null;
+  return hasGrant(company, "company_page");
 }
-

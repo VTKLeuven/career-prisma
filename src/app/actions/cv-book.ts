@@ -13,7 +13,7 @@ import {
   getCVBookByYearForScreening,
   getCVBookStudentData,
   listCVBooksForCompany,
-  listCVBookYearIdsForCompany,
+  companyHasAnyCVBookAccess,
   canCompanyOpenCVBook,
   masterDegreeStudyOptions,
 } from "@/lib/repos/cv-book";
@@ -153,7 +153,7 @@ export async function fetchCVBookAccessAction(): Promise<boolean> {
     const user = await requireSignedInUser();
     if (user.admin) return true;
     const companyId = companyIdOf(user);
-    return companyId ? (await listCVBookYearIdsForCompany(companyId)).length > 0 : false;
+    return companyId ? await companyHasAnyCVBookAccess(companyId) : false;
   } catch (error) {
     console.error("[fetchCVBookAccessAction] Error:", error);
     return false;

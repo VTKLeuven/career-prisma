@@ -12,7 +12,7 @@ import {
 } from "@/app/actions/matching-software";
 import { hasSchedulesForEventAction } from "@/app/actions/schedules";
 import { getCompanyOrderingTabInfo } from "@/lib/company-ordering";
-import { getCompanySubOptionAnyStatus } from "@/lib/utils/company-access";
+import { hasGrant } from "@/lib/utils/company-access";
 import { getUpcomingEventsWithFallback } from "@/lib/utils/events";
 import { getCompanyEvents, getCompanyOptionIds } from "@/lib/utils/company-events";
 import { DashboardHome, type ManagedEvent } from "./dashboard-client";
@@ -89,6 +89,6 @@ async function loadManagedEvent(event: CareerEvent, company: Company): Promise<M
       !!matchingResponse?.ocia_answers && Object.keys(matchingResponse.ocia_answers).length >= 13,
     hasSchedules,
     // AnyStatus catches sub-options that may be inactive or in a different structure.
-    hasStudentSchedulesAccess: getCompanySubOptionAnyStatus(company, "Student Schedules") !== null,
+    hasStudentSchedulesAccess: hasGrant(company, "student_schedules"),
   };
 }

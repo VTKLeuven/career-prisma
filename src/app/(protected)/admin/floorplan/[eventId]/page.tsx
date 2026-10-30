@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { getCompanySubOptionAnyStatus } from "@/lib/utils/company-access"
+import { hasGrant } from "@/lib/utils/company-access"
 import { normalizeForMatching, slugifyEventName, CSV_UTF8_BOM } from "@/lib/utils/slugify"
 import {
   Dialog,
@@ -470,7 +470,7 @@ export default function AdminFloorplanPage() {
           }
           const count = (companyBoothCount.get(company.id) ?? 0) + 1
           companyBoothCount.set(company.id, count)
-          const hasExtraBooth = getCompanySubOptionAnyStatus(company, "Extra Booth") !== null
+          const hasExtraBooth = hasGrant(company, "extra_booth")
           const maxBooths = hasExtraBooth ? 2 : 1
           if (count > maxBooths) {
             setLoadCsvError(`Row ${i + 1}: company "${companyNameRaw}" exceeds max booths (${maxBooths})`)
@@ -518,7 +518,7 @@ export default function AdminFloorplanPage() {
   const availableCompanies = companies
     .filter(c => {
       const assignedCount = assignedBoothCountByCompany.get(c.id) ?? 0
-      const hasExtraBooth = getCompanySubOptionAnyStatus(c, "Extra Booth") !== null
+      const hasExtraBooth = hasGrant(c, "extra_booth")
       const maxBooths = hasExtraBooth ? 2 : 1
       const isAtLimit = assignedCount >= maxBooths
       const isSelectedBoothCompany = selectedBooth?.company?.id === c.id

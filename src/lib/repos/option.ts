@@ -1,7 +1,9 @@
 // lib/repos/option.ts
 import "server-only";
 
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { parseSubOptionGrants, type SubOptionGrant } from "@/lib/grants";
 import { shapeCareerEventOption } from "@/lib/repos/_shape";
 import type { CareerEventOption, CareerSubOption } from "@/lib/schema";
 import { assertAcademicYearWritable, resolveAcademicYearId } from "@/lib/repos/academic-year";
@@ -53,6 +55,8 @@ export async function listCareerSubOptions(opts?: { limit?: number }): Promise<C
     return (await prisma.careerSubOption.findMany({
       orderBy: { name: "asc" },
       take: limit,
+      // The admin form edits them, and lists what each sub-option grants.
+      include: { grants: { select: { type: true, config: true }, orderBy: { id: "asc" } } },
     })) as unknown as CareerSubOption[];
   } catch (error) {
     console.error("[listCareerSubOptions] Error:", error);
@@ -96,24 +100,18 @@ export async function getCareerSubOptionsByIds(ids: (string | number)[]): Promis
 }
 
 /**
- * Fetch the "CV Book" sub-option.
- *
- * Matching is case-insensitive and whitespace-tolerant, which the Directus
- * version only achieved by falling back to loading every sub-option and
- * comparing in JavaScript when the exact-match filter missed.
+ * The sub-option that sells this year's CV book -- the one whose `cv_book`
+ * grant opens the book of the year it is sold in (lib/grants.ts). Its price is
+ * what the request-access page quotes. It used to be found by the name "CV
+ * Book"; the name no longer matters.
  */
 export async function getCVBookSubOption(): Promise<CareerSubOption | null> {
   try {
     const row = await prisma.careerSubOption.findFirst({
-      where: { name: { equals: "CV Book", mode: "insensitive" } },
+      where: { grants: { some: { type: "cv_book", config: { path: ["scope"], equals: "sale_year" } } } },
+      orderBy: { id: "asc" },
     });
-    if (row) return row as unknown as CareerSubOption;
-
-    // Tolerate stray whitespace in the stored name.
-    const all = await prisma.careerSubOption.findMany({ take: 100 });
-    return (all.find(
-      (o) => o.name?.trim().toLowerCase() === "cv book"
-    ) ?? null) as unknown as CareerSubOption | null;
+    return row as unknown as CareerSubOption | null;
   } catch (error) {
     console.error("[getCVBookSubOption] Error:", error);
     return null;
@@ -125,7 +123,7 @@ export async function getCVBookSubOption(): Promise<CareerSubOption | null> {
  * ------------------------------------------------------------------ */
 
 function toSubOptionWrite(payload: Record<string, any>): Record<string, unknown> {
-  const { id: _id, active: _active, ...rest } = payload;
+  const { id: _id, active: _active, grants: _grants, ...rest } = payload;
   return {
     ...rest,
     ...(payload.price !== undefined
@@ -135,8 +133,35 @@ function toSubOptionWrite(payload: Record<string, any>): Record<string, unknown>
   };
 }
 
+/**
+ * Replaces a sub-option's grants with exactly these. `grants` is undefined
+ * when a caller does not edit them, which leaves them alone. Each type's
+ * config is checked by parseSubOptionGrants() before it reaches the database.
+ */
+async function writeSubOptionGrants(
+  tx: Prisma.TransactionClient,
+  subOptionId: number,
+  grants: SubOptionGrant[] | undefined
+): Promise<void> {
+  if (grants === undefined) return;
+  await tx.careerSubOptionGrant.deleteMany({ where: { career_sub_option_id: subOptionId } });
+  if (grants.length === 0) return;
+  await tx.careerSubOptionGrant.createMany({
+    data: grants.map((g) => ({
+      career_sub_option_id: subOptionId,
+      type: g.type,
+      config: g.config == null ? Prisma.DbNull : (g.config as Prisma.InputJsonValue),
+    })),
+  });
+}
+
 export async function createCareerSubOption(payload: Record<string, any>): Promise<CareerSubOption> {
-  const row = await prisma.careerSubOption.create({ data: toSubOptionWrite(payload) });
+  const grants = payload.grants === undefined ? undefined : parseSubOptionGrants(payload.grants);
+  const row = await prisma.$transaction(async (tx) => {
+    const created = await tx.careerSubOption.create({ data: toSubOptionWrite(payload) });
+    await writeSubOptionGrants(tx, created.id, grants);
+    return created;
+  });
   return row as unknown as CareerSubOption;
 }
 
@@ -144,9 +169,14 @@ export async function updateCareerSubOption(
   id: number,
   payload: Record<string, any>
 ): Promise<CareerSubOption> {
-  const row = await prisma.careerSubOption.update({
-    where: { id },
-    data: toSubOptionWrite(payload),
+  const grants = payload.grants === undefined ? undefined : parseSubOptionGrants(payload.grants);
+  const row = await prisma.$transaction(async (tx) => {
+    const updated = await tx.careerSubOption.update({
+      where: { id },
+      data: toSubOptionWrite(payload),
+    });
+    await writeSubOptionGrants(tx, id, grants);
+    return updated;
   });
   return row as unknown as CareerSubOption;
 }

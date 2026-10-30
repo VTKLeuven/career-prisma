@@ -1148,12 +1148,9 @@ export async function requestCompanyPageAction(): Promise<{ success: boolean; er
       return { success: false, error: "Company not found" };
     }
 
-    // Check if company already has a page (via "Company Page On Platform" sub-option)
+    // Check if company already has a page (the company-page grant, lib/grants.ts)
     const { hasCompanyPageAccess } = await import("@/lib/utils/company-access");
-    const ids = extractSubOptionIdsFromCompany(company);
-    const { getCareerSubOptionsByIds } = await import("@/lib/repos/option");
-    const allSubOptions = ids.length > 0 ? await getCareerSubOptionsByIds(ids) : [];
-    if (hasCompanyPageAccess(company, allSubOptions ?? [])) {
+    if (hasCompanyPageAccess(company)) {
       return { success: false, error: "Company already has a page on the platform" };
     }
 
@@ -1229,9 +1226,9 @@ export async function requestCVBookAccessAction(): Promise<{ success: boolean; e
       return { success: false, error: "Company not found" };
     }
 
-    // Check if company already has CV Book access
-    const { hasCVBookAccess } = await import("@/lib/utils/company-access");
-    if (hasCVBookAccess(company)) {
+    // Already bought this year's CV book (a cv_book grant, lib/grants.ts)
+    const { companyHasCurrentYearCVBook } = await import("@/lib/repos/cv-book");
+    if (await companyHasCurrentYearCVBook(String(company.id))) {
       return { success: false, error: "Company already has CV Book access" };
     }
 

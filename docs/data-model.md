@@ -10,6 +10,40 @@ guessing. Highlights:
 `CareerSubOption` / `CompanyCareerSubOption` add finer-grained purchases.
 Nearly every business question is scoped by academic year.
 
+### What a purchase grants
+
+What buying something *gives* a company lives in `CareerSubOptionGrant`
+(`career_sub_option_grants`): rows of a sub-option, a `type` and a JSON
+`config`. The table is deliberately generic -- the meaning of each type, how
+long it lasts and which configs are valid are defined in code, in
+[`src/lib/grants.ts`](../src/lib/grants.ts), so a new kind of access is a new
+entry there, not a migration. Today's types:
+
+| Type | Gives | Lasts |
+|---|---|---|
+| `cv_book` | CV books; config `{"scope": "sale_year"}` or `{"scope": "books", "bookIds": [...]}` (how an older book is sold) | for good |
+| `company_page` | the public `/company/<name>` page (the company must also be `published`) | the year sold |
+| `vacancies` | posting on the vacancy platform | the year sold |
+| `matching_software` | seeing matched students | the year sold |
+| `student_schedules` | student schedules on the dashboard | the year sold |
+| `extra_booth` | a second booth on the floorplan | the year sold |
+
+- **Only sub-options carry grants.** A package (`CareerEventOption`) grants
+  whatever the sub-options it includes grant. Packages are copied to a new row
+  every academic year; sub-options are not, so their grants simply stay.
+- **Names are labels.** Access used to be decided by sub-option names ("CV
+  Book", "Company Page On Platform", anything with "matching" and
+  "software"...), so renaming one switched a feature off. The migration that
+  added the table backfilled grants from those names; nothing reads names now.
+- **How it is checked.** `shapeCompany()` puts the grant types a company holds
+  *this* academic year on `company.grants`, and the synchronous checks in
+  `src/lib/utils/company-access.ts` (`hasGrant()`, `hasCompanyPageAccess()`)
+  read that, in server and client code alike. `cv_book` lasts for good, so it
+  is worked out across every year's sales in `listCVBookAccessForCompany()`.
+- An admin sets grants in `/admin/career-options` -> Sub-options ("Purchasing
+  this grants access to"). A type in the database that the running code does
+  not know is ignored.
+
 ## The event itself
 
 `CareerEventPage` — public page content, including `latitude`/`longitude`
@@ -65,9 +99,10 @@ announces it. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
     signed-in student's resubmit starts a new response once a new academic
     year has begun (`cvBookResponseWindowStart()`), instead of overwriting last
     year's CV.
-  - **Access per year bought, for good.** A company opens a year's book if it
-    bought the "CV Book" sub-option that year, alone or inside a package
-    (`listCVBookYearIdsForCompany()`), and only while the book is published.
+  - **Access per year bought, for good.** A company opens a book its
+    `cv_book` grants cover -- the year of the sale, or specific books -- for
+    good (`listCVBookAccessForCompany()`, see "What a purchase grants"), and
+    only while the book is published.
   - **One publish switch, no bulk approval.** `cv_books.active` alone decides
     whether companies see a book ("Publish" / "Unpublish" in admin), and it
     can be flipped both ways. Companies only ever see CVs an admin approved
@@ -87,7 +122,7 @@ announces it. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
     faculty names, and screening offers the masters as study options.
 - `Vacancy` + `VacancyType` / `VacancySector` / `VacancySectorLink` /
   `VacancyMaster` / `VacancySectionConfig` — job board. Behind
-  `DEV_ENVIRONMENT`.
+  `DEV_ENVIRONMENT`, and a company only posts with the `vacancies` grant.
 - `MatchingSoftware`, `StudentMatchingResponse*`, `CompanyMatchingResponse*` —
   student↔company matching questionnaire.
 - `Form` / `FormVersion` / `FormResponse` — the generic form builder used for

@@ -70,7 +70,7 @@ export async function getCompanyMatchingResponseForCompanyViewAction(companyId: 
     throw new Error("Unauthorized");
   }
   const { fetchCompanyByIdAction } = await import("@/app/actions/companies");
-  const { hasMatchingSoftwareSubOption } = await import("@/lib/utils/company-access");
+  const { hasMatchingSoftwareAccess } = await import("@/lib/utils/company-access");
   const response = await getCompanyMatchingResponse(companyId, matchingSoftwareId);
   if (!response) return null;
 
@@ -81,8 +81,7 @@ export async function getCompanyMatchingResponseForCompanyViewAction(companyId: 
   }
 
   const company = await fetchCompanyByIdAction(companyId, false, true);
-  const hasSubOption = hasMatchingSoftwareSubOption(company);
-  if (!hasSubOption) {
+  if (!hasMatchingSoftwareAccess(company)) {
     return { ...response, students: [] };
   }
   return response;

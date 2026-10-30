@@ -1,7 +1,7 @@
 "use server";
 
 import { getSchedulesForEvent, hasSchedulesForEvent, createSchedule, deleteSchedule } from "@/lib/repos/schedule";
-import { getCompanySubOptionAnyStatus } from "@/lib/utils/company-access";
+import { hasGrant } from "@/lib/utils/company-access";
 import { uploadFile } from "@/lib/file-storage";
 import { getEventName, getEventTimes } from "@/lib/repos/event";
 import { isDuringEvent } from "@/lib/utils/events";
@@ -38,8 +38,8 @@ export type CompanySchedules =
 
 /**
  * The student schedules the signed-in rep's company may open for an event.
- * Everything is decided here: the company and its "Student Schedules" option
- * are loaded from the session, and the event's hours are checked in Brussels
+ * Everything is decided here: the company and its student-schedules grant
+ * (lib/grants.ts) are loaded from the session, and the event's hours are checked in Brussels
  * time. It used to take the company object from the caller -- whose options a
  * rep could fake -- and leave the hours check to the browser.
  */
@@ -55,7 +55,7 @@ export async function fetchSchedulesForEventAction(eventId: string): Promise<Com
     ]);
     eventName = name ?? "";
 
-    if (!company || getCompanySubOptionAnyStatus(company, "Student Schedules") === null) {
+    if (!company || !hasGrant(company, "student_schedules")) {
       return { status: "no_access", eventName };
     }
     if (!times || !isDuringEvent(times as CareerEvent)) {

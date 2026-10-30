@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { updateBoothCompany, getBoothsForFloorplan } from "@/lib/repos/floorplan";
 import { invalidateFloorplanCache } from "@/lib/floorplan-cache";
 import { getCompanyById } from "@/lib/repos/company";
-import { getCompanySubOptionAnyStatus } from "@/lib/utils/company-access";
+import { hasGrant } from "@/lib/utils/company-access";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { getBoothFloorplanId } from "@/lib/repos/booths";
 
@@ -43,9 +43,9 @@ export async function POST(req: Request) {
       // Check if company is already assigned to another booth
       const existingBooth = floorplanBooths.find(b => b.company?.id === companyId && b.id !== boothId);
       if (existingBooth) {
-        // Companies with "Extra Booth" suboption can have multiple booths - don't remove from the other
+        // Companies with the extra-booth grant can have two booths - don't remove from the other
         const company = await getCompanyById(companyId);
-        const hasExtraBooth = getCompanySubOptionAnyStatus(company ?? undefined, "Extra Booth") !== null;
+        const hasExtraBooth = hasGrant(company, "extra_booth");
         if (!hasExtraBooth) {
           await updateBoothCompany(existingBooth.id, null);
         }

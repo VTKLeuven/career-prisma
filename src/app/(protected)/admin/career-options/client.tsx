@@ -32,6 +32,7 @@ import {
   deleteOptionSaleAction,
 } from "@/app/actions/annual-catalog";
 import { confirmDialog } from "@/components/confirm-dialog";
+import { SubOptionGrantsEditor, describeGrants } from "@/components/admin/SubOptionGrantsEditor";
 
 /** Strips HTML tags for a plain-text table preview. */
 function stripHtml(html?: string): string {
@@ -76,6 +77,7 @@ export default function CareerOptionsClient({
   currentAcademicYearId,
   sales,
   companies,
+  cvBooks,
 }: {
   initialSubOptions: CareerSubOption[];
   initialOptions: CareerEventOption[];
@@ -85,6 +87,8 @@ export default function CareerOptionsClient({
   currentAcademicYearId: string;
   sales: AdminOptionSale[];
   companies: SelectOption[];
+  /** Every CV book, for the "grants specific CV books" picker. */
+  cvBooks: SelectOption[];
 }) {
   const [tab, setTab] = React.useState<Tab>("options");
   const [selectedYearId, setSelectedYearId] = React.useState(
@@ -180,6 +184,8 @@ export default function CareerOptionsClient({
     columns: [
       { key: "name", label: "Name" },
       { key: "price", label: "Price", render: (s) => s.price || "—" },
+      // What a sale gives the company is decided here, never by the name.
+      { key: "grants", label: "Grants access to", value: (s) => describeGrants(s.grants) },
       {
         key: "description",
         label: "Description",
@@ -195,6 +201,16 @@ export default function CareerOptionsClient({
       { name: "name", label: "Name", type: "text", required: true },
       { name: "price", label: "Price", type: "text", placeholder: "e.g. 500 or Free" },
       { name: "description", label: "Description", type: "richtext" },
+      {
+        name: "grants",
+        label: "Purchasing this grants access to",
+        type: "multiselect",
+        help: "What a company gets when this sub-option is sold to it, on its own or inside a package. The name does not matter.",
+        getEditValue: (s) => (s.grants ?? []).map((g) => ({ type: g.type, config: g.config })),
+        renderInput: ({ value, onChange }) => (
+          <SubOptionGrantsEditor value={value} onChange={onChange} cvBooks={cvBooks} />
+        ),
+      },
     ],
     actions: {
       create: createSubOptionAction,

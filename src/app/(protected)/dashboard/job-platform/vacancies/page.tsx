@@ -33,6 +33,7 @@ import {
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import {
   fetchMyVacanciesAction,
+  fetchVacancyAccessAction,
   deleteVacancyAction,
   updateVacancyStatusAction,
 } from "@/app/actions/vacancies";
@@ -58,11 +59,16 @@ const statusLabels: Record<Vacancy["status"], string> = {
 export default function DashboardVacanciesPage() {
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
   const [loading, setLoading] = useState(true);
+  // Posting needs the vacancy-platform grant this year (lib/grants.ts).
+  const [hasAccess, setHasAccess] = useState(true);
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
     try {
+      const access = await fetchVacancyAccessAction();
+      setHasAccess(access);
+      if (!access) return;
       const data = await fetchMyVacanciesAction();
       setVacancies(data ?? []);
     } catch (err) {
@@ -106,6 +112,19 @@ export default function DashboardVacanciesPage() {
 
   const getTypeName = (v: Vacancy) =>
     typeof v.type === "object" ? (v.type as VacancyType).name : "";
+
+  if (!loading && !hasAccess) {
+    return (
+      <div className="space-y-2 rounded-lg border p-6 text-center">
+        <h2 className="text-xl font-semibold">Vacancy platform</h2>
+        <p className="text-muted-foreground">
+          Posting vacancies is not part of your company&apos;s package this year. Contact your
+          VTK salesperson to add it.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

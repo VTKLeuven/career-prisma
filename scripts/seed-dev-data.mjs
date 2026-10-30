@@ -146,6 +146,23 @@ async function findOrCreate(model, where, data) {
   return model.create({ data: { ...where, ...data } });
 }
 
+/**
+ * Sets what a sub-option grants (career_sub_option_grants, see src/lib/grants.ts).
+ * Access comes from these rows, not from the sub-option's name.
+ */
+async function setGrants(subOptionId, grants) {
+  await prisma.careerSubOptionGrant.deleteMany({ where: { career_sub_option_id: subOptionId } });
+  if (grants.length) {
+    await prisma.careerSubOptionGrant.createMany({
+      data: grants.map(({ type, config }) => ({
+        career_sub_option_id: subOptionId,
+        type,
+        ...(config ? { config } : {}),
+      })),
+    });
+  }
+}
+
 /** Replaces a join table's rows for the given parents without touching others. */
 async function replaceLinks(model, where, rows) {
   await model.deleteMany({ where });
@@ -986,6 +1003,16 @@ async function main() {
     { name: "Company Page On Platform" },
     { description: "A public company profile on career.vtk.be.", price: "200" },
   );
+  await setGrants(companyPageSub.id, [{ type: "company_page" }]);
+  // The vacancy platform needs this grant; only TechnoBel buys it (below), so
+  // the rep can post and Aurora's or Delta's rep would see the "not in your
+  // package" notice.
+  const vacancySub = await findOrCreate(
+    prisma.careerSubOption,
+    { name: "Vacancy Platform" },
+    { description: "Post vacancies on career.vtk.be for one academic year.", price: "300" },
+  );
+  await setGrants(vacancySub.id, [{ type: "vacancies" }]);
 
   await replaceLinks(
     prisma.careerEventOptionSubOption,
@@ -1084,7 +1111,25 @@ async function main() {
       },
     });
   }
-  log("4 option sales + 3 sub-option sales (2 company pages)");
+  await prisma.companyCareerSubOption.upsert({
+    where: {
+      company_id_career_sub_option_id_academic_year_id: {
+        company_id: COMPANY.technobel,
+        career_sub_option_id: vacancySub.id,
+        academic_year_id: currentYear.id,
+      },
+    },
+    update: { status: "sold" },
+    create: {
+      company_id: COMPANY.technobel,
+      career_sub_option_id: vacancySub.id,
+      academic_year_id: currentYear.id,
+      price_at_sale: "300",
+      name_at_sale: "Vacancy Platform",
+      status: "sold",
+    },
+  });
+  log("4 option sales + 4 sub-option sales (2 company pages, 1 vacancy platform)");
 
   // A sale in the previous year too, so year switching shows a difference.
   await prisma.companyCareerEventOption.upsert({
@@ -1121,6 +1166,7 @@ async function main() {
     { name: "CV Book" },
     { description: "Access to the screened student CVs of that academic year.", price: "500" },
   );
+  await setGrants(cvBookSub.id, [{ type: "cv_book", config: { scope: "sale_year" } }]);
   for (const [companyId, year] of [
     [COMPANY.technobel, previousYear],
     [COMPANY.technobel, currentYear],

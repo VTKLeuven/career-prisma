@@ -91,6 +91,8 @@ export type Student = {
 export type Company = {
   id: string;
   name: string;
+  /** Grant types held this academic year (lib/grants.ts), set by shapeCompany(). */
+  grants?: string[];
   salesperson?: { id: string; first_name: string | null; last_name: string | null } | string | null;
   logo?: string;
   page_image?: string;
@@ -155,6 +157,8 @@ export type CareerSubOption = {
   name: string;
   description: string;
   price: string;
+  /** What buying it gives (lib/grants.ts); loaded where the admin form or access checks need it. */
+  grants?: { type: string; config: unknown }[];
 }
 
 export type CareerEventOption = {
@@ -176,7 +180,7 @@ export type CareerEventOption = {
 // public at all. It lives in header_buttons so it reuses the same admin toggle.
 export type HeaderButtonType = 'floorplan' | 'company_guide' | 'cv_upload' | 'matching_software' | 'companies';
 
-/** Schedule for an event - PDF per master (student timetables). Companies with "Student Schedules" sub-option see schedules for masters in their company.category. */
+/** Schedule for an event - PDF per master (student timetables). Companies holding the student-schedules grant (lib/grants.ts) see schedules for masters in their company.category. */
 export type Schedule = {
   id: string;
   event: string | CareerEvent;

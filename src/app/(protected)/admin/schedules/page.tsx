@@ -48,7 +48,7 @@ export default function AdminSchedulesPage() {
     <div className="mx-auto w-full max-w-[1600px] space-y-6">
       <PageHeader
         title="Schedules"
-        description={'Add student schedules (PDF per master) for an event. Companies with the "Student Schedules" sub-option see schedules for masters in their category.'}
+        description={'Add student schedules (PDF per master) for an event. Companies with a sub-option that grants student schedules (set in Career Options) see schedules for masters in their category.'}
       />
 
       <SchedulesTable key={refreshKey} eventId={eventId ?? undefined} onChanged={() => setRefreshKey((k) => k + 1)} />

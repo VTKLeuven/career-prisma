@@ -8,6 +8,7 @@ import { listFormResponsesForAllVersions } from "./forms";
 import { listScreeningForCVBook, type CVBookScreeningRecord, type ScreeningStatus } from "./cv-book-screening";
 import { getCurrentAcademicYear } from "./academic-year";
 import { listCVBookOptOuts } from "./students";
+import { GRANT_TYPES, type CVBookGrantConfig } from "@/lib/grants";
 
 /** Ids cross this API as strings; the columns are integers. */
 const num = (v: string | number) => Number(v);
@@ -504,39 +505,95 @@ export async function masterDegreeStudyOptions(cvBook: CVBook): Promise<string[]
 
 // ===================== COMPANY ACCESS =====================
 
-/** "CV Book", however it was capitalised when the sub-option was created. */
-const CV_BOOK_SUB_OPTION = { name: { equals: "CV Book", mode: "insensitive" as const } };
+/** A sub-option whose grants include a CV book. */
+const GRANTS_CV_BOOK = { grants: { some: { type: "cv_book" } } };
+const CV_BOOK_GRANTS = { grants: { where: { type: "cv_book" } } };
 
 /**
- * The academic years a company bought the CV book for: the "CV Book"
- * sub-option sold on its own, or as part of a package that includes it.
- * Access to a year's book is kept for good once bought. This is the one place
- * to extend when older books can be bought separately.
+ * The CV books a company bought, from the `cv_book` grants (lib/grants.ts) on
+ * the sub-options it bought -- on their own or inside a package. A grant
+ * opens the book of the year it was sold in, or specific books (how an older
+ * book is sold); either way it is kept for good. Names play no part.
  */
-export async function listCVBookYearIdsForCompany(companyId: string): Promise<string[]> {
+export async function listCVBookAccessForCompany(
+  companyId: string
+): Promise<{ yearIds: string[]; bookIds: string[] }> {
   const [direct, viaPackage] = await Promise.all([
     prisma.companyCareerSubOption.findMany({
-      where: { company_id: companyId, status: "sold", careerSubOption: CV_BOOK_SUB_OPTION },
-      select: { academic_year_id: true },
+      where: { company_id: companyId, status: "sold", careerSubOption: GRANTS_CV_BOOK },
+      select: { academic_year_id: true, careerSubOption: { select: CV_BOOK_GRANTS } },
     }),
     prisma.companyCareerEventOption.findMany({
       where: {
         company_id: companyId,
         status: "sold",
-        careerEventOption: { careerEventOptionSubOptions: { some: { careerSubOption: CV_BOOK_SUB_OPTION } } },
+        careerEventOption: { careerEventOptionSubOptions: { some: { careerSubOption: GRANTS_CV_BOOK } } },
       },
-      select: { academic_year_id: true },
+      select: {
+        academic_year_id: true,
+        careerEventOption: {
+          select: {
+            careerEventOptionSubOptions: {
+              where: { careerSubOption: GRANTS_CV_BOOK },
+              select: { careerSubOption: { select: CV_BOOK_GRANTS } },
+            },
+          },
+        },
+      },
     }),
   ]);
-  return Array.from(new Set([...direct, ...viaPackage].map((r) => String(r.academic_year_id))));
+
+  const sales = [
+    ...direct.map((d) => ({ yearId: d.academic_year_id, grants: d.careerSubOption.grants })),
+    ...viaPackage.flatMap((p) =>
+      p.careerEventOption.careerEventOptionSubOptions.map((link) => ({
+        yearId: p.academic_year_id,
+        grants: link.careerSubOption?.grants ?? [],
+      }))
+    ),
+  ];
+
+  const yearIds = new Set<string>();
+  const bookIds = new Set<string>();
+  for (const sale of sales) {
+    for (const grant of sale.grants) {
+      let config: CVBookGrantConfig;
+      try {
+        config = GRANT_TYPES.cv_book.parseConfig(grant.config);
+      } catch {
+        continue; // A broken config grants nothing rather than everything.
+      }
+      if (config.scope === "books") config.bookIds.forEach((id) => bookIds.add(String(id)));
+      else yearIds.add(String(sale.yearId));
+    }
+  }
+  return { yearIds: Array.from(yearIds), bookIds: Array.from(bookIds) };
 }
 
-/** The books a company may open: published (`active`) and for a year it bought. */
+/** Whether the company bought any CV book -- the CV book page or the offer to buy one. */
+export async function companyHasAnyCVBookAccess(companyId: string): Promise<boolean> {
+  const { yearIds, bookIds } = await listCVBookAccessForCompany(companyId);
+  return yearIds.length > 0 || bookIds.length > 0;
+}
+
+/** Whether the company already bought this academic year's CV book. */
+export async function companyHasCurrentYearCVBook(companyId: string): Promise<boolean> {
+  const [{ yearIds }, year] = await Promise.all([
+    listCVBookAccessForCompany(companyId),
+    getCurrentAcademicYear(),
+  ]);
+  return Boolean(year && yearIds.includes(String(year.id)));
+}
+
+/** The books a company may open: published (`active`), and bought -- by year or by book. */
 export async function listCVBooksForCompany(companyId: string): Promise<CVBook[]> {
-  const yearIds = await listCVBookYearIdsForCompany(companyId);
-  if (yearIds.length === 0) return [];
+  const { yearIds, bookIds } = await listCVBookAccessForCompany(companyId);
+  if (yearIds.length === 0 && bookIds.length === 0) return [];
   const rows = await prisma.cvBook.findMany({
-    where: { active: true, year_id: { in: yearIds.map(num) } },
+    where: {
+      active: true,
+      OR: [{ year_id: { in: yearIds.map(num) } }, { id: { in: bookIds.map(num) } }],
+    },
     include: CV_BOOK_INCLUDE,
     orderBy: { year: { start_of_year: "desc" } },
   });

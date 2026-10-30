@@ -189,8 +189,27 @@ model CareerSubOption {
   price                       String?                      @db.VarChar(255)
   careerEventOptionSubOptions CareerEventOptionSubOption[]
   companyCareerSubOptions     CompanyCareerSubOption[]
+  grants                      CareerSubOptionGrant[]
 
   @@map("career_sub_options")
+}
+
+/// What buying a sub-option gives a company -- a CV book, a company page, the
+/// vacancy platform. Deliberately generic: `type` is a key whose meaning lives
+/// in src/lib/grants.ts, and `config` holds that type's settings (which CV
+/// books, say), so a new kind of access needs no migration. Access used to be
+/// decided by the sub-option's name; names are now just labels.
+model CareerSubOptionGrant {
+  id                   Int             @id @default(autoincrement())
+  career_sub_option_id Int
+  type                 String          @db.VarChar(64)
+  config               Json?
+  date_created         DateTime        @default(now()) @db.Timestamptz(6)
+  careerSubOption      CareerSubOption @relation(fields: [career_sub_option_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([career_sub_option_id, type])
+  @@index([type])
+  @@map("career_sub_option_grants")
 }
 
 model Company {

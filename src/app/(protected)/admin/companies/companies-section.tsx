@@ -535,7 +535,7 @@ export function CompaniesSection({
                 <CompanyAvatar name={selectedCompany.name} />
                 <span className="truncate text-[15px] font-semibold">{selectedCompany.name}</span>
               </div>
-              <div className="flex items-center gap-1 rounded-[10px] border bg-background p-0.5 sm:ml-4">
+              <div className="flex shrink-0 items-center gap-1 self-start rounded-[10px] border bg-background p-0.5 sm:ml-4 sm:self-auto">
                 {([
                   ["users", "Representatives", selectedCompany.representatives?.length ?? 0],
                   ["options", "Options", selectedCompany.options?.length ?? 0],
@@ -544,7 +544,7 @@ export function CompaniesSection({
                     key={mode}
                     type="button"
                     onClick={() => setViewMode(mode)}
-                    className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
+                    className={`flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
                       viewMode === mode ? "bg-[#f0f0f2] text-foreground" : "text-muted-foreground hover:text-foreground"
                     }`}
                   >

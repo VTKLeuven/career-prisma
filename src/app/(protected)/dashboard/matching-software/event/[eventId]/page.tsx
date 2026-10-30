@@ -8,7 +8,7 @@ import {
 import { getStudentFormResponseDataForEventAction } from "@/app/actions/forms";
 import { fetchCompanyByIdAction } from "@/app/actions/companies";
 import { getUserFromCookies } from "@/lib/auth-server";
-import { hasMatchingSoftwareSubOption } from "@/lib/utils/company-access";
+import { hasMatchingSoftwareAccess } from "@/lib/utils/company-access";
 import { normalizeStudents } from "@/lib/matching-students";
 
 function BackToDashboard({ message }: { message: string }) {
@@ -63,7 +63,7 @@ export default async function EventMatchingSoftwarePage({ params }: { params: Pr
         matchingSoftwareId={matchingSoftware.id}
         eventId={eventId}
         eventName={eventName || undefined}
-        companiesCanViewMatches={(matchingSoftware.companies_can_view_matches ?? false) && hasMatchingSoftwareSubOption(company)}
+        companiesCanViewMatches={(matchingSoftware.companies_can_view_matches ?? false) && hasMatchingSoftwareAccess(company)}
         initialData={{ response, studentFormData }}
       />
     </div>

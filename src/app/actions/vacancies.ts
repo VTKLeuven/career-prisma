@@ -21,6 +21,7 @@ import {
 } from "@/lib/repos/vacancies";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { isDevEnvironment } from "@/lib/dev-environment";
+import { hasGrant } from "@/lib/utils/company-access";
 import type {
   Vacancy,
   VacancyType,
@@ -54,6 +55,39 @@ async function requireCompanyUser() {
   const user = await requireUser();
   if (!user.company?.id) throw new Error("No company associated with user");
   return user;
+}
+
+const NO_VACANCY_ACCESS = "The vacancy platform is not part of your company's package this year";
+
+/**
+ * A company user whose company holds the vacancy-platform grant this year
+ * (lib/grants.ts). Before the grant existed every company user could post;
+ * the platform is still behind DEV_ENVIRONMENT, so no production company has
+ * ever relied on that.
+ */
+async function requireVacancyCompanyUser() {
+  const user = await requireCompanyUser();
+  if (!hasGrant(user.company, "vacancies")) throw new Error(NO_VACANCY_ACCESS);
+  return user;
+}
+
+/** Admins edit any vacancy; a company user only its own, and only with the grant. */
+function assertCanManageVacancy(
+  user: Awaited<ReturnType<typeof requireUser>>,
+  vacancyCompanyId: string | undefined
+) {
+  if (user.admin) return;
+  if (user.company?.id !== vacancyCompanyId) {
+    throw new Error("You do not have access to this vacancy");
+  }
+  if (!hasGrant(user.company, "vacancies")) throw new Error(NO_VACANCY_ACCESS);
+}
+
+/** Whether the signed-in company may use the vacancy platform; admins always may. */
+export async function fetchVacancyAccessAction(): Promise<boolean> {
+  assertDevEnvironment();
+  const user = await requireUser();
+  return Boolean(user.admin || hasGrant(user.company, "vacancies"));
 }
 
 async function requireAdmin() {
@@ -96,7 +130,7 @@ export async function fetchPublicVacancyByIdAction(id: string) {
 
 export async function fetchMyVacanciesAction() {
   assertDevEnvironment();
-  const user = await requireCompanyUser();
+  const user = await requireVacancyCompanyUser();
   return listVacancies({ companyId: user.company!.id, sort: "-date_created" });
 }
 
@@ -109,9 +143,7 @@ export async function fetchVacancyByIdAction(id: string) {
   const vacancyCompanyId =
     typeof vacancy.company === "string" ? vacancy.company : vacancy.company?.id;
 
-  if (!user.admin && user.company?.id !== vacancyCompanyId) {
-    throw new Error("You do not have access to this vacancy");
-  }
+  assertCanManageVacancy(user, vacancyCompanyId);
   return vacancy;
 }
 
@@ -119,7 +151,7 @@ export async function createVacancyAction(
   payload: Partial<Vacancy>
 ): Promise<Vacancy | null> {
   assertDevEnvironment();
-  const user = await requireCompanyUser();
+  const user = await requireVacancyCompanyUser();
   return createVacancy({
     ...payload,
     company: user.company!.id,
@@ -141,9 +173,7 @@ export async function updateVacancyAction(
       ? existing.company
       : existing.company?.id;
 
-  if (!user.admin && user.company?.id !== existingCompanyId) {
-    throw new Error("You do not have access to this vacancy");
-  }
+  assertCanManageVacancy(user, existingCompanyId);
 
   return updateVacancy(id, payload);
 }
@@ -177,9 +207,7 @@ export async function deleteVacancyAction(id: string): Promise<void> {
       ? existing.company
       : existing.company?.id;
 
-  if (!user.admin && user.company?.id !== existingCompanyId) {
-    throw new Error("You do not have access to this vacancy");
-  }
+  assertCanManageVacancy(user, existingCompanyId);
 
   await deleteVacancy(id);
 }

@@ -55,7 +55,11 @@ export const COMPANY_INCLUDE = {
   users: true,
   salesperson: { select: { id: true, first_name: true, last_name: true } },
   companyMasters: { include: { master: true } },
-  companyCareerSubOptions: { include: { careerSubOption: true, academicYear: true } },
+  // `grants` on every sub-option: shapeCompany() turns them into the company's
+  // `grants` list, which the access checks in lib/utils/company-access.ts read.
+  companyCareerSubOptions: {
+    include: { careerSubOption: { include: { grants: true } }, academicYear: true },
+  },
   companyCareerEventOptions: {
     include: {
       academicYear: true,
@@ -63,7 +67,9 @@ export const COMPANY_INCLUDE = {
         include: {
           academicYear: true,
           careerEventOptionEvents: { include: { careerEvent: { include: { academicYear: true } } } },
-          careerEventOptionSubOptions: { include: { careerSubOption: true } },
+          careerEventOptionSubOptions: {
+            include: { careerSubOption: { include: { grants: true } } },
+          },
         },
       },
     },
@@ -102,6 +108,19 @@ export function shapeCompany(row: Nullable<CompanyRow>): any {
       (link.status ?? "sold") === "sold" && (!link.academicYear || isCurrentYear(link.academicYear))
   );
 
+  // The grant types the company holds this academic year: from sub-options it
+  // bought, and from those inside the packages it bought. This is what the
+  // "for the year it is sold" grants check; CV books, kept for good, are
+  // worked out across all years in lib/repos/cv-book.ts instead.
+  const grantTypes = new Set<string>();
+  const addGrants = (subOption: { grants?: { type: string }[] } | null | undefined) => {
+    for (const grant of subOption?.grants ?? []) grantTypes.add(grant.type);
+  };
+  for (const link of currentSubOptionLinks) addGrants(link.careerSubOption);
+  for (const link of currentOptionLinks) {
+    for (const r of link.careerEventOption?.careerEventOptionSubOptions ?? []) addGrants(r.careerSubOption);
+  }
+
   return {
     ...rest,
     // Directus exposed these as bare file/user ids under the un-suffixed name.
@@ -110,6 +129,7 @@ export function shapeCompany(row: Nullable<CompanyRow>): any {
     salesperson: salesperson ?? salesperson_id ?? null,
 
     representatives: users ?? [],
+    grants: Array.from(grantTypes),
     category: junction(companyMasters, "master_id", (r: any) => r.master),
     sub_options: junction(
       currentSubOptionLinks,
