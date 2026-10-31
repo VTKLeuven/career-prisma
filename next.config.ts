@@ -5,7 +5,18 @@ const nextConfig: NextConfig = {
   // Enable standalone output for Docker
   output: 'standalone',
   // Note: outputFileTracingRoot removed - Next.js handles this automatically in standalone mode
-  
+
+  // pdf.js (the Litus CV book import, lib/litus-cv-book.ts) needs DOMMatrix,
+  // which Node lacks; at load time it polyfills it from its optional
+  // dependency @napi-rs/canvas through a runtime require() the build cannot
+  // see. So both stay out of the bundle, and the canvas package (plus its
+  // per-platform native binary) is copied into the standalone output by hand.
+  // Without this the import route fails in Docker with "DOMMatrix is not defined".
+  serverExternalPackages: ["pdfjs-dist", "@napi-rs/canvas"],
+  outputFileTracingIncludes: {
+    "/api/admin/cv-book-import": ["./node_modules/@napi-rs/canvas*/**/*"],
+  },
+
   images: {
     remotePatterns: [
       {
