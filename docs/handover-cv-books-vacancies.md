@@ -15,8 +15,8 @@ products").
 | One "Publish" switch instead of active + "Mark ready" | Committed locally: `cf59aa7` |
 | Seed data for CV books | In `cf59aa7` (+ grant rows, uncommitted) |
 | **Phase 1: purchase grants** (`career_sub_option_grants`) incl. vacancy lock | **Uncommitted** in the working tree |
-| Phase 2: importing old CV books | **Built, uncommitted** (2026-10-30) -- see §5 |
-| Phase 3: selling older CV books | Mostly falls out of Phases 1 + 2 |
+| Phase 2: importing old CV books | **Done, uncommitted**; tested by the user 2026-10-31 -- see §5 |
+| Phase 3: selling older CV books | No code needed (admin setup, §5); waits on the privacy check |
 | Follow-up migration dropping `cv_books.screening_complete` | Not done; must ship in a *later* deploy |
 
 `main` is **ahead of `origin/main` by 3 commits and not pushed**. Pushing `main`
@@ -83,7 +83,7 @@ changes what it can access. Still open: the backfill against real sub-option nam
 
 ## 5. Phase 2 (old CV books)
 
-**Built 2026-10-30, uncommitted, not clicked through in a browser yet.**
+**Built 2026-10-30, clicked through by the user 2026-10-31 (2023-2024 imported), uncommitted.**
 `/admin/cv-book` -> "Import old CV book": pick the year (no book yet; create
 older years on `/admin/academic-years`), upload the Litus PDF, "Read PDF"
 shows every CV with name / email / programme and what needs a look (no
@@ -105,6 +105,18 @@ every CV approved.
   book as a public file) nor a server action (10 MB body limit).
 - Submit action refuses forms whose version metadata has `imported_cv_book`.
 - Book no longer skips CVs without email; both views hide the empty mail link.
+- Fixed on the way: on `/dashboard/job-platform/cv-book` an admin's
+  `?cvBookId=` (the "View" link) overrode the year selector; it now only picks
+  the starting year, and a stale load can no longer overwrite a newer pick.
+- Deleting a book leaves its form, responses and CV files (user's choice,
+  2026-10-31: forms are never deleted with a book). To take one CV out:
+  screening -> "Remove" (hidden, kept), or delete the response on the form's
+  responses page (the CV file itself stays, private and unreferenced).
+
+Selling an older book (Phase 3) needs no code: a sub-option in the current
+year with a `cv_book` grant on "Specific CV books", the book published, the
+sub-option given to the company. Companies cannot ask for older books in the
+app; that goes through sales. Blocked only on the privacy check below.
 
 Tested over HTTP on the dev server with `cvbook-2425.pdf`: 310 CVs in 88
 programmes, all matching the index, 3 without email, 1 two-page CV; preview
