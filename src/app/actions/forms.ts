@@ -21,6 +21,7 @@ import {
 } from "@/lib/repos/forms";
 import type { Form, FormVersion, FormSchema, FormMetadata, FormResponse, Student } from "@/lib/schema";
 import { getCompanyById } from "@/lib/repos/company";
+import { IMPORTED_CV_BOOK_METADATA_KEY } from "@/lib/repos/cv-book";
 import {
   FORM_SUBMIT_SESSION_TIMEOUT_MESSAGE,
   isSessionTokenExpiredError,
@@ -390,6 +391,8 @@ export async function submitFormResponseAction(data: {
     if (!formVersion) throw new Error("Form version not found");
 
     const versionMetadata = (formVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata;
+    // An imported CV book's form only holds the CVs that came with it.
+    if (versionMetadata?.[IMPORTED_CV_BOOK_METADATA_KEY]) throw new Error("This form is closed.");
 
     // Check if form requires login (event registration forms always require login) and verify student is authenticated
     const toBoolFlag = (v: unknown): boolean => {

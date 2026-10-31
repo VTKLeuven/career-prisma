@@ -70,6 +70,27 @@ export async function uploadFile(
   }
 }
 
+/**
+ * Writes bytes to disk under a fresh id, with no metadata row yet: the file
+ * cannot be opened until the caller creates that row (`id` doubles as the
+ * disk name, as uploadFile() does). For imports that create many files and
+ * their rows in one transaction; on failure, discardStoredBytes() each id.
+ */
+export async function writeStoredBytes(bytes: Uint8Array): Promise<string> {
+  const id = randomUUID();
+  const temporaryPath = path.join(uploadsDirectory, `.${id}.uploading`);
+  await mkdir(uploadsDirectory, { recursive: true });
+  await writeFile(temporaryPath, bytes, { flag: "wx" });
+  await rename(temporaryPath, path.join(uploadsDirectory, id));
+  return id;
+}
+
+export async function discardStoredBytes(id: string): Promise<void> {
+  await unlink(path.join(uploadsDirectory, safeDiskName(id))).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT") throw error;
+  });
+}
+
 export async function deleteStoredFile(fileId: string): Promise<void> {
   const stored = await getStoredFile(fileId);
   if (!stored) return;

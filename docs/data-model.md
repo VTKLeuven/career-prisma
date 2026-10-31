@@ -120,6 +120,15 @@ announces it. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
     lists them as "Withdrawn by student".
   - A `master-degrees` study field stores ids; the book shows master and
     faculty names, and screening offers the masters as study options.
+  - **Older books are imported, not collected.** `/admin/cv-book` ->
+    "Import old CV book" reads a Litus export (one PDF per year,
+    `src/lib/litus-cv-book.ts`), cuts one private PDF per CV and creates the
+    book from the usual parts (`createImportedCVBook()`): its own closed form
+    (version metadata `imported_cv_book`, which the submit action refuses), one
+    response per CV, every CV approved, the book hidden. Study is the programme
+    name as Litus printed it. Some imported CVs have no email, so the book no
+    longer drops a CV for lacking one. A year holds one book, so a year that
+    has one cannot take an import.
 - `Vacancy` + `VacancyType` / `VacancySector` / `VacancySectorLink` /
   `VacancyMaster` / `VacancySectionConfig` — job board. Behind
   `DEV_ENVIRONMENT`, and a company only posts with the `vacancies` grant.

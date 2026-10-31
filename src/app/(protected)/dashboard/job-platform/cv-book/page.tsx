@@ -128,20 +128,12 @@ export default function CVBookPage() {
           return
         }
 
-        if (user?.admin && cvBookIdParam && !selectedYearId) {
-          const linkedBook = await fetchCVBookByIdAction(cvBookIdParam)
-          if (linkedBook) {
-            const yearId = typeof linkedBook.year === "object" ? linkedBook.year.id : linkedBook.year
-            setSelectedYearId(yearId)
-            setSelectedCVBook(linkedBook)
-          }
-        }
-
-        if (!selectedYearId) {
-          const mostRecentBook = books[0]
-          const yearId = typeof mostRecentBook.year === "object" ? mostRecentBook.year.id : mostRecentBook.year
-          setSelectedYearId(yearId)
-        }
+        // Start on the book of the admin "View" link, else the most recent;
+        // a year already picked stays.
+        const yearOf = (book: CVBook) => (typeof book.year === "object" ? book.year.id : book.year)
+        const linkedBook = user?.admin && cvBookIdParam ? await fetchCVBookByIdAction(cvBookIdParam) : null
+        const startYearId = yearOf(linkedBook ?? books[0])
+        setSelectedYearId((picked) => picked || startYearId)
       } catch (error) {
         console.error("[CVBookPage] Error fetching:", error)
         setHasAccess(false)
@@ -152,9 +144,12 @@ export default function CVBookPage() {
     }
 
     loadData()
-  }, [user?.company?.id, user?.admin, router, cvBookIdParam, selectedYearId])
+  }, [user?.company?.id, user?.admin, router, cvBookIdParam])
 
   useEffect(() => {
+    // Picking another year while one is still loading: only the last pick
+    // may fill the page.
+    let cancelled = false
     async function loadCVBookData() {
       if (!selectedYearId) {
         setSelectedCVBook(null)
@@ -169,39 +164,41 @@ export default function CVBookPage() {
       try {
         let cvBook: CVBook | null = null
         if (user?.admin) {
-          if (cvBookIdParam) {
-            cvBook = await fetchCVBookByIdAction(cvBookIdParam)
-          }
-          if (!cvBook) {
-            const yearMatch = activeCVBooks.find((b) => {
-              const y = typeof b.year === "object" ? b.year.id : b.year
-              return y === selectedYearId
-            })
-            cvBook = yearMatch ?? null
-          }
+          // An admin has every book listed; the year picked decides. The
+          // ?cvBookId= of the admin "View" link only chose the year to start on.
+          cvBook = activeCVBooks.find((b) => {
+            const y = typeof b.year === "object" ? b.year.id : b.year
+            return String(y) === String(selectedYearId)
+          }) ?? null
         } else {
           cvBook = await fetchCVBookByYearAction(selectedYearId)
         }
+        if (cancelled) return
 
         setSelectedCVBook(cvBook)
 
         if (cvBook) {
           const groups = await fetchCVBookStudentDataAction(cvBook)
+          if (cancelled) return
           setStudentGroups(groups)
         } else {
           setStudentGroups([])
         }
       } catch (error) {
+        if (cancelled) return
         console.error("[CVBookPage] Error loading CV book data:", error)
         setSelectedCVBook(null)
         setStudentGroups([])
       } finally {
-        setLoadingStudents(false)
+        if (!cancelled) setLoadingStudents(false)
       }
     }
 
     loadCVBookData()
-  }, [selectedYearId, user?.admin, cvBookIdParam, activeCVBooks])
+    return () => {
+      cancelled = true
+    }
+  }, [selectedYearId, user?.admin, activeCVBooks])
 
   useEffect(() => {
     async function loadFavourites() {
@@ -499,12 +496,14 @@ export default function CVBookPage() {
                         {selectedStudent.firstName} {selectedStudent.lastName}
                       </CardTitle>
                       <div className="flex items-center gap-4 flex-wrap">
-                        <div className="flex items-center gap-2">
-                          <IconMail className="h-5 w-5 text-muted-foreground" />
-                          <a href={`mailto:${selectedStudent.email}`} className="break-all text-vtk-blue hover:underline">
-                            {selectedStudent.email}
-                          </a>
-                        </div>
+                        {selectedStudent.email && (
+                          <div className="flex items-center gap-2">
+                            <IconMail className="h-5 w-5 text-muted-foreground" />
+                            <a href={`mailto:${selectedStudent.email}`} className="break-all text-vtk-blue hover:underline">
+                              {selectedStudent.email}
+                            </a>
+                          </div>
+                        )}
                         {selectedStudent.linkedinUrl && (
                           <a
                             href={selectedStudent.linkedinUrl}

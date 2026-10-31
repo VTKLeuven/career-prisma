@@ -388,12 +388,14 @@ export default function CVBookScreeningPage() {
                         {selectedStudent.firstName} {selectedStudent.lastName}
                       </CardTitle>
                       <div className="flex items-center gap-4 flex-wrap">
-                        <div className="flex items-center gap-2">
-                          <IconMail className="h-5 w-5 text-muted-foreground" />
-                          <a href={`mailto:${selectedStudent.email}`} className="break-all text-vtk-blue hover:underline">
-                            {selectedStudent.email}
-                          </a>
-                        </div>
+                        {selectedStudent.email && (
+                          <div className="flex items-center gap-2">
+                            <IconMail className="h-5 w-5 text-muted-foreground" />
+                            <a href={`mailto:${selectedStudent.email}`} className="break-all text-vtk-blue hover:underline">
+                              {selectedStudent.email}
+                            </a>
+                          </div>
+                        )}
                         {selectedStudent.linkedinUrl && (
                           <a
                             href={selectedStudent.linkedinUrl}

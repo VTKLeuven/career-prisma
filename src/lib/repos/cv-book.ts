@@ -282,11 +282,8 @@ export async function getCVBookStudentData(
         skippedCount++;
         continue;
       }
-      if (!email) {
-        skipReasons['missing_email'] = (skipReasons['missing_email'] || 0) + 1;
-        skippedCount++;
-        continue;
-      }
+      // No email is not a reason to drop a CV: some imported ones (a Litus
+      // export) never had one. A form here still asks for it.
       if (!study) {
         skipReasons['missing_study'] = (skipReasons['missing_study'] || 0) + 1;
         skippedCount++;
@@ -302,7 +299,7 @@ export async function getCVBookStudentData(
         id: String(response.id),
         firstName,
         lastName,
-        email,
+        email: email || "",
         study,
         cvFileId,
         // Proxied through an API route so the file is served with auth.
@@ -754,4 +751,151 @@ export async function deleteCVBook(id: string) {
     console.error("[deleteCVBook] Error deleting CV book:", error);
     throw error;
   }
+}
+
+// ===================== IMPORTED BOOKS =====================
+
+/**
+ * Marks the form behind an imported book (its version's metadata), so the
+ * submit action refuses new responses to it. An imported book's form exists
+ * only to hold the CVs; nobody fills it in.
+ */
+export const IMPORTED_CV_BOOK_METADATA_KEY = "imported_cv_book";
+
+/** The fields an imported book's form holds; the book maps onto these names. */
+const IMPORTED_FIELDS = {
+  firstName: "first_name",
+  lastName: "last_name",
+  email: "email",
+  study: "study",
+  cv: "cv",
+} as const;
+
+export type ImportedCV = {
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  study: string;
+  /** Already on disk (writeStoredBytes()); its metadata row is created here. */
+  file: { id: string; filename: string; size: number };
+};
+
+/**
+ * Creates an older year's book from CVs that never went through a form here
+ * (lib/cv-book-import.ts reads them from a Litus export). It is built from
+ * the same parts as any book so screening, favourites, opt-outs, private
+ * files and grants work unchanged: its own closed form, one response per CV,
+ * and the book pointing at that form. Every CV is approved -- it was already
+ * in a published book -- and the book starts hidden. All or nothing.
+ */
+export async function createImportedCVBook(input: {
+  yearId: number;
+  formName: string;
+  importedBy: string | null;
+  cvs: ImportedCV[];
+}): Promise<CVBook> {
+  const now = new Date();
+  const studies = Array.from(new Set(input.cvs.map((cv) => cv.study))).sort((a, b) => a.localeCompare(b));
+  const schema: FormSchema = {
+    fields: [
+      { id: IMPORTED_FIELDS.firstName, name: IMPORTED_FIELDS.firstName, label: "First name", type: "text", required: true },
+      { id: IMPORTED_FIELDS.lastName, name: IMPORTED_FIELDS.lastName, label: "Last name", type: "text", required: true },
+      { id: IMPORTED_FIELDS.email, name: IMPORTED_FIELDS.email, label: "Email", type: "email" },
+      // A select, so screening offers the book's programmes to correct a study.
+      { id: IMPORTED_FIELDS.study, name: IMPORTED_FIELDS.study, label: "Study", type: "select", required: true, options: studies },
+      { id: IMPORTED_FIELDS.cv, name: IMPORTED_FIELDS.cv, label: "CV", type: "file", required: true },
+    ],
+  };
+
+  const bookId = await prisma.$transaction(
+    async (tx) => {
+      // One book per year: the year lookups (getCVBookByYear, company access) assume it.
+      if (await tx.cvBook.findFirst({ where: { year_id: input.yearId }, select: { id: true } })) {
+        throw new Error("That academic year already has a CV book.");
+      }
+
+      await tx.file.createMany({
+        data: input.cvs.map((cv) => ({
+          id: cv.file.id,
+          storage: "local",
+          filename_disk: cv.file.id,
+          filename_download: cv.file.filename,
+          title: cv.file.filename,
+          type: "application/pdf",
+          filesize: BigInt(cv.file.size),
+          uploaded_by: input.importedBy,
+          uploaded_on: now,
+          private: true,
+        })),
+      });
+
+      const form = await tx.form.create({
+        data: {
+          name: input.formName,
+          description: "Imported CV book. Holds the CVs only; it cannot be filled in.",
+          is_active: false,
+          created_at: now,
+          updated_at: now,
+        },
+      });
+      const version = await tx.formVersion.create({
+        data: {
+          form_id: form.id,
+          version_number: 1,
+          schema: schema as unknown as Prisma.InputJsonValue,
+          is_active: true,
+          metadata: { [IMPORTED_CV_BOOK_METADATA_KEY]: true },
+          created_at: now,
+        },
+      });
+
+      const responses = await tx.formResponse.createManyAndReturn({
+        data: input.cvs.map((cv) => ({
+          form_version_id: version.id,
+          data: {
+            [IMPORTED_FIELDS.firstName]: cv.firstName,
+            [IMPORTED_FIELDS.lastName]: cv.lastName,
+            ...(cv.email ? { [IMPORTED_FIELDS.email]: cv.email } : {}),
+            [IMPORTED_FIELDS.study]: cv.study,
+            [IMPORTED_FIELDS.cv]: cv.file.id,
+          },
+          submitted_at: now,
+          submitter_first_name: cv.firstName,
+          submitter_last_name: cv.lastName,
+          submitter_email: cv.email,
+        })),
+        select: { id: true },
+      });
+
+      const book = await tx.cvBook.create({
+        data: {
+          year_id: input.yearId,
+          form_id: form.id,
+          student_first_name_field: IMPORTED_FIELDS.firstName,
+          student_last_name_field: IMPORTED_FIELDS.lastName,
+          student_email_field: IMPORTED_FIELDS.email,
+          student_study_field: IMPORTED_FIELDS.study,
+          student_cv_field: IMPORTED_FIELDS.cv,
+          active: false,
+          date_created: now,
+        },
+      });
+
+      await tx.cvBookScreening.createMany({
+        data: responses.map((r) => ({
+          cv_book: book.id,
+          form_response: r.id,
+          status: "approved",
+          screened_at: now,
+          screened_by: input.importedBy,
+          date_created: now,
+        })),
+      });
+      return book.id;
+    },
+    // A few hundred rows in a handful of statements; the default 5 s is tight on a busy box.
+    { timeout: 60_000 }
+  );
+
+  return (await getCVBookById(String(bookId)))!;
 }

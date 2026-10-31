@@ -51,6 +51,7 @@ import { PageHeader } from "@/components/admin/PageHeader";
 import { toast } from "sonner";
 import { formatDateBE } from "@/lib/date-utils";
 import { confirmDialog } from "@/components/confirm-dialog";
+import { ImportCVBookDialog } from "./import-dialog";
 
 type CVBookRow = CVBook & {
   year: AcademicYear;
@@ -72,7 +73,12 @@ export default function AdminCVBookPage() {
       <PageHeader
         title="CV Book Management"
         description="Manage CV Books per academic year"
-        actions={<CreateCVBookDialog onCreated={handleCVBookCreated} />}
+        actions={
+          <>
+            <ImportCVBookDialog onImported={handleCVBookCreated} />
+            <CreateCVBookDialog onCreated={handleCVBookCreated} />
+          </>
+        }
       />
 
       <CVBooksTable key={refreshKey} />
