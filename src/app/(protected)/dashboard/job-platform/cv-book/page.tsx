@@ -332,38 +332,41 @@ export default function CVBookPage() {
             Resume Book
           </CardTitle>
 
-          <div className="mt-3 flex flex-wrap justify-center gap-4">
-            <Select value={selectedYearId} onValueChange={setSelectedYearId}>
-              <SelectTrigger id="year-select" className="w-fit px-2 gap-1">
-                {selectedYearId && availableYears.find(y => y.id === selectedYearId) ? (
+          {/* The pickers shape the overview; a single CV has no use for them. */}
+          {viewMode === "grid" && (
+            <div className="mt-3 flex flex-wrap justify-center gap-4">
+              <Select value={selectedYearId} onValueChange={setSelectedYearId}>
+                <SelectTrigger id="year-select" className="w-fit px-2 gap-1">
+                  {selectedYearId && availableYears.find(y => y.id === selectedYearId) ? (
+                    <span className="block truncate">
+                      {availableYears.find(y => y.id === selectedYearId)?.name}
+                    </span>
+                  ) : (
+                    <SelectValue placeholder="Select year" />
+                  )}
+                </SelectTrigger>
+                <SelectContent>
+                  {availableYears.map((year) => (
+                    <SelectItem key={year.id} value={year.id}>
+                      {year.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as "study" | "firstName" | "lastName")}>
+                <SelectTrigger id="sort-select" className="w-fit px-2 gap-1">
                   <span className="block truncate">
-                    {availableYears.find(y => y.id === selectedYearId)?.name}
+                    {sortBy === "study" ? "By study" : sortBy === "firstName" ? "By first name" : "By last name"}
                   </span>
-                ) : (
-                  <SelectValue placeholder="Select year" />
-                )}
-              </SelectTrigger>
-              <SelectContent>
-                {availableYears.map((year) => (
-                  <SelectItem key={year.id} value={year.id}>
-                    {year.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={sortBy} onValueChange={(v) => setSortBy(v as "study" | "firstName" | "lastName")}>
-              <SelectTrigger id="sort-select" className="w-fit px-2 gap-1">
-                <span className="block truncate">
-                  {sortBy === "study" ? "By study" : sortBy === "firstName" ? "By first name" : "By last name"}
-                </span>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="study">By study</SelectItem>
-                <SelectItem value="firstName">By first name</SelectItem>
-                <SelectItem value="lastName">By last name</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="study">By study</SelectItem>
+                  <SelectItem value="firstName">By first name</SelectItem>
+                  <SelectItem value="lastName">By last name</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="space-y-6">
           {loadingStudents ? (
