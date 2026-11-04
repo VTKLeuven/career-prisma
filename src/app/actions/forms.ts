@@ -16,7 +16,7 @@ import {
   createFormResponse,
   deleteFormResponse,
   updateFormResponse,
-  countFormResponses,
+  countFormResponsesByForm,
   countFormVersionResponses,
 } from "@/lib/repos/forms";
 import type { Form, FormVersion, FormSchema, FormMetadata, FormResponse, Student } from "@/lib/schema";
@@ -66,10 +66,11 @@ export async function fetchFormsAction(opts?: {
   try {
     await requireAdminUser();
     const forms = await listForms(opts);
+    const submissionCounts = await countFormResponsesByForm(forms.map((form) => String(form.id)));
 
-    const mapped = await Promise.all(forms.map(async (form) => {
+    const mapped = forms.map((form) => {
       const activeVersion = form.form_versions?.find((v) => v.is_active) ?? null;
-      const submissionCount = await countFormResponses(form.id);
+      const submissionCount = submissionCounts.get(String(form.id)) ?? 0;
 
       return {
         id: form.id,
@@ -87,7 +88,7 @@ export async function fetchFormsAction(opts?: {
         versionCount: form.form_versions?.length ?? 0,
         submissionCount,
       };
-    }));
+    });
 
     return mapped;
   } catch (error) {

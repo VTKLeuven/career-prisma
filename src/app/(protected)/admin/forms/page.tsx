@@ -132,6 +132,7 @@ export default function AdminFormsPage() {
         getRowId={(form) => form.id}
         noun="form"
         search={{ keys: ["slug", "description"] }}
+        pageSize={25}
         loading={loading}
         containerClassName="roomy:max-h-[calc(100svh-17rem)]"
         emptyMessage="No forms yet. Create your first form to get started"

@@ -67,6 +67,12 @@ function studentIdMatch(studentId: string | number) {
 
 // ===================== FORMS =====================
 
+/**
+ * Forms, newest first. Without `limit` this returns every form: the admin
+ * forms list pages them in the browser, and the form pickers (CV books,
+ * matching software, events) have to offer old forms too. It used to default
+ * to 25, which silently hid every older form from all of them.
+ */
 export async function listForms(opts?: {
   search?: string;
   limit?: number;
@@ -74,7 +80,7 @@ export async function listForms(opts?: {
   sort?: string;
 }) {
   try {
-    const { search, limit = 25, page = 1, sort = "-created_at" } = opts ?? {};
+    const { search, limit, page = 1, sort = "-created_at" } = opts ?? {};
     const desc = sort.startsWith("-");
     const sortField = desc ? sort.slice(1) : sort;
 
@@ -91,7 +97,7 @@ export async function listForms(opts?: {
       include: FORM_INCLUDE,
       orderBy: { [sortField]: desc ? "desc" : "asc" },
       take: limit,
-      skip: (page - 1) * limit,
+      skip: limit ? (page - 1) * limit : undefined,
     });
 
     return rows.map((r) => shapeForm(r)!) as Form[];
@@ -730,16 +736,40 @@ export async function deleteFormResponse(id: string) {
   }
 }
 
-export async function countFormResponses(formId: string) {
+/**
+ * Non-archived response counts for many forms at once, keyed by form id; a
+ * form without responses is absent. The forms list shows a count on every row
+ * and loads every form, so counting form by form would be one query per form.
+ */
+export async function countFormResponsesByForm(formIds: string[]): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  const ids = nums(formIds);
+  if (ids.length === 0) return counts;
   try {
-    const id = num(formId);
-    if (id == null) return 0;
-    return await prisma.formResponse.count({
-      where: { formVersion: { form_id: id }, ...NOT_ARCHIVED },
-    });
+    // groupBy cannot group on a relation's column, so group per version and
+    // add the versions up per form.
+    const [versions, groups] = await Promise.all([
+      prisma.formVersion.findMany({
+        where: { form_id: { in: ids } },
+        select: { id: true, form_id: true },
+      }),
+      prisma.formResponse.groupBy({
+        by: ["form_version_id"],
+        where: { AND: [NOT_ARCHIVED, { formVersion: { form_id: { in: ids } } }] },
+        _count: { _all: true },
+      }),
+    ]);
+    const formOfVersion = new Map(versions.map((v) => [v.id, v.form_id]));
+    for (const group of groups) {
+      const formId = group.form_version_id == null ? null : formOfVersion.get(group.form_version_id);
+      if (formId == null) continue;
+      const key = String(formId);
+      counts.set(key, (counts.get(key) ?? 0) + group._count._all);
+    }
+    return counts;
   } catch (error) {
     console.error("Error counting form responses:", error);
-    return 0; // Return 0 on error to avoid breaking the UI
+    return counts; // Counts show as 0 on error rather than breaking the UI
   }
 }
 
