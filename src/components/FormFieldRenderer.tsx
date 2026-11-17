@@ -336,11 +336,11 @@ function FileDisplay({ fileId }: { fileId: string }) {
     <div className="flex flex-col gap-2">
       {/* Image preview */}
       {isImage === true && !imageError && (
-        <div className="relative rounded-lg border bg-muted overflow-hidden flex items-center justify-center min-h-[120px] max-h-48">
+        <div className="relative w-full h-40 rounded-lg border bg-muted overflow-hidden flex items-center justify-center p-2">
           <img
             src={fileUrl}
             alt="File preview"
-            className="max-w-full max-h-48 object-contain"
+            className="block max-w-full max-h-full w-auto h-auto object-contain"
             onLoad={() => setImageError(false)}
             onError={() => setImageError(true)}
           />
@@ -372,11 +372,11 @@ function FileDisplay({ fileId }: { fileId: string }) {
       )}
       {/* Fallback when metadata not yet loaded - try image first */}
       {!fileInfo && !imageError && (
-        <div className="relative rounded-lg border bg-muted overflow-hidden flex items-center justify-center min-h-[120px] max-h-48">
+        <div className="relative w-full h-40 rounded-lg border bg-muted overflow-hidden flex items-center justify-center p-2">
           <img
             src={fileUrl}
             alt="File preview"
-            className="max-w-full max-h-48 object-contain"
+            className="block max-w-full max-h-full w-auto h-auto object-contain"
             onLoad={() => setImageError(false)}
             onError={() => setImageError(true)}
           />
@@ -772,7 +772,7 @@ export function FormFieldRenderer({
             ) : null}
           </div>
           {hasFiles ? (
-            <div className="shrink-0 w-full sm:w-auto sm:min-w-[200px] space-y-2">
+            <div className="shrink-0 min-w-0 w-full sm:w-56 space-y-2">
               {isMultiple && Array.isArray(value) ? (
                 (value as string[]).map((id, idx) => (
                   <div key={idx}>
