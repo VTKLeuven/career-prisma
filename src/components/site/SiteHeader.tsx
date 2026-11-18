@@ -17,6 +17,7 @@ import { fetchPublicEventsAction } from "@/app/actions/events"
 import type { CareerEvent } from "@/lib/schema"
 import { fetchSessionCheck } from "@/lib/session-client"
 import { eventZoneToday } from "@/lib/utils/events"
+import { formatDateOnlyBE } from "@/lib/date-utils"
 import { useHeaderEvents, type HeaderEvent } from "@/components/site/header-events"
 import {
   useHeaderSession,
@@ -444,7 +445,7 @@ export function SiteHeader({
                             {event.name}
                           </div>
                           <div className={`mt-1 text-xs ${dark ? "text-neutral-400" : "text-neutral-600"}`}>
-                            {event.date} · {event.location}
+                            {formatDateOnlyBE(event.date)} · {event.location}
                           </div>
                         </Link>
                       </li>
@@ -520,7 +521,7 @@ export function SiteHeader({
                             {event.name}
                           </div>
                           <div className={`mt-0.5 text-xs ${dark ? "text-neutral-400" : "text-neutral-600"}`}>
-                            {event.date} · {event.location}
+                            {formatDateOnlyBE(event.date)} · {event.location}
                           </div>
                         </Link>
                       </li>

@@ -19,6 +19,20 @@ export function formatDateBE(date: Date | string | null | undefined): string {
 }
 
 /**
+ * Format a date-only value (`YYYY-MM-DD`, or a longer ISO string) to Belgian
+ * format (dd/mm/yyyy). For calendar dates coming out of the repos, such as an
+ * event's `date`: the string is reordered, never parsed into a Date, so no
+ * timezone conversion can shift it to the previous or next day. Use
+ * `formatDateBE` for timestamps.
+ */
+export function formatDateOnlyBE(value: string | null | undefined): string {
+  const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return '';
+  const [, year, month, day] = match;
+  return `${day}/${month}/${year}`;
+}
+
+/**
  * Format date and time to Belgian format (dd/mm/yyyy HH:mm)
  */
 export function formatDateTimeBE(date: Date | string | null | undefined): string {

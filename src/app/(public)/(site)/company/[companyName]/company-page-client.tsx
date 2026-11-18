@@ -13,6 +13,7 @@ import { usePageLayout } from '../../site-shell';
 import { CompanyLikeButton } from "@/components/CompanyLikeButton";
 import { groupSpeakersByTimeSlot } from "@/lib/utils/speakers";
 import { getSpeakerSlug } from "@/lib/utils/slugify";
+import { formatDateOnlyBE } from "@/lib/date-utils";
 
 /**
  * A public company page. Everything it shows is loaded by ./page.tsx; only the
@@ -176,7 +177,7 @@ export function CompanyPageClient({
                               <div className="text-base font-semibold tracking-tight text-neutral-900 line-clamp-2">{event.name}</div>
                               <div className="mt-1 flex items-center gap-2 text-sm text-neutral-700">
                                 <Calendar className="h-4 w-4 text-vtk-blue flex-shrink-0" />
-                                <span className="line-clamp-1">{event.date} · {event.location}</span>
+                                <span className="line-clamp-1">{formatDateOnlyBE(event.date)} · {event.location}</span>
                               </div>
                             </div>
                           </div>
