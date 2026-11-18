@@ -93,6 +93,7 @@ export async function listForms(opts?: {
               { display_name: { contains: search, mode: "insensitive" } },
               { slug: { contains: search, mode: "insensitive" } },
               { description: { contains: search, mode: "insensitive" } },
+              { folder: { contains: search, mode: "insensitive" } },
             ],
           }
         : undefined,

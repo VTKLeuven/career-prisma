@@ -194,6 +194,14 @@ before a QR mailing. No admin action and no cron job is needed.
   (`duplicateForm()`) copies the form row and every version, never the
   responses; the copy is disabled with no active version, named
   "<name> (copy)" / "(copy 2)" … with slug `<slug>-copy` / `-copy-2` ….
+  `forms.folder` is a free-text label that groups the admin forms list
+  (`/admin/forms`) into sections; null is "No folder". It is deliberately not
+  a `Folder` table or a tree -- staff asked for a tidier overview (BR-55), and
+  nesting would have needed a model, ordering and drag-and-drop for little
+  gain. Folders exist only while a form uses them; the dialogs list the ones
+  in use as one-click choices (and point out a name that differs from one only
+  in case), so a typo does not start a second folder. Nothing outside the
+  admin list reads it.
 
 ## Study programmes
 

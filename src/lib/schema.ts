@@ -377,6 +377,8 @@ export type Form = {
   slug: string;
   description?: string;
   is_active?: boolean;
+  /** Groups the form on the admin forms list; null means "No folder". */
+  folder?: string | null;
   // Nullable in the database: forms from the Directus era can lack either.
   created_at: string | null;
   updated_at: string | null;

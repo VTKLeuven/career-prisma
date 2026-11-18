@@ -559,6 +559,11 @@ model Form {
   created_at        DateTime?          @db.Timestamptz(6)
   updated_at        DateTime?          @db.Timestamptz(6)
   is_active         Boolean            @default(false)
+  /// Display grouping for the admin forms list (/admin/forms): forms sharing a
+  /// folder are listed together under its name. A free-text label, not a
+  /// relation -- there is no folder table and folders do not nest. Null means
+  /// "No folder". It has no effect on the public form or its submissions.
+  folder            String?            @db.VarChar(120)
   cvBooks           CvBook[]
   formVersions      FormVersion[]
   matchingSoftwares MatchingSoftware[]
