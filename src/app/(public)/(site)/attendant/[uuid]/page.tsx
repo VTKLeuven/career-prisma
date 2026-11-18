@@ -135,6 +135,7 @@ export default function AttendantPage() {
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [scanId, setScanId] = useState<string | null>(null);
   const [isCompanyRep, setIsCompanyRep] = useState(false);
   const [isUnauthenticated, setIsUnauthenticated] = useState(false);
@@ -156,9 +157,14 @@ export default function AttendantPage() {
         if (typeof scanData?.scanId === "string" && scanData.scanId) {
           setScanId(scanData.scanId);
         }
+        setScanError(null);
         setScanned(true);
         return true;
       }
+      // E.g. the event's scanning window is closed (BR-42): say so, rather
+      // than leaving the rep at "Ready to scan" without a reason.
+      const body = (await scanResponse.json().catch(() => ({}))) as { error?: unknown };
+      setScanError(typeof body?.error === "string" ? body.error : null);
     } catch (scanErr) {
       console.error("Error scanning attendant:", scanErr);
     } finally {
@@ -384,6 +390,12 @@ export default function AttendantPage() {
                   "Scan now"
                 )}
               </Button>
+            </div>
+          )}
+
+          {isCompanyRep && !scanned && scanError && (
+            <div className="text-sm text-destructive bg-destructive/10 p-2 rounded">
+              {scanError}
             </div>
           )}
 

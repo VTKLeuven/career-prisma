@@ -169,6 +169,10 @@ model CareerEvent {
   shout                   String?                  @db.VarChar(255)
   academic_year_id        Int?
   series_key              String?                  @db.VarChar(255)
+  /// When company reps may scan attendant QR codes. Belgian wall-clock time,
+  /// like date/start_hour; null on a side means no limit on that side.
+  scan_window_start       DateTime?                @db.Timestamp(6)
+  scan_window_end         DateTime?                @db.Timestamp(6)
   careerEventOptionEvents CareerEventOptionEvent[]
   careerEventPages        CareerEventPage[]
   image                   File?                    @relation(fields: [image_id], references: [id], onUpdate: NoAction, map: "career_event_image_foreign")

@@ -60,6 +60,19 @@ announces it. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
 `Speaker`, `Timetable`, `Schedule`, `Drink`/`Order`/`OrderingSettings`,
 `EventCheckin` and `AttendantScan` (QR badge scanning at booths).
 
+`career_events.scan_window_start` / `scan_window_end` limit when company reps
+may scan attendant QR codes (BR-42). Like the event's date and hours they are
+Belgian wall-clock times in zoneless columns, made into instants with
+`eventWallTimeToDate()`. Either side may be empty, meaning no limit on that
+side, so an event without a window is never restricted. The event is found
+through the scanned registration's form-version `event_id`; a registration
+without one is not restricted. `/api/attendant/[uuid]/scan` enforces it
+(`scanWindowClosedMessage()` in `src/lib/utils/events.ts`): outside the window
+it refuses new scans with a Dutch message naming when the window opens or
+closed, but still returns a company's existing scan, which the attendant page
+needs for its feedback form. The window is not carried into a new annual
+edition — last year's times would be wrong.
+
 ## People
 
 - `User` + `Role` — company representatives and VTK staff. Four roles exist, and

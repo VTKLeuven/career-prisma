@@ -35,6 +35,16 @@ export function shapeTime(value: unknown): string | null {
   return isoTime?.[1] ?? text;
 }
 
+/**
+ * A wall-clock `@db.Timestamp` (stored without zone, read back by Prisma as if
+ * it were UTC) as "YYYY-MM-DDTHH:mm" -- the value a datetime-local input takes.
+ */
+export function shapeWallTimestamp(value: unknown): string | null {
+  if (value == null) return null;
+  if (value instanceof Date) return value.toISOString().slice(0, 16);
+  return String(value).slice(0, 16);
+}
+
 /** Wraps a list of junction rows back into Directus' `{ <fk>: <entity> }` form. */
 function junction<Row, Key extends string>(
   rows: Nullable<Row[]>,
@@ -189,6 +199,8 @@ export function shapeCareerEvent(row: Nullable<CompanyRow>): any {
     date,
     start_hour,
     end_hour,
+    scan_window_start,
+    scan_window_end,
     image_id,
     image: _image,
     careerEventOptionEvents: _careerEventOptionEvents,
@@ -201,6 +213,8 @@ export function shapeCareerEvent(row: Nullable<CompanyRow>): any {
     date: shapeDate(date),
     start_hour: shapeTime(start_hour),
     end_hour: shapeTime(end_hour),
+    scan_window_start: shapeWallTimestamp(scan_window_start),
+    scan_window_end: shapeWallTimestamp(scan_window_end),
     image: image_id ?? null,
   };
 }

@@ -36,8 +36,33 @@ function timeValue(value: unknown): Date | null | undefined {
   return new Date(`1970-01-01T${hour.padStart(2, "0")}:${minute}:${second}.000Z`);
 }
 
+/**
+ * Converts a wall-clock "YYYY-MM-DDTHH:mm[:ss]" string (a datetime-local value)
+ * to a Date for a zoneless `@db.Timestamp` column. Stored as written, like the
+ * event's date and hours; it becomes an instant only via eventWallTimeToDate().
+ */
+function wallTimestampValue(value: unknown): Date | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (value instanceof Date) return value;
+  const match = String(value).match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!match) throw new Error(`Invalid date and time: ${String(value)}`);
+  const [, day, hour, minute, second = "00"] = match;
+  const d = new Date(`${day}T${hour}:${minute}:${second}.000Z`);
+  if (Number.isNaN(d.getTime())) throw new Error(`Invalid date and time: ${String(value)}`);
+  return d;
+}
+
 function toEventWrite(payload: Record<string, any>): Record<string, unknown> {
-  const { id: _id, image, date, start_hour, end_hour, href: _href, options: _options, ...rest } = payload;
+  const {
+    id: _id, image, date, start_hour, end_hour, scan_window_start, scan_window_end,
+    href: _href, options: _options, ...rest
+  } = payload;
+  const scanWindowStart = wallTimestampValue(scan_window_start);
+  const scanWindowEnd = wallTimestampValue(scan_window_end);
+  if (scanWindowStart && scanWindowEnd && scanWindowEnd <= scanWindowStart) {
+    throw new Error("The scanning window must close after it opens");
+  }
   return {
     ...rest,
     ...(payload.academic_year_id !== undefined
@@ -56,6 +81,8 @@ function toEventWrite(payload: Record<string, any>): Record<string, unknown> {
     ...(date !== undefined ? { date: dateValue(date) } : {}),
     ...(start_hour !== undefined ? { start_hour: timeValue(start_hour) } : {}),
     ...(end_hour !== undefined ? { end_hour: timeValue(end_hour) } : {}),
+    ...(scanWindowStart !== undefined ? { scan_window_start: scanWindowStart } : {}),
+    ...(scanWindowEnd !== undefined ? { scan_window_end: scanWindowEnd } : {}),
   };
 }
 

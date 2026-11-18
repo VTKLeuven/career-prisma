@@ -58,6 +58,44 @@ export function isDuringEvent(event: CareerEvent, now: Date = new Date()): boole
   return now >= start && now <= end;
 }
 
+/** An event's QR scanning window, as stored: wall-clock "YYYY-MM-DDTHH:mm" or null. */
+export type ScanWindow = { start: string | null; end: string | null };
+
+/** A stored wall-clock "YYYY-MM-DDTHH:mm" as an instant, or null when absent or unreadable. */
+function scanWindowBound(value: string | null): Date | null {
+  if (!value) return null;
+  const instant = eventWallTimeToDate(value.slice(0, 10), value.slice(11, 16));
+  return Number.isNaN(instant.getTime()) ? null : instant;
+}
+
+/** "11 maart 2027 om 10:00", in Belgian time. */
+function formatScanWindowBound(at: Date): string {
+  return new Intl.DateTimeFormat("nl-BE", {
+    timeZone: EVENT_TIME_ZONE,
+    dateStyle: "long",
+    timeStyle: "short",
+  }).format(at);
+}
+
+/**
+ * Why a company rep cannot scan right now, or null when they can. A side left
+ * empty puts no limit on that side, so an event without a window (every event
+ * before BR-42) is never closed. Enforced by /api/attendant/[uuid]/scan; the
+ * message is shown to the rep as is.
+ */
+export function scanWindowClosedMessage(window: ScanWindow, now: Date = new Date()): string | null {
+  const start = scanWindowBound(window.start);
+  const end = scanWindowBound(window.end);
+  if (start && now < start) {
+    return `Het scanvenster voor dit event is nog gesloten. Scannen kan vanaf ${formatScanWindowBound(start)}`
+      + `${end ? ` tot ${formatScanWindowBound(end)}` : ""}.`;
+  }
+  if (end && now > end) {
+    return `Het scanvenster voor dit event is gesloten. Scannen kon tot ${formatScanWindowBound(end)}.`;
+  }
+  return null;
+}
+
 export type EventWithStatus = CareerEvent & {
   isPast?: boolean;
 };

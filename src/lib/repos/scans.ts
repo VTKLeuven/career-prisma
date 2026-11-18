@@ -2,6 +2,8 @@
 import "server-only";
 
 import prisma from "@/lib/prisma";
+import { shapeWallTimestamp } from "@/lib/repos/_shape";
+import type { ScanWindow } from "@/lib/utils/events";
 
 /**
  * Ids of the events a company has scans for, read from the scanned
@@ -172,6 +174,43 @@ export async function getAttendantRegistration(uuid: string) {
   });
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The scanning window of the event an attendant QR code registered for, or
+ * null when the code is unknown or its registration names no event -- those
+ * are not restricted. The event is read from the registration's form-version
+ * metadata (`event_id`), the same link the scans pages filter on.
+ */
+export async function getAttendantScanWindow(uuid: string): Promise<ScanWindow | null> {
+  const response = await prisma.formResponse.findFirst({
+    where: { attendant_uuid: uuid, archived: { not: true } },
+    select: { formVersion: { select: { metadata: true } } },
+  });
+  const eventId = (response?.formVersion?.metadata as { event_id?: unknown } | null | undefined)?.event_id;
+  // career_events.id is a uuid column: anything else would make Prisma throw.
+  if (typeof eventId !== "string" || !UUID_RE.test(eventId)) return null;
+  const event = await prisma.careerEvent.findUnique({
+    where: { id: eventId },
+    select: { scan_window_start: true, scan_window_end: true },
+  });
+  if (!event) return null;
+  return {
+    start: shapeWallTimestamp(event.scan_window_start),
+    end: shapeWallTimestamp(event.scan_window_end),
+  };
+}
+
+/** The id of the company's scan of this attendant, newest first, or null. */
+export async function findCompanyScanId(uuid: string, companyId: string): Promise<string | null> {
+  const existing = await prisma.attendantScan.findFirst({
+    where: { attendant_uuid: uuid, ...companyScanScope(companyId) },
+    orderBy: { scanned_at: "desc" },
+    select: { id: true },
+  });
+  return existing?.id ?? null;
+}
+
 /**
  * A company rep scans an attendant: records the scan once per company. Returns
  * the scan's id and whether it already existed, or null when the QR code
@@ -188,12 +227,8 @@ export async function recordAttendantScan(
   });
   if (!response) return null;
 
-  const existing = await prisma.attendantScan.findFirst({
-    where: { attendant_uuid: uuid, ...companyScanScope(companyId) },
-    orderBy: { scanned_at: "desc" },
-    select: { id: true },
-  });
-  if (existing) return { scanId: existing.id, existed: true };
+  const existingId = await findCompanyScanId(uuid, companyId);
+  if (existingId) return { scanId: existingId, existed: true };
 
   const scan = await prisma.attendantScan.create({
     data: {

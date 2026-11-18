@@ -123,6 +123,8 @@ function EventFormDialog({
     date: "",
     start_hour: "",
     end_hour: "",
+    scan_window_start: "",
+    scan_window_end: "",
     shout: "",
     status: "draft",
     num_of_companies: "",
@@ -143,6 +145,8 @@ function EventFormDialog({
       date: event?.date ? String(event.date).slice(0, 10) : "",
       start_hour: event?.start_hour ? String(event.start_hour).slice(0, 5) : "",
       end_hour: event?.end_hour ? String(event.end_hour).slice(0, 5) : "",
+      scan_window_start: event?.scan_window_start ? String(event.scan_window_start).slice(0, 16) : "",
+      scan_window_end: event?.scan_window_end ? String(event.scan_window_end).slice(0, 16) : "",
       shout: (event?.shout as string) ?? "",
       status: (event?.status as string) ?? "draft",
       num_of_companies: event?.num_of_companies != null ? String(event.num_of_companies) : "",
@@ -191,6 +195,8 @@ function EventFormDialog({
         date: form.date || null,
         start_hour: form.start_hour || null,
         end_hour: form.end_hour || null,
+        scan_window_start: form.scan_window_start || null,
+        scan_window_end: form.scan_window_end || null,
         shout: form.shout || null,
         status: form.status,
         num_of_companies: form.num_of_companies,
@@ -284,6 +290,17 @@ function EventFormDialog({
               <Label htmlFor="ev-students"># Students</Label>
               <Input id="ev-students" type="number" value={form.num_of_students} onChange={e => set("num_of_students", e.target.value)} />
             </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ev-scan-start">Scanning opens</Label>
+              <Input id="ev-scan-start" type="datetime-local" value={form.scan_window_start} onChange={e => set("scan_window_start", e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ev-scan-end">Scanning closes</Label>
+              <Input id="ev-scan-end" type="datetime-local" value={form.scan_window_end} onChange={e => set("scan_window_end", e.target.value)} />
+            </div>
+            <p className="col-span-2 text-xs text-muted-foreground">
+              When company reps can scan attendee QR codes, in Belgian time. Leave empty for no limit.
+            </p>
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="ev-shout">Shout</Label>

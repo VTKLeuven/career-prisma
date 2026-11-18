@@ -141,6 +141,9 @@ export type CareerEvent = {
   date: string;
   start_hour: string;
   end_hour: string;
+  /** When company reps may scan attendant QR codes, Belgian wall-clock "YYYY-MM-DDTHH:mm"; null = no limit on that side. */
+  scan_window_start?: string | null;
+  scan_window_end?: string | null;
   max_companies: number;
   num_of_companies?: number;
   num_of_students: number;
