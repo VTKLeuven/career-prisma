@@ -7,6 +7,7 @@ import {
   createFormAction,
   updateFormAction,
   deleteFormAction,
+  duplicateFormAction,
   setActiveVersionAction,
   fetchFormVersionsAction,
   updateFormVersionAction,
@@ -946,6 +947,7 @@ function FormActionsMenu({
           <DropdownMenuSeparator />
           <ToggleFormStatusMenuItem form={form} onUpdate={onUpdate} />
           <DropdownMenuSeparator />
+          <DuplicateFormMenuItem form={form} onUpdate={onUpdate} />
           <DropdownMenuItem
             onClick={() => setDeleteOpen(true)}
             className="text-destructive"
@@ -1580,6 +1582,35 @@ function DeleteFormDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function DuplicateFormMenuItem({ form, onUpdate }: { form: FormRow; onUpdate: () => void }) {
+  const [duplicating, setDuplicating] = useState(false);
+
+  const handleDuplicate = async (e: React.MouseEvent) => {
+    // Keep the menu open and the item disabled while it runs, so a double click
+    // cannot make two copies.
+    e.preventDefault();
+    e.stopPropagation();
+    setDuplicating(true);
+    try {
+      const copy = await duplicateFormAction(Number(form.id));
+      toast.success(`Duplicated as "${copy.name}" (disabled, no active version yet)`);
+      onUpdate();
+    } catch (error) {
+      console.error("Error duplicating form:", error);
+      toast.error(`Failed to duplicate form: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setDuplicating(false);
+    }
+  };
+
+  return (
+    <DropdownMenuItem onClick={handleDuplicate} disabled={duplicating}>
+      <Copy className="mr-2 h-4 w-4" />
+      {duplicating ? "Duplicating..." : "Duplicate"}
+    </DropdownMenuItem>
   );
 }
 

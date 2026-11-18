@@ -216,6 +216,124 @@ export async function deleteForm(id: string) {
   }
 }
 
+/** `forms.name` and `forms.slug` are VARCHAR(255); a suffix must not push them over. */
+const FORM_TEXT_MAX = 255;
+
+const withSuffix = (base: string, suffix: string) =>
+  base.slice(0, FORM_TEXT_MAX - suffix.length) + suffix;
+
+/**
+ * The first candidate(1), candidate(2), … that `taken` does not report as
+ * existing. Candidates are checked in batches with exact matches rather than a
+ * LIKE prefix, so names containing `%` or `_`, and truncated long names, are
+ * handled the same as any other.
+ */
+async function firstFreeValue(
+  candidate: (n: number) => string,
+  taken: (values: string[]) => Promise<string[]>
+): Promise<string> {
+  const BATCH = 50;
+  for (let start = 1; ; start += BATCH) {
+    const batch = Array.from({ length: BATCH }, (_, i) => candidate(start + i));
+    const existing = new Set(await taken(batch));
+    const free = batch.find((value) => !existing.has(value));
+    if (free !== undefined) return free;
+  }
+}
+
+/**
+ * Copy a form and all of its versions, so staff can start this year's form
+ * from last year's instead of rebuilding it (BR-37).
+ *
+ * The form row is copied by spreading the source, so a column added later is
+ * carried over without touching this function; only the identity columns
+ * (id, timestamps, name, slug) are replaced. The copy is named
+ * "<name> (copy)", then "(copy 2)", "(copy 3)", …, and its slug is
+ * "<slug>-copy", "-copy-2", … -- whichever is still free. A form without a
+ * slug gets a copy without one.
+ *
+ * Two copies made at the same moment can both pick the same free slug; the
+ * UNIQUE constraint rejects the second, which is then retried.
+ */
+export async function duplicateForm(id: string | number) {
+  const formId = num(id);
+  if (formId == null) throw new Error("Invalid form id");
+
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const row = await prisma.$transaction(async (tx) => {
+        const source = await tx.form.findUnique({ where: { id: formId } });
+        if (!source) throw new Error("Form not found");
+
+        const { id: _id, created_at: _created, updated_at: _updated, name, slug, ...rest } = source;
+
+        const copyName = await firstFreeValue(
+          (n) => withSuffix(name, n === 1 ? " (copy)" : ` (copy ${n})`),
+          async (names) =>
+            (await tx.form.findMany({ where: { name: { in: names } }, select: { name: true } })).map((f) => f.name)
+        );
+        const copySlug =
+          slug == null
+            ? null
+            : await firstFreeValue(
+                (n) => withSuffix(slug, n === 1 ? "-copy" : `-copy-${n}`),
+                async (slugs) =>
+                  (await tx.form.findMany({ where: { slug: { in: slugs } }, select: { slug: true } }))
+                    .map((f) => f.slug)
+                    .filter((s): s is string => s != null)
+              );
+
+        const versions = await tx.formVersion.findMany({
+          where: { form_id: formId },
+          select: { version_number: true, schema: true, metadata: true },
+          orderBy: { version_number: "asc" },
+        });
+
+        const now = new Date();
+        // A duplicate is a draft: the form is disabled and none of its versions
+        // is active, so neither /forms/<slug> nor the company forms (both need
+        // an active form, and the public route an active version) can show it
+        // until staff have reviewed it and activated a version themselves. Its
+        // versions are fresh rows, so no response -- which hangs off a version
+        // -- comes along: responses belong to the source's edition only.
+        const created = await tx.form.create({
+          data: {
+            ...rest,
+            name: copyName,
+            slug: copySlug,
+            is_active: false,
+            created_at: now,
+            updated_at: now,
+          },
+        });
+
+        if (versions.length > 0) {
+          await tx.formVersion.createMany({
+            data: versions.map((v) => ({
+              form_id: created.id,
+              version_number: v.version_number,
+              schema: v.schema as Prisma.InputJsonValue,
+              metadata: v.metadata == null ? Prisma.DbNull : (v.metadata as Prisma.InputJsonValue),
+              is_active: false,
+              created_at: now,
+            })),
+          });
+        }
+
+        return tx.form.findUnique({ where: { id: created.id }, include: FORM_INCLUDE });
+      });
+
+      return shapeForm(row) as Form;
+    } catch (error) {
+      const slugTaken =
+        error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+      if (slugTaken && attempt < 3) continue;
+      console.error("[duplicateForm] Error duplicating form:", error);
+      throw error;
+    }
+  }
+}
+
 // ===================== FORM VERSIONS =====================
 
 export async function listFormVersions(formId: string) {

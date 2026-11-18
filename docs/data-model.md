@@ -155,7 +155,10 @@ before a QR mailing. No admin action and no cron job is needed.
   not the SSO enum value, so answers read like any other select in the
   responses table, the CSV export and the CV book. `study-programme` is a
   retired field type: the builder no longer offers it, but it still renders
-  for forms that already had it.
+  for forms that already had it. **Duplicate** in the admin forms list
+  (`duplicateForm()`) copies the form row and every version, never the
+  responses; the copy is disabled with no active version, named
+  "<name> (copy)" / "(copy 2)" … with slug `<slug>-copy` / `-copy-2` ….
 
 ## Study programmes
 
