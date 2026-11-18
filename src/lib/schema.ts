@@ -370,7 +370,10 @@ export type Faculty = {
 
 export type Form = {
   id: string;
+  /** Internal name, for the admin back office. */
   name: string;
+  /** Company-facing name; null/empty falls back to `name` (formDisplayName()). */
+  display_name?: string | null;
   slug: string;
   description?: string;
   is_active?: boolean;

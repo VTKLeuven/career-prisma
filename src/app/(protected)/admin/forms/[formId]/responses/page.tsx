@@ -37,7 +37,7 @@ export default async function FormResponsesPage({ params }: { params: Promise<{ 
     <FormResponsesClient
       formId={formId}
       initialData={{
-        form: form ? { id: form.id, name: form.name, slug: form.slug } : null,
+        form: form ? { id: form.id, name: form.name, display_name: form.display_name ?? null, slug: form.slug } : null,
         versions,
         page: {
           responses: (page?.responses ?? []) as FormResponse[],

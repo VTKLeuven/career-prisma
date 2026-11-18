@@ -544,8 +544,12 @@ model FormVersion {
 
 model Form {
   id                Int                @id @default(autoincrement())
+  /// Internal name, shown in the admin back office. Often long and descriptive.
   name              String             @db.VarChar(255)
-  slug              String?            @unique(map: "forms_slug_unique") @db.VarChar(255)
+  /// What companies see for this form (dashboard, form page, emails). Null or
+  /// empty falls back to `name`; see formDisplayName() in src/lib/form-fields.ts.
+  display_name      String?            @db.VarChar(255)
+  slug             String?            @unique(map: "forms_slug_unique") @db.VarChar(255)
   description       String?
   created_at        DateTime?          @db.Timestamptz(6)
   updated_at        DateTime?          @db.Timestamptz(6)

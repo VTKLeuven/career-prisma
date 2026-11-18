@@ -18,7 +18,7 @@ import { formatDateTimeBE } from "@/lib/date-utils";
 import { getFileUrl } from "@/components/Images";
 import NextImage from "next/image";
 import { FormFieldRenderer } from "@/components/FormFieldRenderer";
-import { fieldDisplayLabel } from "@/lib/form-fields";
+import { fieldDisplayLabel, formDisplayName } from "@/lib/form-fields";
 import { userFacingFormSubmitErrorMessage } from "@/lib/form-submit-errors";
 import type { Company, CareerEvent } from "@/lib/schema";
 import { fetchSessionCheck } from "@/lib/session-client"
@@ -30,6 +30,8 @@ function countWords(text: string): number {
 type CompanyForm = {
   id: string;
   name: string;
+  /** Shown as the title instead of the internal `name`, when set. */
+  display_name?: string | null;
   slug: string;
   description?: string;
   metadata?: {
@@ -605,7 +607,7 @@ export default function CompanyFormPage() {
         <CardHeader>
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
-              <CardTitle className="text-2xl">{form.name}</CardTitle>
+              <CardTitle className="text-2xl">{formDisplayName(form, form.metadata)}</CardTitle>
               {form.description && (
                 <CardDescription className="mt-2">{form.description}</CardDescription>
               )}
