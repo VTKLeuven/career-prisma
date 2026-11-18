@@ -3,7 +3,9 @@ import "server-only";
 import { createHash, randomBytes } from "crypto";
 import { findUserWithInvite, setUserInviteToken } from "@/lib/repos/credentials";
 
-export const INVITE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+// 14 days on purpose: long enough for a company representative to register
+// without having to ask for a resend. Student verification keeps its own 7 days.
+export const INVITE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 
 export function decodeInviteToken(token: string) {
   try {

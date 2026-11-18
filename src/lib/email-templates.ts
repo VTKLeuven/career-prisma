@@ -336,7 +336,7 @@ export function generateInvitationEmailHtml({
           </div>
           <p>If the button doesn't work, you can copy and paste this link into your browser:</p>
           <p style="word-break: break-all; color: #2563eb;">${acceptInviteUrl}</p>
-          <p style="font-size: 12px; color: #6b7280; margin-top: 20px;">This invitation link will expire in 7 days for security reasons.</p>
+          <p style="font-size: 12px; color: #6b7280; margin-top: 20px;">This invitation link will expire in 14 days for security reasons.</p>
           <div class="signature">
             <p>Best regards,<br>The VTK Career Team</p>
           </div>

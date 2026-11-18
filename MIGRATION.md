@@ -62,7 +62,7 @@ Configure a strong `AUTH_SECRET` or `NEXTAUTH_SECRET`. The cookies are
 HTTP-only, same-site `lax`, and secure in production.
 
 Password reset and invitation tokens are random bearer tokens. Only SHA-256
-hashes are stored. Invitations expire after seven days; password reset tokens
+hashes are stored. Invitations expire after 14 days; password reset tokens
 expire after one hour. Password changes and student verification always write
 argon2id hashes.
 
