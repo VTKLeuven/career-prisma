@@ -10,6 +10,7 @@ import {
   SSO_HINT_COOKIE,
   SSO_HINT_DURATION,
   STUDENT_SESSION_MAX_AGE,
+  autoReloginFailedPath,
   clearFlowState,
   decodeIdToken,
   discover,
@@ -31,6 +32,7 @@ import { studyEditability } from "@/lib/study-options";
 import { logSystemEvent, type SystemLogLevel } from "@/lib/repos/system-logs";
 import {
   createSessionToken,
+  expiredSessionCookieOptions,
   sessionCookieOptions,
   STUDENT_SESSION_COOKIE,
 } from "@/lib/auth-session";
@@ -50,12 +52,18 @@ const EXPECTED_FAILURES: Record<string, SystemLogLevel> = {
 /**
  * Logs the failure for the IT admins, then sends the browser to the shared
  * error/landing page with a reason attached.
+ *
+ * A silent flow — the automatic re-login nobody clicked for — lands on the
+ * login form instead, with `sso=0` so it cannot bounce straight back into the
+ * SSO, and loses its hint so later page loads stop trying until the student
+ * signs in by hand. `invalid_state` keeps the hint: it says nothing about the
+ * student's account, and two tabs re-logging in at once cause it.
  */
 async function fail(
   request: NextRequest,
   code: string,
   description: string | undefined,
-  redirectTo: string,
+  { redirectTo, silent }: { redirectTo: string; silent: boolean },
   details?: Record<string, unknown>
 ): Promise<NextResponse> {
   await logSystemEvent({
@@ -63,8 +71,21 @@ async function fail(
     level: EXPECTED_FAILURES[code] ?? "error",
     event: "login_failed",
     message: description ? `${code}: ${description}` : code,
-    details: { code, ...details },
+    details: { code, silent, ...details },
   });
+
+  if (silent) {
+    const response = NextResponse.redirect(
+      new URL(autoReloginFailedPath(code, redirectTo), getFrontendUrl(request))
+    );
+    if (code !== "invalid_state") {
+      response.cookies.set(SSO_HINT_COOKIE, "", {
+        ...expiredSessionCookieOptions(request),
+        domain: flowCookieDomain(request),
+      });
+    }
+    return response;
+  }
 
   const url = new URL("/auth/callback", getFrontendUrl(request));
   url.searchParams.set("error", code);
@@ -84,6 +105,7 @@ export async function GET(request: NextRequest) {
     flow.redirectTo?.startsWith("/") && !flow.redirectTo.startsWith("//")
       ? flow.redirectTo
       : "/";
+  const target = { redirectTo, silent: flow.silent === true };
 
   try {
     const providerError = params.get("error");
@@ -93,7 +115,7 @@ export async function GET(request: NextRequest) {
         request,
         providerError,
         params.get("error_description") ?? undefined,
-        redirectTo,
+        target,
         { from: "provider" }
       );
     }
@@ -102,12 +124,12 @@ export async function GET(request: NextRequest) {
     const state = params.get("state");
     if (!code || !state) {
       await clearFlowState();
-      return fail(request, "missing_parameters", "Missing code or state", redirectTo);
+      return fail(request, "missing_parameters", "Missing code or state", target);
     }
 
     const config = getSsoConfig();
     if ("error" in config) {
-      return fail(request, "configuration_error", config.error, redirectTo);
+      return fail(request, "configuration_error", config.error, target);
     }
 
     if (!statesMatch(state, flow.state) || !flow.verifier || !flow.nonce) {
@@ -116,7 +138,7 @@ export async function GET(request: NextRequest) {
         request,
         "invalid_state",
         "The login attempt expired or did not start here. Please try again.",
-        redirectTo
+        target
       );
     }
 
@@ -141,7 +163,7 @@ export async function GET(request: NextRequest) {
     if (tokens.id_token) {
       const idClaims = decodeIdToken(tokens.id_token);
       if (!idClaims) {
-        return fail(request, "invalid_id_token", "Could not read the ID token", redirectTo);
+        return fail(request, "invalid_id_token", "Could not read the ID token", target);
       }
       const problem = validateIdTokenClaims(idClaims, {
         issuer: endpoints.issuer,
@@ -149,7 +171,7 @@ export async function GET(request: NextRequest) {
         nonce,
       });
       if (problem) {
-        return fail(request, "invalid_id_token", problem, redirectTo);
+        return fail(request, "invalid_id_token", problem, target);
       }
       claims = idClaims;
     }
@@ -174,7 +196,7 @@ export async function GET(request: NextRequest) {
     if ("error" in profile) {
       // Claim names only, never values: this is what tells a missing scope
       // apart from a renamed claim.
-      return fail(request, "missing_claims", profile.error, redirectTo, {
+      return fail(request, "missing_claims", profile.error, target, {
         receivedClaims: Object.keys(claims).sort(),
       });
     }
@@ -192,7 +214,7 @@ export async function GET(request: NextRequest) {
         request,
         "student_upsert_failed",
         "Could not create or update your student account",
-        redirectTo
+        target
       );
     }
 
@@ -252,10 +274,12 @@ export async function GET(request: NextRequest) {
       sessionCookieOptions(request, STUDENT_SESSION_MAX_AGE)
     );
 
-    // Outlives the session on purpose: it is what lets `/student-login` bounce
-    // an expired session back through the SSO without showing a form. It
-    // remembers the granted scopes, so that bounce stays silent for a student
-    // who declined one (see `hintCookieValue`).
+    // Outlives the session on purpose (30 days against 24 hours): it is what
+    // lets a page load or `/student-login` bounce an expired session back
+    // through the SSO without showing a form. Set again on every login, so it
+    // only runs out after a month without one. It remembers the granted
+    // scopes, so that bounce stays silent for a student who declined one (see
+    // `hintCookieValue`).
     response.cookies.set(SSO_HINT_COOKIE, hintCookieValue(tokens.scope), {
       ...sessionCookieOptions(request, SSO_HINT_DURATION),
       domain: flowCookieDomain(request),
@@ -268,7 +292,7 @@ export async function GET(request: NextRequest) {
       request,
       "callback_error",
       error instanceof Error ? error.message : "Unknown error",
-      redirectTo,
+      target,
       { stack: error instanceof Error ? error.stack?.split("\n").slice(0, 6) : undefined }
     );
   }

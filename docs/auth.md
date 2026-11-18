@@ -144,10 +144,39 @@ Student sessions last **24 hours** (`STUDENT_SESSION_MAX_AGE`). The SSO's own
 session is much longer, so an expired session costs the student a redirect they
 never see rather than a login screen.
 
-With no middleware, that bounce lives at `/student-login` — the single funnel
-every "you need to sign in" link in the app points at. It is a server component
-that redirects to `/api/auth/oauth/initiate?silent=1` when the session is gone
-but the `student_sso` hint cookie is present.
+With no middleware, that bounce lives in two places, both deciding the same
+way — the session is gone but the `student_sso` hint cookie is present:
+
+- **Every public page load.** The `(site)` layout calls `shouldAutoRelogin()`
+  (`src/lib/vtk-sso.ts`) and, when it says yes, renders a one-line inline
+  script first in the body that `location.replace`s to
+  `/api/auth/oauth/initiate?silent=1&redirect_to=<this page>`. A script and not
+  a `redirect()` because a layout is not told its URL; it runs before the page
+  paints, and only on a full load, never on a client-side navigation. Without
+  this a student whose session had expired saw the signed-out site and had to
+  press "Student login" every day (BR-44).
+- **`/student-login`** — the funnel every "you need to sign in" link points
+  at — a server component that redirects to the same URL.
+
+The two cookies have separate lifetimes on purpose. The session
+(`student_session`) is what counts as signed in and stays capped at **24
+hours**. The hint (`student_sso`, `SSO_HINT_DURATION`) lasts **30 days** and is
+set again by every completed login, the daily silent one included — so a
+student who visits at least monthly never sees a login button, and one who
+stays away longer clicks it once. The hint grants nothing by itself; it only
+decides whether to try the SSO.
+
+**Loop guard.** `initiate` sets `student_sso_attempt` for five minutes whenever
+a silent flow starts, and neither place bounces while it is present. If a
+round-trip ends without a session sticking, the next load shows the
+signed-out page (or the form, at `/student-login`) instead of bouncing again.
+A silent flow is also marked in the flow cookies (`vtk_sso_silent`), and when
+one fails — in `initiate` or the callback — it does not end on the English
+error page or a JSON 500: it lands on `/student-login?sso=0&sso_error=<code>`,
+which explains in Dutch that the automatic re-login failed, and the hint is
+cleared so later page loads stop trying until the student signs in by hand.
+`invalid_state` keeps the hint: two tabs re-logging in at once cause it, and it
+says nothing about the student's account.
 
 The hint cookie stores the scopes the student granted last time, and a
 `silent=1` flow requests only those. Without that, a student who declined
@@ -159,8 +188,8 @@ change their mind.
 The hint cookie is what tells an SSO student from an external one; it holds no
 privilege, outlives the session on purpose, and is cleared on logout so signing
 out does not sign you straight back in. `?sso=0` forces the form — the error
-page at `/auth/callback` uses it, because bouncing a failed SSO login straight
-back into the SSO would loop.
+page at `/auth/callback` and a failed silent flow use it, because bouncing a
+failed SSO login straight back into the SSO would loop.
 
 A successful login redirects straight from `/api/auth/oauth/callback` to its
 destination; `/auth/callback` is only reached on failure. Links to our own
