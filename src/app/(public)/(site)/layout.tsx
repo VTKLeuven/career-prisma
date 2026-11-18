@@ -3,7 +3,20 @@ import { getUserFromCookies } from "@/lib/auth-server";
 import { getStudentFromCookies } from "@/lib/auth-student";
 import type { HeaderEvent } from "@/components/site/header-events";
 import type { HeaderSession } from "@/components/site/header-session";
+import { shouldAutoRelogin } from "@/lib/vtk-sso";
 import { SiteShell } from "./site-shell";
+
+/**
+ * Sends the browser through the SSO, back to the page it asked for. Inline
+ * and first in the body, so it runs while the HTML is still being parsed —
+ * before the signed-out page paints or any script loads. A layout is not told
+ * its URL, which is why this is a script and not a `redirect()`; it runs only
+ * on a full page load, never on a client-side navigation, which is what
+ * "every time you open the site" means. Static text: nothing from the request
+ * goes into it.
+ */
+const AUTO_RELOGIN_SCRIPT =
+  'location.replace("/api/auth/oauth/initiate?silent=1&redirect_to="+encodeURIComponent(location.pathname+location.search))';
 
 /**
  * Loads what the header shows once per request, so it no longer fetches it
@@ -12,11 +25,18 @@ import { SiteShell } from "./site-shell";
  * rendered the signed-out buttons first and swapped them a second or two
  * later. Reading the cookies makes every public page dynamic; there is no CDN
  * in front of the site and most of them already were.
+ *
+ * It is also where an SSO student's expired 24-hour session is renewed without
+ * a click: every public page load passes through here, so when the session is
+ * gone but the `student_sso` hint is not, the page bounces through vtk.be and
+ * comes back signed in (`shouldAutoRelogin`, `docs/auth.md`). Before, only
+ * `/student-login` did this, so a student had to press "Student login" daily.
  */
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
-  const [{ events }, headerSession] = await Promise.all([
+  const [{ events }, headerSession, autoRelogin] = await Promise.all([
     loadHomepageData().catch(() => ({ events: [] as HeaderEvent[] })),
     loadHeaderSession(),
+    shouldAutoRelogin().catch(() => false),
   ]);
   // Only what the menu shows: this goes into every public page.
   const headerEvents: HeaderEvent[] = (events ?? []).map(({ id, name, date, location, href }) => ({
@@ -27,9 +47,12 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
     href,
   }));
   return (
-    <SiteShell headerEvents={headerEvents} headerSession={headerSession}>
-      {children}
-    </SiteShell>
+    <>
+      {autoRelogin && <script dangerouslySetInnerHTML={{ __html: AUTO_RELOGIN_SCRIPT }} />}
+      <SiteShell headerEvents={headerEvents} headerSession={headerSession}>
+        {children}
+      </SiteShell>
+    </>
   );
 }
 

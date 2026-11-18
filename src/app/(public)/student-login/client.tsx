@@ -11,15 +11,15 @@ import NextImage from "next/image";
 import Link from "next/link";
 import { getFileUrl } from "@/components/Images";
 
-export default function StudentLoginClient() {
+export default function StudentLoginClient({ notice }: { notice?: string | null }) {
   return (
     <Suspense>
-      <StudentLoginContent />
+      <StudentLoginContent notice={notice} />
     </Suspense>
   );
 }
 
-function StudentLoginContent() {
+function StudentLoginContent({ notice }: { notice?: string | null }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
@@ -135,6 +135,12 @@ function StudentLoginContent() {
                 Choose your login method
               </p>
             </div>
+
+            {notice && (
+              <div role="status" className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                {notice}
+              </div>
+            )}
 
             <div className="space-y-6">
               {/* KU Leuven Student Option */}

@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verifySessionToken, STUDENT_SESSION_COOKIE } from "@/lib/auth-session";
-import { SSO_HINT_COOKIE } from "@/lib/vtk-sso";
+import { SSO_ATTEMPT_COOKIE, SSO_HINT_COOKIE } from "@/lib/vtk-sso";
 import StudentLoginClient from "./client";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,14 @@ export const dynamic = "force-dynamic";
  * would take the email-and-password form away from the people who need it.
  *
  * Logging out clears the hint, so signing out does not sign you straight back in.
+ *
+ * Ordinary page loads do the same bounce from the `(site)` layout; this page
+ * is where a failed one ends (`?sso=0&sso_error=…`), and where a student lands
+ * when the loop guard (`SSO_ATTEMPT_COOKIE`) stopped a second attempt.
  */
+const AUTO_RELOGIN_FAILED_NOTICE =
+  "Je sessie is verlopen en we konden je niet automatisch opnieuw aanmelden via VTK. Meld je hieronder opnieuw aan.";
+
 export default async function StudentLoginPage({
   searchParams,
 }: {
@@ -47,12 +54,18 @@ export default async function StudentLoginPage({
   // after a failed SSO login, say. Without it the bounce above would be a
   // one-way door, and the error page at `/auth/callback` links back here.
   const forceForm = (Array.isArray(params.sso) ? params.sso[0] : params.sso) === "0";
+  const hasHint = Boolean(cookieStore.get(SSO_HINT_COOKIE)?.value);
+  // An automatic attempt started minutes ago and still left no session:
+  // bouncing again could be a loop, so show the form instead.
+  const recentAttempt = Boolean(cookieStore.get(SSO_ATTEMPT_COOKIE)?.value);
 
-  if (!forceForm && cookieStore.get(SSO_HINT_COOKIE)?.value) {
+  if (!forceForm && hasHint && !recentAttempt) {
     redirect(
       `/api/auth/oauth/initiate?silent=1&redirect_to=${encodeURIComponent(redirectTo)}`
     );
   }
 
-  return <StudentLoginClient />;
+  const autoReloginFailed = Boolean(params.sso_error) || (!forceForm && hasHint && recentAttempt);
+
+  return <StudentLoginClient notice={autoReloginFailed ? AUTO_RELOGIN_FAILED_NOTICE : null} />;
 }
