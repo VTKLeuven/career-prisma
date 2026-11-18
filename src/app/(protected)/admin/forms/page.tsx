@@ -36,7 +36,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power, Building2, RefreshCw, Hammer, Inbox, Folder as FolderIcon } from "lucide-react";
+import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power, Building2, RefreshCw, Hammer, Inbox, Folder as FolderIcon, X } from "lucide-react";
 import { useUser } from "@/providers/UserProvider";
 import type { FormSchema, FormField, CareerEvent } from "@/lib/schema";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -48,6 +48,7 @@ import { slugifyEventName } from "@/lib/utils/slugify";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { cn } from "@/lib/utils";
 import { SimpleRichTextEditor } from "@/components/admin/SimpleRichTextEditor";
 import { toast } from "sonner";
 
@@ -106,68 +107,66 @@ export default function AdminFormsPage() {
     return <div className="p-8">Access Denied</div>;
   }
 
-  // Every folder in use, offered as suggestions so a form joins an existing
-  // folder rather than starting a near-duplicate ("Events" vs "Event").
+  // Every folder in use, offered as one-click choices in the dialogs' folder
+  // picker so a form joins an existing folder rather than starting a
+  // near-duplicate ("Events" vs "Event").
   const folderNames = Array.from(
     new Set(forms.map((form) => form.folder).filter((folder): folder is string => Boolean(folder)))
   ).sort((a, b) => a.localeCompare(b, "en", { numeric: true, sensitivity: "base" }));
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-5">
-      <PageHeader
-        title="Forms"
-        description="Create and manage forms for students and companies"
-        actions={
-          <>
-            <Button variant="outline" asChild>
-              <Link href="/admin/forms/company-completion">
-                <Building2 className="h-4 w-4" />
-                Company Completion
-              </Link>
-            </Button>
-            <Button variant="outline" size="icon" onClick={loadForms} disabled={loading} aria-label="Refresh">
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            </Button>
-            <CreateFormDialog />
-          </>
-        }
-      />
+    // One list for both dialogs. The edit dialog sits three components down
+    // inside each row's actions, so the list reaches it through context rather
+    // than props threaded through every one of them; portals keep context.
+    <FormFoldersContext.Provider value={folderNames}>
+      <div className="mx-auto w-full max-w-[1600px] space-y-5">
+        <PageHeader
+          title="Forms"
+          description="Create and manage forms for students and companies"
+          actions={
+            <>
+              <Button variant="outline" asChild>
+                <Link href="/admin/forms/company-completion">
+                  <Building2 className="h-4 w-4" />
+                  Company Completion
+                </Link>
+              </Button>
+              <Button variant="outline" size="icon" onClick={loadForms} disabled={loading} aria-label="Refresh">
+                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              </Button>
+              <CreateFormDialog />
+            </>
+          }
+        />
 
-      {/* One list for both dialogs: they are portaled out of the page but stay
-          in this document, so `list={FORM_FOLDER_LIST_ID}` still finds it. */}
-      <datalist id={FORM_FOLDER_LIST_ID}>
-        {folderNames.map((folder) => (
-          <option key={folder} value={folder} />
-        ))}
-      </datalist>
-
-      <DataTable
-        rows={forms}
-        columns={FORM_COLUMNS}
-        getRowId={(form) => form.id}
-        noun="form"
-        search={{ keys: ["slug", "description", "folder"] }}
-        groupBy={{
-          value: (form) => form.folder,
-          emptyLabel: "No folder",
-          icon: <FolderIcon className="size-3.5" />,
-        }}
-        pageSize={25}
-        loading={loading}
-        containerClassName="roomy:max-h-[calc(100svh-17rem)]"
-        emptyMessage="No forms yet. Create your first form to get started"
-        onRowClick={(form) => setEditingId(form.id)}
-        isRowSelected={(form) => editingId === form.id}
-        rowActions={(form) => (
-          <FormRowActions
-            form={form}
-            onUpdate={loadForms}
-            editOpen={editingId === form.id}
-            onEditOpenChange={(open) => setEditingId(open ? form.id : null)}
-          />
-        )}
-      />
-    </div>
+        <DataTable
+          rows={forms}
+          columns={FORM_COLUMNS}
+          getRowId={(form) => form.id}
+          noun="form"
+          search={{ keys: ["slug", "description", "folder"] }}
+          groupBy={{
+            value: (form) => form.folder,
+            emptyLabel: "No folder",
+            icon: <FolderIcon className="size-3.5" />,
+          }}
+          pageSize={25}
+          loading={loading}
+          containerClassName="roomy:max-h-[calc(100svh-17rem)]"
+          emptyMessage="No forms yet. Create your first form to get started"
+          onRowClick={(form) => setEditingId(form.id)}
+          isRowSelected={(form) => editingId === form.id}
+          rowActions={(form) => (
+            <FormRowActions
+              form={form}
+              onUpdate={loadForms}
+              editOpen={editingId === form.id}
+              onEditOpenChange={(open) => setEditingId(open ? form.id : null)}
+            />
+          )}
+        />
+      </div>
+    </FormFoldersContext.Provider>
   );
 }
 
@@ -180,25 +179,101 @@ function formMaxEntries(form: FormRow): number | null {
   return form.metadata?.max_entries ? Number(form.metadata.max_entries) : null;
 }
 
-/** Id of the page's `<datalist>` of folders already in use. */
-const FORM_FOLDER_LIST_ID = "form-folder-options";
+/** Folders already in use, sorted; what the folder picker offers. */
+const FormFoldersContext = React.createContext<string[]>([]);
 
-/** The folder input of the create and edit dialogs. */
+/**
+ * The folder picker of the create and edit dialogs. A folder is a free label
+ * (`forms.folder`), not a row in a Folder table, so the existing ones are
+ * shown as one-click choices and a new one is simply typed.
+ */
 function FolderField({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) {
+  const folders = React.useContext(FormFoldersContext);
+  // The actions trim the folder before saving, so compare trimmed.
+  const current = value.trim();
+  const isExisting = folders.includes(current);
+  // The list groups by exact name, so "events" next to "Events" would be a
+  // second folder; point at the existing one before that happens.
+  const lookalike = current && !isExisting
+    ? folders.find((folder) => folder.localeCompare(current, "en", { sensitivity: "base" }) === 0)
+    : undefined;
+
+  const chipClass = (selected: boolean) =>
+    cn(
+      "h-7 max-w-full gap-1 rounded-[7px] px-2 text-xs font-normal",
+      selected && "border-[#bee1ff] bg-[#f0f8ff] text-[#0a6cba] hover:bg-[#e6f3ff] hover:text-[#0a6cba]"
+    );
+
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>Folder (Optional)</Label>
-      <Input
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        list={FORM_FOLDER_LIST_ID}
-        maxLength={120}
-        autoComplete="off"
-        placeholder="e.g., Career Fair"
-      />
+      <div className="relative">
+        <FolderIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          id={id}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          maxLength={120}
+          autoComplete="off"
+          placeholder={folders.length ? "Pick a folder below or type a new one" : "e.g., Career Fair"}
+          className="pl-9 pr-9"
+        />
+        {value ? (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="absolute right-2 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+            aria-label="Clear folder"
+          >
+            <X className="size-3.5" />
+          </button>
+        ) : null}
+      </div>
+      <div role="group" aria-label="Choose a folder" className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-pressed={!current}
+          onClick={() => onChange("")}
+          className={cn(chipClass(!current), !current ? "" : "text-muted-foreground")}
+        >
+          {!current ? <Check className="size-3" /> : null}
+          No folder
+        </Button>
+        {folders.map((folder) => {
+          const selected = folder === current;
+          return (
+            <Button
+              key={folder}
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-pressed={selected}
+              onClick={() => onChange(folder)}
+              className={chipClass(selected)}
+              title={folder}
+            >
+              {selected ? <Check className="size-3" /> : <FolderIcon className="size-3 text-muted-foreground" />}
+              <span className="truncate">{folder}</span>
+            </Button>
+          );
+        })}
+      </div>
       <p className="text-xs text-muted-foreground">
-        Groups this form on the forms overview. Pick an existing folder or type a new one; leave empty for none.
+        {lookalike ? (
+          <>
+            New folder &ldquo;{current}&rdquo;. Did you mean{" "}
+            <button type="button" onClick={() => onChange(lookalike)} className="font-medium text-[#0a6cba] hover:underline">
+              {lookalike}
+            </button>
+            ? Names that differ only in case are separate folders.
+          </>
+        ) : current && !isExisting ? (
+          <>Creates a new folder &ldquo;{current}&rdquo; on the forms overview.</>
+        ) : (
+          "Groups this form on the forms overview. Pick a folder or type a new name."
+        )}
       </p>
     </div>
   );

@@ -175,7 +175,22 @@ export type DataTableGroupBy<T> = {
   emptyLabel: string;
   /** Shown before each group's name. */
   icon?: React.ReactNode;
+  /**
+   * Whether a click on a group's header folds its rows away. On by default:
+   * groups then start folded, so the table opens as an overview of its groups.
+   * The "no group" section is never folded -- it is not a group. `false`
+   * keeps every group open with plain headers.
+   */
+  collapsible?: boolean;
 };
+
+/**
+ * What one slot of a page holds: a row, or a folded group standing in for all
+ * of its rows. `group` is null when the table is not grouped.
+ */
+type PageItem<T> =
+  | { type: "row"; row: Row<T>; group: string | null }
+  | { type: "folded"; group: string };
 
 export type DataTableProps<T> = {
   rows: T[];
@@ -224,6 +239,8 @@ export type DataTableProps<T> = {
    * Splits the list into sections under a header row each: groups in
    * alphabetical order, rows without one last. Sorting, search and filters
    * work as usual within the groups, and paging runs over the grouped order.
+   * Groups start folded (see `collapsible`) and open while a search or filter
+   * is active, so a match is never hidden behind a folded header.
    * While no row has a group there are no headers, so the table looks as it
    * would without this.
    */
@@ -274,6 +291,16 @@ export function DataTable<T>({
     Object.fromEntries(columns.filter((c) => c.defaultHidden).map((c) => [c.key, false]))
   );
   const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize });
+  // Groups are keyed by name, not by row, so a refresh of the rows (an edit,
+  // the Refresh button) keeps what the user opened. A search or filter shows
+  // every matching group open; folding one then goes in the second set, which
+  // starts empty again whenever the search or filters change, and the user's
+  // own state comes back once they are cleared.
+  const [openGroups, setOpenGroups] = React.useState<ReadonlySet<string>>(() => new Set());
+  const [foldedWhileFiltered, setFoldedWhileFiltered] = React.useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+  const resetFoldedWhileFiltered = () => setFoldedWhileFiltered((s) => (s.size ? new Set() : s));
 
   // Callers build their columns inline, so the array is new on every render
   // (every keystroke in the search box). The table is rebuilt only when the
@@ -336,10 +363,12 @@ export function DataTable<T>({
     onColumnFiltersChange: (updater) => {
       setColumnFilters(updater);
       setPagination((p) => ({ ...p, pageIndex: 0 }));
+      resetFoldedWhileFiltered();
     },
     onGlobalFilterChange: (updater) => {
       setGlobalFilter(updater);
       setPagination((p) => ({ ...p, pageIndex: 0 }));
+      resetFoldedWhileFiltered();
     },
     onColumnVisibilityChange: setColumnVisibility,
     onPaginationChange: setPagination,
@@ -374,14 +403,7 @@ export function DataTable<T>({
   });
 
   const filteredCount = table.getFilteredRowModel().rows.length;
-  const pageCount = Math.max(1, table.getPageCount());
   const { pageIndex } = pagination;
-
-  // Rows can shrink under the current page (a delete, a refresh); stay on the
-  // last page that still exists rather than showing an empty one.
-  React.useEffect(() => {
-    if (pageIndex > pageCount - 1) setPagination((p) => ({ ...p, pageIndex: pageCount - 1 }));
-  }, [pageIndex, pageCount]);
 
   // "/" jumps to the search box, as in Dopl and most list-heavy tools. With two
   // tables on a page the first one claims the key.
@@ -412,13 +434,37 @@ export function DataTable<T>({
   };
 
   const visibleColumnCount = table.getVisibleLeafColumns().length + (rowActions ? 1 : 0);
-  const firstRow = pageIndex * pagination.pageSize;
+  const firstItem = pageIndex * pagination.pageSize;
 
-  // Grouping reorders the sorted, filtered rows by group (a stable sort, so
-  // the user's sort holds within each group) and pages over that order itself;
-  // the page count is unchanged because the rows are the same.
+  const collapsible = groupBy?.collapsible ?? true;
+  const isGroupOpen = (group: string) => {
+    if (!collapsible || group === NO_GROUP) return true;
+    return isFiltered ? !foldedWhileFiltered.has(group) : openGroups.has(group);
+  };
+  const toggleGroup = (group: string) => {
+    const flip = (set: ReadonlySet<string>) => {
+      const next = new Set(set);
+      if (!next.delete(group)) next.add(group);
+      return next;
+    };
+    if (isFiltered) setFoldedWhileFiltered(flip);
+    else setOpenGroups(flip);
+  };
+
+  // Without groups tanstack pages the rows. Grouping reorders the sorted,
+  // filtered rows by group (a stable sort, so the user's sort holds within
+  // each group) and pages over that order itself, where a folded group takes
+  // one slot for all its rows: a page then never splits a folded group, and
+  // a folded header is never repeated on the next page. The "x–y of n" line
+  // counts the rows inside folded groups as on the page, so it still runs
+  // over the whole filtered set rather than over what happens to be visible.
   const groupOf = (row: Row<T>) => groupBy?.value(row.original)?.trim() || NO_GROUP;
-  let pageRows = table.getRowModel().rows;
+  let pageItems: PageItem<T>[] = table
+    .getRowModel()
+    .rows.map((row) => ({ type: "row", row, group: null }));
+  let pageCount = Math.max(1, table.getPageCount());
+  let rangeStart = firstItem;
+  let rangeEnd = Math.min(firstItem + pagination.pageSize, filteredCount);
   let groupSizes: Map<string, number> | null = null;
   if (groupBy && rows.some((row) => groupBy.value(row)?.trim())) {
     const ordered = [...table.getPrePaginationRowModel().rows].sort((a, b) => {
@@ -431,10 +477,31 @@ export function DataTable<T>({
       // "events" stay two contiguous groups instead of interleaving.
       return collator.compare(ga, gb) || (ga < gb ? -1 : 1);
     });
-    groupSizes = new Map();
-    for (const row of ordered) groupSizes.set(groupOf(row), (groupSizes.get(groupOf(row)) ?? 0) + 1);
-    pageRows = ordered.slice(firstRow, firstRow + pagination.pageSize);
+    const sizes = new Map<string, number>();
+    for (const row of ordered) sizes.set(groupOf(row), (sizes.get(groupOf(row)) ?? 0) + 1);
+    groupSizes = sizes;
+
+    const items: PageItem<T>[] = [];
+    for (const row of ordered) {
+      const group = groupOf(row);
+      if (isGroupOpen(group)) items.push({ type: "row", row, group });
+      else if (items[items.length - 1]?.group !== group) items.push({ type: "folded", group });
+    }
+    const rowsIn = (list: PageItem<T>[]) =>
+      list.reduce((n, item) => n + (item.type === "folded" ? (sizes.get(item.group) ?? 0) : 1), 0);
+    pageItems = items.slice(firstItem, firstItem + pagination.pageSize);
+    pageCount = Math.max(1, Math.ceil(items.length / pagination.pageSize));
+    rangeStart = rowsIn(items.slice(0, firstItem));
+    rangeEnd = rangeStart + rowsIn(pageItems);
   }
+
+  // Rows can shrink under the current page (a delete, a refresh, a group
+  // folded); stay on the last page that still exists rather than showing an
+  // empty one.
+  React.useEffect(() => {
+    if (pageIndex > pageCount - 1) setPagination((p) => ({ ...p, pageIndex: pageCount - 1 }));
+  }, [pageIndex, pageCount]);
+  const goToPage = (index: number) => setPagination((p) => ({ ...p, pageIndex: index }));
 
   // A click on a row opens it, unless it landed on something interactive in
   // its own right, or bubbled up through React from a portaled menu or dialog
@@ -592,31 +659,37 @@ export function DataTable<T>({
                   </TableCell>
                 </TableRow>
               ))
-            ) : pageRows.length ? (
-              pageRows.map((row, index) => {
+            ) : pageItems.length ? (
+              // One flat list of siblings, so a header keeps its key (and its
+              // DOM node, and with it keyboard focus) when its group is opened
+              // or folded.
+              pageItems.flatMap((item, index) => {
+                const out: React.ReactNode[] = [];
                 // A group's header goes above its first row, and again at the
-                // top of a page that continues it.
-                const group = groupSizes ? groupOf(row) : null;
-                const startsGroup =
-                  group !== null && (index === 0 || groupOf(pageRows[index - 1]) !== group);
-                return (
-                  <React.Fragment key={row.id}>
-                    {startsGroup && groupBy ? (
-                      <TableRow className="bg-[#fafafa] hover:bg-[#fafafa]">
-                        <TableCell colSpan={visibleColumnCount} className="h-9 whitespace-normal py-1.5 pl-4">
-                          <div className="flex items-center gap-2 text-[13px] font-medium">
-                            {groupBy.icon ? <span className="shrink-0 text-muted-foreground">{groupBy.icon}</span> : null}
-                            <span className={cn("min-w-0", group === NO_GROUP ? "text-muted-foreground" : "text-foreground")}>
-                              {group === NO_GROUP ? groupBy.emptyLabel : group}
-                            </span>
-                            <span className="text-xs font-normal text-muted-foreground tabular">
-                              {groupSizes?.get(group!) ?? 0}
-                            </span>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ) : null}
+                // top of a page that continues it. A folded group is only its
+                // header.
+                const group = item.group;
+                if (groupBy && group !== null && (index === 0 || pageItems[index - 1].group !== group)) {
+                  const toggleable = collapsible && group !== NO_GROUP;
+                  out.push(
+                    <GroupHeaderRow
+                      key={`group-header:${group}`}
+                      label={group === NO_GROUP ? groupBy.emptyLabel : group}
+                      muted={group === NO_GROUP}
+                      icon={groupBy.icon}
+                      count={groupSizes?.get(group) ?? 0}
+                      colSpan={visibleColumnCount}
+                      alignWithToggles={collapsible}
+                      open={item.type === "row"}
+                      onToggle={toggleable ? () => toggleGroup(group) : undefined}
+                    />
+                  );
+                }
+                if (item.type === "row") {
+                  const { row } = item;
+                  out.push(
                     <DataTableRow
+                      key={row.id}
                       row={row}
                       configByKey={configByKey}
                       onClick={onRowClick ? (e) => handleRowClick(e, row.original) : undefined}
@@ -627,8 +700,9 @@ export function DataTable<T>({
                       hasActionsColumn={Boolean(rowActions)}
                       actionsAlwaysVisible={rowActionsAlwaysVisible}
                     />
-                  </React.Fragment>
-                );
+                  );
+                }
+                return out;
               })
             ) : (
               <TableRow className="hover:bg-transparent">
@@ -656,19 +730,21 @@ export function DataTable<T>({
           </TableBody>
         </Table>
 
-        {filteredCount > pagination.pageSize ? (
+        {/* Without groups this is "more rows than fit on a page"; with
+            folded groups the pages are counted in slots, not rows. */}
+        {pageCount > 1 ? (
           <div className="flex flex-col items-center justify-between gap-3 border-t bg-[#fafafa] px-4 py-2 sm:flex-row">
             <p className="text-xs text-muted-foreground tabular">
-              {firstRow + 1}–{Math.min(firstRow + pagination.pageSize, filteredCount)} of {filteredCount}
+              {rangeStart + 1}–{rangeEnd} of {filteredCount}
             </p>
             <div className="flex items-center gap-1">
-              <Button variant="ghost" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
+              <Button variant="ghost" size="sm" onClick={() => goToPage(pageIndex - 1)} disabled={pageIndex <= 0}>
                 <ChevronLeft className="h-4 w-4" /> Previous
               </Button>
               <span className="px-1 text-xs text-muted-foreground whitespace-nowrap tabular">
                 {pageIndex + 1} / {pageCount}
               </span>
-              <Button variant="ghost" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+              <Button variant="ghost" size="sm" onClick={() => goToPage(pageIndex + 1)} disabled={pageIndex >= pageCount - 1}>
                 Next <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
@@ -754,6 +830,67 @@ function DataTableRow<T>({
           </div>
         </TableCell>
       ) : null}
+    </TableRow>
+  );
+}
+
+/**
+ * The header row of a `groupBy` section. With `onToggle` the whole row is one
+ * button that opens or folds the group: a native button, so Enter and Space
+ * work and screen readers hear "collapsed"/"expanded" from `aria-expanded`.
+ */
+function GroupHeaderRow({
+  label,
+  muted,
+  icon,
+  count,
+  colSpan,
+  alignWithToggles,
+  open,
+  onToggle,
+}: {
+  label: string;
+  muted: boolean;
+  icon?: React.ReactNode;
+  /** Rows in the group, shown whether it is open or folded. */
+  count: number;
+  colSpan: number;
+  /** Leave room for the chevron, so a header without one lines up with those that have it. */
+  alignWithToggles: boolean;
+  open: boolean;
+  onToggle?: () => void;
+}) {
+  const content = (
+    <>
+      {onToggle ? (
+        <ChevronRight
+          aria-hidden
+          className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform duration-150", open && "rotate-90")}
+        />
+      ) : alignWithToggles ? (
+        <span aria-hidden className="size-3.5 shrink-0" />
+      ) : null}
+      {icon ? <span className="shrink-0 text-muted-foreground">{icon}</span> : null}
+      <span className={cn("min-w-0", muted ? "text-muted-foreground" : "text-foreground")}>{label}</span>
+      <span className="text-xs font-normal text-muted-foreground tabular">{count}</span>
+    </>
+  );
+  return (
+    <TableRow className="bg-[#fafafa] hover:bg-[#fafafa]">
+      <TableCell colSpan={colSpan} className={cn("h-9 whitespace-normal", onToggle ? "p-0" : "py-1.5 pl-4")}>
+        {onToggle ? (
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={onToggle}
+            className="flex min-h-9 w-full cursor-pointer items-center gap-2 px-4 py-1.5 text-left text-[13px] font-medium outline-none transition-colors hover:bg-[#f4f4f5] focus-visible:bg-[#f4f4f5] focus-visible:shadow-[inset_2px_0_0_#1f82d1]"
+          >
+            {content}
+          </button>
+        ) : (
+          <div className="flex items-center gap-2 text-[13px] font-medium">{content}</div>
+        )}
+      </TableCell>
     </TableRow>
   );
 }

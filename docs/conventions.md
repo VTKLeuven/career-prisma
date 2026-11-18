@@ -99,7 +99,11 @@ so re-apply the classes if you do.
   row buttons go in `rowActions` (`RowDeleteButton` for delete). `groupBy`
   splits the rows into sections under header rows (the forms list by folder)
   while keeping one search, one sort and one pager; use it rather than one
-  table per group.
+  table per group. Its headers are toggles and groups start folded, so the
+  table opens as an overview of its groups; a search or filter opens every
+  group with a match. A folded group takes one slot of a page, while the
+  counts keep describing every matching row. `collapsible: false` keeps
+  every group open.
   It works on the rows it is given, in the browser: pages still load every row
   (students up to `listStudents`' limit). The one exception is the form
   responses viewer, which pages on the server and keeps its own table.
