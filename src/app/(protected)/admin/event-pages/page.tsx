@@ -38,7 +38,9 @@ export default async function AdminEventPagesPage({
     value: String(f.id),
     label: [f.name, f.year].filter(Boolean).join(" ") || `Floorplan #${f.id}`,
   }));
-  const companyOptions = companies.map((c) => ({ value: c.id, label: c.name ?? "(unnamed)" }));
+  const companyOptions = companies
+    .map((c) => ({ value: c.id, label: c.name ?? "(unnamed)" }))
+    .sort((a, b) => a.label.localeCompare(b.label));
   const speakerOptions = speakers.map((s) => ({
     value: String(s.id),
     label:

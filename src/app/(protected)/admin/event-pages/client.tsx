@@ -146,7 +146,7 @@ export default function EventPagesClient({
       { name: "image", label: "Header image", type: "image" },
       { name: "company_guide", label: "Company guide (PDF)", type: "file" },
       { name: "header_buttons", label: "Header buttons", type: "multiselect", options: HEADER_BUTTON_OPTIONS, className: "md:col-span-2" },
-      { name: "companyIds", label: "Companies", type: "multiselect", options: companyOptions, section: "Participants" },
+      { name: "companyIds", label: "Companies", type: "multiselect", options: companyOptions, placeholder: "Search companies...", section: "Participants" },
       { name: "speakerIds", label: "Speakers", type: "multiselect", options: speakerOptions },
       {
         name: "timetableItems",
