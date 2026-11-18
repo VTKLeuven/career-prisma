@@ -16,6 +16,7 @@
 // corresponding mapper rather than adding a second variant.
 
 import { sanitizeRichText } from "@/lib/sanitize-html";
+import type { CompanyCard } from "@/lib/schema";
 
 type Nullable<T> = T | null | undefined;
 
@@ -78,6 +79,36 @@ export const COMPANY_INCLUDE = {
 
 type CompanyRow = Record<string, any>;
 
+/** The option / sub-option sale rows sold in the academic year running now. */
+function currentSales(links: Nullable<CompanyRow[]>): CompanyRow[] {
+  const now = Date.now();
+  const isCurrentYear = (year: Record<string, any> | null | undefined) => {
+    if (!year?.start_of_year || !year?.end_of_year) return false;
+    return new Date(year.start_of_year).getTime() <= now && new Date(year.end_of_year).getTime() >= now;
+  };
+  return (links ?? []).filter(
+    (link) => (link.status ?? "sold") === "sold" && (!link.academicYear || isCurrentYear(link.academicYear))
+  );
+}
+
+/**
+ * The grant types the company holds this academic year: from sub-options it
+ * bought, and from those inside the packages it bought. This is what the
+ * "for the year it is sold" grants check; CV books, kept for good, are
+ * worked out across all years in lib/repos/cv-book.ts instead.
+ */
+function grantTypesOf(currentSubOptionLinks: CompanyRow[], currentOptionLinks: CompanyRow[]): string[] {
+  const grantTypes = new Set<string>();
+  const addGrants = (subOption: { grants?: { type: string }[] } | null | undefined) => {
+    for (const grant of subOption?.grants ?? []) grantTypes.add(grant.type);
+  };
+  for (const link of currentSubOptionLinks) addGrants(link.careerSubOption);
+  for (const link of currentOptionLinks) {
+    for (const r of link.careerEventOption?.careerEventOptionSubOptions ?? []) addGrants(r.careerSubOption);
+  }
+  return Array.from(grantTypes);
+}
+
 /** Maps a Prisma company (loaded with COMPANY_INCLUDE) to the legacy shape. */
 export function shapeCompany(row: Nullable<CompanyRow>): any {
   if (!row) return null;
@@ -94,32 +125,8 @@ export function shapeCompany(row: Nullable<CompanyRow>): any {
     ...rest
   } = row;
 
-  const now = Date.now();
-  const isCurrentYear = (year: Record<string, any> | null | undefined) => {
-    if (!year?.start_of_year || !year?.end_of_year) return false;
-    return new Date(year.start_of_year).getTime() <= now && new Date(year.end_of_year).getTime() >= now;
-  };
-  const currentOptionLinks = (companyCareerEventOptions ?? []).filter(
-    (link: Record<string, any>) =>
-      (link.status ?? "sold") === "sold" && (!link.academicYear || isCurrentYear(link.academicYear))
-  );
-  const currentSubOptionLinks = (companyCareerSubOptions ?? []).filter(
-    (link: Record<string, any>) =>
-      (link.status ?? "sold") === "sold" && (!link.academicYear || isCurrentYear(link.academicYear))
-  );
-
-  // The grant types the company holds this academic year: from sub-options it
-  // bought, and from those inside the packages it bought. This is what the
-  // "for the year it is sold" grants check; CV books, kept for good, are
-  // worked out across all years in lib/repos/cv-book.ts instead.
-  const grantTypes = new Set<string>();
-  const addGrants = (subOption: { grants?: { type: string }[] } | null | undefined) => {
-    for (const grant of subOption?.grants ?? []) grantTypes.add(grant.type);
-  };
-  for (const link of currentSubOptionLinks) addGrants(link.careerSubOption);
-  for (const link of currentOptionLinks) {
-    for (const r of link.careerEventOption?.careerEventOptionSubOptions ?? []) addGrants(r.careerSubOption);
-  }
+  const currentOptionLinks = currentSales(companyCareerEventOptions);
+  const currentSubOptionLinks = currentSales(companyCareerSubOptions);
 
   return {
     ...rest,
@@ -129,7 +136,7 @@ export function shapeCompany(row: Nullable<CompanyRow>): any {
     salesperson: salesperson ?? salesperson_id ?? null,
 
     representatives: users ?? [],
-    grants: Array.from(grantTypes),
+    grants: grantTypesOf(currentSubOptionLinks, currentOptionLinks),
     category: junction(companyMasters, "master_id", (r: any) => r.master),
     sub_options: junction(
       currentSubOptionLinks,
@@ -404,6 +411,62 @@ export function toPublicCompany<T>(company: T): T {
     long_description: typeof long_description === "string" ? sanitizeRichText(long_description) : long_description,
     representatives: Array.isArray(representatives) ? representatives.map(toPublicPerson) : [],
   } as T;
+}
+
+/**
+ * The Prisma `select` behind a CompanyCard: the card's own columns, and only
+ * the sale rows and grant types grantTypesOf() needs. COMPANY_INCLUDE loads
+ * every relation of the company, every year's sales with their events and
+ * representatives included -- for a logo grid that shows none of it.
+ */
+const SALE_YEAR_SELECT = { select: { start_of_year: true, end_of_year: true } } as const;
+const GRANT_TYPES_SELECT = { select: { grants: { select: { type: true } } } } as const;
+export const COMPANY_CARD_SELECT = {
+  id: true,
+  name: true,
+  status: true,
+  logo_id: true,
+  short_description: true,
+  companyCareerSubOptions: {
+    select: { status: true, academicYear: SALE_YEAR_SELECT, careerSubOption: GRANT_TYPES_SELECT },
+  },
+  companyCareerEventOptions: {
+    select: {
+      status: true,
+      academicYear: SALE_YEAR_SELECT,
+      careerEventOption: {
+        select: { careerEventOptionSubOptions: { select: { careerSubOption: GRANT_TYPES_SELECT } } },
+      },
+    },
+  },
+} as const;
+
+/**
+ * Maps a company loaded with COMPANY_CARD_SELECT to a CompanyCard. Its grants
+ * are worked out exactly as shapeCompany() does. The short description is
+ * returned as stored: sanitise it before it reaches a browser.
+ */
+export function shapeCompanyCard(row: CompanyRow): CompanyCard {
+  return {
+    id: row.id,
+    name: row.name ?? null,
+    status: row.status,
+    logo: row.logo_id ?? null,
+    short_description: row.short_description ?? null,
+    grants: grantTypesOf(currentSales(row.companyCareerSubOptions), currentSales(row.companyCareerEventOptions)),
+  };
+}
+
+/** Narrows an already shaped (and, if public, already sanitised) company to a CompanyCard. */
+export function toCompanyCard(company: CompanyCard): CompanyCard {
+  return {
+    id: company.id,
+    name: company.name ?? null,
+    status: company.status,
+    logo: company.logo ?? null,
+    short_description: company.short_description ?? null,
+    grants: company.grants ?? [],
+  };
 }
 
 /**

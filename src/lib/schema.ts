@@ -131,6 +131,20 @@ export type Company = {
   }>;
 };
 
+/**
+ * A company as a public logo card -- the event page's "Explore companies"
+ * grid. Only what the grid and its detail view render, plus the status and
+ * grants hasCompanyPageAccess() reads; a full Company fits it too.
+ */
+export type CompanyCard = {
+  id: string;
+  name: string | null;
+  status?: string;
+  logo?: string | null;
+  short_description?: string | null;
+  grants?: string[];
+};
+
 export type CareerEvent = {
   id: string;
   name: string;

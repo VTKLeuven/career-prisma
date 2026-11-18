@@ -4,6 +4,7 @@ import { fetchEventPageBySlugAction } from "@/app/actions/events"
 import { getCachedEventPage, setCachedEventPage } from "@/lib/event-page-cache"
 import { slugifyEventName } from "@/lib/utils/slugify"
 import { isDevEnvironment } from "@/lib/dev-environment"
+import { toCompanyCard } from "@/lib/repos/_shape"
 import EventPageClient from './page-client'
 
 export const revalidate = 30 // Revalidate every 30s so header_buttons updates show soon
@@ -50,13 +51,21 @@ export default async function EventPage({
     notFound();
   }
 
+  // The page's own company list is only the "Explore companies" grid's
+  // fallback, and the grid shows a logo, a name and a short description. Sent
+  // as full companies it was most of this page's HTML, for every visitor,
+  // before anyone clicked; /api/events/<slug> still serves the full list.
+  const { companies, ...pageWithoutCompanies } = page;
+  const companyCards = (companies ?? []).filter(Boolean).map(toCompanyCard);
+
   // Pass data to client component. The floorplan flag is resolved here because
   // isDevEnvironment() is server-only; the client cannot read it itself.
   return (
     <EventPageClient
       // Remount per event: the client component takes its data from props.
       key={eventName}
-      initialPage={page}
+      initialPage={pageWithoutCompanies}
+      companyCards={companyCards}
       floorplanEnabled={isDevEnvironment()}
     />
   );
