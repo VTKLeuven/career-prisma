@@ -81,7 +81,7 @@ async function loadManagedEvent(event: CareerEvent, company: Company): Promise<M
     // internal admin name: companies see the display name.
     forms: forms.map((f) => ({
       id: f.id,
-      displayName: formDisplayName(f),
+      displayName: formDisplayName(f, f.metadata),
       slug: f.slug,
       metadata: { deadline: (f.metadata as { deadline?: string } | undefined)?.deadline },
     })),

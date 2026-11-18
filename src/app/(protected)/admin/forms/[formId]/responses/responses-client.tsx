@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/select";
 import { ArrowLeft, Download, Eye, Trash2, Pencil, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2, Mail, ArrowUpDown, ArrowUp, ArrowDown, Check, X, FileArchive, Archive, Scan } from "lucide-react";
 import type { FormVersion, FormResponse, FormField } from "@/lib/schema";
-import { fieldDisplayLabel, formDisplayName } from "@/lib/form-fields";
+import { fieldDisplayLabel, formDisplayName, isCompanyFormMetadata } from "@/lib/form-fields";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 import { CSV_UTF8_BOM } from "@/lib/utils/slugify";
 import { FormFieldRenderer } from "@/components/FormFieldRenderer";
@@ -604,8 +604,12 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
       setReminderRecipients(data.recipients || []);
       
       // Set default subject and content. Reminders go to companies, so they
-      // name the form the way companies see it.
-      const companyFormName = formDisplayName(form);
+      // name the form the way companies see it -- judged on the version the
+      // reminder is for, as handleSendReminders picks it.
+      const reminderVersion = isAllVersions
+        ? versions.find((v) => isCompanyFormMetadata(v.metadata))
+        : versions.find((v) => v.id === selectedVersionId);
+      const companyFormName = formDisplayName(form, reminderVersion?.metadata);
       if (!reminderSubject) {
         setReminderSubject(`Reminder: Please Complete ${companyFormName}`);
       }

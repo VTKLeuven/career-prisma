@@ -39,6 +39,7 @@ import { Badge } from "@/components/ui/badge";
 import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power, Building2, RefreshCw, Hammer, Inbox } from "lucide-react";
 import { useUser } from "@/providers/UserProvider";
 import type { FormSchema, FormField, CareerEvent } from "@/lib/schema";
+import { isCompanyFormMetadata } from "@/lib/form-fields";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatDateBE, formatDateTimeBE, utcToLocalDateTimeLocal, localDateTimeLocalToUtc } from "@/lib/date-utils";
@@ -369,6 +370,9 @@ function CompanyFormEmailFields(props: EmailFieldsProps) {
 // The internal/display name split (BR-57): admins keep a long, descriptive
 // `name` for the back office; companies see `display_name`, or `name` when it
 // is left empty (formDisplayName() in lib/form-fields.ts).
+// Only company forms have the split: both hints and the Display Name field
+// render only while the dialog's form type is "Company form" -- students see a
+// student or general form under its `name`, so that one is not internal.
 const FORM_NAME_HINT = "Internal name, shown only here in the back office.";
 const DISPLAY_NAME_HINT =
   "What companies see on their dashboard, on the form and in emails. Leave empty to show the form name.";
@@ -585,7 +589,9 @@ function CreateFormDialog() {
 
       const created = await createFormAction({
         name,
-        display_name: displayName,
+        // Only company forms get a display name; a name typed before the
+        // type was switched away is dropped, not saved out of sight.
+        ...(isCompanyForm ? { display_name: displayName } : {}),
         slug,
         description,
         initialSchema,
@@ -657,19 +663,21 @@ function CreateFormDialog() {
                 placeholder="e.g., Company Registration"
                 required
               />
-              <p className="text-xs text-muted-foreground">{FORM_NAME_HINT}</p>
+              {isCompanyForm && <p className="text-xs text-muted-foreground">{FORM_NAME_HINT}</p>}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="display-name">Display Name</Label>
-              <Input
-                id="display-name"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder={name.trim() || "e.g., Registration"}
-                maxLength={255}
-              />
-              <p className="text-xs text-muted-foreground">{DISPLAY_NAME_HINT}</p>
-            </div>
+            {isCompanyForm && (
+              <div className="space-y-2">
+                <Label htmlFor="display-name">Display Name</Label>
+                <Input
+                  id="display-name"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder={name.trim() || "e.g., Registration"}
+                  maxLength={255}
+                />
+                <p className="text-xs text-muted-foreground">{DISPLAY_NAME_HINT}</p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="slug">Slug (URL)</Label>
               <Input
@@ -1046,7 +1054,7 @@ function EditFormDialog({
     form.metadata?.is_event_registration === true
   );
   const [isCompanyForm, setIsCompanyForm] = useState(
-    form.metadata?.is_company_form === true
+    isCompanyFormMetadata(form.metadata)
   );
   const [selectedCompanyFormEventId, setSelectedCompanyFormEventId] = useState<string>(
     (form.metadata?.event_id as string) || ""
@@ -1125,7 +1133,7 @@ function EditFormDialog({
       setDeadline(form.metadata?.deadline ? utcToLocalDateTimeLocal(form.metadata.deadline as string) : '');
       setMaxEntries(form.metadata?.max_entries ? String(form.metadata.max_entries) : '');
       setIsEventRegistration(form.metadata?.is_event_registration === true);
-      setIsCompanyForm(form.metadata?.is_company_form === true);
+      setIsCompanyForm(isCompanyFormMetadata(form.metadata));
       setSelectedEventId((form.metadata?.event_id as string) || '');
       setSelectedCompanyFormEventId((form.metadata?.event_id as string) || '');
       setSelectedOptionIds((form.metadata?.option_ids as string[]) || []);
@@ -1155,7 +1163,12 @@ function EditFormDialog({
       await updateFormAction(form.id, { 
         name, 
         // Blank clears it (stored as NULL), falling back to the name.
-        display_name: displayName,
+        // Only sent for a company form: for any other type the field is
+        // hidden, so a stored value is left alone rather than overwritten
+        // from a field the admin cannot see. display_name belongs to the form
+        // while the type belongs to a version, so an older company version
+        // may still use it; formDisplayName() ignores it for other types.
+        ...(isCompanyForm ? { display_name: displayName } : {}),
         slug, 
         description,
       });
@@ -1306,19 +1319,21 @@ function EditFormDialog({
                 onChange={(e) => setName(e.target.value)}
                 required
               />
-              <p className="text-xs text-muted-foreground">{FORM_NAME_HINT}</p>
+              {isCompanyForm && <p className="text-xs text-muted-foreground">{FORM_NAME_HINT}</p>}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-display-name">Display Name</Label>
-              <Input
-                id="edit-display-name"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder={name.trim() || "e.g., Registration"}
-                maxLength={255}
-              />
-              <p className="text-xs text-muted-foreground">{DISPLAY_NAME_HINT}</p>
-            </div>
+            {isCompanyForm && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-display-name">Display Name</Label>
+                <Input
+                  id="edit-display-name"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder={name.trim() || "e.g., Registration"}
+                  maxLength={255}
+                />
+                <p className="text-xs text-muted-foreground">{DISPLAY_NAME_HINT}</p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="edit-slug">Slug (URL)</Label>
               <Input

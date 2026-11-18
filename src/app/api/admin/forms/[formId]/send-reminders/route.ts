@@ -67,7 +67,7 @@ export async function POST(
     const formUrl = `${baseUrl}/forms/company/${eventId}/${form.slug}`;
     // Reminders go to company representatives, who know the form by its
     // display name, not the internal one.
-    const formName = formDisplayName(form);
+    const formName = formDisplayName(form, metadata);
 
     const companyIds = [
       ...new Set(recipients.map((r: any) => r.companyId)),

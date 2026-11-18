@@ -607,7 +607,7 @@ export default function CompanyFormPage() {
         <CardHeader>
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
-              <CardTitle className="text-2xl">{formDisplayName(form)}</CardTitle>
+              <CardTitle className="text-2xl">{formDisplayName(form, form.metadata)}</CardTitle>
               {form.description && (
                 <CardDescription className="mt-2">{form.description}</CardDescription>
               )}

@@ -730,12 +730,12 @@ export async function submitFormResponseAction(data: {
       // Companies receive this mail, so it names the form by its display name.
       let formName: string;
       if (typeof formVersion.form_id !== 'string' && formVersion.form_id?.name) {
-        formName = formDisplayName(formVersion.form_id);
+        formName = formDisplayName(formVersion.form_id, versionMetadata);
       } else {
         const formId = typeof formVersion.form_id === 'string' ? formVersion.form_id : formVersion.form_id.id;
         try {
           const form = await getFormById(formId);
-          formName = form ? formDisplayName(form) : "Form";
+          formName = form ? formDisplayName(form, versionMetadata) : "Form";
         } catch (error) {
           console.warn("Could not get form details, using fallback name:", error);
           formName = 'Form';

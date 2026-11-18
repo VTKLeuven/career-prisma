@@ -141,8 +141,13 @@ announces it. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
   the company form page, the company confirmation email and form reminders.
   `display_name` is optional (blank is stored as NULL) and falls back to
   `name` through `formDisplayName()` in `src/lib/form-fields.ts`; use that
-  helper on any new company-facing surface. Student-facing form pages still
-  show `name`. A field's title (`label`) is
+  helper on any new company-facing surface. It only exists for **company
+  forms**: there is no form-type column, the type is
+  `metadata.is_company_form` on each `FormVersion` (read with
+  `isCompanyFormMetadata()`), so `formDisplayName()` takes the version's
+  metadata and returns `name` for any other type, and the admin dialogs only
+  show the Display Name field while the type is "Company form". Student-facing
+  form pages still show `name`. A field's title (`label`) is
   optional: untitled inputs continue the titled field above them
   ("Representative names" → one input per name), and headers fall back to the
   placeholder (`fieldDisplayLabel()` in `src/lib/form-fields.ts`). For
