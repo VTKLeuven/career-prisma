@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Loader2 } from "lucide-react";
+import { Plus, Trash2, Loader2, Search, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -516,7 +517,14 @@ function FieldInput({
           </SelectContent>
         </Select>
       ) : field.type === "multiselect" ? (
-        <MultiSelect value={value} options={options} onChange={onChange} />
+        <MultiSelect
+          id={id}
+          label={field.label}
+          placeholder={field.placeholder}
+          value={value}
+          options={options}
+          onChange={onChange}
+        />
       ) : field.type === "image" ? (
         <ImageInput value={value} onChange={onChange} onFile={onFile} />
       ) : field.type === "file" ? (
@@ -561,38 +569,99 @@ function FieldInput({
   );
 }
 
-/** Scrollable checkbox list backing a `multiselect` field. Value is an id array. */
+/**
+ * Searchable checkbox list backing a `multiselect` field. Value is an id array.
+ * The search only narrows the list; the chips above always show every selected
+ * option (in `options` order), so a selection never disappears behind a filter.
+ */
 function MultiSelect({
+  id,
+  label,
+  placeholder,
   value,
   options,
   onChange,
 }: {
+  id: string;
+  label: string;
+  placeholder?: string;
   value: unknown;
   options: SelectOption[];
   onChange: (value: string[]) => void;
 }) {
+  const [query, setQuery] = React.useState("");
   const selected = Array.isArray(value) ? value.map(String) : [];
   const toggle = (v: string, on: boolean) =>
     onChange(on ? [...selected, v] : selected.filter((s) => s !== v));
 
-  return (
-    <div className="rounded-md border max-h-48 overflow-y-auto divide-y">
-      {options.length ? (
-        options.map((opt) => (
-          <label
-            key={opt.value}
-            className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-accent/50"
-          >
-            <Checkbox
-              checked={selected.includes(opt.value)}
-              onCheckedChange={(c) => toggle(opt.value, Boolean(c))}
-            />
-            <span className="text-sm">{opt.label}</span>
-          </label>
-        ))
-      ) : (
+  const selectedOptions = options.filter((opt) => selected.includes(opt.value));
+  const q = query.trim().toLowerCase();
+  const visible = q ? options.filter((opt) => opt.label.toLowerCase().includes(q)) : options;
+
+  if (!options.length) {
+    return (
+      <div className="rounded-md border">
         <p className="px-3 py-2 text-sm text-muted-foreground">No options available.</p>
-      )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-xs text-muted-foreground">
+          {selectedOptions.length ? `${selectedOptions.length} selected` : "None selected"}
+        </span>
+        {selectedOptions.map((opt) => (
+          <Badge key={opt.value} variant="muted" className="max-w-full pr-1">
+            <span className="truncate" title={opt.label}>
+              {opt.label}
+            </span>
+            <button
+              type="button"
+              aria-label={`Remove ${opt.label}`}
+              onClick={() => toggle(opt.value, false)}
+              className="rounded-sm opacity-70 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <X className="size-3" />
+            </button>
+          </Badge>
+        ))}
+      </div>
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          id={id}
+          type="search"
+          value={query}
+          placeholder={placeholder ?? "Search..."}
+          aria-label={`Search ${label}`}
+          className="pl-8"
+          onChange={(e) => setQuery(e.target.value)}
+          // Enter would otherwise submit the surrounding edit form.
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.preventDefault();
+          }}
+        />
+      </div>
+      <div className="rounded-md border max-h-48 overflow-y-auto divide-y">
+        {visible.length ? (
+          visible.map((opt) => (
+            <label
+              key={opt.value}
+              className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-accent/50"
+            >
+              <Checkbox
+                checked={selected.includes(opt.value)}
+                onCheckedChange={(c) => toggle(opt.value, Boolean(c))}
+              />
+              <span className="text-sm">{opt.label}</span>
+            </label>
+          ))
+        ) : (
+          <p className="px-3 py-2 text-sm text-muted-foreground">No matches for “{query.trim()}”.</p>
+        )}
+      </div>
     </div>
   );
 }
