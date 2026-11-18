@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { assertAcademicYearWritable, resolveAcademicYearId } from "@/lib/repos/academic-year";
 import { invalidateCompanyPageCache } from "@/lib/company-page-cache";
 import { invalidateEventPageCache } from "@/lib/event-page-cache";
+import { subOptionsGrantVacancies } from "@/lib/repos/vacancy-access";
 
 // A sale decides which options a company page shows and which companies an
 // event page lists, so every write drops both public caches.
@@ -74,6 +75,19 @@ function shapeSubOptionSale(row: Record<string, any>): AdminOptionSale {
   };
 }
 
+/**
+ * Set when a sale that carries the `vacancies` grant was just created or
+ * reopened (a cancelled row sold again), so the caller can mail the company's
+ * representatives (lib/vacancy-access-notification.ts). Re-saving a sale that
+ * was already sold is neither, and gives null.
+ */
+export type VacancyAccessTrigger = { companyId: string; academicYearId: number } | null;
+
+/** A sale row is "activated" by a write when it did not exist or was not sold. */
+function isActivated(existing: { status: string } | null | undefined): boolean {
+  return !existing || existing.status !== "sold";
+}
+
 export async function listOptionSales(academicYearId?: string | number): Promise<AdminOptionSale[]> {
   const yearId = academicYearId == null ? undefined : await resolveAcademicYearId(academicYearId);
   const [optionRows, subOptionRows] = await Promise.all([
@@ -101,7 +115,7 @@ export async function createOptionSale(input: {
   optionId: string;
   academicYearId?: string | number;
   subOptionIds?: Array<string | number>;
-}): Promise<AdminOptionSale> {
+}): Promise<{ sale: AdminOptionSale; vacancyAccess: VacancyAccessTrigger }> {
   const yearId = await assertAcademicYearWritable(
     await resolveAcademicYearId(input.academicYearId)
   );
@@ -122,7 +136,22 @@ export async function createOptionSale(input: {
     .filter((id): id is number => id != null);
   const subOptionIds = [...new Set([...defaultSubOptions, ...requestedSubOptions])];
 
-  const sale = await prisma.$transaction(async (tx) => {
+  const { saved: sale, activatedSubOptionIds } = await prisma.$transaction(async (tx) => {
+    const existingSale = await tx.companyCareerEventOption.findUnique({
+      where: {
+        company_id_career_event_option_id_academic_year_id: {
+          company_id: input.companyId,
+          career_event_option_id: input.optionId,
+          academic_year_id: yearId,
+        },
+      },
+      select: { status: true },
+    });
+    // The sub-options this write newly sells: the package's own when the
+    // package sale itself is new or reopened (a package grants what its
+    // sub-options grant), plus any sub-option row created or reopened below.
+    const activated = new Set<number>(isActivated(existingSale) ? defaultSubOptions : []);
+
     const saved = await tx.companyCareerEventOption.upsert({
       where: {
         company_id_career_event_option_id_academic_year_id: {
@@ -151,7 +180,17 @@ export async function createOptionSale(input: {
         where: { id: { in: subOptionIds } },
         select: { id: true, name: true, price: true },
       });
+      const existingSubSales = await tx.companyCareerSubOption.findMany({
+        where: {
+          company_id: input.companyId,
+          academic_year_id: yearId,
+          career_sub_option_id: { in: subOptions.map((subOption) => subOption.id) },
+        },
+        select: { career_sub_option_id: true, status: true },
+      });
       for (const subOption of subOptions) {
+        const existingSubSale = existingSubSales.find((row) => row.career_sub_option_id === subOption.id);
+        if (isActivated(existingSubSale)) activated.add(subOption.id);
         await tx.companyCareerSubOption.upsert({
           where: {
             company_id_career_sub_option_id_academic_year_id: {
@@ -176,7 +215,7 @@ export async function createOptionSale(input: {
         });
       }
     }
-    return saved;
+    return { saved, activatedSubOptionIds: [...activated] };
   });
 
   invalidatePublicSalePages();
@@ -184,7 +223,10 @@ export async function createOptionSale(input: {
     where: { id: sale.id },
     include: SALE_INCLUDE,
   });
-  return shapeSale(complete!);
+  const vacancyAccess = (await subOptionsGrantVacancies(activatedSubOptionIds))
+    ? { companyId: input.companyId, academicYearId: yearId }
+    : null;
+  return { sale: shapeSale(complete!), vacancyAccess };
 }
 
 export async function deleteOptionSale(id: number): Promise<void> {
@@ -202,7 +244,7 @@ export async function createSubOptionSale(input: {
   companyId: string;
   subOptionId: string | number;
   academicYearId?: string | number;
-}): Promise<void> {
+}): Promise<{ vacancyAccess: VacancyAccessTrigger }> {
   const yearId = await assertAcademicYearWritable(
     await resolveAcademicYearId(input.academicYearId)
   );
@@ -210,6 +252,17 @@ export async function createSubOptionSale(input: {
   if (!Number.isSafeInteger(subOptionId)) throw new Error("Invalid sub-option");
   const subOption = await prisma.careerSubOption.findUnique({ where: { id: subOptionId } });
   if (!subOption) throw new Error("Sub-option not found");
+
+  const existingSale = await prisma.companyCareerSubOption.findUnique({
+    where: {
+      company_id_career_sub_option_id_academic_year_id: {
+        company_id: input.companyId,
+        career_sub_option_id: subOptionId,
+        academic_year_id: yearId,
+      },
+    },
+    select: { status: true },
+  });
 
   await prisma.companyCareerSubOption.upsert({
     where: {
@@ -234,6 +287,11 @@ export async function createSubOptionSale(input: {
     },
   });
   invalidatePublicSalePages();
+  const vacancyAccess =
+    isActivated(existingSale) && (await subOptionsGrantVacancies([subOptionId]))
+      ? { companyId: input.companyId, academicYearId: yearId }
+      : null;
+  return { vacancyAccess };
 }
 
 export async function deleteSubOptionSale(id: number): Promise<void> {

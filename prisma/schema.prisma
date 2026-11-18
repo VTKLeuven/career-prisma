@@ -231,6 +231,11 @@ model Company {
   location                         String?                          @db.VarChar(255)
   website                          String?                          @db.VarChar(255)
   page_image                       String?                          @db.Uuid
+  /// When the company's representatives were last mailed that the company can
+  /// use the vacancy platform. At most one such mail per academic year: a sale
+  /// carrying the `vacancies` grant only mails when this is empty or older than
+  /// the start of the sale's academic year (src/lib/vacancy-access-notification.ts).
+  vacancy_access_notified_at       DateTime?                        @db.Timestamptz(6)
   booths                           Booth[]
   careerEventPageCompanies         CareerEventPageCompany[]
   logo                             File?                            @relation("companies_logo_idTofiles", fields: [logo_id], references: [id], onUpdate: NoAction, map: "company_logo_foreign")
