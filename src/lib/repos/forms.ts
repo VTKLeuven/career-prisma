@@ -4,6 +4,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { Form, FormVersion, FormResponse, FormSchema, FormMetadata, FormField } from "@/lib/schema";
+import { shapeDate, shapeTime } from "@/lib/repos/_shape";
 
 /**
  * Ids cross this API as strings; forms, versions and responses use integer keys.
@@ -592,6 +593,180 @@ export async function getStudentFormResponseDataForEvent(
   } catch (error) {
     console.error("[Forms] getStudentFormResponseDataForEvent Error:", error);
     return new Map();
+  }
+}
+
+/** One event a student registered for, as /student/registrations lists it. */
+export type StudentEventRegistration = {
+  /** The form response id. */
+  id: string;
+  submitted_at: string | null;
+  form: {
+    id: string;
+    name: string;
+    slug: string | null;
+    /**
+     * Whether /forms/<slug> still shows *this* registration: the form is
+     * active, has an active version, and that version registers for the same
+     * event. (A form reused for a later edition shows that edition instead.)
+     */
+    viewable: boolean;
+    /** viewable, and the active version's deadline has not passed. */
+    editable: boolean;
+    deadline: string | null;
+  };
+  /** Null when the version names no event or the event was deleted. */
+  event: {
+    id: string;
+    name: string | null;
+    status: string;
+    date: string | null;
+    start_hour: string | null;
+    end_hour: string | null;
+    location: string | null;
+    series_key: string | null;
+    /** Whether a public page exists for it (it still needs status "published"). */
+    has_page: boolean;
+  } | null;
+};
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Every event a student registered for, newest submission first. Past events
+ * are included.
+ *
+ * Registrations have no foreign key to the student or the event: the student
+ * sits in `data` (see studentIdMatch()) and the event in the version's
+ * metadata (`is_event_registration`, `event_id`). Both filters still run in
+ * the database, so only this student's rows are loaded. The admin form builder
+ * writes the flag as a boolean, but the submit action also accepts the string
+ * "true" (toBoolFlag), so both are matched.
+ *
+ * A resubmit updates the student's response in place, so a form normally holds
+ * one per student; if older duplicates survived, only the newest per form is
+ * kept -- it is the one /forms/<slug> shows.
+ */
+export async function listStudentEventRegistrations(
+  studentId: string | number
+): Promise<StudentEventRegistration[]> {
+  try {
+    const rows = await prisma.formResponse.findMany({
+      where: {
+        AND: [NOT_ARCHIVED, studentIdMatch(studentId)],
+        formVersion: {
+          is: {
+            OR: [
+              { metadata: { path: ["is_event_registration"], equals: true } },
+              { metadata: { path: ["is_event_registration"], equals: "true" } },
+            ],
+          },
+        },
+      },
+      select: {
+        id: true,
+        submitted_at: true,
+        formVersion: {
+          select: {
+            metadata: true,
+            form: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                is_active: true,
+                formVersions: {
+                  where: { is_active: true },
+                  select: { metadata: true },
+                  orderBy: { version_number: "desc" },
+                  take: 1,
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ submitted_at: { sort: "desc", nulls: "last" } }, { id: "desc" }],
+    });
+
+    const seenForms = new Set<number>();
+    const latest = rows.filter((r) => {
+      const formId = r.formVersion?.form?.id;
+      if (formId == null) return false;
+      if (seenForms.has(formId)) return false;
+      seenForms.add(formId);
+      return true;
+    });
+
+    const eventIdOf = (metadata: unknown): string | null => {
+      const id = (metadata as FormMetadata | null)?.event_id;
+      return id != null && UUID_RE.test(String(id)) ? String(id) : null;
+    };
+
+    // A malformed id would make Postgres reject the whole uuid IN (...) list.
+    const eventIds = [...new Set(latest.map((r) => eventIdOf(r.formVersion?.metadata)).filter((id): id is string => !!id))];
+    const events = eventIds.length
+      ? await prisma.careerEvent.findMany({
+          where: { id: { in: eventIds } },
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            date: true,
+            start_hour: true,
+            end_hour: true,
+            location: true,
+            series_key: true,
+            careerEventPages: { select: { id: true }, take: 1 },
+          },
+        })
+      : [];
+    const eventById = new Map(events.map((e) => [e.id, e]));
+
+    const now = new Date();
+    return latest.map((r) => {
+      const form = r.formVersion!.form!;
+      const eventId = eventIdOf(r.formVersion?.metadata);
+      const event = eventId ? eventById.get(eventId) : undefined;
+      const activeMeta = (form.formVersions[0]?.metadata ?? null) as FormMetadata | null;
+      const open = form.is_active !== false && form.formVersions.length > 0;
+      const deadline = typeof activeMeta?.deadline === "string" && activeMeta.deadline ? activeMeta.deadline : null;
+      const deadlinePassed = deadline != null && !Number.isNaN(new Date(deadline).getTime()) && now > new Date(deadline);
+      // A form reused for a later edition points its active version at another
+      // event; submitting there would move this registration to that event, so
+      // the form is not offered for it.
+      const sameEvent = eventId != null && eventIdOf(activeMeta) === eventId;
+      const viewable = open && sameEvent && !!form.slug;
+
+      return {
+        id: String(r.id),
+        submitted_at: r.submitted_at ? r.submitted_at.toISOString() : null,
+        form: {
+          id: String(form.id),
+          name: form.name,
+          slug: form.slug,
+          viewable,
+          editable: viewable && !deadlinePassed,
+          deadline,
+        },
+        event: event
+          ? {
+              id: event.id,
+              name: event.name,
+              status: event.status,
+              date: shapeDate(event.date),
+              start_hour: shapeTime(event.start_hour),
+              end_hour: shapeTime(event.end_hour),
+              location: event.location,
+              series_key: event.series_key,
+              has_page: event.careerEventPages.length > 0,
+            }
+          : null,
+      };
+    });
+  } catch (error) {
+    console.error("[listStudentEventRegistrations] Error:", error);
+    throw error;
   }
 }
 

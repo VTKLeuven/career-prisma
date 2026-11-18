@@ -224,6 +224,21 @@ Deleting goes through an "are you sure?" dialog, then `deleteStudent()`
 session and the `student_sso` hint, and logs `student_accounts/account_deleted`.
 An SSO student who signs in again starts with a new, empty account.
 
+### The student registrations page
+
+`/student/registrations` ("My registrations" in the student menu) lists every
+event the student registered for, newest first, past events included. It
+authorizes itself like the account page. A registration is a form response,
+tied to the student only through `data._student_id` / `data.student_id` and to
+the event only through its version's metadata (`is_event_registration`,
+`event_id`), so `listStudentEventRegistrations()` in `repos/forms.ts` filters on
+both inside the JSON. A form can be reused for a later edition. The page links to
+`/forms/<slug>` only while the form's active version still registers for the
+*same* event, because submitting there updates the student's response in place
+and would move the registration to the new event. The page does not link to
+`/attendant/<uuid>`: that route requires a company login, so it is a dead end
+for a student.
+
 ## Roles
 
 Four roles exist. **Their names do not mean what they look like** — the sales
