@@ -19,6 +19,7 @@ import { usePageLayout } from '../../site-shell'
 import { groupSpeakersByTimeSlot } from '@/lib/utils/speakers'
 import { compareTimetableItems } from '@/lib/utils/timetable'
 import { toSitePath } from '@/lib/site-path'
+import { formatDateOnlyBE } from '@/lib/date-utils'
 
 const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.EventMap), {
   ssr: false,
@@ -339,7 +340,7 @@ function Hero({
                 {page.event.name}
               </h1>
               <p className="max-w-2xl font-black text-white/95 text-lg sm:text-lg md:text-xl lg:text-2xl mt-2 sm:mt-1 uppercase drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]">
-                {page.event.date} – {page.event.location}
+                {formatDateOnlyBE(page.event.date)} – {page.event.location}
               </p>
               <div
                 className="prose prose-invert max-w-2xl text-white/90 text-sm sm:text-base md:text-lg mt-4 sm:mt-4 drop-shadow-sm"

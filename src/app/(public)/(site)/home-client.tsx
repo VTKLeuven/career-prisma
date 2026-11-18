@@ -12,6 +12,7 @@ import type { UserSummary as AppUser } from "@/lib/schema";
 import { ScrollCue } from '@/components/ScrollCue';
 import { useBannerPage } from '@/hooks/use-banner-page';
 import { getUpcomingEventsWithFallback } from '@/lib/utils/events';
+import { formatDateOnlyBE } from '@/lib/date-utils';
 
 /**
  * The homepage, with its events and team already loaded by the server page
@@ -208,7 +209,7 @@ function UpcomingEvents({ events, onViewAll }: { events: CareerEvent[]; onViewAl
                                     <div className="text-base font-semibold tracking-tight text-neutral-900">{event.name}</div>
                                     <div className="mt-1 flex items-center gap-2 text-sm text-neutral-700">
                                         <Calendar className="h-4 w-4 text-vtk-blue" />
-                                        <span>{event.date} · {event.location}</span>
+                                        <span>{formatDateOnlyBE(event.date)} · {event.location}</span>
                                     </div>
                                 </div>
                             </div>
@@ -251,7 +252,7 @@ function AllEvents({ events, onBack }: { events: CareerEvent[]; onBack?: () => v
             <li key={event.name}>
               <Link href={event.href ?? '#'} className="block px-5 py-4 hover:bg-vtk-light/40 transition">
                 <div className="font-medium text-neutral-900">{event.name}</div>
-                <div className="text-sm text-neutral-600">{event.date} · {event.location}</div>
+                <div className="text-sm text-neutral-600">{formatDateOnlyBE(event.date)} · {event.location}</div>
               </Link>
             </li>
           ))}
