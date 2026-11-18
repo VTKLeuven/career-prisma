@@ -60,6 +60,16 @@ announces it. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
 `Speaker`, `Timetable`, `Schedule`, `Drink`/`Order`/`OrderingSettings`,
 `EventCheckin` and `AttendantScan` (QR badge scanning at booths).
 
+A registration's scan link is `form_responses.attendant_uuid`
+(`/attendant/<uuid>`; without hyphens it is the check-in barcode). A new
+event-registration response gets one when it is created. Admins make a form
+an event registration by editing the active version in place, so a response
+sent before that has none. It is filled in, never replaced, by
+`ensureAttendantUuid()` / `initializeAttendantUuids()` in
+`src/lib/repos/forms.ts`. That happens when the student registers again (who
+then also gets the ticket mail), when the admin responses page loads, and
+before a QR mailing. No admin action and no cron job is needed.
+
 ## People
 
 - `User` + `Role` — company representatives and VTK staff. Four roles exist, and
@@ -130,12 +140,47 @@ announces it. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
     longer drops a CV for lacking one. A year holds one book, so a year that
     has one cannot take an import.
 - `Vacancy` + `VacancyType` / `VacancySector` / `VacancySectorLink` /
-  `VacancyMaster` / `VacancySectionConfig` — job board. Behind
-  `DEV_ENVIRONMENT`, and a company only posts with the `vacancies` grant.
+  `VacancyMaster` / `VacancySectionConfig` — job board. A company posts and
+  publishes from its dashboard only with the `vacancies` grant (admins always
+  may); that side and `/admin/vacancies` are live on production. The public
+  listing, a vacancy's page and its contact form are still behind
+  `DEV_ENVIRONMENT` ([design-decisions.md](design-decisions.md) #7).
+  - **Contact fields are internal.** `contact_email` is where the contact form
+    on the public vacancy page is delivered, server-side
+    (`lib/vacancy-contact-inquiry.ts`); `contact_name` / `contact_phone` are
+    kept for reference. None of the three is shown publicly or sent to the
+    public pages: `toPublicVacancy()` in `app/actions/vacancies.ts` strips them
+    (and sanitizes the HTML sections) for the `PublicVacancy` type.
+  - **Company and admin writes are whitelisted** to the form's fields
+    (`EDITABLE_VACANCY_FIELDS`), because the repo turns any key into a column
+    write.
+  - **Access mail.** When an admin records a sale carrying the `vacancies`
+    grant — a new sale, or a cancelled one sold again — every active or invited
+    representative of the company gets one mail
+    (`lib/vacancy-access-notification.ts`, sent after the response through
+    `sendEmail()`, so the dev site and SMTP-less local builds only log it).
+    `companies.vacancy_access_notified_at` limits it to one per company per
+    academic year: it only sends when that is empty or older than the start of
+    the sale's year, claimed with one conditional `UPDATE`. A sale for a year
+    that is not running now (a backfill, or next year's — which grants access
+    only when the year starts, from the clock), and attaching the grant to a
+    sub-option already sold, send nothing.
 - `MatchingSoftware`, `StudentMatchingResponse*`, `CompanyMatchingResponse*` —
   student↔company matching questionnaire.
 - `Form` / `FormVersion` / `FormResponse` — the generic form builder used for
-  company intake, with a versioned schema. A field's title (`label`) is
+  company intake, with a versioned schema. A form has two names: `name` is
+  the internal one admins see in the back office (often long and
+  descriptive), `display_name` is what companies see — the dashboard card,
+  the company form page, the company confirmation email and form reminders.
+  `display_name` is optional (blank is stored as NULL) and falls back to
+  `name` through `formDisplayName()` in `src/lib/form-fields.ts`; use that
+  helper on any new company-facing surface. It only exists for **company
+  forms**: there is no form-type column, the type is
+  `metadata.is_company_form` on each `FormVersion` (read with
+  `isCompanyFormMetadata()`), so `formDisplayName()` takes the version's
+  metadata and returns `name` for any other type, and the admin dialogs only
+  show the Display Name field while the type is "Company form". Student-facing
+  form pages still show `name`. A field's title (`label`) is
   optional: untitled inputs continue the titled field above them
   ("Representative names" → one input per name), and headers fall back to the
   placeholder (`fieldDisplayLabel()` in `src/lib/form-fields.ts`). For
@@ -145,7 +190,10 @@ announces it. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
   not the SSO enum value, so answers read like any other select in the
   responses table, the CSV export and the CV book. `study-programme` is a
   retired field type: the builder no longer offers it, but it still renders
-  for forms that already had it.
+  for forms that already had it. **Duplicate** in the admin forms list
+  (`duplicateForm()`) copies the form row and every version, never the
+  responses; the copy is disabled with no active version, named
+  "<name> (copy)" / "(copy 2)" … with slug `<slug>-copy` / `-copy-2` ….
   `forms.folder` is a free-text label that groups the admin forms list
   (`/admin/forms`) into sections; null is "No folder". It is deliberately not
   a `Folder` table or a tree -- staff asked for a tidier overview (BR-55), and

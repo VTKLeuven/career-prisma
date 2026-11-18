@@ -4,7 +4,7 @@ import {
   fetchPublicVacancyByIdAction,
   fetchVacancySectionConfigsAction,
 } from "@/app/actions/vacancies";
-import type { Company, Vacancy } from "@/lib/schema";
+import type { Company } from "@/lib/schema";
 import { VacancyDetailClient } from "./vacancy-client";
 
 /**
@@ -15,7 +15,7 @@ type Params = Promise<{ id: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { id } = await params;
-  const vacancy = (await fetchPublicVacancyByIdAction(id)) as Vacancy | null;
+  const vacancy = await fetchPublicVacancyByIdAction(id);
   if (!vacancy) return {};
   const company = typeof vacancy.company === "object" ? (vacancy.company as Company) : null;
   return { title: company?.name ? `${vacancy.title} · ${company.name}` : vacancy.title };
@@ -28,5 +28,5 @@ export default async function VacancyDetailPage({ params }: { params: Params }) 
     fetchVacancySectionConfigsAction(),
   ]);
   if (!vacancy) notFound();
-  return <VacancyDetailClient vacancy={vacancy as Vacancy} sectionConfigs={sectionConfigs ?? []} />;
+  return <VacancyDetailClient vacancy={vacancy} sectionConfigs={sectionConfigs ?? []} />;
 }

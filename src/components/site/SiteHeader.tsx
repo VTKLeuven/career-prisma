@@ -4,7 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter, usePathname } from "next/navigation"
-import { ChevronDown, LogOut, User, UserCog, Bell, Star } from "lucide-react"
+import { ChevronDown, LogOut, User, UserCog, Bell, Star, CalendarCheck } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -17,6 +17,7 @@ import { fetchPublicEventsAction } from "@/app/actions/events"
 import type { CareerEvent } from "@/lib/schema"
 import { fetchSessionCheck } from "@/lib/session-client"
 import { eventZoneToday } from "@/lib/utils/events"
+import { formatDateOnlyBE } from "@/lib/date-utils"
 import { useHeaderEvents, type HeaderEvent } from "@/components/site/header-events"
 import {
   useHeaderSession,
@@ -444,7 +445,7 @@ export function SiteHeader({
                             {event.name}
                           </div>
                           <div className={`mt-1 text-xs ${dark ? "text-neutral-400" : "text-neutral-600"}`}>
-                            {event.date} · {event.location}
+                            {formatDateOnlyBE(event.date)} · {event.location}
                           </div>
                         </Link>
                       </li>
@@ -520,7 +521,7 @@ export function SiteHeader({
                             {event.name}
                           </div>
                           <div className={`mt-0.5 text-xs ${dark ? "text-neutral-400" : "text-neutral-600"}`}>
-                            {event.date} · {event.location}
+                            {formatDateOnlyBE(event.date)} · {event.location}
                           </div>
                         </Link>
                       </li>
@@ -638,6 +639,12 @@ function AccountButtons({ companyRep, student, router }: AccountProps) {
                   Liked companies
                 </Link>
               </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/student/registrations">
+                  <CalendarCheck className="mr-2 h-4 w-4" />
+                  My registrations
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => studentLogout(router)}>
                 <LogOut className="mr-2 h-4 w-4" />
                 Log out
@@ -746,6 +753,12 @@ function MobileAccountButtons({
                 <Link href="/student/liked-companies" onClick={onNavigate}>
                   <Star className="mr-2 h-4 w-4 fill-amber-300 text-amber-400" />
                   Liked companies
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/student/registrations" onClick={onNavigate}>
+                  <CalendarCheck className="mr-2 h-4 w-4" />
+                  My registrations
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => studentLogout(router)}>

@@ -4,6 +4,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { Form, FormVersion, FormResponse, FormSchema, FormMetadata, FormField } from "@/lib/schema";
+import { shapeDate, shapeTime } from "@/lib/repos/_shape";
 
 /**
  * Ids cross this API as strings; forms, versions and responses use integer keys.
@@ -89,6 +90,7 @@ export async function listForms(opts?: {
         ? {
             OR: [
               { name: { contains: search, mode: "insensitive" } },
+              { display_name: { contains: search, mode: "insensitive" } },
               { slug: { contains: search, mode: "insensitive" } },
               { description: { contains: search, mode: "insensitive" } },
               { folder: { contains: search, mode: "insensitive" } },
@@ -136,12 +138,23 @@ export async function getPublicFormBySlug(slug: string) {
   }
 }
 
+/**
+ * `display_name` is optional: a blank one is stored as NULL, so "no display
+ * name" has one representation and formDisplayName() falls back to `name`.
+ * Left untouched when the caller did not send it.
+ */
+function normalizeDisplayName<T extends Record<string, unknown>>(data: T): T {
+  if (!("display_name" in data)) return data;
+  const value = typeof data.display_name === "string" ? data.display_name.trim() : "";
+  return { ...data, display_name: value || null };
+}
+
 export async function createForm(data: Partial<Form> & { metadata?: unknown }) {
   try {
     // metadata belongs on the version, not the form
     const { metadata, id: _id, form_versions: _versions, ...formData } = data as Record<string, any>;
     const row = await prisma.form.create({
-      data: { ...formData, created_at: new Date(), updated_at: new Date() } as Prisma.FormCreateInput,
+      data: { ...normalizeDisplayName(formData), created_at: new Date(), updated_at: new Date() } as Prisma.FormCreateInput,
       include: FORM_INCLUDE,
     });
     return shapeForm(row) as Form;
@@ -159,7 +172,7 @@ export async function updateForm(id: string, data: Partial<Form>) {
 
     const row = await prisma.form.update({
       where: { id: formId },
-      data: { ...rest, updated_at: new Date() },
+      data: { ...normalizeDisplayName(rest), updated_at: new Date() },
       include: FORM_INCLUDE,
     });
     return shapeForm(row) as Form;
@@ -213,6 +226,124 @@ export async function deleteForm(id: string) {
   } catch (error) {
     console.error("Error deleting form:", error);
     throw error;
+  }
+}
+
+/** `forms.name` and `forms.slug` are VARCHAR(255); a suffix must not push them over. */
+const FORM_TEXT_MAX = 255;
+
+const withSuffix = (base: string, suffix: string) =>
+  base.slice(0, FORM_TEXT_MAX - suffix.length) + suffix;
+
+/**
+ * The first candidate(1), candidate(2), … that `taken` does not report as
+ * existing. Candidates are checked in batches with exact matches rather than a
+ * LIKE prefix, so names containing `%` or `_`, and truncated long names, are
+ * handled the same as any other.
+ */
+async function firstFreeValue(
+  candidate: (n: number) => string,
+  taken: (values: string[]) => Promise<string[]>
+): Promise<string> {
+  const BATCH = 50;
+  for (let start = 1; ; start += BATCH) {
+    const batch = Array.from({ length: BATCH }, (_, i) => candidate(start + i));
+    const existing = new Set(await taken(batch));
+    const free = batch.find((value) => !existing.has(value));
+    if (free !== undefined) return free;
+  }
+}
+
+/**
+ * Copy a form and all of its versions, so staff can start this year's form
+ * from last year's instead of rebuilding it (BR-37).
+ *
+ * The form row is copied by spreading the source, so a column added later is
+ * carried over without touching this function; only the identity columns
+ * (id, timestamps, name, slug) are replaced. The copy is named
+ * "<name> (copy)", then "(copy 2)", "(copy 3)", …, and its slug is
+ * "<slug>-copy", "-copy-2", … -- whichever is still free. A form without a
+ * slug gets a copy without one.
+ *
+ * Two copies made at the same moment can both pick the same free slug; the
+ * UNIQUE constraint rejects the second, which is then retried.
+ */
+export async function duplicateForm(id: string | number) {
+  const formId = num(id);
+  if (formId == null) throw new Error("Invalid form id");
+
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const row = await prisma.$transaction(async (tx) => {
+        const source = await tx.form.findUnique({ where: { id: formId } });
+        if (!source) throw new Error("Form not found");
+
+        const { id: _id, created_at: _created, updated_at: _updated, name, slug, ...rest } = source;
+
+        const copyName = await firstFreeValue(
+          (n) => withSuffix(name, n === 1 ? " (copy)" : ` (copy ${n})`),
+          async (names) =>
+            (await tx.form.findMany({ where: { name: { in: names } }, select: { name: true } })).map((f) => f.name)
+        );
+        const copySlug =
+          slug == null
+            ? null
+            : await firstFreeValue(
+                (n) => withSuffix(slug, n === 1 ? "-copy" : `-copy-${n}`),
+                async (slugs) =>
+                  (await tx.form.findMany({ where: { slug: { in: slugs } }, select: { slug: true } }))
+                    .map((f) => f.slug)
+                    .filter((s): s is string => s != null)
+              );
+
+        const versions = await tx.formVersion.findMany({
+          where: { form_id: formId },
+          select: { version_number: true, schema: true, metadata: true },
+          orderBy: { version_number: "asc" },
+        });
+
+        const now = new Date();
+        // A duplicate is a draft: the form is disabled and none of its versions
+        // is active, so neither /forms/<slug> nor the company forms (both need
+        // an active form, and the public route an active version) can show it
+        // until staff have reviewed it and activated a version themselves. Its
+        // versions are fresh rows, so no response -- which hangs off a version
+        // -- comes along: responses belong to the source's edition only.
+        const created = await tx.form.create({
+          data: {
+            ...rest,
+            name: copyName,
+            slug: copySlug,
+            is_active: false,
+            created_at: now,
+            updated_at: now,
+          },
+        });
+
+        if (versions.length > 0) {
+          await tx.formVersion.createMany({
+            data: versions.map((v) => ({
+              form_id: created.id,
+              version_number: v.version_number,
+              schema: v.schema as Prisma.InputJsonValue,
+              metadata: v.metadata == null ? Prisma.DbNull : (v.metadata as Prisma.InputJsonValue),
+              is_active: false,
+              created_at: now,
+            })),
+          });
+        }
+
+        return tx.form.findUnique({ where: { id: created.id }, include: FORM_INCLUDE });
+      });
+
+      return shapeForm(row) as Form;
+    } catch (error) {
+      const slugTaken =
+        error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+      if (slugTaken && attempt < 3) continue;
+      console.error("[duplicateForm] Error duplicating form:", error);
+      throw error;
+    }
   }
 }
 
@@ -596,6 +727,180 @@ export async function getStudentFormResponseDataForEvent(
   }
 }
 
+/** One event a student registered for, as /student/registrations lists it. */
+export type StudentEventRegistration = {
+  /** The form response id. */
+  id: string;
+  submitted_at: string | null;
+  form: {
+    id: string;
+    name: string;
+    slug: string | null;
+    /**
+     * Whether /forms/<slug> still shows *this* registration: the form is
+     * active, has an active version, and that version registers for the same
+     * event. (A form reused for a later edition shows that edition instead.)
+     */
+    viewable: boolean;
+    /** viewable, and the active version's deadline has not passed. */
+    editable: boolean;
+    deadline: string | null;
+  };
+  /** Null when the version names no event or the event was deleted. */
+  event: {
+    id: string;
+    name: string | null;
+    status: string;
+    date: string | null;
+    start_hour: string | null;
+    end_hour: string | null;
+    location: string | null;
+    series_key: string | null;
+    /** Whether a public page exists for it (it still needs status "published"). */
+    has_page: boolean;
+  } | null;
+};
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Every event a student registered for, newest submission first. Past events
+ * are included.
+ *
+ * Registrations have no foreign key to the student or the event: the student
+ * sits in `data` (see studentIdMatch()) and the event in the version's
+ * metadata (`is_event_registration`, `event_id`). Both filters still run in
+ * the database, so only this student's rows are loaded. The admin form builder
+ * writes the flag as a boolean, but the submit action also accepts the string
+ * "true" (toBoolFlag), so both are matched.
+ *
+ * A resubmit updates the student's response in place, so a form normally holds
+ * one per student; if older duplicates survived, only the newest per form is
+ * kept -- it is the one /forms/<slug> shows.
+ */
+export async function listStudentEventRegistrations(
+  studentId: string | number
+): Promise<StudentEventRegistration[]> {
+  try {
+    const rows = await prisma.formResponse.findMany({
+      where: {
+        AND: [NOT_ARCHIVED, studentIdMatch(studentId)],
+        formVersion: {
+          is: {
+            OR: [
+              { metadata: { path: ["is_event_registration"], equals: true } },
+              { metadata: { path: ["is_event_registration"], equals: "true" } },
+            ],
+          },
+        },
+      },
+      select: {
+        id: true,
+        submitted_at: true,
+        formVersion: {
+          select: {
+            metadata: true,
+            form: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                is_active: true,
+                formVersions: {
+                  where: { is_active: true },
+                  select: { metadata: true },
+                  orderBy: { version_number: "desc" },
+                  take: 1,
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ submitted_at: { sort: "desc", nulls: "last" } }, { id: "desc" }],
+    });
+
+    const seenForms = new Set<number>();
+    const latest = rows.filter((r) => {
+      const formId = r.formVersion?.form?.id;
+      if (formId == null) return false;
+      if (seenForms.has(formId)) return false;
+      seenForms.add(formId);
+      return true;
+    });
+
+    const eventIdOf = (metadata: unknown): string | null => {
+      const id = (metadata as FormMetadata | null)?.event_id;
+      return id != null && UUID_RE.test(String(id)) ? String(id) : null;
+    };
+
+    // A malformed id would make Postgres reject the whole uuid IN (...) list.
+    const eventIds = [...new Set(latest.map((r) => eventIdOf(r.formVersion?.metadata)).filter((id): id is string => !!id))];
+    const events = eventIds.length
+      ? await prisma.careerEvent.findMany({
+          where: { id: { in: eventIds } },
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            date: true,
+            start_hour: true,
+            end_hour: true,
+            location: true,
+            series_key: true,
+            careerEventPages: { select: { id: true }, take: 1 },
+          },
+        })
+      : [];
+    const eventById = new Map(events.map((e) => [e.id, e]));
+
+    const now = new Date();
+    return latest.map((r) => {
+      const form = r.formVersion!.form!;
+      const eventId = eventIdOf(r.formVersion?.metadata);
+      const event = eventId ? eventById.get(eventId) : undefined;
+      const activeMeta = (form.formVersions[0]?.metadata ?? null) as FormMetadata | null;
+      const open = form.is_active !== false && form.formVersions.length > 0;
+      const deadline = typeof activeMeta?.deadline === "string" && activeMeta.deadline ? activeMeta.deadline : null;
+      const deadlinePassed = deadline != null && !Number.isNaN(new Date(deadline).getTime()) && now > new Date(deadline);
+      // A form reused for a later edition points its active version at another
+      // event; submitting there would move this registration to that event, so
+      // the form is not offered for it.
+      const sameEvent = eventId != null && eventIdOf(activeMeta) === eventId;
+      const viewable = open && sameEvent && !!form.slug;
+
+      return {
+        id: String(r.id),
+        submitted_at: r.submitted_at ? r.submitted_at.toISOString() : null,
+        form: {
+          id: String(form.id),
+          name: form.name,
+          slug: form.slug,
+          viewable,
+          editable: viewable && !deadlinePassed,
+          deadline,
+        },
+        event: event
+          ? {
+              id: event.id,
+              name: event.name,
+              status: event.status,
+              date: shapeDate(event.date),
+              start_hour: shapeTime(event.start_hour),
+              end_hour: shapeTime(event.end_hour),
+              location: event.location,
+              series_key: event.series_key,
+              has_page: event.careerEventPages.length > 0,
+            }
+          : null,
+      };
+    });
+  } catch (error) {
+    console.error("[listStudentEventRegistrations] Error:", error);
+    throw error;
+  }
+}
+
 // Fetch responses across all versions of a form
 export async function listFormResponsesForAllVersions(formId: string, opts?: {
   limit?: number;
@@ -788,8 +1093,43 @@ export async function countFormVersionResponses(formVersionId: string, _usePubli
 }
 
 /**
+ * `attendant_uuid` is the scan link (`/attendant/<uuid>`, and the check-in
+ * barcode without hyphens). Only a NULL or empty one may be filled in: a
+ * student may already hold a QR code for the old value, and companies' scans
+ * point at it. The condition sits in the UPDATE itself, so two requests racing
+ * for the same row cannot both write.
+ */
+const MISSING_ATTENDANT_UUID = { OR: [{ attendant_uuid: null }, { attendant_uuid: "" }] };
+
+/**
+ * Gives one response a scan link if it has none, and returns the link it ends
+ * up with. `issued` is true only when this call created it, so a caller can
+ * send the ticket mail exactly once.
+ */
+export async function ensureAttendantUuid(
+  responseId: string | number
+): Promise<{ uuid: string | null; issued: boolean }> {
+  const id = num(responseId);
+  if (id == null) return { uuid: null, issued: false };
+  const { count } = await prisma.formResponse.updateMany({
+    where: { id, ...MISSING_ATTENDANT_UUID },
+    data: { attendant_uuid: crypto.randomUUID() },
+  });
+  const row = await prisma.formResponse.findUnique({
+    where: { id },
+    select: { attendant_uuid: true },
+  });
+  return { uuid: row?.attendant_uuid || null, issued: count > 0 };
+}
+
+/**
  * Initialize UUIDs for existing form responses that don't have them.
  * Only processes responses for event registration forms.
+ *
+ * Safe to run any number of times: an existing UUID is never replaced. The
+ * admin responses page and the QR mailing run it on their own, because a
+ * response sent before the form became an event registration (the toggle edits
+ * the active version in place) otherwise never gets a link -- BR-43.
  */
 export async function initializeAttendantUuids(formId?: string) {
   try {
@@ -817,7 +1157,7 @@ export async function initializeAttendantUuids(formId?: string) {
     const responses = await prisma.formResponse.findMany({
       where: {
         form_version_id: { in: eventRegistrationVersionIds },
-        OR: [{ attendant_uuid: null }, { attendant_uuid: "" }],
+        ...MISSING_ATTENDANT_UUID,
       },
       select: { id: true },
     });
@@ -830,11 +1170,12 @@ export async function initializeAttendantUuids(formId?: string) {
     const errors: string[] = [];
     for (const response of responses) {
       try {
-        await prisma.formResponse.update({
-          where: { id: response.id },
+        // Conditional, so a UUID a submission set in the meantime is kept.
+        const { count } = await prisma.formResponse.updateMany({
+          where: { id: response.id, ...MISSING_ATTENDANT_UUID },
           data: { attendant_uuid: crypto.randomUUID() },
         });
-        updated++;
+        updated += count;
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         errors.push(`Failed to update response ${response.id}: ${errorMsg}`);
@@ -886,6 +1227,7 @@ export async function getCompanyFormsForEvent(
     const companyForms: Array<{
       id: string;
       name: string;
+      display_name: string | null;
       slug: string;
       description?: string;
       metadata: FormMetadata;
@@ -921,6 +1263,7 @@ export async function getCompanyFormsForEvent(
       companyForms.push({
         id: String(form.id),
         name: form.name,
+        display_name: form.display_name,
         slug: form.slug ?? "",
         description: form.description ?? undefined,
         metadata,
@@ -1524,6 +1867,7 @@ export async function getCompanyFormBySlugAndEvent(eventId: string, slug: string
     return {
       id: form.id,
       name: form.name,
+      display_name: form.display_name ?? null,
       slug: form.slug,
       description: form.description,
       metadata,

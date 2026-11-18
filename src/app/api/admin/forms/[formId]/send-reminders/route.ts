@@ -9,6 +9,7 @@ import {
 import { getFormVersionWithForm } from "@/lib/repos/forms";
 import { listCompanyNames } from "@/lib/repos/company";
 import { listUserContacts } from "@/lib/repos/users";
+import { formDisplayName } from "@/lib/form-fields";
 
 export async function POST(
   request: NextRequest,
@@ -64,6 +65,9 @@ export async function POST(
       process.env.NEXT_PUBLIC_FORM_DOMAIN ||
       "http://localhost:3000";
     const formUrl = `${baseUrl}/forms/company/${eventId}/${form.slug}`;
+    // Reminders go to company representatives, who know the form by its
+    // display name, not the internal one.
+    const formName = formDisplayName(form, metadata);
 
     const companyIds = [
       ...new Set(recipients.map((r: any) => r.companyId)),
@@ -103,14 +107,14 @@ export async function POST(
         let emailSubject = subject
           .replace(/{name}/g, repName)
           .replace(/{company}/g, companyName)
-          .replace(/{form_name}/g, form.name);
+          .replace(/{form_name}/g, formName);
 
         const formLinkHtml = `<a href="${formUrl}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: 500;">Complete Form</a><br><br><p style="word-break: break-all; color: #2563eb;">${formUrl}</p>`;
 
         let emailContent = content
           .replace(/{name}/g, repName)
           .replace(/{company}/g, companyName)
-          .replace(/{form_name}/g, form.name)
+          .replace(/{form_name}/g, formName)
           .replace(/{form_link}/g, formLinkHtml);
 
         if (!emailContent.includes("<") || !emailContent.includes(">")) {

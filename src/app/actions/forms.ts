@@ -8,6 +8,7 @@ import {
   createForm,
   updateForm,
   deleteForm,
+  duplicateForm,
   listFormVersions,
   getFormVersionById,
   createFormVersion,
@@ -28,8 +29,9 @@ import {
 } from "@/lib/form-submit-errors";
 import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
 import { after } from "next/server";
+import { revalidatePath } from "next/cache";
 import { loadStudentStudy } from "@/lib/student-study";
-import { studyPrefillForFields, type PrefillFaculty } from "@/lib/form-fields";
+import { formDisplayName, studyPrefillForFields, type PrefillFaculty } from "@/lib/form-fields";
 import { setEventRegistrationLink } from "@/lib/repos/event-page";
 import { formPath } from "@/lib/site-path";
 
@@ -92,6 +94,7 @@ export async function fetchFormsAction(opts?: {
       return {
         id: form.id,
         name: form.name,
+        display_name: form.display_name ?? null,
         slug: form.slug,
         description: form.description ?? "",
         folder: form.folder ?? null,
@@ -127,6 +130,8 @@ export async function fetchFormByIdAction(id: string) {
 
 export async function createFormAction(data: {
   name: string;
+  /** Company-facing name; blank means "use name". */
+  display_name?: string | null;
   slug: string;
   description?: string;
   folder?: string | null;
@@ -146,6 +151,7 @@ export async function createFormAction(data: {
     console.log('[createFormAction] Received metadata:', JSON.stringify(data.metadata, null, 2));
     const form = await createForm({
       name: data.name,
+      display_name: data.display_name,
       slug: data.slug,
       description: data.description,
       folder: normalizeFormFolder(data.folder),
@@ -213,6 +219,23 @@ export async function deleteFormAction(id: string) {
     return await deleteForm(id);
   } catch (error) {
     console.error("Error deleting form:", error);
+    throw error;
+  }
+}
+
+/**
+ * Copy a form with all its versions but none of its responses (BR-37). The
+ * copy starts disabled with no active version -- see duplicateForm() -- so
+ * there is no event registration link to sync here.
+ */
+export async function duplicateFormAction(formId: number) {
+  try {
+    await requireAdminUser();
+    const form = await duplicateForm(formId);
+    revalidatePath("/admin/forms");
+    return form;
+  } catch (error) {
+    console.error("[duplicateFormAction] Error duplicating form:", error);
     throw error;
   }
 }
@@ -568,6 +591,10 @@ export async function submitFormResponseAction(data: {
       attendantUuid = existingAttendantUuid ?? undefined;
     }
 
+    // True when this submission gave an existing registration its first scan
+    // link: it then needs the ticket mail a new registration gets.
+    let issuedAttendantUuid = false;
+
     let response: FormResponse | null = null;
     try {
       // Include student info in the form data if student is logged in
@@ -620,6 +647,15 @@ export async function submitFormResponseAction(data: {
           ...(data.submitter_email || _submitter_email ? { submitter_email: (data.submitter_email || _submitter_email) as string } : {}),
         };
         response = await updateFormResponse(existingResponseId, updateData);
+        // A registration sent before the form became an event registration has
+        // no scan link, and re-registering lands here. Issue one now (never
+        // replacing an existing one); the ticket mail below goes out with it.
+        if (isEventRegistration && !attendantUuid) {
+          const { ensureAttendantUuid } = await import("@/lib/repos/forms");
+          const ensured = await ensureAttendantUuid(existingResponseId);
+          attendantUuid = ensured.uuid ?? undefined;
+          issuedAttendantUuid = ensured.issued;
+        }
       } else {
         // Create a new response
         const responseData = {
@@ -677,8 +713,9 @@ export async function submitFormResponseAction(data: {
       }
     }
 
-    // If this is an event registration form, send confirmation email (only for new submissions, not updates)
-    if (response && emailValue && isEventRegistration && !isUpdate) {
+    // If this is an event registration form, send confirmation email (only for new submissions, not updates,
+    // unless the update is what first gave the registration its scan link)
+    if (response && emailValue && isEventRegistration && (!isUpdate || issuedAttendantUuid)) {
       // Get form name - prefer from loaded relation, otherwise fetch it using server client
       let formName: string;
       if (typeof formVersion.form_id !== 'string' && formVersion.form_id?.name) {
@@ -729,8 +766,9 @@ export async function submitFormResponseAction(data: {
       });
     }
 
-    // EventSight integration (only for new registrations, fail silently like emails)
-    if (response && isEventRegistration && !isUpdate) {
+    // EventSight integration (only for new registrations, fail silently like emails).
+    // A registration without a scan link was never sent: it had no barcode yet.
+    if (response && isEventRegistration && (!isUpdate || issuedAttendantUuid)) {
       // An outside HTTP call; made after responding so it can't slow the form.
       after(async () => {
         try {
@@ -748,14 +786,15 @@ export async function submitFormResponseAction(data: {
 
     // If this is a company form, send confirmation email (if enabled, only for new submissions)
     if (response && emailValue && isCompanyForm && sendCompanyFormEmail && !isUpdate) {
+      // Companies receive this mail, so it names the form by its display name.
       let formName: string;
       if (typeof formVersion.form_id !== 'string' && formVersion.form_id?.name) {
-        formName = formVersion.form_id.name;
+        formName = formDisplayName(formVersion.form_id, versionMetadata);
       } else {
         const formId = typeof formVersion.form_id === 'string' ? formVersion.form_id : formVersion.form_id.id;
         try {
           const form = await getFormById(formId);
-          formName = form?.name || "Form";
+          formName = form ? formDisplayName(form, versionMetadata) : "Form";
         } catch (error) {
           console.warn("Could not get form details, using fallback name:", error);
           formName = 'Form';

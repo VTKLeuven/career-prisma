@@ -2,8 +2,8 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { COMPANY_INCLUDE, shapeCompany } from "@/lib/repos/_shape";
-import type { Company } from "@/lib/schema";
+import { COMPANY_CARD_SELECT, COMPANY_INCLUDE, shapeCompany, shapeCompanyCard } from "@/lib/repos/_shape";
+import type { Company, CompanyCard } from "@/lib/schema";
 import { resolveAcademicYearId } from "@/lib/repos/academic-year";
 import { invalidateCompanyPageCache } from "@/lib/company-page-cache";
 import { sanitizeRichText } from "@/lib/sanitize-html";
@@ -172,25 +172,30 @@ function toCompanyWrite(payload: Partial<Company>): Record<string, unknown> {
  * company with five levels of nested expansion and filtered in JavaScript. The
  * relation is a plain join, so the database can answer it directly.
  */
-export async function getCompaniesForEvent(eventId: string, _usePublic = false) {
-  try {
-    const event = await prisma.careerEvent.findUnique({
-      where: { id: eventId },
-      select: { academic_year_id: true },
-    });
-    const academicYearId = event?.academic_year_id ?? await resolveAcademicYearId();
-    const rows = await prisma.company.findMany({
-      where: {
-        companyCareerEventOptions: {
-          some: {
-            academic_year_id: academicYearId,
-            status: "sold",
-            careerEventOption: {
-              careerEventOptionEvents: { some: { career_event_id: eventId } },
-            },
-          },
+/** Companies that bought an option for this event, in the event's academic year. */
+async function attendingCompaniesWhere(eventId: string) {
+  const event = await prisma.careerEvent.findUnique({
+    where: { id: eventId },
+    select: { academic_year_id: true },
+  });
+  const academicYearId = event?.academic_year_id ?? await resolveAcademicYearId();
+  return {
+    companyCareerEventOptions: {
+      some: {
+        academic_year_id: academicYearId,
+        status: "sold",
+        careerEventOption: {
+          careerEventOptionEvents: { some: { career_event_id: eventId } },
         },
       },
+    },
+  };
+}
+
+export async function getCompaniesForEvent(eventId: string, _usePublic = false) {
+  try {
+    const rows = await prisma.company.findMany({
+      where: await attendingCompaniesWhere(eventId),
       include: COMPANY_INCLUDE,
       orderBy: { name: "asc" },
     });
@@ -198,6 +203,32 @@ export async function getCompaniesForEvent(eventId: string, _usePublic = false) 
     return rows.map(shapeCompany) as Company[];
   } catch (error) {
     console.error("[getCompaniesForEvent] Error fetching companies for event:", error);
+    return [];
+  }
+}
+
+/**
+ * The companies getCompaniesForEvent() returns, in the same order, as public
+ * CompanyCards for the event page's "Explore companies" grid. That endpoint
+ * used to send the full public company -- every relation loaded, both
+ * descriptions sanitised through DOMPurify -- about 5 KB per company, most of
+ * the time spent sanitising long descriptions the grid never shows. Only the
+ * short description, which the grid does show, is sanitised here.
+ */
+export async function listCompanyCardsForEvent(eventId: string): Promise<CompanyCard[]> {
+  try {
+    const rows = await prisma.company.findMany({
+      where: await attendingCompaniesWhere(eventId),
+      select: COMPANY_CARD_SELECT,
+      orderBy: { name: "asc" },
+    });
+    const out = rows.map((row) => {
+      const card = shapeCompanyCard(row);
+      return { ...card, short_description: card.short_description && sanitizeRichText(card.short_description) };
+    });
+    return out;
+  } catch (error) {
+    console.error("[listCompanyCardsForEvent] Error fetching companies for event:", error);
     return [];
   }
 }

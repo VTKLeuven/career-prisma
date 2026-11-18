@@ -10,6 +10,7 @@ import { generateCompanyPageRequestEmailHtml, generateCVBookRequestEmailHtml } f
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { toPublicCompany, toPublicSpeaker } from "@/lib/repos/_shape";
 import { setUserPassword } from "@/lib/repos/credentials";
+import { scheduleVacancyAccessNotification } from "@/lib/vacancy-access-notification";
 import argon2 from "argon2";
 
 // Same minimum as accept-invite and the reset flows.
@@ -717,7 +718,9 @@ export async function uploadCompanyLogo(file: File) {
 export async function addOptionToCompanyAction(companyId: string, optionId: string, subOptionIds?: string[]) {
   await requireAdminUser();
   const { createOptionSale } = await import("@/lib/repos/option-sales");
-  await createOptionSale({ companyId, optionId, subOptionIds });
+  const { vacancyAccess } = await createOptionSale({ companyId, optionId, subOptionIds });
+  // A sale carrying the vacancy grant mails the company's reps (BR-24).
+  scheduleVacancyAccessNotification(vacancyAccess);
   return loadCompanyById(companyId);
 }
 
@@ -726,7 +729,8 @@ async function addSubOptionViaJunction(companyId: string, subOptionId: string): 
   if (!Number.isSafeInteger(Number(subOptionId))) return false;
   try {
     const { createSubOptionSale } = await import("@/lib/repos/option-sales");
-    await createSubOptionSale({ companyId, subOptionId });
+    const { vacancyAccess } = await createSubOptionSale({ companyId, subOptionId });
+    scheduleVacancyAccessNotification(vacancyAccess);
     return true;
   } catch (error) {
     if (error instanceof Error && error.message === "Sub-option not found") return false;

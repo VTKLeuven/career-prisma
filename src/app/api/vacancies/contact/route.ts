@@ -6,7 +6,8 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   // Off means off: on production this endpoint answers as if it did not exist,
-  // rather than quietly accepting mail for a feature nobody can see.
+  // rather than quietly accepting mail for a feature nobody can see. It is
+  // part of the student-facing half, which stays dev-only after BR-24.
   if (!isDevEnvironment()) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }

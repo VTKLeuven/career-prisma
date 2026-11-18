@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
@@ -8,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { VacancyContactForm } from "@/components/vacancies/VacancyContactForm";
 import { getFileUrl } from "@/components/Images";
 import type {
-  Vacancy,
+  PublicVacancy,
   VacancyType,
   VacancySectionConfig,
   Master,
@@ -21,33 +20,23 @@ import {
 import {
   ArrowLeft,
   MapPin,
-  Mail,
-  Phone,
-  User,
   Building2,
   Globe,
-  MessageSquare,
 } from "lucide-react";
 
-/** A published vacancy; ./page.tsx loads it on the server. */
+/**
+ * A published vacancy; ./page.tsx loads it on the server. It arrives without
+ * contact details (toPublicVacancy() in app/actions/vacancies.ts): the page
+ * shows only the company's name, logo and website, and the contact form is
+ * delivered to the vacancy's internal contact email on the server.
+ */
 export function VacancyDetailClient({
   vacancy,
   sectionConfigs,
 }: {
-  vacancy: Vacancy;
+  vacancy: PublicVacancy;
   sectionConfigs: VacancySectionConfig[];
 }) {
-  const [showContactForm, setShowContactForm] = useState(false);
-  const contactFormSectionRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!showContactForm) return;
-    contactFormSectionRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  }, [showContactForm]);
-
   const company =
     typeof vacancy.company === "object" ? (vacancy.company as Company) : null;
   const typeName =
@@ -193,50 +182,6 @@ export function VacancyDetailClient({
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Contact info */}
-            <div className="rounded-2xl border border-neutral-200/80 bg-white p-6 shadow-sm">
-              <h3 className="mb-4 flex items-center gap-2 font-semibold text-neutral-900">
-                <span className="h-1 w-6 rounded-full bg-vtk-yellow" aria-hidden />
-                Contact information
-              </h3>
-              <div className="space-y-3 text-sm">
-                {vacancy.contact_name && (
-                  <div className="flex items-center gap-2">
-                    <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    <span>{vacancy.contact_name}</span>
-                  </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                  <a
-                    href={`mailto:${vacancy.contact_email}`}
-                    className="text-vtk-blue hover:underline break-all"
-                  >
-                    {vacancy.contact_email}
-                  </a>
-                </div>
-                {vacancy.contact_phone && (
-                  <div className="flex items-center gap-2">
-                    <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    <a
-                      href={`tel:${vacancy.contact_phone}`}
-                      className="text-vtk-blue hover:underline"
-                    >
-                      {vacancy.contact_phone}
-                    </a>
-                  </div>
-                )}
-              </div>
-
-              <Button
-                className="mt-4 w-full gap-2 bg-vtk-blue text-white shadow-sm hover:bg-vtk-blue-dark"
-                onClick={() => setShowContactForm(!showContactForm)}
-              >
-                <MessageSquare className="h-4 w-4" />
-                {showContactForm ? "Hide form" : "Send a message"}
-              </Button>
-            </div>
-
             {/* Posted date */}
             <div className="rounded-2xl border border-neutral-200/80 bg-vtk-bg/80 p-6 shadow-sm">
               <p className="text-sm text-neutral-600">
@@ -253,25 +198,23 @@ export function VacancyDetailClient({
           </div>
         </div>
 
-        {/* Contact form (full width below) */}
-        {showContactForm && (
-          <div
-            ref={contactFormSectionRef}
-            className="mt-8 scroll-mt-28 rounded-2xl border border-neutral-200/80 bg-white p-6 shadow-sm ring-1 ring-vtk-blue/[0.06] sm:p-8 md:scroll-mt-32"
-          >
-            <h2 className="mb-2 text-xl font-semibold text-neutral-900">
-              Send a message to {company?.name ?? "this company"}
-            </h2>
-            <p className="mb-6 text-sm text-neutral-600">
-              Your message will be sent directly to the company. You can attach
-              your CV or other documents.
-            </p>
-            <VacancyContactForm
-              vacancyId={vacancy.id}
-              companyName={company?.name ?? "the company"}
-            />
-          </div>
-        )}
+        {/* Contact form (full width below). The contact-information card
+            that used to open it is gone (BR-24) -- it showed the contact
+            person's name, e-mail and phone -- so the form is always shown;
+            it is delivered to the vacancy's internal contact email. */}
+        <div className="mt-8 rounded-2xl border border-neutral-200/80 bg-white p-6 shadow-sm ring-1 ring-vtk-blue/[0.06] sm:p-8">
+          <h2 className="mb-2 text-xl font-semibold text-neutral-900">
+            Send a message to {company?.name ?? "this company"}
+          </h2>
+          <p className="mb-6 text-sm text-neutral-600">
+            Your message will be sent directly to the company. You can attach
+            your CV or other documents.
+          </p>
+          <VacancyContactForm
+            vacancyId={vacancy.id}
+            companyName={company?.name ?? "the company"}
+          />
+        </div>
         </div>
       </div>
     </div>

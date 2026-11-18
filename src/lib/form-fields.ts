@@ -1,13 +1,43 @@
 // lib/form-fields.ts — helpers shared by the form builder, the public form
 // pages and the responses page. Client-safe: no server-only imports.
 
-import type { FormField } from "@/lib/schema";
+import type { Form, FormField } from "@/lib/schema";
 import {
   STUDY_PROGRAMMES,
   STUDY_YEARS,
   labelForProgramme,
   labelForYear,
 } from "@/lib/study-options";
+
+/**
+ * Whether a form version is a company form. There is no column for it: the
+ * form type lives in each version's jsonb metadata (`is_company_form`, written
+ * as `true` by the admin create/edit dialogs), so it is per version, not per
+ * form. Strict `=== true`, as the admin dialogs read it.
+ */
+export function isCompanyFormMetadata(
+  metadata: Record<string, unknown> | null | undefined
+): boolean {
+  return metadata?.is_company_form === true;
+}
+
+/**
+ * The name companies see for a form. Admins give forms a long internal `name`
+ * for the back office; `display_name` is the clean one shown on the company
+ * dashboard, the company form page and the emails companies receive. It is
+ * optional, so forms without one keep showing `name`.
+ *
+ * Only company forms have a display name (BR-57 review), so it takes the
+ * version's metadata and ignores `display_name` for any other form type --
+ * a value left on a student or general form never replaces `name`.
+ */
+export function formDisplayName(
+  form: Pick<Form, "name" | "display_name">,
+  metadata: Record<string, unknown> | null | undefined
+): string {
+  if (!isCompanyFormMetadata(metadata)) return form.name;
+  return form.display_name?.trim() || form.name;
+}
 
 /**
  * The name to show for a field wherever a column header or an error message

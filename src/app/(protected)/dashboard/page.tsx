@@ -15,6 +15,7 @@ import { getCompanyOrderingTabInfo } from "@/lib/company-ordering";
 import { hasGrant } from "@/lib/utils/company-access";
 import { getUpcomingEventsWithFallback } from "@/lib/utils/events";
 import { getCompanyEvents, getCompanyOptionIds } from "@/lib/utils/company-events";
+import { formDisplayName } from "@/lib/form-fields";
 import { DashboardHome, type ManagedEvent } from "./dashboard-client";
 
 /**
@@ -76,10 +77,11 @@ async function loadManagedEvent(event: CareerEvent, company: Company): Promise<M
 
   return {
     event,
-    // Only what the card shows -- not each form's full schema.
+    // Only what the card shows -- not each form's full schema, nor its
+    // internal admin name: companies see the display name.
     forms: forms.map((f) => ({
       id: f.id,
-      name: f.name,
+      displayName: formDisplayName(f, f.metadata),
       slug: f.slug,
       metadata: { deadline: (f.metadata as { deadline?: string } | undefined)?.deadline },
     })),

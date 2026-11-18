@@ -13,11 +13,13 @@
 import crypto from "crypto";
 import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
+import { STUDENT_SESSION_COOKIE, verifySessionToken } from "@/lib/auth-session";
 
 const STATE_COOKIE = "vtk_sso_state";
 const VERIFIER_COOKIE = "vtk_sso_verifier";
 const NONCE_COOKIE = "vtk_sso_nonce";
 const REDIRECT_COOKIE = "vtk_sso_redirect_to";
+const SILENT_COOKIE = "vtk_sso_silent";
 
 /**
  * Marks a browser as "this student signs in through the SSO". Long-lived and
@@ -27,6 +29,19 @@ const REDIRECT_COOKIE = "vtk_sso_redirect_to";
  * in. See `/student-login` and `docs/auth.md`.
  */
 export const SSO_HINT_COOKIE = "student_sso";
+
+/**
+ * The loop guard for automatic re-logins. Set by `initiate` whenever a silent
+ * flow starts; while it is present, nothing starts another one on its own. If
+ * a round-trip ends without a session sticking — a cookie the browser refused,
+ * two tabs racing — the next page load shows the signed-out page instead of
+ * bouncing again. Never cleared on success: with a session in place it is
+ * simply not consulted.
+ */
+export const SSO_ATTEMPT_COOKIE = "student_sso_attempt";
+
+/** How long one automatic attempt blocks the next. */
+export const SSO_ATTEMPT_DURATION = 60 * 5; // 5 minutes
 
 /**
  * Where a member edits their own profile on vtk.be — the only place an SSO
@@ -48,8 +63,37 @@ export function vtkAccountUrl(): string {
 /** How long the user has to finish the flow at the SSO before state expires. */
 const FLOW_DURATION = 60 * 30; // 30 minutes
 
-/** How long the hint cookie survives. Long — it holds no privilege at all. */
-export const SSO_HINT_DURATION = 60 * 60 * 24 * 365; // 1 year
+/**
+ * How long the hint cookie survives: about a month, renewed by every completed
+ * login — including the daily silent one — so a student who visits at least
+ * monthly never sees a login button, and one who stays away longer clicks it
+ * once. It holds no privilege; the session alone decides who is signed in.
+ */
+export const SSO_HINT_DURATION = 60 * 60 * 24 * 30; // 30 days
+
+/**
+ * True when this request should go through the SSO without asking: there is
+ * no live student session, the hint says this browser signs in through
+ * vtk.be, and no automatic attempt started in the last few minutes. The
+ * session is checked by its signature and expiry only, like `/student-login`
+ * does, so a page load costs no database query to decide.
+ */
+export async function shouldAutoRelogin(): Promise<boolean> {
+  const cookieStore = await cookies();
+  return (
+    Boolean(cookieStore.get(SSO_HINT_COOKIE)?.value) &&
+    !cookieStore.get(SSO_ATTEMPT_COOKIE)?.value &&
+    !verifySessionToken(cookieStore.get(STUDENT_SESSION_COOKIE)?.value, "student")
+  );
+}
+
+/**
+ * Where a failed automatic re-login lands: the login form, never back into the
+ * SSO (`sso=0`), with the reason for `/student-login` to explain in Dutch.
+ */
+export function autoReloginFailedPath(code: string, redirectTo: string): string {
+  return `/student-login?sso=0&sso_error=${encodeURIComponent(code)}&redirectTo=${encodeURIComponent(redirectTo)}`;
+}
 
 /**
  * The hint cookie's value: the scopes the student actually granted last time,
@@ -233,6 +277,8 @@ export interface FlowState {
   verifier: string;
   nonce: string;
   redirectTo: string;
+  /** Started automatically (`silent=1`), so a failure must not show an error page. */
+  silent: boolean;
 }
 
 export async function storeFlowState(
@@ -253,6 +299,9 @@ export async function storeFlowState(
   cookieStore.set(VERIFIER_COOKIE, flow.verifier, options);
   cookieStore.set(NONCE_COOKIE, flow.nonce, options);
   cookieStore.set(REDIRECT_COOKIE, flow.redirectTo, options);
+  // Written as "0" too, not only when set: every flow overwrites the last
+  // one's value rather than relying on it having been cleared.
+  cookieStore.set(SILENT_COOKIE, flow.silent ? "1" : "0", options);
 }
 
 /** Reads the flow cookies without clearing them. */
@@ -263,12 +312,13 @@ export async function readFlowState(): Promise<Partial<FlowState>> {
     verifier: cookieStore.get(VERIFIER_COOKIE)?.value,
     nonce: cookieStore.get(NONCE_COOKIE)?.value,
     redirectTo: cookieStore.get(REDIRECT_COOKIE)?.value,
+    silent: cookieStore.get(SILENT_COOKIE)?.value === "1",
   };
 }
 
 export async function clearFlowState(): Promise<void> {
   const cookieStore = await cookies();
-  for (const name of [STATE_COOKIE, VERIFIER_COOKIE, NONCE_COOKIE, REDIRECT_COOKIE]) {
+  for (const name of [STATE_COOKIE, VERIFIER_COOKIE, NONCE_COOKIE, REDIRECT_COOKIE, SILENT_COOKIE]) {
     cookieStore.delete(name);
   }
 }

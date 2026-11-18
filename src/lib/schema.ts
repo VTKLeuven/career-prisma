@@ -131,6 +131,20 @@ export type Company = {
   }>;
 };
 
+/**
+ * A company as a public logo card -- the event page's "Explore companies"
+ * grid. Only what the grid and its detail view render, plus the status and
+ * grants hasCompanyPageAccess() reads; a full Company fits it too.
+ */
+export type CompanyCard = {
+  id: string;
+  name: string | null;
+  status?: string;
+  logo?: string | null;
+  short_description?: string | null;
+  grants?: string[];
+};
+
 export type CareerEvent = {
   id: string;
   name: string;
@@ -356,7 +370,10 @@ export type Faculty = {
 
 export type Form = {
   id: string;
+  /** Internal name, for the admin back office. */
   name: string;
+  /** Company-facing name; null/empty falls back to `name` (formDisplayName()). */
+  display_name?: string | null;
   slug: string;
   description?: string;
   is_active?: boolean;
@@ -627,6 +644,13 @@ export type Vacancy = {
   sections: Record<string, string>;
   masters?: Array<{ master_id: Master | string }>;
 };
+
+/**
+ * A vacancy as the public site receives it. The contact fields are internal:
+ * `contact_email` is where the vacancy page's contact form is delivered,
+ * server-side, and none of the three is shown publicly (BR-24).
+ */
+export type PublicVacancy = Omit<Vacancy, "contact_email" | "contact_name" | "contact_phone">;
 
 // Optional: Full Directus Schema map (only collections you use)
 export type Schema = {

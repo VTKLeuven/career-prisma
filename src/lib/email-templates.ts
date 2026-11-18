@@ -766,3 +766,107 @@ export function generatePasswordResetEmailHtml({
   `;
 }
 
+
+/**
+ * Generate the "your company can now post vacancies" email (BR-24), sent to
+ * every representative of a company when a sale with the vacancy-platform
+ * grant is recorded -- see lib/vacancy-access-notification.ts.
+ */
+export function generateVacancyAccessEmailHtml({
+  firstName,
+  lastName,
+  companyName,
+  academicYearName,
+  vacanciesUrl,
+}: {
+  firstName?: string;
+  lastName?: string;
+  companyName: string;
+  academicYearName?: string;
+  vacanciesUrl: string;
+}) {
+  // Names come from admin and company input; the older templates above
+  // interpolate them raw, this one escapes them.
+  const escape = (text: string) =>
+    text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[c]!);
+  const fullName = [firstName, lastName].filter(Boolean).join(" ");
+  const displayName = fullName ? escape(fullName) : "there";
+  const company = escape(companyName || "your company");
+  const year = academicYearName ? ` for ${escape(academicYearName)}` : "";
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+            line-height: 1.6; 
+            color: #333; 
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+          }
+          .container { 
+            max-width: 600px; 
+            margin: 0 auto; 
+            padding: 40px 20px;
+            background-color: #ffffff;
+          }
+          .button {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #2563eb;
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-weight: 500;
+          }
+          .button:hover {
+            background-color: #1d4ed8;
+          }
+          h2 {
+            color: #111827;
+            margin-top: 0;
+          }
+          .info-box {
+            background-color: #f9fafb;
+            border-left: 4px solid #2563eb;
+            padding: 16px;
+            margin: 20px 0;
+            border-radius: 4px;
+          }
+          .signature {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            color: #6b7280;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h2>Your vacancy platform access is active</h2>
+          <p>Dear ${displayName},</p>
+          <p><strong>${company}</strong> now has access to the VTK Career vacancy platform${year}.</p>
+          <p>You can create, edit and publish your company's vacancies from your company dashboard:</p>
+          <div style="text-align: center;">
+            <a href="${vacanciesUrl}" class="button" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff !important; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: 500;">Manage vacancies</a>
+          </div>
+          <div class="info-box">
+            <p><strong>Contact email</strong></p>
+            <p>Each vacancy asks for a contact email. Messages students send about the vacancy are delivered to that address. It is never shown publicly.</p>
+          </div>
+          <p>If the button doesn't work, you can copy and paste this link into your browser:</p>
+          <p style="word-break: break-all; color: #2563eb;">${vacanciesUrl}</p>
+          <div class="signature">
+            <p>Best regards,<br>The VTK Career Team</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}

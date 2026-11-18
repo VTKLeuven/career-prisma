@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/select";
 import { ArrowLeft, Download, Eye, Trash2, Pencil, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, QrCode, Loader2, Mail, ArrowUpDown, ArrowUp, ArrowDown, Check, X, FileArchive, Archive, Scan } from "lucide-react";
 import type { FormVersion, FormResponse, FormField } from "@/lib/schema";
-import { fieldDisplayLabel } from "@/lib/form-fields";
+import { fieldDisplayLabel, formDisplayName, isCompanyFormMetadata } from "@/lib/form-fields";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 import { CSV_UTF8_BOM } from "@/lib/utils/slugify";
 import { FormFieldRenderer } from "@/components/FormFieldRenderer";
@@ -53,7 +53,7 @@ import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
 
 export type FormResponsesInitialData = {
-  form: { id: string; name: string; slug: string } | null;
+  form: { id: string; name: string; display_name: string | null; slug: string } | null;
   versions: FormVersion[];
   /** The first page of responses across all versions -- the view the screen opens on. */
   page: { responses: FormResponse[]; total: number; first: string | null; latest: string | null };
@@ -66,7 +66,7 @@ export type FormResponsesInitialData = {
 export function FormResponsesClient({ formId, initialData }: { formId: string; initialData: FormResponsesInitialData }) {
   const router = useRouter();
 
-  const [form] = useState<{ id: string; name: string; slug: string } | null>(initialData.form);
+  const [form] = useState<{ id: string; name: string; display_name: string | null; slug: string } | null>(initialData.form);
   const [versions, setVersions] = useState<FormVersion[]>(initialData.versions);
   // A specific version to show when "all versions" is switched off: the active one.
   const [selectedVersionId, setSelectedVersionId] = useState<string>(
@@ -603,12 +603,18 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
       const data = await response.json();
       setReminderRecipients(data.recipients || []);
       
-      // Set default subject and content
+      // Set default subject and content. Reminders go to companies, so they
+      // name the form the way companies see it -- judged on the version the
+      // reminder is for, as handleSendReminders picks it.
+      const reminderVersion = isAllVersions
+        ? versions.find((v) => isCompanyFormMetadata(v.metadata))
+        : versions.find((v) => v.id === selectedVersionId);
+      const companyFormName = formDisplayName(form, reminderVersion?.metadata);
       if (!reminderSubject) {
-        setReminderSubject(`Reminder: Please Complete ${form.name}`);
+        setReminderSubject(`Reminder: Please Complete ${companyFormName}`);
       }
       if (!reminderContent) {
-        setReminderContent(`Dear {name},\n\nThis is a reminder that your company {company} still needs to complete the form ${form.name}.\n\nPlease complete the form by clicking the link below:\n\n{form_link}\n\nIf you have any questions, please don't hesitate to contact us.\n\nBest regards,\nThe VTK Career Team`);
+        setReminderContent(`Dear {name},\n\nThis is a reminder that your company {company} still needs to complete the form ${companyFormName}.\n\nPlease complete the form by clicking the link below:\n\n{form_link}\n\nIf you have any questions, please don't hesitate to contact us.\n\nBest regards,\nThe VTK Career Team`);
       }
     } catch (error) {
       console.error("Error loading recipients:", error);

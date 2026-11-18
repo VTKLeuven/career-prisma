@@ -7,6 +7,7 @@ import {
   createFormAction,
   updateFormAction,
   deleteFormAction,
+  duplicateFormAction,
   setActiveVersionAction,
   fetchFormVersionsAction,
   updateFormVersionAction,
@@ -39,6 +40,7 @@ import { Badge } from "@/components/ui/badge";
 import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power, Building2, RefreshCw, Hammer, Inbox, Folder as FolderIcon, X } from "lucide-react";
 import { useUser } from "@/providers/UserProvider";
 import type { FormSchema, FormField, CareerEvent } from "@/lib/schema";
+import { isCompanyFormMetadata } from "@/lib/form-fields";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatDateBE, formatDateTimeBE, utcToLocalDateTimeLocal, localDateTimeLocalToUtc } from "@/lib/date-utils";
@@ -55,6 +57,7 @@ import { toast } from "sonner";
 type FormRow = {
   id: string;
   name: string;
+  display_name: string | null;
   slug: string;
   description: string;
   /** Section of the list this form is shown under; null means "No folder". */
@@ -144,7 +147,7 @@ export default function AdminFormsPage() {
           columns={FORM_COLUMNS}
           getRowId={(form) => form.id}
           noun="form"
-          search={{ keys: ["slug", "description", "folder"] }}
+          search={{ keys: ["slug", "description", "display_name", "folder"] }}
           groupBy={{
             value: (form) => form.folder,
             emptyLabel: "No folder",
@@ -492,6 +495,16 @@ function CompanyFormEmailFields(props: EmailFieldsProps) {
   );
 }
 
+// The internal/display name split (BR-57): admins keep a long, descriptive
+// `name` for the back office; companies see `display_name`, or `name` when it
+// is left empty (formDisplayName() in lib/form-fields.ts).
+// Only company forms have the split: both hints and the Display Name field
+// render only while the dialog's form type is "Company form" -- students see a
+// student or general form under its `name`, so that one is not internal.
+const FORM_NAME_HINT = "Internal name, shown only here in the back office.";
+const DISPLAY_NAME_HINT =
+  "What companies see on their dashboard, on the form and in emails. Leave empty to show the form name.";
+
 // Fills in a name-based subject and body for a company form's confirmation
 // email, but only while they are still empty or the generic default.
 // Functional updates, so it never overwrites what the admin typed.
@@ -523,6 +536,7 @@ function CreateFormDialog() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
   const [folder, setFolder] = useState("");
@@ -559,9 +573,10 @@ function CreateFormDialog() {
     }
   }, [name, isEventRegistration]);
 
+  // Companies receive this email, so the defaults use the name they see.
   useEffect(() => {
-    if (isCompanyForm) fillCompanyFormEmailDefaults(name, setCompanyFormEmailSubject, setCompanyFormEmailContent);
-  }, [name, isCompanyForm]);
+    if (isCompanyForm) fillCompanyFormEmailDefaults(displayName.trim() || name, setCompanyFormEmailSubject, setCompanyFormEmailContent);
+  }, [name, displayName, isCompanyForm]);
 
   // Load events when dialog opens and event registration or company form is enabled
   useEffect(() => {
@@ -703,6 +718,9 @@ function CreateFormDialog() {
 
       const created = await createFormAction({
         name,
+        // Only company forms get a display name; a name typed before the
+        // type was switched away is dropped, not saved out of sight.
+        ...(isCompanyForm ? { display_name: displayName } : {}),
         slug,
         description,
         folder,
@@ -712,6 +730,7 @@ function CreateFormDialog() {
 
       setOpen(false);
       setName("");
+      setDisplayName("");
       setSlug("");
       setDescription("");
       setFolder("");
@@ -775,7 +794,21 @@ function CreateFormDialog() {
                 placeholder="e.g., Company Registration"
                 required
               />
+              {isCompanyForm && <p className="text-xs text-muted-foreground">{FORM_NAME_HINT}</p>}
             </div>
+            {isCompanyForm && (
+              <div className="space-y-2">
+                <Label htmlFor="display-name">Display Name</Label>
+                <Input
+                  id="display-name"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder={name.trim() || "e.g., Registration"}
+                  maxLength={255}
+                />
+                <p className="text-xs text-muted-foreground">{DISPLAY_NAME_HINT}</p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="slug">Slug (URL)</Label>
               <Input
@@ -1077,6 +1110,7 @@ function FormActionsMenu({
           <DropdownMenuSeparator />
           <ToggleFormStatusMenuItem form={form} onUpdate={onUpdate} />
           <DropdownMenuSeparator />
+          <DuplicateFormMenuItem form={form} onUpdate={onUpdate} />
           <DropdownMenuItem
             onClick={() => setDeleteOpen(true)}
             className="text-destructive"
@@ -1121,6 +1155,7 @@ function EditFormDialog({
   onUpdate: () => void;
 }) {
   const [name, setName] = useState(form.name);
+  const [displayName, setDisplayName] = useState(form.display_name ?? "");
   const [slug, setSlug] = useState(form.slug);
   const [description, setDescription] = useState(form.description);
   const [folder, setFolder] = useState(form.folder ?? "");
@@ -1153,7 +1188,7 @@ function EditFormDialog({
     form.metadata?.is_event_registration === true
   );
   const [isCompanyForm, setIsCompanyForm] = useState(
-    form.metadata?.is_company_form === true
+    isCompanyFormMetadata(form.metadata)
   );
   const [selectedCompanyFormEventId, setSelectedCompanyFormEventId] = useState<string>(
     (form.metadata?.event_id as string) || ""
@@ -1226,13 +1261,14 @@ function EditFormDialog({
   useEffect(() => {
     if (open) {
       setName(form.name);
+      setDisplayName(form.display_name ?? "");
       setSlug(form.slug);
       setDescription(form.description);
       setFolder(form.folder ?? "");
       setDeadline(form.metadata?.deadline ? utcToLocalDateTimeLocal(form.metadata.deadline as string) : '');
       setMaxEntries(form.metadata?.max_entries ? String(form.metadata.max_entries) : '');
       setIsEventRegistration(form.metadata?.is_event_registration === true);
-      setIsCompanyForm(form.metadata?.is_company_form === true);
+      setIsCompanyForm(isCompanyFormMetadata(form.metadata));
       setSelectedEventId((form.metadata?.event_id as string) || '');
       setSelectedCompanyFormEventId((form.metadata?.event_id as string) || '');
       setSelectedOptionIds((form.metadata?.option_ids as string[]) || []);
@@ -1250,8 +1286,8 @@ function EditFormDialog({
 
   // Declared after the reset above so it sees the values that reset just set.
   useEffect(() => {
-    if (open && isCompanyForm) fillCompanyFormEmailDefaults(name, setCompanyFormEmailSubject, setCompanyFormEmailContent);
-  }, [name, isCompanyForm, open]);
+    if (open && isCompanyForm) fillCompanyFormEmailDefaults(displayName.trim() || name, setCompanyFormEmailSubject, setCompanyFormEmailContent);
+  }, [name, displayName, isCompanyForm, open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1261,6 +1297,13 @@ function EditFormDialog({
       // Update form basic info
       await updateFormAction(form.id, {
         name,
+        // Blank clears it (stored as NULL), falling back to the name.
+        // Only sent for a company form: for any other type the field is
+        // hidden, so a stored value is left alone rather than overwritten
+        // from a field the admin cannot see. display_name belongs to the form
+        // while the type belongs to a version, so an older company version
+        // may still use it; formDisplayName() ignores it for other types.
+        ...(isCompanyForm ? { display_name: displayName } : {}),
         slug,
         description,
         folder,
@@ -1412,7 +1455,21 @@ function EditFormDialog({
                 onChange={(e) => setName(e.target.value)}
                 required
               />
+              {isCompanyForm && <p className="text-xs text-muted-foreground">{FORM_NAME_HINT}</p>}
             </div>
+            {isCompanyForm && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-display-name">Display Name</Label>
+                <Input
+                  id="edit-display-name"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder={name.trim() || "e.g., Registration"}
+                  maxLength={255}
+                />
+                <p className="text-xs text-muted-foreground">{DISPLAY_NAME_HINT}</p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="edit-slug">Slug (URL)</Label>
               <Input
@@ -1715,6 +1772,35 @@ function DeleteFormDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function DuplicateFormMenuItem({ form, onUpdate }: { form: FormRow; onUpdate: () => void }) {
+  const [duplicating, setDuplicating] = useState(false);
+
+  const handleDuplicate = async (e: React.MouseEvent) => {
+    // Keep the menu open and the item disabled while it runs, so a double click
+    // cannot make two copies.
+    e.preventDefault();
+    e.stopPropagation();
+    setDuplicating(true);
+    try {
+      const copy = await duplicateFormAction(Number(form.id));
+      toast.success(`Duplicated as "${copy.name}" (disabled, no active version yet)`);
+      onUpdate();
+    } catch (error) {
+      console.error("Error duplicating form:", error);
+      toast.error(`Failed to duplicate form: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setDuplicating(false);
+    }
+  };
+
+  return (
+    <DropdownMenuItem onClick={handleDuplicate} disabled={duplicating}>
+      <Copy className="mr-2 h-4 w-4" />
+      {duplicating ? "Duplicating..." : "Duplicate"}
+    </DropdownMenuItem>
   );
 }
 
