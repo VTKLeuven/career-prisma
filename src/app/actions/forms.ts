@@ -8,6 +8,7 @@ import {
   createForm,
   updateForm,
   deleteForm,
+  duplicateForm,
   listFormVersions,
   getFormVersionById,
   createFormVersion,
@@ -28,6 +29,7 @@ import {
 } from "@/lib/form-submit-errors";
 import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
 import { after } from "next/server";
+import { revalidatePath } from "next/cache";
 import { loadStudentStudy } from "@/lib/student-study";
 import { formDisplayName, studyPrefillForFields, type PrefillFaculty } from "@/lib/form-fields";
 import { setEventRegistrationLink } from "@/lib/repos/event-page";
@@ -192,6 +194,23 @@ export async function deleteFormAction(id: string) {
     return await deleteForm(id);
   } catch (error) {
     console.error("Error deleting form:", error);
+    throw error;
+  }
+}
+
+/**
+ * Copy a form with all its versions but none of its responses (BR-37). The
+ * copy starts disabled with no active version -- see duplicateForm() -- so
+ * there is no event registration link to sync here.
+ */
+export async function duplicateFormAction(formId: number) {
+  try {
+    await requireAdminUser();
+    const form = await duplicateForm(formId);
+    revalidatePath("/admin/forms");
+    return form;
+  } catch (error) {
+    console.error("[duplicateFormAction] Error duplicating form:", error);
     throw error;
   }
 }
