@@ -1,13 +1,23 @@
 // lib/form-fields.ts — helpers shared by the form builder, the public form
 // pages and the responses page. Client-safe: no server-only imports.
 
-import type { FormField } from "@/lib/schema";
+import type { Form, FormField } from "@/lib/schema";
 import {
   STUDY_PROGRAMMES,
   STUDY_YEARS,
   labelForProgramme,
   labelForYear,
 } from "@/lib/study-options";
+
+/**
+ * The name companies see for a form. Admins give forms a long internal `name`
+ * for the back office; `display_name` is the clean one shown on the company
+ * dashboard, the company form page and the emails companies receive. It is
+ * optional, so forms without one keep showing `name`.
+ */
+export function formDisplayName(form: Pick<Form, "name" | "display_name">): string {
+  return form.display_name?.trim() || form.name;
+}
 
 /**
  * The name to show for a field wherever a column header or an error message

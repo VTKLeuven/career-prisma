@@ -15,7 +15,8 @@ import { formatDateTimeBE } from '@/lib/date-utils';
 /** One of the company's events, with everything its card shows (loaded by ./page.tsx). */
 export type ManagedEvent = {
   event: CareerEvent;
-  forms: Array<{ id: string; name: string; slug: string; metadata?: { deadline?: string } }>;
+  /** `displayName` is the company-facing name, already resolved on the server. */
+  forms: Array<{ id: string; displayName: string; slug: string; metadata?: { deadline?: string } }>;
   completedFormIds: string[];
   hasMatchingSoftware: boolean;
   matchingSoftwareCompleted: boolean;
@@ -138,7 +139,7 @@ function ManageEventCard({ managed, orderingEnabled }: { managed: ManagedEvent; 
                         >
                           <Link href={formUrl}>
                             {hasDeadline && <FileText className="h-4 w-4 mr-2" />}
-                            {form.name}
+                            {form.displayName}
                             {isCompleted && hasDeadline && <CheckCircle2 className="h-4 w-4 ml-auto text-green-600" />}
                             {isCompleted && !hasDeadline && <CheckCircle2 className="h-4 w-4 ml-2 text-green-600" />}
                           </Link>

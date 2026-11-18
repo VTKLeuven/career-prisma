@@ -89,6 +89,7 @@ export async function listForms(opts?: {
         ? {
             OR: [
               { name: { contains: search, mode: "insensitive" } },
+              { display_name: { contains: search, mode: "insensitive" } },
               { slug: { contains: search, mode: "insensitive" } },
               { description: { contains: search, mode: "insensitive" } },
             ],
@@ -135,12 +136,23 @@ export async function getPublicFormBySlug(slug: string) {
   }
 }
 
+/**
+ * `display_name` is optional: a blank one is stored as NULL, so "no display
+ * name" has one representation and formDisplayName() falls back to `name`.
+ * Left untouched when the caller did not send it.
+ */
+function normalizeDisplayName<T extends Record<string, unknown>>(data: T): T {
+  if (!("display_name" in data)) return data;
+  const value = typeof data.display_name === "string" ? data.display_name.trim() : "";
+  return { ...data, display_name: value || null };
+}
+
 export async function createForm(data: Partial<Form> & { metadata?: unknown }) {
   try {
     // metadata belongs on the version, not the form
     const { metadata, id: _id, form_versions: _versions, ...formData } = data as Record<string, any>;
     const row = await prisma.form.create({
-      data: { ...formData, created_at: new Date(), updated_at: new Date() } as Prisma.FormCreateInput,
+      data: { ...normalizeDisplayName(formData), created_at: new Date(), updated_at: new Date() } as Prisma.FormCreateInput,
       include: FORM_INCLUDE,
     });
     return shapeForm(row) as Form;
@@ -158,7 +170,7 @@ export async function updateForm(id: string, data: Partial<Form>) {
 
     const row = await prisma.form.update({
       where: { id: formId },
-      data: { ...rest, updated_at: new Date() },
+      data: { ...normalizeDisplayName(rest), updated_at: new Date() },
       include: FORM_INCLUDE,
     });
     return shapeForm(row) as Form;
@@ -885,6 +897,7 @@ export async function getCompanyFormsForEvent(
     const companyForms: Array<{
       id: string;
       name: string;
+      display_name: string | null;
       slug: string;
       description?: string;
       metadata: FormMetadata;
@@ -920,6 +933,7 @@ export async function getCompanyFormsForEvent(
       companyForms.push({
         id: String(form.id),
         name: form.name,
+        display_name: form.display_name,
         slug: form.slug ?? "",
         description: form.description ?? undefined,
         metadata,
@@ -1523,6 +1537,7 @@ export async function getCompanyFormBySlugAndEvent(eventId: string, slug: string
     return {
       id: form.id,
       name: form.name,
+      display_name: form.display_name ?? null,
       slug: form.slug,
       description: form.description,
       metadata,

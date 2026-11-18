@@ -29,7 +29,7 @@ import {
 import { getUserFromCookies, requireAdminUser } from "@/lib/auth-server";
 import { after } from "next/server";
 import { loadStudentStudy } from "@/lib/student-study";
-import { studyPrefillForFields, type PrefillFaculty } from "@/lib/form-fields";
+import { formDisplayName, studyPrefillForFields, type PrefillFaculty } from "@/lib/form-fields";
 import { setEventRegistrationLink } from "@/lib/repos/event-page";
 import { formPath } from "@/lib/site-path";
 
@@ -75,6 +75,7 @@ export async function fetchFormsAction(opts?: {
       return {
         id: form.id,
         name: form.name,
+        display_name: form.display_name ?? null,
         slug: form.slug,
         description: form.description ?? "",
         is_active: form.is_active ?? true,
@@ -109,6 +110,8 @@ export async function fetchFormByIdAction(id: string) {
 
 export async function createFormAction(data: {
   name: string;
+  /** Company-facing name; blank means "use name". */
+  display_name?: string | null;
   slug: string;
   description?: string;
   initialSchema?: FormSchema;
@@ -127,6 +130,7 @@ export async function createFormAction(data: {
     console.log('[createFormAction] Received metadata:', JSON.stringify(data.metadata, null, 2));
     const form = await createForm({
       name: data.name,
+      display_name: data.display_name,
       slug: data.slug,
       description: data.description,
     });
@@ -723,14 +727,15 @@ export async function submitFormResponseAction(data: {
 
     // If this is a company form, send confirmation email (if enabled, only for new submissions)
     if (response && emailValue && isCompanyForm && sendCompanyFormEmail && !isUpdate) {
+      // Companies receive this mail, so it names the form by its display name.
       let formName: string;
       if (typeof formVersion.form_id !== 'string' && formVersion.form_id?.name) {
-        formName = formVersion.form_id.name;
+        formName = formDisplayName(formVersion.form_id);
       } else {
         const formId = typeof formVersion.form_id === 'string' ? formVersion.form_id : formVersion.form_id.id;
         try {
           const form = await getFormById(formId);
-          formName = form?.name || "Form";
+          formName = form ? formDisplayName(form) : "Form";
         } catch (error) {
           console.warn("Could not get form details, using fallback name:", error);
           formName = 'Form';
