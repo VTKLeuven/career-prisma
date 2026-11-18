@@ -11,7 +11,7 @@ import { getFileUrl } from "@/components/Images";
 import { slugifyCompanyName, slugifyEventName, getSpeakerSlug } from "@/lib/utils/slugify";
 import { hasCompanyPageAccess } from "@/lib/utils/company-access";
 import { CompanyLikeButton } from "@/components/CompanyLikeButton";
-import { CareerEventPage, Company, HeaderButtonType, Speaker, TimetableType } from '@/lib/schema'
+import { CareerEventPage, CompanyCard, HeaderButtonType, Speaker, TimetableType } from '@/lib/schema'
 import dynamic from "next/dynamic"
 import { MapPin, Car, ExternalLink } from 'lucide-react'
 import { useBannerPage } from '@/hooks/use-banner-page'
@@ -26,9 +26,12 @@ const EventMap = dynamic(() => import("@/components/EventMap").then(mod => mod.E
 
 export default function EventPageClient({ 
   initialPage,
+  companyCards = [],
   floorplanEnabled = false
 }: { 
   initialPage?: CareerEventPage | null
+  /** The page's own company list, as cards: the "Explore companies" fallback. */
+  companyCards?: CompanyCard[]
   /** Resolved on the server from DEV_ENVIRONMENT; see lib/dev-environment.ts. */
   floorplanEnabled?: boolean
 }) {
@@ -83,6 +86,7 @@ export default function EventPageClient({
 
       <Hero
         page={page ?? undefined}
+        companyCards={companyCards}
         isLoading={isLoading}
         showPopupMessage={showPopupMessage}
         showPopupContent={showPopupContent}
@@ -181,12 +185,14 @@ function Header({ page, floorplanEnabled = false }: { page?: CareerEventPage; fl
 // ---------------- Hero ----------------
 function Hero({
   page,
+  companyCards,
   isLoading,
   showPopupMessage,
   showPopupContent,
   floorplanEnabled = false,
 }: {
   page?: CareerEventPage
+  companyCards: CompanyCard[]
   isLoading: boolean
   showPopupMessage: (msg: string) => void
   showPopupContent: (content: React.ReactNode) => void
@@ -223,11 +229,11 @@ function Hero({
 
     try {
       const res = await fetch(`/api/events/companies?eventId=${encodeURIComponent(eventId)}`)
-      const data = (await res.json()) as { companies?: Company[] }
+      const data = (await res.json()) as { companies?: CompanyCard[] }
       let companies = (data.companies ?? []).filter((c): c is NonNullable<typeof c> => !!c)
 
       if (companies.length === 0) {
-        companies = (page?.companies ?? []).filter((c): c is NonNullable<typeof c> => !!c)
+        companies = companyCards
       }
 
       if (companies.length === 0) {
@@ -236,7 +242,7 @@ function Hero({
       }
       showPopupContent(<CompanyPopup companies={companies} />)
     } catch {
-      const fallback = (page?.companies ?? []).filter((c): c is NonNullable<typeof c> => !!c)
+      const fallback = companyCards
       if (fallback.length > 0) {
         showPopupContent(<CompanyPopup companies={fallback} />)
       } else {
@@ -399,8 +405,8 @@ function Hero({
 
 // ---------------- CompanyPopup ----------------
 
-function CompanyPopup({ companies }: { companies: Company[] }) {
-  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
+function CompanyPopup({ companies }: { companies: CompanyCard[] }) {
+  const [selectedCompany, setSelectedCompany] = useState<CompanyCard | null>(null)
   const scrollPositionRef = useRef<number>(0)
 
   // Companies with logos (grid order) for arrow navigation
@@ -439,7 +445,7 @@ function CompanyPopup({ companies }: { companies: Company[] }) {
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [selectedCompany, companiesWithLogos])
 
-  const handleSelectCompany = (company: Company, fromElement?: HTMLElement) => {
+  const handleSelectCompany = (company: CompanyCard, fromElement?: HTMLElement) => {
     const scrollEl = fromElement?.closest<HTMLElement>("[data-popup-scroll]")
     if (scrollEl) scrollPositionRef.current = scrollEl.scrollTop
     setSelectedCompany(company)

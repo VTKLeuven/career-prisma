@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCompaniesForEvent } from "@/lib/repos/company";
+import { listCompanyCardsForEvent } from "@/lib/repos/company";
 import { areEventCompaniesPublic } from "@/lib/repos/event-page";
-import { toPublicCompany } from "@/lib/repos/_shape";
 import { sharedCacheHeaders } from "@/lib/http-cache";
 
 export async function GET(request: NextRequest) {
@@ -15,7 +14,8 @@ export async function GET(request: NextRequest) {
     if (!(await areEventCompaniesPublic(eventId))) {
       return NextResponse.json({ companies: [] }, { headers: sharedCacheHeaders(60) });
     }
-    const companies = (await getCompaniesForEvent(eventId, true)).map(toPublicCompany);
+    // Cards, not full companies: this feeds only the event page's logo grid.
+    const companies = await listCompanyCardsForEvent(eventId);
     return NextResponse.json(
       { companies },
       { headers: sharedCacheHeaders(60) }
