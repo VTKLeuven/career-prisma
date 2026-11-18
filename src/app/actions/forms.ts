@@ -543,6 +543,10 @@ export async function submitFormResponseAction(data: {
       attendantUuid = existingAttendantUuid ?? undefined;
     }
 
+    // True when this submission gave an existing registration its first scan
+    // link: it then needs the ticket mail a new registration gets.
+    let issuedAttendantUuid = false;
+
     let response: FormResponse | null = null;
     try {
       // Include student info in the form data if student is logged in
@@ -595,6 +599,15 @@ export async function submitFormResponseAction(data: {
           ...(data.submitter_email || _submitter_email ? { submitter_email: (data.submitter_email || _submitter_email) as string } : {}),
         };
         response = await updateFormResponse(existingResponseId, updateData);
+        // A registration sent before the form became an event registration has
+        // no scan link, and re-registering lands here. Issue one now (never
+        // replacing an existing one); the ticket mail below goes out with it.
+        if (isEventRegistration && !attendantUuid) {
+          const { ensureAttendantUuid } = await import("@/lib/repos/forms");
+          const ensured = await ensureAttendantUuid(existingResponseId);
+          attendantUuid = ensured.uuid ?? undefined;
+          issuedAttendantUuid = ensured.issued;
+        }
       } else {
         // Create a new response
         const responseData = {
@@ -652,8 +665,9 @@ export async function submitFormResponseAction(data: {
       }
     }
 
-    // If this is an event registration form, send confirmation email (only for new submissions, not updates)
-    if (response && emailValue && isEventRegistration && !isUpdate) {
+    // If this is an event registration form, send confirmation email (only for new submissions, not updates,
+    // unless the update is what first gave the registration its scan link)
+    if (response && emailValue && isEventRegistration && (!isUpdate || issuedAttendantUuid)) {
       // Get form name - prefer from loaded relation, otherwise fetch it using server client
       let formName: string;
       if (typeof formVersion.form_id !== 'string' && formVersion.form_id?.name) {
@@ -704,8 +718,9 @@ export async function submitFormResponseAction(data: {
       });
     }
 
-    // EventSight integration (only for new registrations, fail silently like emails)
-    if (response && isEventRegistration && !isUpdate) {
+    // EventSight integration (only for new registrations, fail silently like emails).
+    // A registration without a scan link was never sent: it had no barcode yet.
+    if (response && isEventRegistration && (!isUpdate || issuedAttendantUuid)) {
       // An outside HTTP call; made after responding so it can't slow the form.
       after(async () => {
         try {

@@ -962,8 +962,43 @@ export async function countFormVersionResponses(formVersionId: string, _usePubli
 }
 
 /**
+ * `attendant_uuid` is the scan link (`/attendant/<uuid>`, and the check-in
+ * barcode without hyphens). Only a NULL or empty one may be filled in: a
+ * student may already hold a QR code for the old value, and companies' scans
+ * point at it. The condition sits in the UPDATE itself, so two requests racing
+ * for the same row cannot both write.
+ */
+const MISSING_ATTENDANT_UUID = { OR: [{ attendant_uuid: null }, { attendant_uuid: "" }] };
+
+/**
+ * Gives one response a scan link if it has none, and returns the link it ends
+ * up with. `issued` is true only when this call created it, so a caller can
+ * send the ticket mail exactly once.
+ */
+export async function ensureAttendantUuid(
+  responseId: string | number
+): Promise<{ uuid: string | null; issued: boolean }> {
+  const id = num(responseId);
+  if (id == null) return { uuid: null, issued: false };
+  const { count } = await prisma.formResponse.updateMany({
+    where: { id, ...MISSING_ATTENDANT_UUID },
+    data: { attendant_uuid: crypto.randomUUID() },
+  });
+  const row = await prisma.formResponse.findUnique({
+    where: { id },
+    select: { attendant_uuid: true },
+  });
+  return { uuid: row?.attendant_uuid || null, issued: count > 0 };
+}
+
+/**
  * Initialize UUIDs for existing form responses that don't have them.
  * Only processes responses for event registration forms.
+ *
+ * Safe to run any number of times: an existing UUID is never replaced. The
+ * admin responses page and the QR mailing run it on their own, because a
+ * response sent before the form became an event registration (the toggle edits
+ * the active version in place) otherwise never gets a link -- BR-43.
  */
 export async function initializeAttendantUuids(formId?: string) {
   try {
@@ -991,7 +1026,7 @@ export async function initializeAttendantUuids(formId?: string) {
     const responses = await prisma.formResponse.findMany({
       where: {
         form_version_id: { in: eventRegistrationVersionIds },
-        OR: [{ attendant_uuid: null }, { attendant_uuid: "" }],
+        ...MISSING_ATTENDANT_UUID,
       },
       select: { id: true },
     });
@@ -1004,11 +1039,12 @@ export async function initializeAttendantUuids(formId?: string) {
     const errors: string[] = [];
     for (const response of responses) {
       try {
-        await prisma.formResponse.update({
-          where: { id: response.id },
+        // Conditional, so a UUID a submission set in the meantime is kept.
+        const { count } = await prisma.formResponse.updateMany({
+          where: { id: response.id, ...MISSING_ATTENDANT_UUID },
           data: { attendant_uuid: crypto.randomUUID() },
         });
-        updated++;
+        updated += count;
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         errors.push(`Failed to update response ${response.id}: ${errorMsg}`);

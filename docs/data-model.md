@@ -60,6 +60,16 @@ announces it. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
 `Speaker`, `Timetable`, `Schedule`, `Drink`/`Order`/`OrderingSettings`,
 `EventCheckin` and `AttendantScan` (QR badge scanning at booths).
 
+A registration's scan link is `form_responses.attendant_uuid`
+(`/attendant/<uuid>`; without hyphens it is the check-in barcode). A new
+event-registration response gets one when it is created. Admins make a form
+an event registration by editing the active version in place, so a response
+sent before that has none. It is filled in, never replaced, by
+`ensureAttendantUuid()` / `initializeAttendantUuids()` in
+`src/lib/repos/forms.ts`. That happens when the student registers again (who
+then also gets the ticket mail), when the admin responses page loads, and
+before a QR mailing. No admin action and no cron job is needed.
+
 ## People
 
 - `User` + `Role` — company representatives and VTK staff. Four roles exist, and
