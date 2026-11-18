@@ -10,6 +10,7 @@ import {
   deleteOptionSale,
   deleteSubOptionSale,
 } from "@/lib/repos/option-sales";
+import { scheduleVacancyAccessNotification } from "@/lib/vacancy-access-notification";
 
 export async function copyAnnualCatalogAction(sourceYearId: string, targetYearId: string) {
   try {
@@ -73,19 +74,20 @@ export async function createCatalogSaleAction(data: {
 }) {
   try {
     await requireAdminUser();
-    if (data.kind === "option") {
-      await createOptionSale({
-        companyId: data.companyId,
-        optionId: data.itemId,
-        academicYearId: data.academicYearId,
-      });
-    } else {
-      await createSubOptionSale({
-        companyId: data.companyId,
-        subOptionId: data.itemId,
-        academicYearId: data.academicYearId,
-      });
-    }
+    const { vacancyAccess } =
+      data.kind === "option"
+        ? await createOptionSale({
+            companyId: data.companyId,
+            optionId: data.itemId,
+            academicYearId: data.academicYearId,
+          })
+        : await createSubOptionSale({
+            companyId: data.companyId,
+            subOptionId: data.itemId,
+            academicYearId: data.academicYearId,
+          });
+    // A sale carrying the vacancy grant mails the company's reps (BR-24).
+    scheduleVacancyAccessNotification(vacancyAccess);
     revalidatePath("/admin/career-options");
     revalidatePath("/admin/companies-events");
     return { success: true };

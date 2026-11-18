@@ -421,9 +421,12 @@ export function VacancyForm({
       {/* Contact info */}
       <div className="space-y-4">
         <h3 className="text-lg font-semibold">Contact Information</h3>
+        {/* BR-24: these are internal. The public vacancy page shows none of
+            them; its contact form is delivered to the email below. */}
         <p className="text-sm text-muted-foreground">
-          This is the contact info students will see and use to reach you about
-          this vacancy.
+          For VTK and your own reference only: none of this is shown on the
+          public vacancy page. Messages students send through the vacancy&apos;s
+          contact form are delivered to the contact email.
         </p>
         <div className="space-y-2">
           <Label htmlFor="contact_email">

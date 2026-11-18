@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { VacancyCard } from "@/components/vacancies/VacancyCard";
 import type {
-  Vacancy,
+  PublicVacancy,
   VacancyType,
   VacancySector,
   Master,
@@ -35,7 +35,7 @@ export function VacanciesClient({
   sectors,
   masters,
 }: {
-  vacancies: Vacancy[];
+  vacancies: PublicVacancy[];
   types: VacancyType[];
   sectors: VacancySector[];
   masters: Master[];

@@ -401,6 +401,9 @@ export function toPublicCompany<T>(company: T): T {
     representatives,
     option_history: _optionHistory,
     sub_option_history: _subOptionHistory,
+    // Internal bookkeeping for the vacancy-access mail (BR-24): says when the
+    // company bought the vacancy platform, which is nobody else's business.
+    vacancy_access_notified_at: _vacancyAccessNotifiedAt,
     short_description,
     long_description,
     ...rest

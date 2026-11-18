@@ -65,11 +65,16 @@ Features that are demo-ready but not ship-ready are visible on
 `dev.career.vtk.be` and hidden on production. Read per request via
 `isDevEnvironment()`. Anything other than `"true"` counts as production, so a
 missing variable hides work rather than exposing it. Currently behind this flag:
-the **vacancies** job platform, and the **public floorplan**
-(`/event/<name>/floorplan`, its header buttons, and
-`/api/events/<slug>/floorplan`). Admin floorplan tooling — `/admin/floorplan`
-and `/admin/zones` — is deliberately *not* gated, so VTK can keep preparing
-floorplans on production while visitors cannot see them.
+the **student-facing half of the vacancy platform** (`/vacancies`, a vacancy's
+page, its contact form and `/api/vacancies/contact`), and the **public
+floorplan** (`/event/<name>/floorplan`, its header buttons, and
+`/api/events/<slug>/floorplan`). The tooling behind both is deliberately *not*
+gated: admin floorplan tooling — `/admin/floorplan` and `/admin/zones` — so VTK
+can keep preparing floorplans on production while visitors cannot see them, and,
+since BR-24, the company vacancy pages (`/dashboard/job-platform/vacancies`,
+create, edit, publish) and `/admin/vacancies`, so companies holding the
+`vacancies` grant can fill the platform before students see it. Gate the
+audience, not the whole feature.
 
 **8. Deployment is one Docker image, pushed by git.**
 Push to `main` → CI builds it → a green build deploys to the dev server →
