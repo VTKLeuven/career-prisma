@@ -165,6 +165,18 @@ type ColumnMeta = { searchable: boolean };
 
 export type DataTableSort = { key: string; desc?: boolean };
 
+/** Group key of a row that has no group; such rows are listed last. */
+const NO_GROUP = "";
+
+export type DataTableGroupBy<T> = {
+  /** The row's group; empty, blank or null puts it in the "no group" section. */
+  value: (row: T) => string | null | undefined;
+  /** Header for rows without a group ("No folder"). */
+  emptyLabel: string;
+  /** Shown before each group's name. */
+  icon?: React.ReactNode;
+};
+
 export type DataTableProps<T> = {
   rows: T[];
   columns: ColumnConfig<T>[];
@@ -208,6 +220,14 @@ export type DataTableProps<T> = {
    */
   containerClassName?: string;
   className?: string;
+  /**
+   * Splits the list into sections under a header row each: groups in
+   * alphabetical order, rows without one last. Sorting, search and filters
+   * work as usual within the groups, and paging runs over the grouped order.
+   * While no row has a group there are no headers, so the table looks as it
+   * would without this.
+   */
+  groupBy?: DataTableGroupBy<T>;
 };
 
 /**
@@ -239,6 +259,7 @@ export function DataTable<T>({
   loading = false,
   containerClassName = "roomy:max-h-[calc(100svh-15rem)]",
   className,
+  groupBy,
 }: DataTableProps<T>) {
   const plural = nounPlural ?? `${noun}s`;
   const searchConfig = typeof search === "object" ? search : search ? {} : null;
@@ -391,8 +412,29 @@ export function DataTable<T>({
   };
 
   const visibleColumnCount = table.getVisibleLeafColumns().length + (rowActions ? 1 : 0);
-  const pageRows = table.getRowModel().rows;
   const firstRow = pageIndex * pagination.pageSize;
+
+  // Grouping reorders the sorted, filtered rows by group (a stable sort, so
+  // the user's sort holds within each group) and pages over that order itself;
+  // the page count is unchanged because the rows are the same.
+  const groupOf = (row: Row<T>) => groupBy?.value(row.original)?.trim() || NO_GROUP;
+  let pageRows = table.getRowModel().rows;
+  let groupSizes: Map<string, number> | null = null;
+  if (groupBy && rows.some((row) => groupBy.value(row)?.trim())) {
+    const ordered = [...table.getPrePaginationRowModel().rows].sort((a, b) => {
+      const ga = groupOf(a);
+      const gb = groupOf(b);
+      if (ga === gb) return 0;
+      if (ga === NO_GROUP) return 1;
+      if (gb === NO_GROUP) return -1;
+      // The collator ignores case and accents; break its ties so "Events" and
+      // "events" stay two contiguous groups instead of interleaving.
+      return collator.compare(ga, gb) || (ga < gb ? -1 : 1);
+    });
+    groupSizes = new Map();
+    for (const row of ordered) groupSizes.set(groupOf(row), (groupSizes.get(groupOf(row)) ?? 0) + 1);
+    pageRows = ordered.slice(firstRow, firstRow + pagination.pageSize);
+  }
 
   // A click on a row opens it, unless it landed on something interactive in
   // its own right, or bubbled up through React from a portaled menu or dialog
@@ -551,20 +593,43 @@ export function DataTable<T>({
                 </TableRow>
               ))
             ) : pageRows.length ? (
-              pageRows.map((row) => (
-                <DataTableRow
-                  key={row.id}
-                  row={row}
-                  configByKey={configByKey}
-                  onClick={onRowClick ? (e) => handleRowClick(e, row.original) : undefined}
-                  onOpen={onRowClick ? () => onRowClick(row.original) : undefined}
-                  selected={isRowSelected?.(row.original) ?? false}
-                  className={rowClassName?.(row.original)}
-                  actions={rowActions?.(row.original)}
-                  hasActionsColumn={Boolean(rowActions)}
-                  actionsAlwaysVisible={rowActionsAlwaysVisible}
-                />
-              ))
+              pageRows.map((row, index) => {
+                // A group's header goes above its first row, and again at the
+                // top of a page that continues it.
+                const group = groupSizes ? groupOf(row) : null;
+                const startsGroup =
+                  group !== null && (index === 0 || groupOf(pageRows[index - 1]) !== group);
+                return (
+                  <React.Fragment key={row.id}>
+                    {startsGroup && groupBy ? (
+                      <TableRow className="bg-[#fafafa] hover:bg-[#fafafa]">
+                        <TableCell colSpan={visibleColumnCount} className="h-9 whitespace-normal py-1.5 pl-4">
+                          <div className="flex items-center gap-2 text-[13px] font-medium">
+                            {groupBy.icon ? <span className="shrink-0 text-muted-foreground">{groupBy.icon}</span> : null}
+                            <span className={cn("min-w-0", group === NO_GROUP ? "text-muted-foreground" : "text-foreground")}>
+                              {group === NO_GROUP ? groupBy.emptyLabel : group}
+                            </span>
+                            <span className="text-xs font-normal text-muted-foreground tabular">
+                              {groupSizes?.get(group!) ?? 0}
+                            </span>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                    <DataTableRow
+                      row={row}
+                      configByKey={configByKey}
+                      onClick={onRowClick ? (e) => handleRowClick(e, row.original) : undefined}
+                      onOpen={onRowClick ? () => onRowClick(row.original) : undefined}
+                      selected={isRowSelected?.(row.original) ?? false}
+                      className={rowClassName?.(row.original)}
+                      actions={rowActions?.(row.original)}
+                      hasActionsColumn={Boolean(rowActions)}
+                      actionsAlwaysVisible={rowActionsAlwaysVisible}
+                    />
+                  </React.Fragment>
+                );
+              })
             ) : (
               <TableRow className="hover:bg-transparent">
                 <TableCell colSpan={visibleColumnCount} className="h-56 text-center">

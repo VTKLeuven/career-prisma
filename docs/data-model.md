@@ -146,6 +146,13 @@ announces it. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
   responses table, the CSV export and the CV book. `study-programme` is a
   retired field type: the builder no longer offers it, but it still renders
   for forms that already had it.
+  `forms.folder` is a free-text label that groups the admin forms list
+  (`/admin/forms`) into sections; null is "No folder". It is deliberately not
+  a `Folder` table or a tree -- staff asked for a tidier overview (BR-55), and
+  nesting would have needed a model, ordering and drag-and-drop for little
+  gain. Folders exist only while a form uses them; the dialogs suggest the
+  ones in use so a typo does not start a second folder. Nothing outside the
+  admin list reads it.
 
 ## Study programmes
 

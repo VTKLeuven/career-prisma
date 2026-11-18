@@ -96,7 +96,10 @@ so re-apply the classes if you do.
   Columns are `ColumnConfig`s (`components/admin/types.ts`): a column sorts and
   filters on its `value`, falling back to `row[key]` or a string `render`, so a
   column that renders markup over a computed field needs a `value`. Trailing
-  row buttons go in `rowActions` (`RowDeleteButton` for delete).
+  row buttons go in `rowActions` (`RowDeleteButton` for delete). `groupBy`
+  splits the rows into sections under header rows (the forms list by folder)
+  while keeping one search, one sort and one pager; use it rather than one
+  table per group.
   It works on the rows it is given, in the browser: pages still load every row
   (students up to `listStudents`' limit). The one exception is the form
   responses viewer, which pages on the server and keeps its own table.

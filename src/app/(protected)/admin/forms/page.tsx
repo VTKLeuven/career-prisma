@@ -36,7 +36,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power, Building2, RefreshCw, Hammer, Inbox } from "lucide-react";
+import { MoreHorizontal, Plus, Trash2, Edit, FileText, Clock, Copy, Check, Power, Building2, RefreshCw, Hammer, Inbox, Folder as FolderIcon } from "lucide-react";
 import { useUser } from "@/providers/UserProvider";
 import type { FormSchema, FormField, CareerEvent } from "@/lib/schema";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -56,6 +56,8 @@ type FormRow = {
   name: string;
   slug: string;
   description: string;
+  /** Section of the list this form is shown under; null means "No folder". */
+  folder: string | null;
   is_active?: boolean;
   metadata?: {
     deadline?: string;
@@ -104,6 +106,11 @@ export default function AdminFormsPage() {
     return <div className="p-8">Access Denied</div>;
   }
 
+  // Every folder in use, offered as suggestions so a form joins an existing
+  // folder rather than starting a near-duplicate ("Events" vs "Event").
+  const folderNames = Array.from(
+    new Set(forms.map((form) => form.folder).filter((folder): folder is string => Boolean(folder)))
+  ).sort((a, b) => a.localeCompare(b, "en", { numeric: true, sensitivity: "base" }));
 
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-5">
@@ -126,12 +133,25 @@ export default function AdminFormsPage() {
         }
       />
 
+      {/* One list for both dialogs: they are portaled out of the page but stay
+          in this document, so `list={FORM_FOLDER_LIST_ID}` still finds it. */}
+      <datalist id={FORM_FOLDER_LIST_ID}>
+        {folderNames.map((folder) => (
+          <option key={folder} value={folder} />
+        ))}
+      </datalist>
+
       <DataTable
         rows={forms}
         columns={FORM_COLUMNS}
         getRowId={(form) => form.id}
         noun="form"
-        search={{ keys: ["slug", "description"] }}
+        search={{ keys: ["slug", "description", "folder"] }}
+        groupBy={{
+          value: (form) => form.folder,
+          emptyLabel: "No folder",
+          icon: <FolderIcon className="size-3.5" />,
+        }}
         pageSize={25}
         loading={loading}
         containerClassName="roomy:max-h-[calc(100svh-17rem)]"
@@ -160,6 +180,30 @@ function formMaxEntries(form: FormRow): number | null {
   return form.metadata?.max_entries ? Number(form.metadata.max_entries) : null;
 }
 
+/** Id of the page's `<datalist>` of folders already in use. */
+const FORM_FOLDER_LIST_ID = "form-folder-options";
+
+/** The folder input of the create and edit dialogs. */
+function FolderField({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>Folder (Optional)</Label>
+      <Input
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        list={FORM_FOLDER_LIST_ID}
+        maxLength={120}
+        autoComplete="off"
+        placeholder="e.g., Career Fair"
+      />
+      <p className="text-xs text-muted-foreground">
+        Groups this form on the forms overview. Pick an existing folder or type a new one; leave empty for none.
+      </p>
+    </div>
+  );
+}
+
 /**
  * The forms list. Clicking anywhere on a row opens its details; the builder,
  * responses and the public form are one hover-click away on the right.
@@ -181,6 +225,14 @@ const FORM_COLUMNS: ColumnConfig<FormRow>[] = [
     key: "slug",
     label: "Link",
     render: (form) => <SlugCell slug={form.slug} metadata={form.metadata} />,
+  },
+  // The rows are already grouped under their folder, so the column starts
+  // hidden; its filter narrows the list to one folder.
+  {
+    key: "folder",
+    label: "Folder",
+    filter: true,
+    defaultHidden: true,
   },
   {
     key: "status",
@@ -398,6 +450,7 @@ function CreateFormDialog() {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
+  const [folder, setFolder] = useState("");
   const [deadline, setDeadline] = useState("");
   const [maxEntries, setMaxEntries] = useState<string>("");
   const [isEventRegistration, setIsEventRegistration] = useState(true);
@@ -577,6 +630,7 @@ function CreateFormDialog() {
         name,
         slug,
         description,
+        folder,
         initialSchema,
         metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
       });
@@ -585,6 +639,7 @@ function CreateFormDialog() {
       setName("");
       setSlug("");
       setDescription("");
+      setFolder("");
       setDeadline("");
       setMaxEntries("");
       setIsEventRegistration(true);
@@ -669,6 +724,7 @@ function CreateFormDialog() {
                 rows={3}
               />
             </div>
+            <FolderField id="folder" value={folder} onChange={setFolder} />
             <div className="space-y-2">
               <Label htmlFor="deadline">Deadline (Optional)</Label>
               <Input
@@ -992,6 +1048,7 @@ function EditFormDialog({
   const [name, setName] = useState(form.name);
   const [slug, setSlug] = useState(form.slug);
   const [description, setDescription] = useState(form.description);
+  const [folder, setFolder] = useState(form.folder ?? "");
   const [deadline, setDeadline] = useState(
     form.metadata?.deadline ? utcToLocalDateTimeLocal(form.metadata.deadline as string) : ''
   );
@@ -1096,6 +1153,7 @@ function EditFormDialog({
       setName(form.name);
       setSlug(form.slug);
       setDescription(form.description);
+      setFolder(form.folder ?? "");
       setDeadline(form.metadata?.deadline ? utcToLocalDateTimeLocal(form.metadata.deadline as string) : '');
       setMaxEntries(form.metadata?.max_entries ? String(form.metadata.max_entries) : '');
       setIsEventRegistration(form.metadata?.is_event_registration === true);
@@ -1126,10 +1184,11 @@ function EditFormDialog({
 
     try {
       // Update form basic info
-      await updateFormAction(form.id, { 
-        name, 
-        slug, 
+      await updateFormAction(form.id, {
+        name,
+        slug,
         description,
+        folder,
       });
       
       // Update metadata on the active form version if it exists
@@ -1300,6 +1359,7 @@ function EditFormDialog({
                 rows={3}
               />
             </div>
+            <FolderField id="edit-folder" value={folder} onChange={setFolder} />
             <div className="space-y-2">
               <Label htmlFor="edit-deadline">Deadline (Optional)</Label>
               <Input

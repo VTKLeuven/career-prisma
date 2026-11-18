@@ -55,6 +55,23 @@ async function syncEventRegistrationLink(formId: string | number | null | undefi
 const formIdOf = (version: FormVersion | null | undefined) =>
   (version as { form_id?: string | number } | null | undefined)?.form_id;
 
+/** `forms.folder` is VARCHAR(120). */
+const FORM_FOLDER_MAX_LENGTH = 120;
+
+/**
+ * A form's folder as typed in the admin dialog: trimmed, with an empty value
+ * stored as null ("No folder") so blank and whitespace-only labels do not show
+ * up as a folder of their own.
+ */
+function normalizeFormFolder(folder: string | null | undefined): string | null {
+  const trimmed = folder?.trim() ?? "";
+  if (!trimmed) return null;
+  if (trimmed.length > FORM_FOLDER_MAX_LENGTH) {
+    throw new Error(`Folder name is too long (max ${FORM_FOLDER_MAX_LENGTH} characters)`);
+  }
+  return trimmed;
+}
+
 // ===================== FORM ACTIONS =====================
 
 export async function fetchFormsAction(opts?: {
@@ -77,6 +94,7 @@ export async function fetchFormsAction(opts?: {
         name: form.name,
         slug: form.slug,
         description: form.description ?? "",
+        folder: form.folder ?? null,
         is_active: form.is_active ?? true,
         metadata: (activeVersion as FormVersion & { metadata?: Record<string, unknown> })?.metadata, // Get metadata from active version
         created_at: form.created_at,
@@ -111,6 +129,7 @@ export async function createFormAction(data: {
   name: string;
   slug: string;
   description?: string;
+  folder?: string | null;
   initialSchema?: FormSchema;
   metadata?: {
     is_event_registration?: boolean;
@@ -129,6 +148,7 @@ export async function createFormAction(data: {
       name: data.name,
       slug: data.slug,
       description: data.description,
+      folder: normalizeFormFolder(data.folder),
     });
     console.log('[createFormAction] Created form:', JSON.stringify(form, null, 2));
 
@@ -155,6 +175,11 @@ export async function createFormAction(data: {
 export async function updateFormAction(id: string, data: Partial<Form & { metadata?: Record<string, unknown> }>) {
   try {
     await requireAdminUser();
+    // Only touch the folder when the caller sent one: toggling a form's status
+    // sends just `is_active` and must not clear it.
+    if (data.folder !== undefined) {
+      data = { ...data, folder: normalizeFormFolder(data.folder) };
+    }
     // If metadata is provided, we need to update the active form version instead
     if (data.metadata !== undefined) {
       // Get the form to find the active version
