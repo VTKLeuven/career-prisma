@@ -5,7 +5,8 @@ import { isDevEnvironment } from "@/lib/dev-environment";
 /**
  * The public job platform is a dev-only feature for now. On production the
  * routes stay reachable -- the header links to them from every page -- but they
- * show a placeholder instead of the real listings.
+ * show a placeholder instead of the real listings. Companies can already post
+ * and publish on production (BR-24); students see them once this gate goes.
  */
 export default function VacanciesLayout({
   children,

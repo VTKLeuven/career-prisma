@@ -130,8 +130,31 @@ announces it. `Floorplan` → `Booth` → `Zone`/`ZoneBooth`.
     longer drops a CV for lacking one. A year holds one book, so a year that
     has one cannot take an import.
 - `Vacancy` + `VacancyType` / `VacancySector` / `VacancySectorLink` /
-  `VacancyMaster` / `VacancySectionConfig` — job board. Behind
-  `DEV_ENVIRONMENT`, and a company only posts with the `vacancies` grant.
+  `VacancyMaster` / `VacancySectionConfig` — job board. A company posts and
+  publishes from its dashboard only with the `vacancies` grant (admins always
+  may); that side and `/admin/vacancies` are live on production. The public
+  listing, a vacancy's page and its contact form are still behind
+  `DEV_ENVIRONMENT` ([design-decisions.md](design-decisions.md) #7).
+  - **Contact fields are internal.** `contact_email` is where the contact form
+    on the public vacancy page is delivered, server-side
+    (`lib/vacancy-contact-inquiry.ts`); `contact_name` / `contact_phone` are
+    kept for reference. None of the three is shown publicly or sent to the
+    public pages: `toPublicVacancy()` in `app/actions/vacancies.ts` strips them
+    (and sanitizes the HTML sections) for the `PublicVacancy` type.
+  - **Company and admin writes are whitelisted** to the form's fields
+    (`EDITABLE_VACANCY_FIELDS`), because the repo turns any key into a column
+    write.
+  - **Access mail.** When an admin records a sale carrying the `vacancies`
+    grant — a new sale, or a cancelled one sold again — every active or invited
+    representative of the company gets one mail
+    (`lib/vacancy-access-notification.ts`, sent after the response through
+    `sendEmail()`, so the dev site and SMTP-less local builds only log it).
+    `companies.vacancy_access_notified_at` limits it to one per company per
+    academic year: it only sends when that is empty or older than the start of
+    the sale's year, claimed with one conditional `UPDATE`. A sale for a year
+    that is not running now (a backfill, or next year's — which grants access
+    only when the year starts, from the clock), and attaching the grant to a
+    sub-option already sold, send nothing.
 - `MatchingSoftware`, `StudentMatchingResponse*`, `CompanyMatchingResponse*` —
   student↔company matching questionnaire.
 - `Form` / `FormVersion` / `FormResponse` — the generic form builder used for

@@ -5,14 +5,14 @@ import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
 import { getFileUrl } from "@/components/Images";
 import { MapPin, Building2 } from "lucide-react";
-import type { Vacancy, VacancyType, Master, Company } from "@/lib/schema";
+import type { PublicVacancy, VacancyType, Master, Company } from "@/lib/schema";
 import {
   getVacancySectorsResolved,
   vacancySectorDisplayName,
 } from "@/lib/vacancy-sectors";
 
 interface VacancyCardProps {
-  vacancy: Vacancy;
+  vacancy: PublicVacancy;
 }
 
 export function VacancyCard({ vacancy }: VacancyCardProps) {

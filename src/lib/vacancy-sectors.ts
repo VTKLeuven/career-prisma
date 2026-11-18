@@ -27,7 +27,7 @@ export function vacancySectorDisplayName(s: VacancySector): string {
   return s.name?.trim() ? s.name : "Sector";
 }
 
-export function getVacancySectorsResolved(vacancy: Vacancy): VacancySector[] {
+export function getVacancySectorsResolved(vacancy: Pick<Vacancy, "sector" | "sectors">): VacancySector[] {
   const fromM2m =
     vacancy.sectors
       ?.map((row) =>
@@ -51,7 +51,7 @@ export function getVacancySectorsResolved(vacancy: Vacancy): VacancySector[] {
 }
 
 export function vacancyMatchesSectorFilter(
-  vacancy: Vacancy,
+  vacancy: Pick<Vacancy, "sector" | "sectors">,
   sectorId: string
 ): boolean {
   return getVacancySectorsResolved(vacancy).some((s) => s.id === sectorId);

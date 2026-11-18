@@ -640,6 +640,13 @@ export type Vacancy = {
   masters?: Array<{ master_id: Master | string }>;
 };
 
+/**
+ * A vacancy as the public site receives it. The contact fields are internal:
+ * `contact_email` is where the vacancy page's contact form is delivered,
+ * server-side, and none of the three is shown publicly (BR-24).
+ */
+export type PublicVacancy = Omit<Vacancy, "contact_email" | "contact_name" | "contact_phone">;
+
 // Optional: Full Directus Schema map (only collections you use)
 export type Schema = {
   directus_users: AppUser[];

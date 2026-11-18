@@ -9,9 +9,10 @@ import { isDevEnvironment } from "@/lib/dev-environment";
 export async function submitVacancyContactAction(formData: FormData): Promise<
   { success: true } | { success: false; error: string }
 > {
-  // The job platform is dev-only, so nothing on production should be sending
-  // these. Refusing here keeps the mail path from being usable as an open relay
-  // for a feature that is meant to be off.
+  // The public job platform is dev-only (companies post on production since
+  // BR-24, but students cannot see vacancies there yet), so nothing on
+  // production should be sending these. Refusing here keeps the mail path from
+  // being usable as an open relay for a feature that is meant to be off.
   if (!isDevEnvironment()) {
     return {
       success: false,
