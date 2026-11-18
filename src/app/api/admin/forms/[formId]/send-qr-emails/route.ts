@@ -7,7 +7,12 @@ import {
   type EmailTask,
   type EmailTaskResult,
 } from "@/lib/email-job-manager";
-import { getFormVersionWithForm, listAttendantResponses, markQrEmailSent } from "@/lib/repos/forms";
+import {
+  getFormVersionWithForm,
+  initializeAttendantUuids,
+  listAttendantResponses,
+  markQrEmailSent,
+} from "@/lib/repos/forms";
 import { getStudentEmailsByIds } from "@/lib/repos/students";
 
 export async function POST(
@@ -54,6 +59,11 @@ export async function POST(
     const emailSubject = `${formName} - Your Event Ticket`;
     const emailContent =
       "Please find your personal QR code ticket below. Present it at the entrance for a smooth check-in. We look forward to seeing you there!";
+
+    // Registrations sent before the form became an event registration have no
+    // scan link yet; give them one first so they are mailed too. Never
+    // replaces an existing link.
+    await initializeAttendantUuids(String(form.id));
 
     const responses = await listAttendantResponses(formVersionId);
 

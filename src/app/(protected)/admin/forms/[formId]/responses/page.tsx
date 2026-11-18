@@ -1,5 +1,5 @@
 import { getUserFromCookies } from "@/lib/auth-server";
-import { fetchFormResponsesPageAction, fetchFormWithVersionsAction } from "@/app/actions/forms";
+import { fetchFormResponsesPageAction, fetchFormWithVersionsAction, initializeAttendantUuidsAction } from "@/app/actions/forms";
 import { fetchFacultiesAction } from "@/app/actions/features";
 import { loadPublicMasters } from "@/lib/masters-data";
 import { normalizeFaculties } from "@/lib/utils/master-degree-options";
@@ -15,6 +15,11 @@ export default async function FormResponsesPage({ params }: { params: Promise<{ 
   const user = await getUserFromCookies();
   if (!user?.admin) return <p>NO ACCESS</p>;
   const { formId } = await params;
+
+  // Every registration of an event form gets its scan link before it is listed,
+  // so the CSV export and the QR mailing never show one without (BR-43).
+  // Only fills missing links; a no-op once they all have one.
+  await initializeAttendantUuidsAction(formId).catch(() => null);
 
   const [formWithVersions, page] = await Promise.all([
     fetchFormWithVersionsAction(formId).catch(() => null),
