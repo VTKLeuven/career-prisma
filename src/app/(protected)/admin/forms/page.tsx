@@ -94,7 +94,7 @@ export default function AdminFormsPage() {
         metadata: f.metadata,
         deadline: f.metadata?.deadline 
       })));
-      setForms(data);
+      setForms([...data].sort(compareFormNames));
     } catch (error) {
       console.error("[AdminFormsPage] Error loading forms:", error);
     } finally {
@@ -180,6 +180,18 @@ function formStatus(form: FormRow): "disabled" | "active" | "inactive" {
 
 function formMaxEntries(form: FormRow): number | null {
   return form.metadata?.max_entries ? Number(form.metadata.max_entries) : null;
+}
+
+// Forms are listed A-Z by the name the Name column shows (BR-63). listForms()
+// returns them newest first, and its other callers want that, so the order is
+// set here. DataTable keeps the order rows arrive in while no column is
+// sorted, and groups them with a stable sort, so every folder reads A-Z and
+// search and paging run over that order; a click on a column header still
+// re-sorts. Ignores case and accents, and puts "Form 2" before "Form 10".
+const formNameCollator = new Intl.Collator("nl", { numeric: true, sensitivity: "base" });
+function compareFormNames(a: FormRow, b: FormRow): number {
+  // Break the collator's ties so "abc" and "Abc" keep one order across loads.
+  return formNameCollator.compare(a.name, b.name) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 }
 
 /** Folders already in use, sorted; what the folder picker offers. */

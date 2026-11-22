@@ -201,7 +201,9 @@ before a QR mailing. No admin action and no cron job is needed.
   gain. Folders exist only while a form uses them; the dialogs list the ones
   in use as one-click choices (and point out a name that differs from one only
   in case), so a typo does not start a second folder. Nothing outside the
-  admin list reads it.
+  admin list reads it. Within a folder the forms are listed A-Z by `name`,
+  the internal name the list shows (BR-63), sorted in the page; `listForms()`
+  itself stays newest first for its other callers.
 
 ## Study programmes
 
