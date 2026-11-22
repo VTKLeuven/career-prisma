@@ -45,6 +45,10 @@ async function syncEventRegistrationLink(formId: string | number | null | undefi
   if (formId == null) return;
   try {
     const form = await getFormById(String(formId));
+    // A disabled form's public page is a dead end (same check as
+    // fetchPublicFormBySlugAction). Since BR-62 a copy keeps the source's active
+    // version, so editing a disabled copy must not repoint the source's event.
+    if (form?.is_active === false) return;
     const active = form?.form_versions?.find((v) => v.is_active);
     const meta = active?.metadata as { is_event_registration?: boolean; event_id?: string } | null | undefined;
     if (!form?.slug || !meta?.is_event_registration || !meta.event_id) return;
@@ -225,8 +229,9 @@ export async function deleteFormAction(id: string) {
 
 /**
  * Copy a form with all its versions but none of its responses (BR-37). The
- * copy starts disabled with no active version -- see duplicateForm() -- so
- * there is no event registration link to sync here.
+ * copy starts disabled -- see duplicateForm() -- so the event registration link
+ * is deliberately not synced here: its active version still names the source's
+ * event, and syncing would point that event's page at a form nobody can open.
  */
 export async function duplicateFormAction(formId: number) {
   try {
