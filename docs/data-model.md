@@ -196,8 +196,11 @@ before a QR mailing. No admin action and no cron job is needed.
   slug `<slug>-copy` / `-copy-2` …. The version active on the source stays
   active on the copy: the questions (`form_versions.schema.fields`) and the
   type settings (`metadata`) the admin builder and edit dialog show are the
-  active version's, so a copy without one looked empty (BR-62). Disabling the
-  form is what keeps the copy off `/forms/<slug>` and the company forms.
+  active version's, so a copy without one looked empty (BR-62). When the
+  source has no active version at all (a copy made before BR-62, or any form
+  whose versions are all inactive), the copy activates its newest version so
+  it is never empty. Disabling the form is what keeps the copy off
+  `/forms/<slug>` and the company forms.
   `forms.folder` is a free-text label that groups the admin forms list
   (`/admin/forms`) into sections; null is "No folder". It is deliberately not
   a `Folder` table or a tree -- staff asked for a tidier overview (BR-55), and
