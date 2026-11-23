@@ -1,9 +1,45 @@
-// lib/csv.ts -- a small CSV reader for admin uploads.
+// lib/csv.ts -- a small CSV reader for admin uploads, and the cell writer the
+// CSV exports share.
 //
 // Excel in a Belgian (nl-BE / fr-BE) locale saves "CSV" with semicolons,
 // because the comma is the decimal separator there, so the delimiter is
 // guessed from the header line rather than assumed. Quoted fields may hold
 // the delimiter, doubled quotes and line breaks.
+
+/** Separates the answers of a multi-value field inside one exported cell. */
+const CSV_LIST_SEPARATOR = "; ";
+
+function csvText(value: unknown): string {
+  return value === null || value === undefined ? "" : String(value).trim();
+}
+
+/**
+ * One cell of a CSV export, quoted when it holds a comma, quote or line break.
+ *
+ * Values are trimmed, and an array (a multi-value answer) is joined with
+ * `CSV_LIST_SEPARATOR` after trimming each item and dropping empty ones. Stored
+ * answers, option labels and master names are saved as typed, so they can
+ * carry stray spaces; these exports feed InDesign data merges, where a leading
+ * space or a dangling "; " shows up in print (BR-64).
+ */
+export function csvCell(value: unknown): string {
+  const text = Array.isArray(value)
+    ? value.map(csvText).filter((item) => item !== "").join(CSV_LIST_SEPARATOR)
+    : csvText(value);
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+/**
+ * A resolved programme/faculty display label ("Fac. <faculty> - <programme>" or
+ * a bare programme name) as it should appear in a CSV export: whitespace runs
+ * collapsed to one space and the ends trimmed. The label is built from names
+ * saved as typed, so a stray space in a name otherwise doubles up inside it
+ * ("Fac. X -  Y"). Only for these structural labels, never for free-text
+ * answers, and only in exports: matching uses the labels unchanged (BR-64).
+ */
+export function csvDisplayLabel(label: string): string {
+  return label.replace(/\s+/g, " ").trim();
+}
 
 export type CsvTable = {
   /** Header cells as written (trimmed). */

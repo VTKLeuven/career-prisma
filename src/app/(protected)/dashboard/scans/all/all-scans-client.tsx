@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2, QrCode, Search, Download, Star, Trash2, Pencil, ChevronDown } from "lucide-react";
 import { formatDateTimeBE } from "@/lib/date-utils";
 import { CSV_UTF8_BOM } from "@/lib/utils/slugify";
+import { csvCell } from "@/lib/csv";
 import {
   Collapsible,
   CollapsibleContent,
@@ -263,13 +264,8 @@ export function AllScansClient({ initialScans, events }: { initialScans: Attenda
       ];
     });
 
-    const escapeCsv = (value: unknown) => {
-      const s = value === null || value === undefined ? "" : String(value);
-      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-
     const csv = CSV_UTF8_BOM + [headerRow, ...dataRows]
-      .map(row => row.map(escapeCsv).join(","))
+      .map(row => row.map(csvCell).join(","))
       .join("\r\n");
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });

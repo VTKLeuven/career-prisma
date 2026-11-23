@@ -31,6 +31,7 @@ import {
 import { cn } from "@/lib/utils";
 import { getScanningDisplayValues, hasScanningColumns } from "@/lib/utils/scanning-columns";
 import { CSV_UTF8_BOM } from "@/lib/utils/slugify";
+import { csvCell } from "@/lib/csv";
 import { toast } from "sonner";
 import { normalizeStudents, type MatchedStudent } from "@/lib/matching-students";
 
@@ -357,12 +358,8 @@ export function CompanyMatchingForm({ companyId, matchingSoftwareId, eventId, ev
                         ...(hasScanCols ? [scanCols.university, scanCols.faculty, scanCols.master, scanCols.yearOfStudy] : []),
                       ];
                     });
-                    const escapeCsv = (value: unknown) => {
-                      const s = value === null || value === undefined ? "" : String(value);
-                      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-                    };
                     const csv = CSV_UTF8_BOM + [headerRow, ...dataRows]
-                      .map((row) => row.map(escapeCsv).join(","))
+                      .map((row) => row.map(csvCell).join(","))
                       .join("\r\n");
                     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
                     const url = window.URL.createObjectURL(blob);
