@@ -2,6 +2,7 @@ import { getUserFromCookies } from "@/lib/auth-server";
 import { listUsers, listRoles } from "@/lib/repos/users";
 import { listCompaniesBasic } from "@/lib/repos/company";
 import UsersClient from "./client";
+import { ImportAccountsDialog } from "./import-accounts-dialog";
 import { PageHeader } from "@/components/admin/PageHeader";
 
 export default async function AdminUsersPage() {
@@ -19,7 +20,11 @@ export default async function AdminUsersPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-6">
-      <PageHeader title="User Management" description="Manage platform users — admins, salespeople and company representatives." />
+      <PageHeader
+        title="User Management"
+        description="Manage platform users — admins, salespeople and company representatives."
+        actions={<ImportAccountsDialog companies={companyOptions} />}
+      />
       <UsersClient
         initialUsers={users}
         roleOptions={roleOptions}

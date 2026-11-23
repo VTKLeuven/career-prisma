@@ -491,3 +491,22 @@ export async function listUserContacts(ids: string[]) {
     select: { id: true, first_name: true, last_name: true, email: true },
   });
 }
+
+/**
+ * Accounts holding any of these addresses, with their role and company, for
+ * matching a bulk import against what already exists.
+ */
+export async function findUsersByEmails(emails: string[]) {
+  if (emails.length === 0) return [];
+  return prisma.user.findMany({
+    where: { email: { in: emails.map((e) => e.trim().toLowerCase()) } },
+    select: {
+      id: true,
+      email: true,
+      status: true,
+      role_id: true,
+      company_id: true,
+      company: { select: { name: true } },
+    },
+  });
+}

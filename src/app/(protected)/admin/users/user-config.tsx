@@ -8,8 +8,11 @@ import {
 } from "@/app/actions/admin-users";
 import type { AdminUserRow } from "@/lib/repos/users";
 import { INTERNAL_ROLE_IDS } from "@/lib/roles";
-import { UserRound } from "lucide-react";
+import { Eye, EyeOff, UserRound } from "lucide-react";
 import Image from "next/image";
+import * as React from "react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 const STATUS_OPTIONS: SelectOption[] = [
   { value: "active", label: "Active" },
@@ -119,6 +122,20 @@ export function userResourceConfig(
         options: companyOptions,
         getEditValue: (u) => u.company_id ?? "",
       },
+      {
+        // Not a column: updateUserAction / createUserAction take it off the
+        // payload and set the hash through repos/credentials. Always starts
+        // empty, and empty leaves the stored password alone.
+        name: "new_password",
+        label: "Set password",
+        type: "text",
+        section: "Password",
+        help: `Leave empty to keep the current password. Setting one makes the account active straight away and mails nothing — pass it on yourself. At least 8 characters.`,
+        getEditValue: () => "",
+        renderInput: ({ value, onChange }) => (
+          <NewPasswordInput value={String(value ?? "")} onChange={onChange} />
+        ),
+      },
     ],
     actions: {
       create: createUserAction,
@@ -126,4 +143,40 @@ export function userResourceConfig(
       remove: deleteUserAction,
     },
   };
+}
+
+/**
+ * The admin's "Set password" box. Hidden by default, with a toggle to check
+ * what was typed. `new-password` stops the browser from filling in the
+ * admin's own saved login here -- the form also has an email field, so it
+ * looks like a sign-in form -- which would silently become this user's password.
+ */
+function NewPasswordInput({ value, onChange }: { value: string; onChange: (value: unknown) => void }) {
+  const [shown, setShown] = React.useState(false);
+  return (
+    <div className="relative">
+      <Input
+        id="field-new_password"
+        type={shown ? "text" : "password"}
+        autoComplete="new-password"
+        spellCheck={false}
+        data-1p-ignore
+        data-lpignore="true"
+        placeholder="Unchanged"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="pr-10"
+      />
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 p-0"
+        onClick={() => setShown((s) => !s)}
+        aria-label={shown ? "Hide password" : "Show password"}
+      >
+        {shown ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </Button>
+    </div>
+  );
 }

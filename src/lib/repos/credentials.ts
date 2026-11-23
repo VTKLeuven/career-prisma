@@ -7,6 +7,7 @@
 import "server-only";
 
 import prisma from "@/lib/prisma";
+import { ROLE_COMPANY_REP } from "@/lib/roles";
 
 /* --------------------------------- users --------------------------------- */
 
@@ -94,6 +95,66 @@ export async function setUserPassword(userId: string, passwordHash: string): Pro
       invite_token_created: null,
     },
   });
+}
+
+/** One account in a bulk import of company representatives. */
+export type RepAccountWrite =
+  | {
+      kind: "create";
+      email: string;
+      companyId: string;
+      passwordHash: string;
+      firstName: string | null;
+      lastName: string | null;
+    }
+  | {
+      kind: "update";
+      userId: string;
+      companyId: string;
+      passwordHash: string;
+      /** Undefined leaves the stored name alone. */
+      firstName?: string;
+      lastName?: string;
+    };
+
+/**
+ * Writes a bulk import of representative accounts, all or nothing: a new
+ * account is created active with its password, an existing one gets the new
+ * password, is activated and (re)attached to the company. Like
+ * setUserPassword(), any outstanding invite is burned -- the admin has chosen
+ * the password, so the invite link must not override it later.
+ */
+export async function writeRepAccounts(writes: RepAccountWrite[]): Promise<void> {
+  await prisma.$transaction(
+    writes.map((w) =>
+      w.kind === "create"
+        ? prisma.user.create({
+            data: {
+              email: w.email.trim().toLowerCase(),
+              role_id: ROLE_COMPANY_REP,
+              status: "active",
+              password: w.passwordHash,
+              company_id: w.companyId,
+              first_name: w.firstName,
+              last_name: w.lastName,
+            },
+            select: { id: true },
+          })
+        : prisma.user.update({
+            where: { id: w.userId },
+            data: {
+              password: w.passwordHash,
+              status: "active",
+              invite_token_hash: null,
+              invite_token_created: null,
+              company_id: w.companyId,
+              ...(w.firstName !== undefined ? { first_name: w.firstName } : {}),
+              ...(w.lastName !== undefined ? { last_name: w.lastName } : {}),
+            },
+            select: { id: true },
+          })
+    )
+  );
 }
 
 /* -------------------------------- students -------------------------------- */

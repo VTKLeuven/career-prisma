@@ -10,6 +10,7 @@ import { generateCompanyPageRequestEmailHtml, generateCVBookRequestEmailHtml } f
 import { fetchSalespersonsAction } from "@/app/actions/salespeople";
 import { toPublicCompany, toPublicSpeaker } from "@/lib/repos/_shape";
 import { setUserPassword } from "@/lib/repos/credentials";
+import { logSystemEvent } from "@/lib/repos/system-logs";
 import { scheduleVacancyAccessNotification } from "@/lib/vacancy-access-notification";
 import argon2 from "argon2";
 
@@ -432,7 +433,7 @@ export async function createCompanyRepAction(
   repPayload: Partial<CompanyRep>,
   options?: { password?: string }
 ) {
-  await requireAdminUser();
+  const admin = await requireAdminUser();
   if (!repPayload) return null;
   const password = options?.password;
   if (password !== undefined) {
@@ -482,6 +483,13 @@ export async function createCompanyRepAction(
 
   if (password !== undefined) {
     await setUserPassword(newRep.id, await argon2.hash(password, { type: argon2.argon2id }));
+    await logSystemEvent({
+      source: "user_accounts",
+      level: "info",
+      event: "password_set_by_admin",
+      message: `${admin.email} set the password of ${newRep.email} (new account)`,
+      details: { admin: admin.email, email: newRep.email, user_id: newRep.id, company: company.name, new_account: true },
+    });
     return result;
   }
 

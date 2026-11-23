@@ -30,8 +30,34 @@ the password themselves (`createCompanyRepAction(..., { password })` →
 `setUserPassword()`). The account is `active` at once and nothing is mailed, so
 the address only has to be well-formed, not a real inbox — meant for shared or
 placeholder accounts. Password resets still mail that address, so a forgotten
-password on a fake address cannot be recovered — there is no admin "change
-password" screen yet.
+password on a fake address is recovered by an admin instead:
+
+- **One account.** The user edit panel (`/admin/users`, and Edit on a
+  representative on the company page) has a "Set password" field. Empty leaves
+  the password alone; anything else is hashed through `setUserPassword()`,
+  which also activates the account and burns an outstanding invite. Nothing is
+  mailed, and the user's existing sessions stay signed in. It is refused
+  together with an archive in the same save, because it would un-archive.
+- **Many accounts.** `/admin/users` → "Import accounts" takes a CSV of
+  `company,email,password` (optional `first_name,last_name`; comma or
+  semicolon separated, Dutch column names accepted) — meant for the shared
+  scanning accounts companies use at an event. `src/lib/rep-account-import.ts`
+  checks every line first and shows what each will do: a new active
+  representative, or a new password for an existing one (attached to the
+  named company, moving it if it was elsewhere). Companies must already exist
+  and match by name, case-insensitively. A name that matches none, or several,
+  gets a company picker in the preview (closest names first); the choice is
+  keyed on the name, so it covers every line spelling it that way, travels
+  with the file as `companyChoices`, and is checked against the companies
+  table on every pass. Empty first/last names leave a new account's name empty
+  and an existing account's name as it was. An address belonging to a staff or
+  archived account is refused. Any line can be skipped in the preview
+  (`skippedLines`, by line number), which leaves it out and stops its problem
+  from blocking the rest; a skipped line also does not count for the
+  duplicate-address check. Nothing is written while a line that is not
+  skipped has a problem, and then everything is written in one transaction
+  (`writeRepAccounts()`). The file is planned again on confirm, never taken
+  from the preview.
 
 Both password logins are throttled by `src/lib/login-throttle.ts`: after 10
 failures for one account, or 50 from one client address, within 15 minutes,
@@ -59,6 +85,12 @@ The company/staff side logs to `system_logs` under `user_accounts`
   `password_reset_completed` and `password_reset_rejected` (bad or expired link).
 - `invite_accepted`, `invite_rejected`, `company_setup_completed` /
   `company_setup_failed`.
+- `password_set_by_admin` (who set whose password, and whether the account
+  was new) and `accounts_bulk_imported` (the admin, the file name, every
+  address created or updated with its company, `company_choices`: each
+  name from the file that was matched to a company by hand, and `skipped`: the
+  lines left out), or
+  `accounts_bulk_import_failed`. Passwords are never logged.
 
 A typed address that does not look like one is logged as `(not an email
 address)` (`loggableEmail()`): people type their password into that field.
