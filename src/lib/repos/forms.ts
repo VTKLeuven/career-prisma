@@ -298,17 +298,32 @@ export async function duplicateForm(id: string | number) {
 
         const versions = await tx.formVersion.findMany({
           where: { form_id: formId },
-          select: { version_number: true, schema: true, metadata: true },
+          select: { version_number: true, schema: true, metadata: true, is_active: true },
           orderBy: { version_number: "asc" },
         });
 
         const now = new Date();
-        // A duplicate is a draft: the form is disabled and none of its versions
-        // is active, so neither /forms/<slug> nor the company forms (both need
-        // an active form, and the public route an active version) can show it
-        // until staff have reviewed it and activated a version themselves. Its
-        // versions are fresh rows, so no response -- which hangs off a version
-        // -- comes along: responses belong to the source's edition only.
+        // A duplicate is a draft: the form is disabled, so neither /forms/<slug>
+        // nor the company forms (both need an active form) can show it until
+        // staff have reviewed it and enabled it themselves. Its versions are
+        // fresh rows, so no response -- which hangs off a version -- comes
+        // along: responses belong to the source's edition only.
+        //
+        // The version that is active on the source stays active on the copy
+        // (BR-62). A form's questions and its type settings are whatever its
+        // active version holds -- the builder, the edit dialog and a new
+        // version's inherited metadata all read only that one -- so a copy
+        // with no active version looked empty: no questions in the builder,
+        // and settings edits that were silently dropped.
+        //
+        // Copies made before that fix have no active version at all, and
+        // mirroring that would just duplicate the emptiness -- an admin
+        // repairing a broken copy by duplicating it got a second broken one.
+        // So when the source has no active version, the copy activates its
+        // newest (highest version_number, i.e. last in `versions`): the most
+        // recently saved questions. A source that does have an active version
+        // keeps exactly that one, even if it is not the newest.
+        const sourceHasActive = versions.some((v) => v.is_active);
         const created = await tx.form.create({
           data: {
             ...rest,
@@ -322,12 +337,12 @@ export async function duplicateForm(id: string | number) {
 
         if (versions.length > 0) {
           await tx.formVersion.createMany({
-            data: versions.map((v) => ({
+            data: versions.map((v, i) => ({
               form_id: created.id,
               version_number: v.version_number,
               schema: v.schema as Prisma.InputJsonValue,
               metadata: v.metadata == null ? Prisma.DbNull : (v.metadata as Prisma.InputJsonValue),
-              is_active: false,
+              is_active: sourceHasActive ? v.is_active : i === versions.length - 1,
               created_at: now,
             })),
           });

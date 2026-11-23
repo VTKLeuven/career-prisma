@@ -1786,7 +1786,7 @@ function DuplicateFormMenuItem({ form, onUpdate }: { form: FormRow; onUpdate: ()
     setDuplicating(true);
     try {
       const copy = await duplicateFormAction(Number(form.id));
-      toast.success(`Duplicated as "${copy.name}" (disabled, no active version yet)`);
+      toast.success(`Duplicated as "${copy.name}" (disabled)`);
       onUpdate();
     } catch (error) {
       console.error("Error duplicating form:", error);

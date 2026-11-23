@@ -38,13 +38,18 @@ import { formPath } from "@/lib/site-path";
 /**
  * When a form's active version is an event's registration form, points that
  * event's page at it. Runs after every save that can change the answer — the
- * slug, the metadata or which version is active — and never fails the save:
- * the link is a convenience the admin can still set by hand.
+ * slug, the metadata, which version is active or whether the form is enabled
+ * (a disabled form never sets the link) — and never fails the save: the link
+ * is a convenience the admin can still set by hand.
  */
 async function syncEventRegistrationLink(formId: string | number | null | undefined): Promise<void> {
   if (formId == null) return;
   try {
     const form = await getFormById(String(formId));
+    // A disabled form's public page is a dead end (same check as
+    // fetchPublicFormBySlugAction). Since BR-62 a copy keeps the source's active
+    // version, so editing a disabled copy must not repoint the source's event.
+    if (form?.is_active === false) return;
     const active = form?.form_versions?.find((v) => v.is_active);
     const meta = active?.metadata as { is_event_registration?: boolean; event_id?: string } | null | undefined;
     if (!form?.slug || !meta?.is_event_registration || !meta.event_id) return;
@@ -168,6 +173,7 @@ export async function createFormAction(data: {
         metadata: data.metadata, // Save metadata to form_version
       });
       console.log('[createFormAction] Created version with metadata:', (version as FormVersion & { metadata?: Record<string, unknown> })?.metadata);
+      // No-op for now: new forms start disabled (forms.is_active NOT NULL DEFAULT false) and this action never passes is_active; kept for a future create-as-enabled path.
       await syncEventRegistrationLink(form.id);
     }
 
@@ -225,8 +231,9 @@ export async function deleteFormAction(id: string) {
 
 /**
  * Copy a form with all its versions but none of its responses (BR-37). The
- * copy starts disabled with no active version -- see duplicateForm() -- so
- * there is no event registration link to sync here.
+ * copy starts disabled -- see duplicateForm() -- so the event registration link
+ * is deliberately not synced here: its active version still names the source's
+ * event, and syncing would point that event's page at a form nobody can open.
  */
 export async function duplicateFormAction(formId: number) {
   try {

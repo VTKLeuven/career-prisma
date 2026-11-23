@@ -192,8 +192,19 @@ before a QR mailing. No admin action and no cron job is needed.
   retired field type: the builder no longer offers it, but it still renders
   for forms that already had it. **Duplicate** in the admin forms list
   (`duplicateForm()`) copies the form row and every version, never the
-  responses; the copy is disabled with no active version, named
-  "<name> (copy)" / "(copy 2)" … with slug `<slug>-copy` / `-copy-2` ….
+  responses; the copy is disabled, named "<name> (copy)" / "(copy 2)" … with
+  slug `<slug>-copy` / `-copy-2` …. The version active on the source stays
+  active on the copy: the questions (`form_versions.schema.fields`) and the
+  type settings (`metadata`) the admin builder and edit dialog show are the
+  active version's, so a copy without one looked empty (BR-62). When the
+  source has no active version at all (a copy made before BR-62, or any form
+  whose versions are all inactive), the copy activates its newest version, so
+  a copy has questions whenever its source has any version. Disabling the form
+  is what keeps the copy off `/forms/<slug>` and the company forms. The copy
+  keeps the source's event metadata (`is_event_registration`,
+  `metadata.event_id`), so change the event before enabling a copy: enabling
+  it makes the copy that event's registration form and lists it next to the
+  source on company dashboards.
   `forms.folder` is a free-text label that groups the admin forms list
   (`/admin/forms`) into sections; null is "No folder". It is deliberately not
   a `Folder` table or a tree -- staff asked for a tidier overview (BR-55), and
