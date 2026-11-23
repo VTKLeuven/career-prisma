@@ -198,7 +198,8 @@ pages must stay **relative**: the session cookie is host-only, so an absolute
 arrives without a session while the domain-wide hint cookie still triggers the
 bounce. `toSitePath()` in `src/lib/site-path.ts` strips our own hosts, and an
 event registration form sets its event page's `registration_link` to
-`/forms/<slug>` whenever it is saved.
+`/forms/<slug>` whenever it is saved while enabled (enabling it is such a
+save); a disabled form never becomes its event's registration link.
 
 Password ("external") students are **not** capped at 24 hours: they have no SSO
 to bounce through, so it would only mean a daily password prompt.

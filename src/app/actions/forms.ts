@@ -38,8 +38,9 @@ import { formPath } from "@/lib/site-path";
 /**
  * When a form's active version is an event's registration form, points that
  * event's page at it. Runs after every save that can change the answer — the
- * slug, the metadata or which version is active — and never fails the save:
- * the link is a convenience the admin can still set by hand.
+ * slug, the metadata, which version is active or whether the form is enabled
+ * (a disabled form never sets the link) — and never fails the save: the link
+ * is a convenience the admin can still set by hand.
  */
 async function syncEventRegistrationLink(formId: string | number | null | undefined): Promise<void> {
   if (formId == null) return;
@@ -172,6 +173,7 @@ export async function createFormAction(data: {
         metadata: data.metadata, // Save metadata to form_version
       });
       console.log('[createFormAction] Created version with metadata:', (version as FormVersion & { metadata?: Record<string, unknown> })?.metadata);
+      // No-op for now: new forms start disabled (forms.is_active NOT NULL DEFAULT false) and this action never passes is_active; kept for a future create-as-enabled path.
       await syncEventRegistrationLink(form.id);
     }
 
