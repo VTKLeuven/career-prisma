@@ -11,7 +11,13 @@ import prisma from "@/lib/prisma";
 export type SystemLogLevel = "info" | "warn" | "error";
 
 /** Known sources, for the filter on the logs page. Add one when you log from a new subsystem. */
-export const SYSTEM_LOG_SOURCES = ["vtk_sso", "student_accounts"] as const;
+export const SYSTEM_LOG_SOURCES = [
+  "vtk_sso",
+  "student_accounts",
+  "user_accounts",
+  "email",
+  "cron",
+] as const;
 
 /**
  * How long a log line lives. Long enough to look back over an event week,
@@ -27,6 +33,26 @@ export interface SystemLogInput {
   studentId?: number | string | null;
   /** Never tokens, secrets or r-numbers. */
   details?: Record<string, unknown>;
+  /**
+   * For events anyone can trigger without signing in (a bad reset link, a
+   * failed sign-in): at most UNAUTHENTICATED_EVENTS_PER_MINUTE of this
+   * source/event reach the table per minute, so a script cannot fill it. The
+   * rest still go to the console.
+   */
+  capped?: boolean;
+}
+
+/**
+ * An address someone typed into a login or reset form, safe to log. People
+ * type their password into the email field often enough that anything not
+ * shaped like an address is replaced rather than stored.
+ */
+export function loggableEmail(input: unknown): string {
+  if (typeof input !== "string") return "(none)";
+  const email = input.trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254
+    ? email
+    : "(not an email address)";
 }
 
 export interface SystemLogEntry {
@@ -43,6 +69,21 @@ export interface SystemLogEntry {
 const PRUNE_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 let lastPrunedAt = 0;
 
+const UNAUTHENTICATED_EVENTS_PER_MINUTE = 30;
+// Per process, like the login throttle: one container, reset on deploy.
+const cappedWindows = new Map<string, { startedAt: number; count: number }>();
+
+function overCap(key: string): boolean {
+  const now = Date.now();
+  const window = cappedWindows.get(key);
+  if (!window || now - window.startedAt >= 60_000) {
+    cappedWindows.set(key, { startedAt: now, count: 1 });
+    return false;
+  }
+  window.count++;
+  return window.count > UNAUTHENTICATED_EVENTS_PER_MINUTE;
+}
+
 /**
  * Records a technical event, and mirrors it to the console so `docker logs`
  * still shows everything.
@@ -55,6 +96,8 @@ export async function logSystemEvent(entry: SystemLogInput): Promise<void> {
   if (entry.level === "error") console.error(line, entry.details ?? "");
   else if (entry.level === "warn") console.warn(line, entry.details ?? "");
   else console.info(line);
+
+  if (entry.capped && overCap(`${entry.source}/${entry.event}`)) return;
 
   const studentId = entry.studentId == null ? null : Number(entry.studentId);
 
@@ -129,17 +172,26 @@ export async function listSystemLogs(filter: {
   return rows.map(shapeLog);
 }
 
-/** Counts per level and the newest entry per event, for the status page. */
+/**
+ * Counts per level and per event since `since`, and the newest entry per event
+ * (over all retained rows), for the status page.
+ */
 export async function summarizeSystemLogs(
   source: string,
   since: Date
 ): Promise<{
   counts: Record<SystemLogLevel, number>;
+  countsByEvent: Record<string, number>;
   lastByEvent: Record<string, Date>;
 }> {
-  const [byLevel, byEvent] = await Promise.all([
+  const [byLevel, byEventSince, byEvent] = await Promise.all([
     prisma.systemLog.groupBy({
       by: ["level"],
+      where: { source, created_at: { gte: since } },
+      _count: { _all: true },
+    }),
+    prisma.systemLog.groupBy({
+      by: ["event"],
       where: { source, created_at: { gte: since } },
       _count: { _all: true },
     }),
@@ -155,12 +207,15 @@ export async function summarizeSystemLogs(
     if (row.level in counts) counts[row.level as SystemLogLevel] = row._count._all;
   }
 
+  const countsByEvent: Record<string, number> = {};
+  for (const row of byEventSince) countsByEvent[row.event] = row._count._all;
+
   const lastByEvent: Record<string, Date> = {};
   for (const row of byEvent) {
     if (row._max.created_at) lastByEvent[row.event] = row._max.created_at;
   }
 
-  return { counts, lastByEvent };
+  return { counts, countsByEvent, lastByEvent };
 }
 
 /** The newest applied Prisma migration, so the status page can show what schema is live. */

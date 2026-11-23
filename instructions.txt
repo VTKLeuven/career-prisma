@@ -1,0 +1,37 @@
+# Forms Duplicate optie
+
+Tzou nice zijn als we bij de forms een form uit het verleden zouden kunnen dupliceren/ een copy maken zodat er gwn enkele kleine dingetjes aangepast moeten elk jaar en niet constant een nieuwe form moeten maken van scratch.
+
+Ma voorlopig zijn alle forms gemaakt vr dees jaar dus is gwn naar volgend jaar toe, vandaar de heel lage prioriteit
+
+Thank you pookie
+scussi vr de spam aan ticketjes vandaag
+xoxo BR
+
+# auto re-login werkt niet
+wanneer je sessie verloopt (na 24u) wordt je niet automatisch teruggestuurd naar de vtk site om een nieuwe token te krijgen, je moet dus elke dag op de "student login" knop drukken
+
+Normaal zou er elke keer als je de pagina opendoet je auth/login token moeten verwerkt worden, indien er een token aanwezig is zou je moeten worden teruggestuurd. De browser moet de token dus langer cachen dan dat we de token als 'valid' ervaren.
+
+Liefst zou de token maar als 'actief' worden ervaren voor 1 dag, maar hij zou in de browser moeten blijven voor +-30 dagen (tenzij de token wordt vervangen door een nieuwe)
+
+# Search bar for adding company to event
+Bij het editen van onze events in het tapje Event pages kunt ge uw bedrijven toevoegen ma de manier waarop da nu gebeurd is heel onoverzichtelijk en onhandig vind ik. Ge moet nu scrollen tussen alle bedrijven. Het zou nice zijn als ge gwn kunt opzoeken tussen de bedrijven en uw bedrijf dan kunt aanklikken. Ook zou het nice zijn als er dan een klein overzichtje is met welke bedrijven al toegevoegd zijn.
+
+Ge zijt een tank,
+xoxo mekkie
+
+# Invitation Company Representative
+Als je een nieuwe bedrijfsvertegenwoordiger toevoegt, krijgt die een link om zijn account te activeren. Nu is dat niet zo heel lang. Zou je het kunnen aanpassen dat ze 14 dagen de tijd krijgen om hun account te registreren voordat de link vervalt? Alvast bedankt Witse!
+
+# Registratie bevestiging evenementen
+Zou er een soort overzicht kunnen gemaakt worden waar studenten zien waar ze zijn ingeschreven. want nu kunnen ze niet zien of ze zijn ingeschreven
+
+# Splitsing naam form en backend form
+
+Hey Witse,
+
+Als je een form aanmaakt geef je die een naam. Omdat deze in de backend zit geef je die een lange en duidelijke naam. Dit is echter niet prime voor het in de dashboard van de bedrijven te zetten.
+
+Met vriendelijke groeten,
+Victor

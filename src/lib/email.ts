@@ -3,6 +3,24 @@ import "server-only";
 
 import nodemailer from "nodemailer";
 import { isDevEnvironment } from "@/lib/dev-environment";
+import { logSystemEvent, type SystemLogLevel } from "@/lib/repos/system-logs";
+
+/**
+ * Writes one `email` row to /admin/system-logs. Not awaited by the queue: a
+ * slow log write must not hold up the next email. `logSystemEvent` never
+ * throws, so nothing is lost by not awaiting it.
+ *
+ * Recipient and subject only -- never the body, which carries reset, invite
+ * and verification links.
+ */
+function logEmailEvent(
+  level: SystemLogLevel,
+  event: "sent" | "failed" | "not_sent" | "rate_limited",
+  message: string,
+  details: Record<string, unknown>
+) {
+  void logSystemEvent({ source: "email", level, event, message, details });
+}
 
 // Singleton transporter with connection pooling to avoid rate limiting
 let cachedTransporter: nodemailer.Transporter | null = null;
@@ -230,6 +248,7 @@ interface EmailQueueItem {
   attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>;
   replyTo?: string;
   logId: number;
+  queuedAt: number;
   resolve: () => void;
   reject: (error: Error) => void;
 }
@@ -429,6 +448,16 @@ async function processEmailQueue() {
       lastEmailSentAt = Date.now();
       recordEmailSent();
       emailJobManager.logEmailSent(item.logId);
+      logEmailEvent("info", "sent", `"${item.subject}" to ${item.to}`, {
+        to: item.to,
+        subject: item.subject,
+        from: item.from,
+        ...(item.replyTo && { replyTo: item.replyTo }),
+        ...(item.attachments?.length && {
+          attachments: item.attachments.map((a) => a.filename),
+        }),
+        queuedForSeconds: Math.round((Date.now() - item.queuedAt) / 1000),
+      });
       item.resolve();
     } catch (error) {
       const err = error as Error & { responseCode?: number; code?: string };
@@ -436,6 +465,15 @@ async function processEmailQueue() {
         item.logId,
         err.message || "Unknown error"
       );
+      logEmailEvent("error", "failed", `"${item.subject}" to ${item.to} could not be sent`, {
+        to: item.to,
+        subject: item.subject,
+        from: item.from,
+        error: err.message || "Unknown error",
+        ...(err.code && { code: err.code }),
+        ...(err.responseCode && { responseCode: err.responseCode }),
+        queuedForSeconds: Math.round((Date.now() - item.queuedAt) / 1000),
+      });
       // Record rate limit errors
       if (isRateLimitError(err)) {
         emailMetrics.rateLimitErrors++;
@@ -538,6 +576,24 @@ async function sendEmailWithRetry(
         const waitTime = Math.max(Math.floor(baseWaitTime + jitter), 30000); // Minimum 30 seconds
         
         const waitMinutes = Math.round(waitTime / 60000 * 10) / 10; // Round to 1 decimal place
+
+        logEmailEvent(
+          "warn",
+          "rate_limited",
+          `SMTP refused "${subject}" to ${to} (attempt ${attempt}/${maxRetries}); retrying in ${waitMinutes} min`,
+          {
+            to,
+            subject,
+            attempt,
+            error: err.message || "Unknown error",
+            ...(err.code && { code: err.code }),
+            ...(err.responseCode && { responseCode: err.responseCode }),
+            retryInMinutes: waitMinutes,
+            queueLength,
+            ratePerMinute: perMinute,
+            ratePerHour: perHour,
+          }
+        );
         
         // Enhanced logging with diagnostics
         console.error(
@@ -635,6 +691,12 @@ export async function sendEmail({
   // copied from real people.
   if (isDevEnvironment()) {
     console.log(`[Email] Not sent (DEV_ENVIRONMENT): "${subject}" to ${to}`);
+    // Logged so testers on the dev site can see what would have gone out.
+    logEmailEvent("info", "not_sent", `"${subject}" to ${to} — not sent on the dev site`, {
+      to,
+      subject,
+      reason: "DEV_ENVIRONMENT",
+    });
     return;
   }
   // A development server without SMTP settings logs instead of sending. The
@@ -647,6 +709,11 @@ export async function sendEmail({
     !process.env.SMTP_USER?.trim()
   ) {
     console.log(`[Email] Not sent (development, no SMTP configured): "${subject}" to ${to}`);
+    logEmailEvent("info", "not_sent", `"${subject}" to ${to} — not sent, no SMTP configured`, {
+      to,
+      subject,
+      reason: "no SMTP configured",
+    });
     return;
   }
 
@@ -699,6 +766,7 @@ export async function sendEmail({
       attachments,
       replyTo,
       logId,
+      queuedAt: Date.now(),
       resolve,
       reject,
     });

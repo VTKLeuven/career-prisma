@@ -1,3 +1,5 @@
+import { logSystemEvent, type SystemLogLevel } from "@/lib/repos/system-logs";
+
 // ── Job types ──
 
 export type EmailTaskResult = "sent" | "skipped" | "failed";
@@ -19,11 +21,27 @@ export interface EmailJob {
 interface InternalJob extends EmailJob {
   tasks: EmailTask[];
   cancelled: boolean;
+  cancelledBy?: string;
+  log?: JobLogInfo;
+}
+
+/**
+ * What the `email` system log says about a job. Jobs themselves live in
+ * memory and vanish an hour after they finish (or on a restart); the log rows
+ * for their start and end are what remains.
+ */
+export interface JobLogInfo {
+  /** Human-readable, e.g. `QR tickets for "Jobfair 2026"`. */
+  label: string;
+  /** Email of the admin who started it. */
+  startedBy?: string;
+  details?: Record<string, unknown>;
 }
 
 interface JobOptions {
   batchSize?: number;
   batchCooldownMs?: number;
+  log?: JobLogInfo;
 }
 
 // ── Email log types ──
@@ -106,9 +124,11 @@ class EmailJobManager {
       createdAt: Date.now(),
       tasks,
       cancelled: false,
+      log: options?.log,
     };
 
     this.jobs.set(id, job);
+    this.logJob(job, "info", "job_started", `started: ${tasks.length} emails to send`);
 
     const batchSize = options?.batchSize ?? DEFAULT_BATCH_SIZE;
     const cooldown = options?.batchCooldownMs ?? DEFAULT_BATCH_COOLDOWN_MS;
@@ -116,16 +136,23 @@ class EmailJobManager {
       console.error(`[EmailJobManager] Unexpected error in job ${id}:`, err);
       job.status = "failed";
       job.completedAt = Date.now();
+      this.logJob(
+        job,
+        "error",
+        "job_failed",
+        `crashed after ${job.sent} sent: ${err instanceof Error ? err.message : String(err)}`
+      );
     });
 
     return this.toPublicJob(job);
   }
 
-  cancelJob(id: string): boolean {
+  cancelJob(id: string, cancelledBy?: string): boolean {
     const job = this.jobs.get(id);
     if (!job) return false;
     if (job.status !== "queued" && job.status !== "processing") return false;
     job.cancelled = true;
+    job.cancelledBy = cancelledBy;
     return true;
   }
 
@@ -231,6 +258,42 @@ class EmailJobManager {
 
   // ── Internals ──
 
+  private logJob(job: InternalJob, level: SystemLogLevel, event: string, what: string) {
+    const label = job.log?.label ?? job.scope;
+    void logSystemEvent({
+      source: "email",
+      level,
+      event,
+      message: `Bulk email ${label} ${what}`,
+      details: {
+        jobId: job.id,
+        scope: job.scope,
+        ...(job.log?.startedBy && { startedBy: job.log.startedBy }),
+        ...(job.cancelledBy && { cancelledBy: job.cancelledBy }),
+        total: job.total,
+        sent: job.sent,
+        failed: job.failed,
+        skipped: job.skipped,
+        ...(job.completedAt && {
+          durationSeconds: Math.round((job.completedAt - job.createdAt) / 1000),
+        }),
+        ...(job.errors.length > 0 && { errors: job.errors.slice(0, 20) }),
+        ...job.log?.details,
+      },
+    });
+  }
+
+  private markCancelled(job: InternalJob) {
+    job.status = "cancelled";
+    job.completedAt = Date.now();
+    this.logJob(
+      job,
+      "warn",
+      "job_cancelled",
+      `cancelled${job.cancelledBy ? ` by ${job.cancelledBy}` : ""} after ${job.sent + job.failed + job.skipped}/${job.total}`
+    );
+  }
+
   private async processJob(
     job: InternalJob,
     batchSize: number,
@@ -241,8 +304,7 @@ class EmailJobManager {
 
     for (let i = 0; i < tasks.length; i += batchSize) {
       if (job.cancelled) {
-        job.status = "cancelled";
-        job.completedAt = Date.now();
+        this.markCancelled(job);
         if (process.env.NODE_ENV === "development") {
           console.log(
             `[EmailJobManager] Job ${job.id} cancelled at ${job.sent + job.failed + job.skipped}/${job.total}`
@@ -254,8 +316,7 @@ class EmailJobManager {
       const batch = tasks.slice(i, i + batchSize);
       for (const task of batch) {
         if (job.cancelled) {
-          job.status = "cancelled";
-          job.completedAt = Date.now();
+          this.markCancelled(job);
           return;
         }
 
@@ -294,6 +355,12 @@ class EmailJobManager {
 
     job.status = job.failed > 0 && job.sent === 0 ? "failed" : "completed";
     job.completedAt = Date.now();
+    this.logJob(
+      job,
+      job.status === "failed" ? "error" : job.failed > 0 ? "warn" : "info",
+      job.status === "failed" ? "job_failed" : "job_finished",
+      `${job.status === "failed" ? "failed" : "finished"}: ${job.sent} sent, ${job.failed} failed, ${job.skipped} skipped`
+    );
     if (process.env.NODE_ENV === "development") {
       const duration = Math.round((job.completedAt - job.createdAt) / 1000);
       console.log(

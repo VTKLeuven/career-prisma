@@ -184,7 +184,13 @@ export async function POST(
     const scope = `reminders-${formId}`;
 
     try {
-      emailJobManager.startJob(jobId, scope, tasks);
+      emailJobManager.startJob(jobId, scope, tasks, {
+        log: {
+          label: `reminders for "${formName}"`,
+          startedBy: user.email,
+          details: { formId, formVersionId, subject, preSkipped },
+        },
+      });
     } catch (err) {
       if (
         err instanceof Error &&

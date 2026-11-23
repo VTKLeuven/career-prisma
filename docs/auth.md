@@ -42,6 +42,29 @@ either way -- they look the account up and mail it after responding, so the
 answer takes as long whether or not the account exists. The counters live in
 the process (one container) and reset on deploy.
 
+### Logging
+
+The company/staff side logs to `system_logs` under `user_accounts`
+(`/admin/system-logs?source=user_accounts`):
+
+- `login_succeeded` (with the role), `login_failed` with the **reason** the
+  response hides — `no_account`, `status_<status>`, `no_password_set`,
+  `role_not_allowed` or `wrong_password` — and the client address, and
+  `login_locked` once, on the failure that trips the throttle (the 429s after
+  it are not logged).
+- `password_reset_requested`, `invite_resent` (a reset asked for by someone
+  still `invited` mails the invite again), `password_reset_ignored` (no
+  account, or not active/invited — the visitor is told a mail went out either
+  way, so this row is how an admin finds out it did not), `password_reset_failed`,
+  `password_reset_completed` and `password_reset_rejected` (bad or expired link).
+- `invite_accepted`, `invite_rejected`, `company_setup_completed` /
+  `company_setup_failed`.
+
+A typed address that does not look like one is logged as `(not an email
+address)` (`loggableEmail()`): people type their password into that field.
+Tokens are never logged. Student password logins (`/student-login`) are not
+logged yet.
+
 ## The VTK SSO
 
 The new `vtk.be` runs better-auth's SSO provider — an ordinary OIDC

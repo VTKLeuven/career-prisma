@@ -43,7 +43,7 @@ export async function POST(
   const { action, jobId } = body;
 
   if (action === "cancel" && jobId) {
-    const cancelled = emailJobManager.cancelJob(jobId);
+    const cancelled = emailJobManager.cancelJob(jobId, user.email);
     if (!cancelled) {
       return NextResponse.json(
         { error: "Job not found or not cancellable" },

@@ -271,13 +271,13 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     url: "/admin/system-status",
     icon: Activity,
     group: "Technical",
-    description: "Configuration, VTK login health and the deployed schema at a glance.",
+    description: "Configuration, VTK login and email health, and the deployed schema at a glance.",
   },
   {
     title: "System Logs",
     url: "/admin/system-logs",
     icon: ScrollText,
     group: "Technical",
-    description: "Technical log of VTK logins and other website events.",
+    description: "Technical log of logins, account changes, outgoing emails and scheduled jobs.",
   },
 ];

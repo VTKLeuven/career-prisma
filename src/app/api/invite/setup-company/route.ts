@@ -6,6 +6,7 @@ import { updateCompany } from "@/lib/repos/company";
 import { uploadFile } from "@/lib/file-storage";
 import { validatePageImageDimensionsFromSize } from "@/lib/utils/image-validation";
 import { sanitizeRichText } from "@/lib/sanitize-html";
+import { logSystemEvent } from "@/lib/repos/system-logs";
 
 export async function POST(request: Request) {
   try {
@@ -104,9 +105,22 @@ export async function POST(request: Request) {
       category: masterIds.map((master_id) => ({ master_id })),
     } as unknown as Partial<Company>);
 
+    await logSystemEvent({
+      source: "user_accounts",
+      level: "info",
+      event: "company_setup_completed",
+      message: `${invited.email ?? userId} set up and published company "${data.name}"`,
+      details: { userId, email: invited.email, companyId },
+    });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error setting up company:", error);
+    await logSystemEvent({
+      source: "user_accounts",
+      level: "error",
+      event: "company_setup_failed",
+      message: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }

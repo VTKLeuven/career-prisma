@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 import { CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
 import { getUserFromCookies } from "@/lib/auth-server";
 import { isDevEnvironment } from "@/lib/dev-environment";
+import { getSmtpQueueStats } from "@/lib/email";
 import {
   STUDENT_SESSION_MAX_AGE,
   discover,
@@ -78,11 +79,22 @@ export default async function SystemStatusPage() {
   const configured = !("error" in config);
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-  const [discovery, ssoLogs, migration] = await Promise.all([
+  const [discovery, ssoLogs, migration, emailLogs, smtpQueue, cronLogs] = await Promise.all([
     configured ? checkDiscovery(config.issuer) : null,
     summarizeSystemLogs("vtk_sso", since),
     latestAppliedMigration().catch(() => null),
+    summarizeSystemLogs("email", since),
+    getSmtpQueueStats(),
+    summarizeSystemLogs("cron", since),
   ]);
+
+  const emailCount = (event: string) => emailLogs.countsByEvent[event] ?? 0;
+  const emailHealth: Health =
+    emailCount("failed") > 0 || emailCount("job_failed") > 0
+      ? "error"
+      : emailCount("rate_limited") > 0
+        ? "warn"
+        : "ok";
 
   const ssoHealth: Health = !configured || (discovery && "error" in discovery)
     ? "error"
@@ -92,7 +104,7 @@ export default async function SystemStatusPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-6">
-      <PageHeader title="System Status" description="How this deployment is configured and whether the VTK login is healthy. Secrets are never shown — only whether they are set." />
+      <PageHeader title="System Status" description="How this deployment is configured and whether the VTK login and outgoing email are healthy. Secrets are never shown — only whether they are set." />
 
       <Card>
         <CardHeader>
@@ -161,6 +173,64 @@ export default async function SystemStatusPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
+            <HealthIcon health={emailHealth} />
+            <CardTitle>Email</CardTitle>
+          </div>
+          <CardDescription>
+            Outgoing mail over the last 24 hours. See{" "}
+            <Link href="/admin/system-logs?source=email" className="underline">
+              the email logs
+            </Link>{" "}
+            for each message, or{" "}
+            <Link href="/admin/email-queue" className="underline">
+              the email queue
+            </Link>{" "}
+            for what is sending right now.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <dl>
+            <Row label="Mail (SMTP)">
+              {isDevEnvironment()
+                ? "not sent on the dev site (DEV_ENVIRONMENT=true) — logged as not_sent"
+                : process.env.SMTP_HOST
+                  ? `host ${process.env.SMTP_HOST}`
+                  : "not configured"}
+            </Row>
+            <Row label="Last 24 hours">
+              {emailCount("sent")} sent · {emailCount("not_sent")} not sent ·{" "}
+              <span className={emailCount("rate_limited") ? "text-amber-600" : undefined}>
+                {emailCount("rate_limited")} rate-limit retries
+              </span>{" "}
+              ·{" "}
+              <span className={emailCount("failed") ? "text-red-600" : undefined}>
+                {emailCount("failed")} failed
+              </span>
+            </Row>
+            <Row label="Bulk jobs (24 hours)">
+              {emailCount("job_started")} started · {emailCount("job_finished")} finished ·{" "}
+              {emailCount("job_cancelled")} cancelled ·{" "}
+              <span className={emailCount("job_failed") ? "text-red-600" : undefined}>
+                {emailCount("job_failed")} failed
+              </span>
+            </Row>
+            <Row label="Queue now">
+              {smtpQueue.queueLength} waiting · {smtpQueue.ratePerMinute}/min ·{" "}
+              {smtpQueue.ratePerHour}/hour
+            </Row>
+            <Row label="Last sent">{formatDate(emailLogs.lastByEvent.sent)}</Row>
+            <Row label="Last failure">
+              <span className={emailCount("failed") ? "text-red-600" : undefined}>
+                {formatDate(emailLogs.lastByEvent.failed)}
+              </span>
+            </Row>
+          </dl>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
             <HealthIcon health={migration ? "ok" : "warn"} />
             <CardTitle>Deployment</CardTitle>
           </div>
@@ -178,8 +248,16 @@ export default async function SystemStatusPage() {
                 ? `${migration.name} (applied ${formatDate(migration.finishedAt)})`
                 : "could not read _prisma_migrations"}
             </Row>
-            <Row label="Mail (SMTP)">
-              {process.env.SMTP_HOST ? `host ${process.env.SMTP_HOST}` : "not configured"}
+            <Row label="Matches sync (cron)">
+              last run {formatDate(cronLogs.lastByEvent.sync_company_matches)}
+              {cronLogs.counts.error > 0 && (
+                <span className="text-red-600"> — failed in the last 24 hours</span>
+              )}{" "}
+              (
+              <Link href="/admin/system-logs?source=cron" className="underline">
+                logs
+              </Link>
+              )
             </Row>
             <Row label="Sentry">
               {process.env.NEXT_PUBLIC_SENTRY_DSN ? "enabled" : "not configured"}

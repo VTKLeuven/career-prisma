@@ -68,7 +68,9 @@ export default async function SystemLogsPage({
         title="System Logs"
         description={
           <>
-            Technical events from the website — VTK logins first. The newest 300
+            Technical events from the website: logins and account changes,
+            every outgoing email and bulk email job, and scheduled jobs. The
+            newest 300
             matching entries are shown; entries are kept for{" "}
             {SYSTEM_LOG_RETENTION_DAYS} days.
           </>

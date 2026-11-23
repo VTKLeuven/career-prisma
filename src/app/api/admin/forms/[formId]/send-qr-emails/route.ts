@@ -167,7 +167,13 @@ export async function POST(
     const scope = `qr-emails-${formId}`;
 
     try {
-      emailJobManager.startJob(jobId, scope, tasks);
+      emailJobManager.startJob(jobId, scope, tasks, {
+        log: {
+          label: `QR tickets for "${formName}"`,
+          startedBy: user.email,
+          details: { formId, formVersionId, onlyUnsent: Boolean(onlyUnsent), preSkipped },
+        },
+      });
     } catch (err) {
       if (
         err instanceof Error &&

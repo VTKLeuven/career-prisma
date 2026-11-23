@@ -126,15 +126,36 @@ Two admin pages read it, under the **Technical** group of the admin nav:
 
 - `/admin/system-logs` — the log, filterable by source, level and event.
 - `/admin/system-status` — VTK SSO configuration and reachability, login
-  counts for the last 24 hours, the environment, and the newest applied
-  migration. Secrets are shown only as "set".
+  counts for the last 24 hours, email health (sent / failed / rate-limited in
+  the last 24 hours, bulk jobs, the live queue), the environment, the last
+  cron run and the newest applied migration. Secrets are shown only as "set".
 
 Rows are kept for `SYSTEM_LOG_RETENTION_DAYS` (90). There is no cron job: the
 first write after an hour has passed deletes the expired rows.
 
-Sources so far: `vtk_sso`, which logs every completed or failed login flow,
-and `student_accounts`, which logs students changing their login email and
-deleting their account (see [auth.md](auth.md)). To log from another subsystem, call
+Sources so far:
+
+- `vtk_sso` — every completed or failed student login flow.
+- `student_accounts` — students changing their login email and deleting their
+  account.
+- `user_accounts` — company and staff accounts: sign-ins, password resets,
+  invites and the invited rep's company setup. See [auth.md](auth.md#logging).
+- `email` — every outgoing email from `sendEmail()` in `src/lib/email.ts`:
+  `sent`, `failed` (after the retries ran out), `rate_limited` (one row per
+  SMTP retry) and `not_sent` (the dev site and an unconfigured development
+  server send nothing, but the row shows what would have gone out). Rows hold
+  recipient, sender and subject, never the body — bodies carry reset, invite
+  and verification links. Bulk jobs from `email-job-manager.ts` (QR tickets,
+  form reminders) add `job_started` and `job_finished` / `job_failed` /
+  `job_cancelled`, with counts and the admin who started or cancelled them.
+  `/admin/email-queue` is the live, in-memory view of the same queue and is
+  empty after a restart; the log is what survives.
+- `cron` — one row per run of a scheduled endpoint (`sync_company_matches`),
+  at `warn` when some items failed and `error` when the run did.
+
+Events anyone can trigger without signing in — a failed sign-in, a bad reset
+or invite link — pass `capped: true`, which lets at most 30 per minute of each
+reach the table, so a script cannot fill it. To log from another subsystem, call
 `logSystemEvent()` with a new `source` and add it to `SYSTEM_LOG_SOURCES` so
 the filter offers it. **Never log tokens, secrets or r-numbers** — the table is
 readable by every admin.
