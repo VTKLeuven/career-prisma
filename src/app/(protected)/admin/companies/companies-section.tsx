@@ -2379,13 +2379,13 @@ function CompanyFormDialog({ onRefresh, salespersons }: { onRefresh?: () => void
           </Button>
         </DialogTrigger>
         <DialogContent className="max-h-[90dvh] overflow-y-auto" showCloseButton={false}>
-          <div className="absolute top-4 right-4 flex gap-2">
+          <div className="absolute top-4 right-4 flex gap-2 max-md:top-0.5 max-md:right-0.5 max-md:gap-0">
             <Button
               type="button"
               variant="ghost"
               size="sm"
               onClick={() => setCsvUploadOpen(true)}
-              className="h-8 w-8 p-0"
+              className="h-8 w-8 p-0 max-md:size-11"
               title="Upload CSV/Excel"
             >
               <Upload size={16} />
@@ -2395,14 +2395,14 @@ function CompanyFormDialog({ onRefresh, salespersons }: { onRefresh?: () => void
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-8 w-8 p-0"
+                className="h-8 w-8 p-0 max-md:size-11"
               >
                 <X size={16} />
               </Button>
             </DialogClose>
           </div>
           <form onSubmit={onSubmit} className="flex flex-col gap-4">
-            <DialogHeader>
+            <DialogHeader className="max-md:mt-8">
               <DialogTitle>Add a New Company</DialogTitle>
               <DialogDescription>Fill in the company details below.</DialogDescription>
             </DialogHeader>
