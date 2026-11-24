@@ -411,7 +411,7 @@ export function SiteHeader({
         >
           <div className="mx-auto max-w-7xl px-2 sm:px-4">
             <div
-              className={`rounded-xl sm:rounded-2xl border backdrop-blur-md shadow-xl p-4 ${
+              className={`rounded-xl sm:rounded-2xl border backdrop-blur-md shadow-xl p-4 max-md:max-h-[calc(100dvh-5rem)] max-md:overflow-y-auto max-md:overscroll-contain ${
                 dark ? "bg-neutral-800/95 border-neutral-600/50" : "bg-white/95"
               }`}
             >
@@ -424,7 +424,7 @@ export function SiteHeader({
                     <Button
                       size="sm"
                       variant="outline"
-                      className={`h-7 rounded-full text-xs px-3 max-md:-my-2 max-md:h-11 ${
+                      className={`h-7 rounded-full text-xs px-3 max-md:relative max-md:after:absolute max-md:after:-inset-2 max-md:after:content-[''] ${
                         dark
                           ? "border-white/60 text-white hover:bg-white/20"
                           : "border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5"
