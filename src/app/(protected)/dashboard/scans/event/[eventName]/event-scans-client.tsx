@@ -30,7 +30,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { slugifyEventName, CSV_UTF8_BOM } from "@/lib/utils/slugify";
-import { csvCell } from "@/lib/csv";
 import { Input } from "@/components/ui/input";
 import { getScanningDisplayValues, hasScanningColumns, type ScanningColumns } from "@/lib/utils/scanning-columns";
 import { toast } from "sonner";
@@ -185,8 +184,13 @@ export function EventScansClient({ eventName, initialScans }: { eventName: strin
       ];
     });
 
+    const escapeCsv = (value: unknown) => {
+      const s = value === null || value === undefined ? "" : String(value);
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
     const csv = CSV_UTF8_BOM + [headerRow, ...dataRows]
-      .map(row => row.map(csvCell).join(","))
+      .map(row => row.map(escapeCsv).join(","))
       .join("\r\n");
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });

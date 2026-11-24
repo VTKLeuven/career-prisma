@@ -231,6 +231,12 @@ lists rather than junctions: a deleted master or faculty just stops matching.
 Several masters may share a programme; a single-choice field is then left
 empty rather than guessed.
 
+Master `name` / `short_name` and faculty `name` are trimmed on every write
+(`toMasterWrite()` / `toFacultyWrite()` in `src/lib/repos/features.ts`), not
+when exported: the CSV exports print them as stored, and a leading space broke
+the staff's InDesign import (BR-64). Migration
+`20261124160507_trim_master_faculty_names` cleaned the rows saved before that.
+
 ## Files
 
 `File` rows carry metadata; bytes live on disk under `UPLOADS_DIR`, named by the

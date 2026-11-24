@@ -42,7 +42,6 @@ import type { FormVersion, FormResponse, FormField } from "@/lib/schema";
 import { fieldDisplayLabel, formDisplayName, isCompanyFormMetadata } from "@/lib/form-fields";
 import { formatDateBE, formatDateTimeBE } from "@/lib/date-utils";
 import { CSV_UTF8_BOM } from "@/lib/utils/slugify";
-import { csvCell, csvDisplayLabel } from "@/lib/csv";
 import { FormFieldRenderer } from "@/components/FormFieldRenderer";
 import { getFileUrl } from "@/components/Images";
 import NextImage from "next/image";
@@ -927,8 +926,13 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
       company.optionName,
     ]);
 
+    const escapeCsv = (value: unknown) => {
+      const s = value === null || value === undefined ? "" : String(value);
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
     const csv = CSV_UTF8_BOM + [headerRow, ...dataRows]
-      .map(row => row.map(csvCell).join(","))
+      .map(row => row.map(escapeCsv).join(","))
       .join("\r\n");
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -1122,12 +1126,12 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
         // Resolve master-degrees to display names (e.g. fac:1:3 -> Fac. Engineering - Architectural Engineering)
         if (fieldTypeMap.get(key) === 'master-degrees') {
           const items = Array.isArray(value) ? value : [value];
-          // Lists are joined by csvCell, which trims each item and drops empty ones.
-          return items.map((v: unknown) =>
-            csvDisplayLabel(resolveMasterDegreeValueToDisplayLabel(v, mastersForDisplay, facultiesForDisplay) || String(v))
+          const labels = items.map((v: unknown) =>
+            resolveMasterDegreeValueToDisplayLabel(v, mastersForDisplay, facultiesForDisplay) || String(v)
           );
+          return labels.join('; ');
         }
-        if (Array.isArray(value)) return value;
+        if (Array.isArray(value)) return value.join('; ');
         return String(value);
       });
       
@@ -1139,8 +1143,13 @@ export function FormResponsesClient({ formId, initialData }: { formId: string; i
       return [date, response.id, ...versionField, ...companyFields, ...studentFields, ...values, ...(isEventRegistration ? [attendantLink] : [])];
     });
 
+    const escapeCsv = (value: unknown) => {
+      const s = value === null || value === undefined ? "" : String(value);
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
     const csv = CSV_UTF8_BOM + [headerRow, ...dataRows]
-      .map(row => row.map(csvCell).join(","))
+      .map(row => row.map(escapeCsv).join(","))
       .join("\r\n");
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
