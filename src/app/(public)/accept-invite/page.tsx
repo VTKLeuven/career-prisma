@@ -292,7 +292,7 @@ function CompanySetupForm({ token, company, masters, onComplete }: {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 px-4 py-8">
+    <div className="min-h-screen max-md:min-h-dvh bg-gray-50 px-4 py-8">
       <div className="max-w-4xl mx-auto">
         <Card className="rounded-2xl shadow-md">
           <CardHeader>
@@ -605,7 +605,7 @@ function PasswordSetupForm({ token, onComplete }: { token: string; onComplete: (
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div className="min-h-screen max-md:min-h-dvh flex items-center justify-center bg-gray-50 px-4">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl">Set Up Your Account</CardTitle>
@@ -757,7 +757,7 @@ function AcceptInviteContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="min-h-screen max-md:min-h-dvh flex items-center justify-center bg-gray-50 px-4">
         <Card className="w-full max-w-md">
           <CardContent className="py-8 text-center">
             <p className="text-gray-600">Loading invitation...</p>
@@ -769,7 +769,7 @@ function AcceptInviteContent() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="min-h-screen max-md:min-h-dvh flex items-center justify-center bg-gray-50 px-4">
         <Card className="w-full max-w-md">
           <CardContent className="py-8 text-center">
             <p ref={errorRef} className="text-red-500">{error}</p>
@@ -781,7 +781,7 @@ function AcceptInviteContent() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="min-h-screen max-md:min-h-dvh flex items-center justify-center bg-gray-50 px-4">
         <Card className="w-full max-w-md">
           <CardContent className="py-8 text-center">
             <p className="text-red-500">Invalid invitation link. Please contact support.</p>
@@ -794,7 +794,7 @@ function AcceptInviteContent() {
   if (step === "company-setup") {
     if (!company) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="min-h-screen max-md:min-h-dvh flex items-center justify-center bg-gray-50 px-4">
           <Card className="w-full max-w-md">
             <CardContent className="py-8 text-center">
               <p className="text-red-500">Company information not found. Please contact support.</p>
@@ -823,7 +823,7 @@ function AcceptInviteContent() {
 export default function AcceptInvitePage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="min-h-screen max-md:min-h-dvh flex items-center justify-center bg-gray-50 px-4">
         <Card className="w-full max-w-md">
           <CardContent className="py-8 text-center">
             <p className="text-gray-600">Please wait while we load your invitation.</p>

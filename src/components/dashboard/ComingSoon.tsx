@@ -22,7 +22,7 @@ export function ComingSoon({
   backLabel = "Back to Dashboard",
 }: ComingSoonProps) {
   return (
-    <div className="flex items-center justify-center min-h-[calc(100vh-8rem)]">
+    <div className="flex items-center justify-center min-h-[calc(100vh-8rem)] max-md:min-h-[calc(100dvh-8rem)]">
       <Card className="max-w-2xl w-full">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">

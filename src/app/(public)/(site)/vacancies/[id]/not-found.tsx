@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 
 export default function VacancyNotFound() {
   return (
-      <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-white to-vtk-blue/5">
+      <div className="min-h-screen max-md:min-h-dvh bg-gradient-to-br from-neutral-50 via-white to-vtk-blue/5">
         <div className="px-2 sm:px-0">
           <div className="mx-auto w-full max-w-7xl px-2 py-24 text-center sm:px-4">
           <div className="mx-auto max-w-md rounded-2xl border border-neutral-200/80 bg-white p-10 shadow-sm">

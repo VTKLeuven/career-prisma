@@ -136,7 +136,7 @@ export function CVDocumentViewer({ fileUrl, className = '', title }: CVDocumentV
     <div className={`flex flex-col min-h-0 ${className}`.trim()}>
       <div
         ref={scrollContainerRef}
-        className="flex-1 min-h-[70vh] bg-white overflow-y-auto overflow-x-hidden border rounded-lg shadow-sm relative"
+        className="flex-1 min-h-[70vh] bg-white overflow-y-auto overflow-x-hidden border rounded-lg shadow-sm relative max-md:h-[calc(100dvh-10rem)]!"
         style={{ minHeight: '70vh', height: 'calc(100vh - 10rem)', width: '100%' }}
       >
         {loading && (

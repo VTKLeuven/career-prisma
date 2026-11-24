@@ -290,7 +290,7 @@ export default function CVBookPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[calc(100vh-8rem)]">
+      <div className="flex items-center justify-center min-h-[calc(100vh-8rem)] max-md:min-h-[calc(100dvh-8rem)]">
         <div className="text-muted-foreground">Loading...</div>
       </div>
     )
@@ -453,7 +453,7 @@ export default function CVBookPage() {
               )}
             </Accordion>
           ) : selectedStudent ? (
-            <div className="flex flex-col min-h-0" style={{ minHeight: 'calc(100vh - 12rem)' }}>
+            <div className="flex flex-col min-h-0 max-md:min-h-[calc(100dvh-12rem)]!" style={{ minHeight: 'calc(100vh - 12rem)' }}>
               <div className="flex items-center justify-between gap-2 shrink-0 mb-4">
                 <Button
                   variant="outline"

@@ -150,7 +150,7 @@ export function VacanciesClient({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-white to-vtk-blue/5">
+    <div className="min-h-screen max-md:min-h-dvh bg-gradient-to-br from-neutral-50 via-white to-vtk-blue/5">
       {/* Horizontal shell matches site Header: outer px-2 sm:px-0, inner max-w-7xl px-2 sm:px-4 */}
       <div className="px-2 sm:px-0">
         <div className="mx-auto w-full max-w-7xl px-2 py-16 sm:px-4 sm:py-24">

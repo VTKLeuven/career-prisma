@@ -60,9 +60,9 @@ export default function ContactPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-white to-vtk-blue/5">
+    <div className="min-h-screen max-md:min-h-dvh bg-gradient-to-br from-neutral-50 via-white to-vtk-blue/5">
       {/* Content Container */}
-      <div className="min-h-screen py-16 sm:py-24">
+      <div className="min-h-screen max-md:min-h-dvh py-16 sm:py-24">
         <div className="container mx-auto px-4">
           <div className="max-w-4xl mx-auto">
             {/* Header Card */}

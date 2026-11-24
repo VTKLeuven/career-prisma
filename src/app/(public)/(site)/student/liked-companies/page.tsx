@@ -69,7 +69,7 @@ export default function LikedCompaniesPage() {
 
   if (!student) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-vtk-blue/5 via-white to-vtk-yellow/5 flex items-center justify-center px-4 py-16">
+      <div className="min-h-screen max-md:min-h-dvh bg-gradient-to-br from-vtk-blue/5 via-white to-vtk-yellow/5 flex items-center justify-center px-4 py-16">
         <div className="max-w-2xl mx-auto text-center">
           <h1 className="text-3xl font-bold text-neutral-900 mb-4">Liked companies</h1>
           <p className="text-lg text-neutral-600 mb-8">

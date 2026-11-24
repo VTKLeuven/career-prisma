@@ -79,7 +79,7 @@ function ResetPasswordContent() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="min-h-screen max-md:min-h-dvh flex items-center justify-center bg-gray-50 px-4">
         <Card className="w-full max-w-md">
           <CardContent className="py-8 text-center">
             <p className="text-green-600 mb-4">Password reset successfully!</p>
@@ -91,7 +91,7 @@ function ResetPasswordContent() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div className="min-h-screen max-md:min-h-dvh flex items-center justify-center bg-gray-50 px-4">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl">Reset Your Password</CardTitle>
@@ -153,7 +153,7 @@ function ResetPasswordContent() {
 export default function ResetPasswordPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="min-h-screen max-md:min-h-dvh flex items-center justify-center bg-gray-50 px-4">
         <Card className="w-full max-w-md">
           <CardContent className="py-8 text-center">
             <p className="text-gray-600">Loading...</p>

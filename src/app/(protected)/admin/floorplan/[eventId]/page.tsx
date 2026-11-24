@@ -528,7 +528,7 @@ export default function AdminFloorplanPage() {
 
   if (!page || !page.floorplan) {
     return (
-      <div className="min-h-screen bg-vtk-bg text-neutral-900 flex items-center justify-center">
+      <div className="min-h-screen max-md:min-h-dvh bg-vtk-bg text-neutral-900 flex items-center justify-center">
         <div className="text-center">
           <p className="text-neutral-600 mb-4">No floorplan found for this event.</p>
           <Button asChild>

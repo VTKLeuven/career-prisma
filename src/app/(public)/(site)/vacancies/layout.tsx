@@ -15,7 +15,7 @@ export default function VacanciesLayout({
 }) {
   if (!isDevEnvironment()) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-white to-vtk-blue/5">
+      <div className="min-h-screen max-md:min-h-dvh bg-gradient-to-br from-neutral-50 via-white to-vtk-blue/5">
         <div className="mx-auto w-full max-w-7xl px-2 py-16 sm:px-4 sm:py-24">
           <ComingSoon
             title="Vacancies"

@@ -232,7 +232,7 @@ function VerifyStudentContent() {
 export default function VerifyStudentPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-screen max-md:min-h-dvh items-center justify-center">
         <p>Loading...</p>
       </div>
     }>
