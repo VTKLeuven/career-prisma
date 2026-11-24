@@ -42,6 +42,8 @@ export type FieldConfig<T = Record<string, unknown>> = {
   options?: SelectOption[];
   /** Async choices for `select` / `multiselect` (relations). Loaded once on mount. */
   loadOptions?: () => Promise<SelectOption[]>;
+  /** Trims leading/trailing whitespace from a string value before submit. */
+  trim?: boolean;
   /** Value used when creating a new row. Defaults per type ("" / false / []). */
   defaultValue?: unknown;
   /** Extracts the current value from a row when editing. Defaults to `row[name]`. */

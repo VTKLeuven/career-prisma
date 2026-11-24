@@ -79,7 +79,7 @@ export default function FacultiesClient({
       },
     ],
     fields: [
-      { name: "name", label: "Name", type: "text", required: true },
+      { name: "name", label: "Name", type: "text", required: true, trim: true },
       { name: "logo", label: "Logo", type: "image" },
       {
         name: "masterIds",

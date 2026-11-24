@@ -234,8 +234,12 @@ empty rather than guessed.
 Master `name` / `short_name` and faculty `name` are trimmed on every write
 (`toMasterWrite()` / `toFacultyWrite()` in `src/lib/repos/features.ts`), not
 when exported: the CSV exports print them as stored, and a leading space broke
-the staff's InDesign import (BR-64). Migration
-`20261124160507_trim_master_faculty_names` cleaned the rows saved before that.
+the staff's InDesign import (BR-64). The admin forms also trim them before
+submit (`trim: true` on those `ResourceManager` fields). Migration
+`20261124160507_trim_master_faculty_names` cleaned the rows saved before that,
+stripping the same characters as JavaScript's `String.prototype.trim()` —
+ASCII whitespace plus Unicode spaces such as the no-break space (U+00A0) and
+the BOM (U+FEFF) — so a stored value is clean whichever way it got there.
 
 ## Files
 
