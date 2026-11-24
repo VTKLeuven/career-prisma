@@ -75,7 +75,7 @@ export function ShellHeader({
       <Button
         variant="ghost"
         size="icon"
-        className="-ml-1 size-8 text-muted-foreground md:size-7"
+        className="-ml-1 size-8 text-muted-foreground max-md:-ml-2.5 max-md:size-11 md:size-7"
         onClick={toggleSidebar}
         aria-label="Toggle sidebar"
       >
@@ -129,7 +129,7 @@ export function ShellHeader({
         <Button
           variant="ghost"
           size="icon"
-          className="size-8 text-muted-foreground md:hidden"
+          className="size-8 text-muted-foreground max-md:-mr-1.5 max-md:size-11 md:hidden"
           onClick={openCommandPalette}
           aria-label="Search pages"
         >

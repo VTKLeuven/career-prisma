@@ -385,7 +385,7 @@ export function AppSidebar({ data: sidebarData, ...props }: React.ComponentProps
             <button
               type="button"
               onClick={openCommandPalette}
-              className="flex h-8 w-full items-center gap-2 rounded-[10px] border border-input bg-background px-2.5 text-left text-[13px] text-[#8b8b93] shadow-xs outline-none transition-colors hover:border-[#d4d4d8] focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+              className="flex h-8 w-full items-center gap-2 rounded-[10px] border border-input bg-background px-2.5 text-left text-[13px] max-md:h-11 text-[#8b8b93] shadow-xs outline-none transition-colors hover:border-[#d4d4d8] focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             >
               <Search className="size-4 text-[#6b6b73]" />
               <span className="flex-1">Search…</span>

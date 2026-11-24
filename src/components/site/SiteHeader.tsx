@@ -382,7 +382,7 @@ export function SiteHeader({
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className={`md:hidden inline-flex items-center justify-center rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-vtk-blue ${
+              className={`md:hidden inline-flex items-center justify-center rounded-md p-2 max-md:-m-1 max-md:p-3 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-vtk-blue ${
                 dark
                   ? "text-neutral-200 hover:bg-neutral-700/50"
                   : "text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900"
@@ -424,7 +424,7 @@ export function SiteHeader({
                     <Button
                       size="sm"
                       variant="outline"
-                      className={`h-7 rounded-full text-xs px-3 ${
+                      className={`h-7 rounded-full text-xs px-3 max-md:-my-2 max-md:h-11 ${
                         dark
                           ? "border-white/60 text-white hover:bg-white/20"
                           : "border-vtk-blue text-vtk-blue hover:bg-vtk-blue/5"
@@ -678,7 +678,7 @@ function MobileAccountButtons({
       <Button
         asChild
         variant="outline"
-        className={`rounded-full w-full ${
+        className={`rounded-full w-full max-md:h-11 ${
           dark
             ? "border-neutral-600 text-neutral-200 hover:bg-neutral-700/50"
             : "border-neutral-300 text-neutral-800 hover:bg-neutral-100"
@@ -690,7 +690,7 @@ function MobileAccountButtons({
       {companyRep?.admin && (
         <Button
           asChild
-          className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+          className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white max-md:h-11"
           onClick={onNavigate}
         >
           <Link href="/admin">Admin</Link>
@@ -700,7 +700,7 @@ function MobileAccountButtons({
         <Button
           asChild
           variant="outline"
-          className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
+          className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full max-md:h-11"
           onClick={onNavigate}
         >
           <Link href={companyRep ? "/dashboard" : "/login"}>{companyRep ? "Company Dashboard" : "Company login"}</Link>
@@ -709,7 +709,7 @@ function MobileAccountButtons({
       {!student && !companyRep && (
         <Button
           asChild
-          className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+          className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white max-md:h-11"
           onClick={onNavigate}
         >
           <Link href="/student-login">Student login</Link>
@@ -718,7 +718,7 @@ function MobileAccountButtons({
       {!student && companyRep && (
         <Button
           asChild
-          className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+          className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white max-md:h-11"
           onClick={onNavigate}
         >
           <Link href="/contact">Contact Us</Link>
@@ -730,13 +730,13 @@ function MobileAccountButtons({
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
-                className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full"
+                className="rounded-full border-vtk-yellow text-vtk-blue hover:bg-vtk-yellow/10 w-full max-md:h-11"
               >
                 <User className="h-4 w-4 mr-2" />
                 {student.firstName} {student.lastName}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuContent align="end" className="w-56 max-md:*:py-2.5">
               {student.is_shifter && (
                 <DropdownMenuItem
                   onClick={() => {
@@ -774,7 +774,7 @@ function MobileAccountButtons({
           </DropdownMenu>
           <Button
             asChild
-            className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white"
+            className="rounded-full bg-vtk-blue hover:bg-vtk-blueDark w-full text-white max-md:h-11"
             onClick={onNavigate}
           >
             <Link href="/contact">Contact Us</Link>

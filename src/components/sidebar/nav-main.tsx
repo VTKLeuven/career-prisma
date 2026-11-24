@@ -36,6 +36,8 @@ export type NavItem = {
 /** Shared look of every sidebar row (Dopl: 28px, 13px medium, 10px radius). */
 export const navRowClass = cn(
   "group/nav flex h-7 w-full min-w-0 items-center gap-2.5 rounded-[10px] px-2.5 text-left text-[13px] font-medium text-sidebar-foreground",
+  // Below md the sidebar is a sheet on a phone: rows become 44px tap targets.
+  "max-md:h-11",
   "outline-none transition-colors duration-100 focus-visible:ring-2 focus-visible:ring-sidebar-ring",
   "[&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-[#3f3f46]",
   "hover:bg-[#f0f0f2]"
@@ -150,7 +152,7 @@ function NavMainItem({ item, storageKey }: { item: NavItem; storageKey: string }
             <CollapsibleTrigger asChild>
               <button
                 type="button"
-                className="flex h-7 w-[34px] shrink-0 items-center justify-center rounded-[8px] hover:bg-black/5"
+                className="flex h-7 w-[34px] shrink-0 items-center justify-center rounded-[8px] hover:bg-black/5 max-md:h-11 max-md:w-11"
                 aria-label={isOpen ? "Collapse Events" : "Expand Events"}
               >
                 {chevron}
