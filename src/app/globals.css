@@ -237,3 +237,17 @@
     --dialog-p: 1rem;
   }
 }
+
+/* Phones show no scrollbar until you scroll, so nothing says a table has
+   more columns off to the side. Scroll shadows: a soft edge appears on the
+   side where columns are hidden and fades as you reach that end (the covers
+   scroll with the content, the shadows stay put). Below md only. */
+@media (max-width: 767px) {
+  [data-slot="table-container"] {
+    background:
+      linear-gradient(to right, var(--background) 30%, transparent) left / 2.5rem 100% no-repeat local,
+      linear-gradient(to left, var(--background) 30%, transparent) right / 2.5rem 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.16), transparent) left / 0.875rem 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.16), transparent) right / 0.875rem 100% no-repeat scroll;
+  }
+}
