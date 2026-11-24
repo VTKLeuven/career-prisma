@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 export function ScrollCue() {
   return (
     <motion.div
-      className="absolute bottom-8 left-1/2 -translate-x-1/2"
+      className="absolute bottom-8 left-1/2 -translate-x-1/2 max-md:hidden"
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{
