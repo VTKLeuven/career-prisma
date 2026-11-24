@@ -134,7 +134,7 @@ function ManageEventCard({ managed, orderingEnabled }: { managed: ManagedEvent; 
                         <Button
                           asChild
                           variant={isCompleted ? "outline" : "default"}
-                          className={hasDeadline ? "w-full justify-start" : "w-full justify-center"}
+                          className={`${hasDeadline ? "w-full justify-start" : "w-full justify-center"} max-md:h-auto max-md:min-h-11 max-md:whitespace-normal max-md:py-2 max-md:text-left`}
                           size="sm"
                         >
                           <Link href={formUrl}>

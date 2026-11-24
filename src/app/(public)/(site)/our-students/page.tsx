@@ -126,7 +126,7 @@ export default async function OurStudentsPage() {
                             </div>
                           )}
                           <div>
-                            <h3 className="text-xl sm:text-2xl font-bold text-vtk-blue mb-1">
+                            <h3 className="text-xl sm:text-2xl font-bold text-vtk-blue mb-1 max-md:text-lg max-md:wrap-anywhere">
                               {master.name.toUpperCase()}
                             </h3>
                             {master.students && (

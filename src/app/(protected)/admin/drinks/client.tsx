@@ -374,7 +374,7 @@ export default function DrinksClient({
                             <Label htmlFor="type">Type</Label>
                             <select
                                 id="type"
-                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background max-md:text-base"
                                 value={formData.type}
                                 onChange={(e) => setFormData({ ...formData, type: e.target.value as "drink" | "snack" })}
                             >

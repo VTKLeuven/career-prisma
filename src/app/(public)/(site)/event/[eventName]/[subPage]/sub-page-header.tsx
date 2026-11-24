@@ -179,7 +179,7 @@ export function SubPageHeader({
                     onBlur={() => setTimeout(() => setIsFocused(false), 200)}
                     placeholder="Search company..."
                     aria-label="Search companies on the floorplan"
-                    className="w-full rounded-full border border-gray-300 px-3 py-1.5 text-xs"
+                    className="w-full rounded-full border border-gray-300 px-3 py-1.5 text-xs max-md:text-base"
                   />
                   {showSearchDropdown && (
                     <ul className="absolute top-full left-0 w-full mt-1 max-h-60 overflow-auto rounded-lg border bg-white shadow-lg z-50">
