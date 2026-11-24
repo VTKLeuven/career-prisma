@@ -169,6 +169,11 @@ export function SiteHeader({
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement
+      // The account dropdown inside the mobile panel renders its menu in a
+      // portal on <body>, outside mobileMenuRef. A tap on one of its items
+      // must not close the panel: that would unmount the dropdown between
+      // mousedown and click, and the item (e.g. Log out) would never fire.
+      if (target.closest("[data-radix-popper-content-wrapper]")) return
       if (
         mobileMenuRef.current &&
         !mobileMenuRef.current.contains(event.target as Node) &&
