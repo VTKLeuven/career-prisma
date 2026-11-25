@@ -117,11 +117,25 @@ export async function listFaculties(
  * Master (study programme) writes
  * ------------------------------------------------------------------ */
 
+/**
+ * Master and faculty names are printed as-is in the student CSV exports, and a
+ * stray leading space broke the staff's InDesign import (BR-64). Trimming here,
+ * in the one write path every caller goes through, keeps them clean at the
+ * source; a migration trimmed the rows saved before this.
+ */
+function trimIfString(value: unknown): unknown {
+  return typeof value === "string" ? value.trim() : value
+}
+
 /** Maps the legacy write shape (`logo` id, string ids) to Prisma columns. */
 function toMasterWrite(payload: Record<string, any>): Record<string, unknown> {
   const { logo, id: _id, ...rest } = payload
   return {
     ...rest,
+    ...(payload.name !== undefined ? { name: trimIfString(payload.name) } : {}),
+    ...(payload.short_name !== undefined
+      ? { short_name: trimIfString(payload.short_name) }
+      : {}),
     ...(payload.students !== undefined
       ? { students: payload.students == null ? null : Number(payload.students) }
       : {}),
@@ -161,6 +175,7 @@ function toFacultyWrite(payload: Record<string, any>): Record<string, unknown> {
   const { logo, id: _id, masters: _masters, masterIds: _masterIds, ...rest } = payload
   return {
     ...rest,
+    ...(payload.name !== undefined ? { name: trimIfString(payload.name) } : {}),
     ...(logo !== undefined ? { logo_id: logo || null } : {}),
   }
 }

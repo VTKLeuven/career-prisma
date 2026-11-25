@@ -312,6 +312,12 @@ export function ResourceEditor<T extends Record<string, unknown>>({
         payload[field.name] = v === "" || v == null ? null : Number(v);
       }
 
+      // Trim fields that opt in (names that end up in exports, BR-64).
+      for (const field of config.fields) {
+        const v = payload[field.name];
+        if (field.trim && typeof v === "string") payload[field.name] = v.trim();
+      }
+
       if (!editing && !config.actions.create) {
         setError("Creating is not supported here.");
         setSaving(false);

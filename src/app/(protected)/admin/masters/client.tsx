@@ -59,8 +59,8 @@ export default function MastersClient({ initialMasters }: { initialMasters: Mast
       },
     ],
     fields: [
-      { name: "name", label: "Name", type: "text", required: true },
-      { name: "short_name", label: "Short name", type: "text", placeholder: "e.g. CW" },
+      { name: "name", label: "Name", type: "text", required: true, trim: true },
+      { name: "short_name", label: "Short name", type: "text", placeholder: "e.g. CW", trim: true },
       {
         name: "study_programme",
         label: "vtk.be study programme",
